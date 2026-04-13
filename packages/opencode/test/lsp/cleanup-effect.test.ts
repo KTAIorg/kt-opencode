@@ -1,5 +1,6 @@
 import { afterEach, describe, expect } from "bun:test"
-import { Effect, Layer } from "effect"
+import { Deferred, Effect, Layer } from "effect"
+import { Bus } from "../../src/bus"
 import path from "path"
 import { setTimeout as sleep } from "node:timers/promises"
 import * as CrossSpawnSpawner from "../../src/effect/cross-spawn-spawner"
@@ -42,15 +43,25 @@ describe("LSP cleanup", () => {
         yield* LSP.Service.use((svc) => svc.touchFile(file))
         expect(yield* LSP.Service.use((svc) => svc.status())).toHaveLength(1)
 
+        const done = yield* Deferred.make<void>()
+        const off = Bus.subscribe(LSP.Event.Updated, () => {
+          Deferred.doneUnsafe(done, Effect.void)
+        })
+        yield* Effect.addFinalizer(() => Effect.sync(off))
+
         yield* fs.remove(dir, { recursive: true, force: true })
+        yield* Deferred.await(done).pipe(Effect.timeout("2 seconds"))
+
+        const stopped = yield* Effect.promise(async () => {
+          for (const _ of Array.from({ length: 20 })) {
+            if (await fs.exists(mark)) return true
+            await sleep(50)
+          }
+          return false
+        })
+
+        expect(stopped).toBe(true)
         expect(yield* LSP.Service.use((svc) => svc.status())).toHaveLength(0)
-
-        for (const _ of Array.from({ length: 20 })) {
-          if (yield* fs.exists(mark)) return
-          yield* Effect.promise(() => sleep(50))
-        }
-
-        throw new Error("fake lsp server did not exit")
       }),
     ),
   )

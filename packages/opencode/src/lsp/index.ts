@@ -2,6 +2,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Log } from "../util/log"
 import { LSPClient } from "./client"
+import { watch as fswatch, type FSWatcher } from "fs"
 import path from "path"
 import { pathToFileURL, fileURLToPath } from "url"
 import { LSPServer } from "./server"
@@ -137,7 +138,10 @@ export namespace LSP {
     clients: LSPClient.Info[]
     servers: Record<string, LSPServer.Info>
     broken: Set<string>
+    pruning: Promise<void> | undefined
     spawning: Map<string, Promise<LSPClient.Info | undefined>>
+    subs: Map<string, FSWatcher>
+    timer: ReturnType<typeof setTimeout> | undefined
   }
 
   export interface Interface {
@@ -212,11 +216,18 @@ export namespace LSP {
             clients: [],
             servers,
             broken: new Set(),
+            pruning: undefined,
             spawning: new Map(),
+            subs: new Map(),
+            timer: undefined,
           }
 
           yield* Effect.addFinalizer(() =>
             Effect.promise(async () => {
+              if (s.timer) clearTimeout(s.timer)
+              for (const sub of s.subs.values()) {
+                sub.close()
+              }
               await Promise.all(s.clients.map((client) => client.shutdown()))
             }),
           )
@@ -269,6 +280,7 @@ export namespace LSP {
             }
 
             s.clients.push(client)
+            sync(s)
             return client
           }
 
@@ -318,22 +330,74 @@ export namespace LSP {
         return yield* Effect.promise(() => Promise.all(clients.map((x) => fn(x))))
       })
 
-      const trim = Effect.fnUntraced(function* () {
-        const s = yield* InstanceState.get(state)
-        const dead = yield* Effect.promise(async () => {
+      function sync(s: State) {
+        const next = new Set(s.clients.map((client) => path.dirname(client.root)))
+
+        for (const [dir, sub] of s.subs) {
+          if (next.has(dir)) continue
+          s.subs.delete(dir)
+          sub.close()
+        }
+
+        for (const dir of next) {
+          if (s.subs.has(dir)) continue
+          try {
+            const sub = fswatch(
+              dir,
+              { persistent: false },
+              Instance.bind(() => {
+                kick(s)
+              }),
+            )
+            sub.on(
+              "error",
+              Instance.bind(() => {
+                if (s.subs.get(dir) !== sub) return
+                s.subs.delete(dir)
+                sub.close()
+                kick(s)
+              }),
+            )
+            s.subs.set(dir, sub)
+          } catch {}
+        }
+      }
+
+      function kick(s: State) {
+        if (s.timer) clearTimeout(s.timer)
+        s.timer = setTimeout(() => {
+          s.timer = undefined
+          void scan(s)
+        }, 50)
+      }
+
+      async function scan(s: State) {
+        if (s.pruning) return s.pruning
+
+        const task = (async () => {
           const dead = (
             await Promise.all(
               s.clients.map(async (client) => ((await Filesystem.exists(client.root)) ? undefined : client)),
             )
           ).filter((client): client is LSPClient.Info => Boolean(client))
-          if (!dead.length) return [] as LSPClient.Info[]
+          if (!dead.length) return
 
           const ids = new Set(dead.map((client) => `${client.serverID}:${client.root}`))
           s.clients = s.clients.filter((client) => !ids.has(`${client.serverID}:${client.root}`))
+          sync(s)
           await Promise.all(dead.map((client) => client.shutdown().catch(() => undefined)))
-          return dead
+          await Bus.publish(Event.Updated, {})
+        })().finally(() => {
+          if (s.pruning === task) s.pruning = undefined
         })
-        if (dead.length) Bus.publish(Event.Updated, {})
+
+        s.pruning = task
+        return task
+      }
+
+      const trim = Effect.fnUntraced(function* () {
+        const s = yield* InstanceState.get(state)
+        yield* Effect.promise(() => scan(s))
       })
 
       const runAll = Effect.fnUntraced(function* <T>(fn: (client: LSPClient.Info) => Promise<T>) {

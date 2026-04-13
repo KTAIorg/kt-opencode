@@ -23,6 +23,8 @@ process.on("SIGINT", () => {
   process.exit(0)
 })
 
+setInterval(() => {}, 1000)
+
 let nextId = 1
 
 function encode(message) {
