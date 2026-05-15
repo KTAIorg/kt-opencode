@@ -288,7 +288,14 @@ function createProductionRoutes(
 export function createSimulatedRoutes(corsOptions?: CorsOptions): ReturnType<typeof createProductionRoutes> {
   const fs = new InMemoryFs()
   const simulationBoundary = Layer.mergeAll(
-    SimulationFileSystem.layer({ root: "/opencode", fs }),
+    SimulationFileSystem.layer({
+      root: "/opencode",
+      fs,
+      files: {
+        ".git/HEAD": "ref: refs/heads/main\n",
+        ".git/config": "[core]\n\trepositoryformatversion = 0\n\tbare = false\n[branch \"main\"]\n",
+      },
+    }),
     SimulationSpawner.layer({ root: "/opencode", fs }),
     SimulationNetwork.layer({ entries: SimulationNetworkRoutes.defaults(), allowLoopback: true }),
   )
