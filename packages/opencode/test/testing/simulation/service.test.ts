@@ -28,6 +28,17 @@ describe("Simulation", () => {
     }),
   )
 
+  it.effect("writes one file into the simulated filesystem", () =>
+    Effect.gen(function* () {
+      const simulation = yield* Simulation.Service
+      const fs = yield* AppFileSystem.Service
+
+      expect(yield* simulation.writeFile({ path: "src/generated.txt", content: "generated" })).toEqual({ file: "src/generated.txt" })
+      expect(yield* fs.readFileString("/opencode/src/generated.txt")).toBe("generated")
+      expect((yield* simulation.snapshot()).files).toContain("src/generated.txt")
+    }),
+  )
+
   it.effect("registers network responses through control state", () =>
     Effect.gen(function* () {
       const simulation = yield* Simulation.Service

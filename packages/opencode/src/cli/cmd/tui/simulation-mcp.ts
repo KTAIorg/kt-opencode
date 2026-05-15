@@ -301,6 +301,14 @@ function createServer(options: Options) {
     async (input) => toolResult(await control(options, "POST", "/experimental/simulation/filesystem/seed", input)),
   )
   server.registerTool(
+    "simulation_control_filesystem_write",
+    {
+      description: "Write one file into the backend simulated filesystem.",
+      inputSchema: z.object({ path: z.string(), content: FileContentSchema }),
+    },
+    async (input) => toolResult(await control(options, "POST", "/experimental/simulation/filesystem/write", input)),
+  )
+  server.registerTool(
     "simulation_control_network_register",
     {
       description: "Register one backend simulated network response.",

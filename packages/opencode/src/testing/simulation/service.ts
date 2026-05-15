@@ -12,6 +12,11 @@ export const FilesystemSeedInput = Schema.Struct({
   files: Schema.Record(Schema.String, FileContent),
 })
 
+export const FilesystemWriteInput = Schema.Struct({
+  path: Schema.String,
+  content: FileContent,
+})
+
 export const NetworkRegisterInput = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("json"),
@@ -80,6 +85,7 @@ export class SimulationLLMError extends Schema.TaggedErrorClass<SimulationLLMErr
 export interface Interface {
   readonly reset: () => Effect.Effect<void>
   readonly seedFilesystem: (input: typeof FilesystemSeedInput.Type) => Effect.Effect<{ files: string[] }, unknown>
+  readonly writeFile: (input: typeof FilesystemWriteInput.Type) => Effect.Effect<{ file: string }, unknown>
   readonly registerNetwork: (input: typeof NetworkRegisterInput.Type) => Effect.Effect<{ registered: string }, unknown>
   readonly enqueueLLM: (input: typeof LLMEnqueueInput.Type) => Effect.Effect<{ queued: number }>
   readonly nextLLM: () => Effect.Effect<LLMScript, SimulationLLMError>
@@ -131,6 +137,12 @@ export const layer = Layer.effect(
       return { files }
     })
 
+    const writeFile = Effect.fn("Simulation.writeFile")(function* (input: typeof FilesystemWriteInput.Type) {
+      yield* fs.writeWithDirs(path.isAbsolute(input.path) ? input.path : path.join("/opencode", input.path), fileContent(input.content))
+      yield* Ref.update(state, (current) => ({ ...current, files: [...current.files, input.path] }))
+      return { file: input.path }
+    })
+
     const registerNetwork = Effect.fn("Simulation.registerNetwork")(function* (input: typeof NetworkRegisterInput.Type) {
       switch (input.kind) {
         case "json":
@@ -178,7 +190,7 @@ export const layer = Layer.effect(
       }
     })
 
-    return Service.of({ reset, seedFilesystem, registerNetwork, enqueueLLM, nextLLM, snapshot })
+    return Service.of({ reset, seedFilesystem, writeFile, registerNetwork, enqueueLLM, nextLLM, snapshot })
   }),
 )
 

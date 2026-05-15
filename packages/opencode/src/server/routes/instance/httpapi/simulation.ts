@@ -28,6 +28,15 @@ export const simulationRoute = HttpRouter.use((router) =>
       ),
     )
 
+    yield* router.add("POST", "/experimental/simulation/filesystem/write", () =>
+      json(
+        Effect.gen(function* () {
+          const input = yield* HttpServerRequest.schemaBodyJson(Simulation.FilesystemWriteInput)
+          return yield* simulation.writeFile(input)
+        }),
+      ),
+    )
+
     yield* router.add("POST", "/experimental/simulation/network/register", () =>
       json(
         Effect.gen(function* () {
