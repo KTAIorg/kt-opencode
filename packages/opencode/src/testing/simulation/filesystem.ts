@@ -2,36 +2,20 @@ import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { Glob } from "@opencode-ai/core/util/glob"
 import { Effect, FileSystem, Layer, Option, Stream } from "effect"
 import { badArgument, systemError, type PlatformError } from "effect/PlatformError"
+import { InMemoryFs } from "just-bash"
 import path from "path"
-
-type Entry =
-  | { readonly type: "directory"; readonly mode: number; readonly modified: Date }
-  | { readonly type: "file"; readonly mode: number; readonly modified: Date; readonly content: Uint8Array }
 
 export interface Options {
   readonly root: string
   readonly files?: Record<string, string | Uint8Array>
+  readonly fs?: InMemoryFs
 }
 
-const encoder = new TextEncoder()
-const decoder = new TextDecoder()
-
-const notFound = (method: string, file: string) =>
-  systemError({
-    _tag: "NotFound",
+const unsupported = (method: string) =>
+  badArgument({
     module: "SimulationFileSystem",
     method,
-    description: "No such file or directory",
-    pathOrDescriptor: file,
-  })
-
-const alreadyExists = (method: string, file: string) =>
-  systemError({
-    _tag: "AlreadyExists",
-    module: "SimulationFileSystem",
-    method,
-    description: "Path already exists",
-    pathOrDescriptor: file,
+    description: "Operation is not supported by the simulated filesystem",
   })
 
 const permissionDenied = (method: string, file: string) =>
@@ -43,16 +27,18 @@ const permissionDenied = (method: string, file: string) =>
     pathOrDescriptor: file,
   })
 
-const unsupported = (method: string) =>
-  badArgument({
+const failure = (method: string, file: string, cause: unknown) =>
+  systemError({
+    _tag: String(cause).toLowerCase().includes("exist") ? "AlreadyExists" : "NotFound",
     module: "SimulationFileSystem",
     method,
-    description: "Operation is not supported by the simulated filesystem",
+    description: cause instanceof Error ? cause.message : String(cause),
+    pathOrDescriptor: file,
   })
 
 export function make(options: Options) {
+  const fs = options.fs ?? new InMemoryFs()
   const root = path.resolve(options.root)
-  const entries = new Map<string, Entry>()
   const temp = { value: 0 }
 
   const normalize = (method: string, file: string): string | PlatformError => {
@@ -61,104 +47,65 @@ export function make(options: Options) {
     return permissionDenied(method, file)
   }
 
-  const touch = () => new Date(0)
-
-  const ensureParentDirs = (file: string) => {
-    const parent = path.dirname(file)
-    if (parent === file) return
-    if (entries.has(parent)) return
-    ensureParentDirs(parent)
-    entries.set(parent, { type: "directory", mode: 0o755, modified: touch() })
-  }
-
-  const entry = (method: string, file: string) => {
+  const normalizeEffect = (method: string, file: string) => {
     const normalized = normalize(method, file)
-    if (typeof normalized !== "string") return normalized
-    return entries.get(normalized) ?? notFound(method, file)
+    if (typeof normalized === "string") return Effect.succeed(normalized)
+    return Effect.fail(normalized)
   }
 
-  const descendants = (dir: string) =>
-    [...entries.keys()].filter((item) => item !== dir && AppFileSystem.contains(dir, item))
+  const normalizePair = (method: string, fromPath: string, toPath: string) =>
+    Effect.all([normalizeEffect(method, fromPath), normalizeEffect(method, toPath)] as const)
 
-  const children = (dir: string) =>
-    [...entries.keys()]
-      .filter((item) => item !== dir && path.dirname(item) === dir)
-      .sort((a, b) => path.basename(a).localeCompare(path.basename(b)))
+  const run = <A>(method: string, file: string, fn: (file: string) => Promise<A>) =>
+    Effect.gen(function* () {
+      const normalized = yield* normalizeEffect(method, file)
+      return yield* Effect.tryPromise({
+        try: () => fn(normalized),
+        catch: (cause) => failure(method, file, cause),
+      })
+    })
 
-  const writeBytes = (method: string, file: string, content: Uint8Array, mode?: number) => {
-    const normalized = normalize(method, file)
-    if (typeof normalized !== "string") return Effect.fail(normalized)
-    const parent = entries.get(path.dirname(normalized))
-    if (!parent) return Effect.fail(notFound(method, path.dirname(file)))
-    if (parent.type !== "directory") return Effect.fail(notFound(method, path.dirname(file)))
-    entries.set(normalized, { type: "file", mode: mode ?? 0o644, modified: touch(), content: content.slice() })
-    return Effect.void
-  }
-
-  entries.set(root, { type: "directory", mode: 0o755, modified: touch() })
+  fs.mkdirSync(root, { recursive: true })
   for (const [file, content] of Object.entries(options.files ?? {})) {
     const normalized = normalize("seed", file)
-    if (typeof normalized !== "string") continue
-    ensureParentDirs(normalized)
-    entries.set(normalized, {
-      type: "file",
-      mode: 0o644,
-      modified: touch(),
-      content: typeof content === "string" ? encoder.encode(content) : content.slice(),
-    })
+    if (typeof normalized === "string") fs.writeFileSync(normalized, content, { encoding: "utf8" })
   }
 
   const base = FileSystem.make({
-    access: (file) =>
-      Effect.gen(function* () {
-        const result = entry("access", file)
-        if (result instanceof Error) return yield* result
-      }),
-    chmod: (file, mode) =>
-      Effect.gen(function* () {
-        const result = entry("chmod", file)
-        if (result instanceof Error) return yield* result
-        entries.set(path.resolve(root, file), { ...result, mode })
-      }),
+    access: (file) => run("access", file, async (item) => void (await fs.stat(item))),
+    chmod: (file, mode) => run("chmod", file, (item) => fs.chmod(item, mode)),
     chown: () => Effect.fail(unsupported("chown")),
     copy: (fromPath, toPath) =>
       Effect.gen(function* () {
-        const from = entry("copy", fromPath)
-        if (from instanceof Error) return yield* from
-        if (from.type === "directory") return yield* unsupported("copy")
-        yield* writeBytes("copy", toPath, from.content, from.mode)
+        const [from, to] = yield* normalizePair("copy", fromPath, toPath)
+        yield* Effect.tryPromise({
+          try: () => fs.cp(from, to, { recursive: true }),
+          catch: (cause) => failure("copy", fromPath, cause),
+        })
       }),
     copyFile: (fromPath, toPath) =>
       Effect.gen(function* () {
-        const from = entry("copyFile", fromPath)
-        if (from instanceof Error) return yield* from
-        if (from.type !== "file") return yield* notFound("copyFile", fromPath)
-        yield* writeBytes("copyFile", toPath, from.content, from.mode)
+        const [from, to] = yield* normalizePair("copyFile", fromPath, toPath)
+        yield* Effect.tryPromise({
+          try: () => fs.cp(from, to),
+          catch: (cause) => failure("copyFile", fromPath, cause),
+        })
       }),
-    link: () => Effect.fail(unsupported("link")),
-    makeDirectory: (file, methodOptions) =>
+    link: (existingPath, newPath) =>
       Effect.gen(function* () {
-        const normalized = normalize("makeDirectory", file)
-        if (typeof normalized !== "string") return yield* normalized
-        const existing = entries.get(normalized)
-        if (existing?.type === "directory") return
-        if (existing) return yield* alreadyExists("makeDirectory", file)
-        if (methodOptions?.recursive) {
-          ensureParentDirs(normalized)
-          entries.set(normalized, { type: "directory", mode: methodOptions.mode ?? 0o755, modified: touch() })
-          return
-        }
-        const parent = entries.get(path.dirname(normalized))
-        if (parent?.type !== "directory") return yield* notFound("makeDirectory", path.dirname(file))
-        entries.set(normalized, { type: "directory", mode: methodOptions?.mode ?? 0o755, modified: touch() })
+        const [existing, next] = yield* normalizePair("link", existingPath, newPath)
+        yield* Effect.tryPromise({
+          try: () => fs.link(existing, next),
+          catch: (cause) => failure("link", existingPath, cause),
+        })
       }),
+    makeDirectory: (file, methodOptions) => run("makeDirectory", file, (item) => fs.mkdir(item, methodOptions)),
     makeTempDirectory: (methodOptions) =>
       Effect.gen(function* () {
-        const directory = methodOptions?.directory ?? root
-        const name = `${methodOptions?.prefix ?? "tmp-"}${++temp.value}`
-        const file = path.join(directory, name)
+        const directory = yield* normalizeEffect("makeTempDirectory", methodOptions?.directory ?? root)
+        const file = path.join(directory, `${methodOptions?.prefix ?? "tmp-"}${++temp.value}`)
         yield* base.makeDirectory(file, { recursive: true })
-        return path.resolve(root, file)
+        return file
       }),
     makeTempDirectoryScoped: (methodOptions) =>
       Effect.acquireRelease(
@@ -167,168 +114,133 @@ export function make(options: Options) {
       ),
     makeTempFile: (methodOptions) =>
       Effect.gen(function* () {
-        const directory = methodOptions?.directory ?? root
+        const directory = yield* normalizeEffect("makeTempFile", methodOptions?.directory ?? root)
         const file = path.join(directory, `${methodOptions?.prefix ?? "tmp-"}${++temp.value}${methodOptions?.suffix ?? ""}`)
-        yield* writeBytes("makeTempFile", file, new Uint8Array())
-        return path.resolve(root, file)
+        yield* base.writeFile(file, new Uint8Array())
+        return file
       }),
     makeTempFileScoped: (methodOptions) =>
       Effect.acquireRelease(base.makeTempFile(methodOptions), (file) => base.remove(file, { force: true }).pipe(Effect.ignore)),
     open: (file) =>
       Effect.gen(function* () {
+        const normalized = yield* normalizeEffect("open", file)
+        yield* base.access(normalized)
         let position = 0
-        const readCurrent = () => {
-          const result = entry("open", file)
-          return result instanceof Error || result.type !== "file" ? undefined : result.content
-        }
-        const current = readCurrent()
-        if (!current) return yield* notFound("open", file)
+        const readCurrent = () => fs.readFileBuffer(normalized)
         return {
           [FileSystem.FileTypeId]: FileSystem.FileTypeId,
           fd: FileSystem.FileDescriptor(0),
-          stat: base.stat(file),
+          stat: base.stat(normalized),
           seek: (offset, from) =>
             Effect.sync(() => {
               position = from === "start" ? Number(offset) : position + Number(offset)
             }),
           sync: Effect.void,
           read: (buffer) =>
-            Effect.sync(() => {
-              const content = readCurrent() ?? new Uint8Array()
+            Effect.gen(function* () {
+              const content = yield* Effect.promise(readCurrent)
               const chunk = content.slice(position, position + buffer.length)
               buffer.set(chunk)
               position += chunk.length
               return FileSystem.Size(chunk.length)
             }),
           readAlloc: (size) =>
-            Effect.sync(() => {
-              const content = readCurrent() ?? new Uint8Array()
+            Effect.gen(function* () {
+              const content = yield* Effect.promise(readCurrent)
               const chunk = content.slice(position, position + Number(size))
               position += chunk.length
               return chunk.length === 0 ? Option.none() : Option.some(chunk)
             }),
-          truncate: (size) => base.truncate(file, size),
+          truncate: (size) => base.truncate(normalized, size),
           write: () => Effect.fail(unsupported("file.write")),
           writeAll: () => Effect.fail(unsupported("file.writeAll")),
         }
       }),
     readDirectory: (file, methodOptions) =>
       Effect.gen(function* () {
-        const normalized = normalize("readDirectory", file)
-        if (typeof normalized !== "string") return yield* normalized
-        const current = entries.get(normalized)
-        if (current?.type !== "directory") return yield* notFound("readDirectory", file)
-        const items = methodOptions?.recursive ? descendants(normalized) : children(normalized)
-        return items.map((item) => path.relative(normalized, item))
+        const normalized = yield* normalizeEffect("readDirectory", file)
+        if (!methodOptions?.recursive) return yield* run("readDirectory", normalized, (item) => fs.readdir(item))
+        return fs
+          .getAllPaths()
+          .filter((item) => item !== normalized && AppFileSystem.contains(normalized, item))
+          .map((item) => path.relative(normalized, item))
+          .sort((a, b) => a.localeCompare(b))
       }),
-    readFile: (file) =>
-      Effect.gen(function* () {
-        const result = entry("readFile", file)
-        if (result instanceof Error) return yield* result
-        if (result.type !== "file") return yield* notFound("readFile", file)
-        return result.content.slice()
-      }),
-    readLink: () => Effect.fail(unsupported("readLink")),
-    realPath: (file) =>
-      Effect.gen(function* () {
-        const normalized = normalize("realPath", file)
-        if (typeof normalized !== "string") return yield* normalized
-        const current = entries.get(normalized)
-        if (!current) return yield* notFound("realPath", file)
-        return normalized
-      }),
-    remove: (file, methodOptions) =>
-      Effect.gen(function* () {
-        const normalized = normalize("remove", file)
-        if (typeof normalized !== "string") return yield* normalized
-        const current = entries.get(normalized)
-        if (!current) {
-          if (methodOptions?.force) return
-          return yield* notFound("remove", file)
-        }
-        if (current.type === "directory" && descendants(normalized).length > 0 && !methodOptions?.recursive) {
-          return yield* systemError({
-            _tag: "BadResource",
-            module: "SimulationFileSystem",
-            method: "remove",
-            description: "Directory is not empty",
-            pathOrDescriptor: file,
-          })
-        }
-        for (const item of descendants(normalized)) entries.delete(item)
-        entries.delete(normalized)
-      }),
+    readFile: (file) => run("readFile", file, (item) => fs.readFileBuffer(item)),
+    readLink: (file) => run("readLink", file, (item) => fs.readlink(item)),
+    realPath: (file) => run("realPath", file, (item) => fs.realpath(item)),
+    remove: (file, methodOptions) => run("remove", file, (item) => fs.rm(item, methodOptions)),
     rename: (oldPath, newPath) =>
       Effect.gen(function* () {
-        const oldNormalized = normalize("rename", oldPath)
-        if (typeof oldNormalized !== "string") return yield* oldNormalized
-        const newNormalized = normalize("rename", newPath)
-        if (typeof newNormalized !== "string") return yield* newNormalized
-        const current = entries.get(oldNormalized)
-        if (!current) return yield* notFound("rename", oldPath)
-        ensureParentDirs(newNormalized)
-        entries.set(newNormalized, current)
-        entries.delete(oldNormalized)
-        for (const item of descendants(oldNormalized)) {
-          const child = entries.get(item)
-          if (!child) continue
-          entries.set(path.join(newNormalized, path.relative(oldNormalized, item)), child)
-          entries.delete(item)
-        }
+        const [oldNormalized, newNormalized] = yield* normalizePair("rename", oldPath, newPath)
+        yield* Effect.tryPromise({
+          try: () => fs.mv(oldNormalized, newNormalized),
+          catch: (cause) => failure("rename", oldPath, cause),
+        })
       }),
     stat: (file) =>
-      Effect.gen(function* () {
-        const result = entry("stat", file)
-        if (result instanceof Error) return yield* result
+      run("stat", file, async (item) => {
+        const info = await fs.stat(item)
         return {
-          type: result.type === "directory" ? "Directory" : "File",
-          mtime: Option.some(result.modified),
-          atime: Option.some(result.modified),
-          birthtime: Option.some(result.modified),
+          type: info.isDirectory ? "Directory" : info.isSymbolicLink ? "SymbolicLink" : "File",
+          mtime: Option.some(info.mtime),
+          atime: Option.some(info.mtime),
+          birthtime: Option.some(info.mtime),
           dev: 0,
           ino: Option.none(),
-          mode: result.mode,
+          mode: info.mode,
           nlink: Option.none(),
           uid: Option.none(),
           gid: Option.none(),
           rdev: Option.none(),
-          size: FileSystem.Size(result.type === "file" ? result.content.length : 0),
+          size: FileSystem.Size(info.size),
           blksize: Option.none(),
           blocks: Option.none(),
         } satisfies FileSystem.File.Info
       }),
-    symlink: () => Effect.fail(unsupported("symlink")),
+    symlink: (target, linkPath) =>
+      Effect.gen(function* () {
+        const normalized = yield* normalizeEffect("symlink", linkPath)
+        yield* Effect.tryPromise({
+          try: () => fs.symlink(target, normalized),
+          catch: (cause) => failure("symlink", linkPath, cause),
+        })
+      }),
     truncate: (file, size = 0) =>
-      Effect.gen(function* () {
-        const result = entry("truncate", file)
-        if (result instanceof Error) return yield* result
-        if (result.type !== "file") return yield* notFound("truncate", file)
+      run("truncate", file, async (item) => {
         const next = new Uint8Array(Number(size))
-        next.set(result.content.slice(0, next.length))
-        entries.set(path.resolve(root, file), { ...result, content: next, modified: touch() })
+        next.set((await fs.readFileBuffer(item)).slice(0, next.length))
+        await fs.writeFile(item, next)
       }),
-    utimes: (file, _atime, mtime) =>
-      Effect.gen(function* () {
-        const result = entry("utimes", file)
-        if (result instanceof Error) return yield* result
-        entries.set(path.resolve(root, file), { ...result, modified: typeof mtime === "number" ? new Date(mtime) : mtime })
-      }),
+    utimes: (file, atime, mtime) =>
+      run("utimes", file, (item) =>
+        fs.utimes(item, typeof atime === "number" ? new Date(atime) : atime, typeof mtime === "number" ? new Date(mtime) : mtime),
+      ),
     watch: () => Stream.fail(unsupported("watch")),
-    writeFile: (file, content, methodOptions) => writeBytes("writeFile", file, content, methodOptions?.mode),
+    writeFile: (file, content, methodOptions) =>
+      run("writeFile", file, async (item) => {
+        await fs.writeFile(item, content)
+        if (methodOptions?.mode) await fs.chmod(item, methodOptions.mode)
+      }),
   })
 
   const glob = (pattern: string, globOptions?: Glob.Options) =>
     Effect.gen(function* () {
-      const cwd = path.resolve(root, globOptions?.cwd ?? root)
-      const normalized = normalize("glob", cwd)
-      if (typeof normalized !== "string") return yield* normalized
-      const matches = [...entries.entries()]
-        .filter(([, item]) => globOptions?.include === "all" || item.type === "file")
-        .map(([file]) => ({ file, relative: path.relative(normalized, file) }))
-        .filter((item) => item.relative && !item.relative.startsWith("..") && Glob.match(pattern, item.relative))
-        .map((item) => (globOptions?.absolute ? item.file : item.relative))
-        .sort((a, b) => a.localeCompare(b))
+      const cwd = yield* normalizeEffect("glob", globOptions?.cwd ?? root)
+      const matches = yield* Effect.forEach(
+        fs
+          .getAllPaths()
+          .filter((item) => item !== cwd && AppFileSystem.contains(cwd, item))
+          .sort((a, b) => a.localeCompare(b)),
+        (file) =>
+          base.stat(file).pipe(
+            Effect.map((info) => ({ file, info, relative: path.relative(cwd, file) })),
+            Effect.catch(() => Effect.succeed(undefined)),
+          ),
+      )
       return matches
+        .filter((item) => item && (globOptions?.include === "all" || item.info.type === "File") && Glob.match(pattern, item.relative))
+        .map((item) => (globOptions?.absolute ? item!.file : item!.relative))
     })
 
   const service = AppFileSystem.Service.of({
@@ -348,32 +260,26 @@ export function make(options: Options) {
         else yield* base.writeFile(file, content, mode ? { mode } : undefined)
       }),
     readDirectoryEntries: (file) =>
-      Effect.gen(function* () {
-        const normalized = normalize("readDirectoryEntries", file)
-        if (typeof normalized !== "string") return yield* normalized
-        const current = entries.get(normalized)
-        if (current?.type !== "directory") return yield* notFound("readDirectoryEntries", file)
-        return children(normalized).map((child) => {
-          const item = entries.get(child)
-          return {
-            name: path.basename(child),
-            type: item?.type === "directory" ? "directory" : item?.type === "file" ? "file" : "other",
-          } satisfies AppFileSystem.DirEntry
-        })
-      }),
-    findUp: (target, start, stop) =>
-      service.up({ targets: [target], start, stop }),
+      run("readDirectoryEntries", file, async (item) =>
+        (await fs.readdirWithFileTypes(item))
+          .map((entry) => ({
+            name: entry.name,
+            type: entry.isDirectory ? "directory" : entry.isSymbolicLink ? "symlink" : entry.isFile ? "file" : "other",
+          }) satisfies AppFileSystem.DirEntry)
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      ),
+    findUp: (target, start, stop) => service.up({ targets: [target], start, stop }),
     up: (methodOptions) =>
       Effect.gen(function* () {
         const result: string[] = []
-        let current = path.resolve(root, methodOptions.start)
-        const stop = methodOptions.stop ? path.resolve(root, methodOptions.stop) : undefined
+        let current = yield* normalizeEffect("up", methodOptions.start)
+        const normalizedStop = methodOptions.stop ? yield* normalizeEffect("up", methodOptions.stop) : undefined
         while (true) {
           for (const target of methodOptions.targets) {
             const file = path.join(current, target)
             if (yield* base.exists(file)) result.push(file)
           }
-          if (stop === current) break
+          if (normalizedStop === current) break
           const parent = path.dirname(current)
           if (parent === current || !AppFileSystem.contains(root, parent)) break
           current = parent
@@ -383,8 +289,8 @@ export function make(options: Options) {
     globUp: (pattern, start, stop) =>
       Effect.gen(function* () {
         const result: string[] = []
-        let current = path.resolve(root, start)
-        const normalizedStop = stop ? path.resolve(root, stop) : undefined
+        let current = yield* normalizeEffect("globUp", start)
+        const normalizedStop = stop ? yield* normalizeEffect("globUp", stop) : undefined
         while (true) {
           result.push(...(yield* glob(pattern, { cwd: current, absolute: true, include: "file", dot: true })))
           if (normalizedStop === current) break

@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { Effect, Exit } from "effect"
+import { Bash, InMemoryFs } from "just-bash"
 import path from "path"
 import { SimulationFileSystem } from "../../../src/testing/simulation/filesystem"
 import { testEffect } from "../../lib/effect"
@@ -51,6 +52,22 @@ describe("SimulationFileSystem", () => {
       const exit = yield* fs.readFileString("/etc/passwd").pipe(Effect.exit)
 
       expect(Exit.isFailure(exit)).toBe(true)
+    }),
+  )
+
+  const shared = new InMemoryFs()
+  const sharedIt = testEffect(SimulationFileSystem.layer({ root, fs: shared }))
+
+  sharedIt.effect("shares the just-bash filesystem with Bash", () =>
+    Effect.gen(function* () {
+      const appFs = yield* AppFileSystem.Service
+      const bash = new Bash({ fs: shared, cwd: root })
+
+      yield* appFs.writeWithDirs(path.join(root, "from-app.txt"), "hello from app")
+
+      expect((yield* Effect.promise(() => bash.exec("cat from-app.txt"))).stdout).toBe("hello from app")
+      expect((yield* Effect.promise(() => bash.exec("printf 'hello from bash' > from-bash.txt"))).exitCode).toBe(0)
+      expect(yield* appFs.readFileString(path.join(root, "from-bash.txt"))).toBe("hello from bash")
     }),
   )
 })
