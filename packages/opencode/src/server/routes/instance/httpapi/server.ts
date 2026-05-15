@@ -24,7 +24,6 @@ import { Command } from "@/command"
 import * as Observability from "@opencode-ai/core/effect/observability"
 import { File } from "@/file"
 import { FileWatcher } from "@/file/watcher"
-import { Git } from "@/git"
 import { Ripgrep } from "@/file/ripgrep"
 import { Format } from "@/format"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -75,6 +74,7 @@ import { SimulationNetwork } from "@/testing/simulation/network"
 import { SimulationNetworkRoutes } from "@/testing/simulation/network-routes"
 import { SimulationProvider } from "@/testing/simulation/provider"
 import { SimulationSpawner } from "@/testing/simulation/spawner"
+import { SimulationGit } from "@/testing/simulation/git"
 import { Simulation } from "@/testing/simulation/service"
 import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@/server/cors"
 import { serveUIEffect } from "@/server/shared/ui"
@@ -376,7 +376,7 @@ export function createSimulatedRoutes(corsOptions?: CorsOptions): ReturnType<typ
   )
 
   return withCoreAppServices.pipe(
-    Layer.provideMerge(Git.layer),
+    Layer.provideMerge(SimulationGit.layer),
     Layer.provideMerge(Npm.layer),
     Layer.provideMerge(Env.layer),
     Layer.provideMerge(Bus.layer),
