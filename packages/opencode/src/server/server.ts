@@ -119,7 +119,7 @@ const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unkno
   function* (opts: ListenOptions) {
     const state = yield* startWithPortFallback(opts)
     if (opts.type === "socket") {
-      const listenerUrl = makeURL("localhost", 0)
+      const listenerUrl = makeURL("localhost")
       url = listenerUrl
 
       return {
@@ -194,10 +194,10 @@ function tcpAddress(state: ListenerState) {
   })
 }
 
-function makeURL(hostname: string, port: number) {
+function makeURL(hostname: string, port?: number) {
   const result = new URL("http://localhost")
   result.hostname = hostname
-  result.port = String(port)
+  if (port !== undefined) result.port = String(port)
   return result
 }
 
