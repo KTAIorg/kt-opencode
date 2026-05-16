@@ -88,21 +88,11 @@ export async function listen(opts: ListenOptions): Promise<Listener> {
 const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unknown> = Effect.fn("Server.listen")(
   function* (opts: ListenOptions) {
     const state = yield* startWithPortFallback(opts)
-    if (opts.socket) {
-      const address = yield* unixAddress(state)
-      const listenerUrl = makeURL("localhost", 0)
-      url = listenerUrl
+    const address = state.server.address
 
-      return {
-        hostname: "localhost",
-        port: 0,
-        socket: address.path,
-        url: listenerUrl,
-        stop: yield* makeStop(state, Effect.void),
-      }
-    }
+    if (address._tag === "UnixAddress") return yield* makeSocketListener(state, address.path)
+    if (opts.socket) return yield* unexpectedAddress(state)
 
-    const address = yield* tcpAddress(state)
     const listenerUrl = makeURL(opts.hostname, address.port)
     url = listenerUrl
 
@@ -124,7 +114,7 @@ function listenerLayer(opts: ListenOptions, port: number) {
     disableListenLog: true,
   }).pipe(
     Layer.provideMerge(WebSocketTracker.layer),
-    Layer.provideMerge(serverLayer(opts.socket ? { socket: opts.socket } : { port, hostname: opts.hostname })),
+    Layer.provideMerge(serverLayer(opts, port)),
     // Install a fresh `ConfigProvider` per listener so `Config.string(...)`
     // reads reflect the current `process.env`. Effect's default
     // `ConfigProvider` snapshots `process.env` on first read and caches the
@@ -135,7 +125,7 @@ function listenerLayer(opts: ListenOptions, port: number) {
 }
 
 function startWithPortFallback(opts: ListenOptions) {
-  if (opts.socket) return startListener(opts, opts.port)
+  if (opts.socket) return startListener(opts, 0)
   if (opts.port !== 0) return startListener(opts, opts.port)
   // Match the legacy listener port-resolution behavior: explicit `0` prefers
   // 4096 first, then any free port.
@@ -158,26 +148,32 @@ function startListener(opts: ListenOptions, port: number) {
   )
 }
 
-function tcpAddress(state: ListenerState) {
+function makeSocketListener(state: ListenerState, socket: string) {
   return Effect.gen(function* () {
-    if (state.server.address._tag === "TcpAddress") return state.server.address
+    const listenerUrl = makeURL("localhost")
+    url = listenerUrl
+
+    return {
+      hostname: "localhost",
+      port: 0,
+      socket,
+      url: listenerUrl,
+      stop: yield* makeStop(state, Effect.void),
+    }
+  })
+}
+
+function unexpectedAddress(state: ListenerState) {
+  return Effect.gen(function* () {
     yield* Scope.close(state.scope, Exit.void).pipe(Effect.ignore)
     return yield* Effect.die(new Error(`Unexpected HttpServer address tag: ${state.server.address._tag}`))
   })
 }
 
-function unixAddress(state: ListenerState) {
-  return Effect.gen(function* () {
-    if (state.server.address._tag === "UnixAddress") return state.server.address
-    yield* Scope.close(state.scope, Exit.void).pipe(Effect.ignore)
-    return yield* Effect.die(new Error(`Unexpected HttpServer address tag: ${state.server.address._tag}`))
-  })
-}
-
-function makeURL(hostname: string, port: number) {
+function makeURL(hostname: string, port?: number) {
   const result = new URL("http://localhost")
   result.hostname = hostname
-  if (port) result.port = String(port)
+  if (port !== undefined) result.port = String(port)
   return result
 }
 
@@ -214,7 +210,7 @@ function forceClose(state: ListenerState) {
   return Effect.all([state.http.closeAll, state.websockets.closeAll], { concurrency: "unbounded", discard: true })
 }
 
-function serverLayer(opts: { port: number; hostname: string } | { socket: string }) {
+function serverLayer(opts: ListenOptions, port: number) {
   const server = createServer()
   const serverRef = { closeStarted: false, forceStop: false }
   const close = server.close.bind(server)
@@ -229,10 +225,7 @@ function serverLayer(opts: { port: number; hostname: string } | { socket: string
   }) as typeof server.close
 
   return Layer.mergeAll(
-    NodeHttpServer.layer(() => server, {
-      ...("socket" in opts ? { path: opts.socket } : { port: opts.port, host: opts.hostname }),
-      gracefulShutdownTimeout: "1 second",
-    }),
+    NodeHttpServer.layer(() => server, nodeListenOptions(opts, port)),
     Layer.succeed(ListenerServerService)(
       ListenerServerService.of({
         closeAll: Effect.sync(() => {
@@ -242,6 +235,11 @@ function serverLayer(opts: { port: number; hostname: string } | { socket: string
       }),
     ),
   )
+}
+
+function nodeListenOptions(opts: ListenOptions, port: number) {
+  if (opts.socket) return { path: opts.socket, gracefulShutdownTimeout: "1 second" as const }
+  return { port, host: opts.hostname, gracefulShutdownTimeout: "1 second" as const }
 }
 
 export * as Server from "./server"
