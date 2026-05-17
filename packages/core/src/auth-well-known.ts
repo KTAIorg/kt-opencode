@@ -51,6 +51,7 @@ export interface Interface {
   readonly get: (url: string) => Effect.Effect<Entry | undefined, Error>
   readonly set: (url: string, entry: Entry) => Effect.Effect<void, Error>
   readonly remove: (url: string) => Effect.Effect<void, Error>
+  readonly metadata: (url: string) => Effect.Effect<Metadata, Error>
   readonly configs: () => Effect.Effect<ConfigDocument[], Error>
 }
 
@@ -175,6 +176,10 @@ export const layer = Layer.effect(
             return next
           }),
         )
+      }),
+
+      metadata: Effect.fn("AuthWellKnown.metadata.public")(function* (url) {
+        return (yield* metadata(url)).metadata
       }),
 
       configs: Effect.fn("AuthWellKnown.configs")(function* () {
