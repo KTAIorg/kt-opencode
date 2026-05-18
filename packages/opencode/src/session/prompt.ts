@@ -1697,7 +1697,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
           const error = new MessageV2.ContextOverflowError({
             message:
-              "Automatic compaction did not reduce the session below the model context limit. Remove large or uncompressible context, clear/restart the session, or run compaction again after reducing the conversation size.",
+              "Automatic compaction could not reduce this session enough to continue. Please start a new session.",
           }).toObject()
           yield* slog.info("auto compaction blocked", { boundary })
           if (input.assistant) {
