@@ -1,7 +1,7 @@
 import { describe, expect } from "bun:test"
 import path from "path"
 import { Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { Global } from "@opencode-ai/core/global"
 import { Substitution } from "@opencode-ai/core/substitution"
@@ -11,14 +11,44 @@ import { testEffect } from "./lib/effect"
 
 const it = testEffect(Layer.empty)
 
-const withAuthWellKnown = <A, E, R>(dir: string, effect: Effect.Effect<A, E, R | AuthWellKnown.Service>) =>
+const unexpectedHttpClient = HttpClient.make((request) => Effect.die(`unexpected http request: ${request.url}`))
+
+const withAuthWellKnown = <A, E, R>(
+  dir: string,
+  effect: Effect.Effect<A, E, R | AuthWellKnown.Service>,
+  client = unexpectedHttpClient,
+) =>
   effect.pipe(
     Effect.provide(AuthWellKnown.layer),
     Effect.provide(AppFileSystem.defaultLayer),
     Effect.provide(Global.layerWith({ data: dir })),
-    Effect.provide(FetchHttpClient.layer),
+    Effect.provide(Layer.succeed(HttpClient.HttpClient, client)),
     Effect.provide(Substitution.defaultLayer),
   )
+
+const wellKnownConfigClient = HttpClient.make((request) => {
+  if (request.url === "https://example.com/.well-known/opencode") {
+    return Effect.succeed(
+      HttpClientResponse.fromWeb(
+        request,
+        Response.json({
+          config: { instructions: ["local"] },
+          remote_config: {
+            url: "https://remote.example.com/config",
+            headers: {
+              authorization: "Bearer {env:TEST_TOKEN}",
+            },
+          },
+        }),
+      ),
+    )
+  }
+  if (request.url === "https://remote.example.com/config") {
+    expect(request.headers.authorization).toBe("Bearer secret")
+    return Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ model: "remote/model" })))
+  }
+  return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 404 })))
+})
 
 describe("AuthWellKnown", () => {
   it.live("stores well-known credentials", () =>
@@ -103,53 +133,15 @@ describe("AuthWellKnown", () => {
         ),
       )
 
-      const originalFetch = Object.getOwnPropertyDescriptor(globalThis, "fetch")?.value as typeof fetch
-      const originalToken = process.env.TEST_TOKEN
-      yield* Effect.acquireRelease(
-        Effect.sync(() => {
-          const fakeFetch = Object.assign(
-            (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-              const url = input instanceof URL ? input.href : typeof input === "string" ? input : input.url
-              if (url === "https://example.com/.well-known/opencode") {
-                return Promise.resolve(
-                  Response.json({
-                    config: { instructions: ["local"] },
-                    remote_config: {
-                      url: "https://remote.example.com/config",
-                      headers: {
-                        authorization: "Bearer {env:TEST_TOKEN}",
-                      },
-                    },
-                  }),
-                )
-              }
-              if (url === "https://remote.example.com/config") {
-                expect(new Headers(init?.headers).get("authorization")).toBe("Bearer secret")
-                return Promise.resolve(Response.json({ model: "remote/model" }))
-              }
-              return Promise.resolve(new Response(null, { status: 404 }))
-            },
-            { preconnect: originalFetch.preconnect },
-          )
-          Object.defineProperty(globalThis, "fetch", { value: fakeFetch, configurable: true, writable: true })
-        }),
-        () =>
-          Effect.sync(() => {
-            Object.defineProperty(globalThis, "fetch", { value: originalFetch, configurable: true, writable: true })
-            if (originalToken === undefined) delete process.env.TEST_TOKEN
-            else process.env.TEST_TOKEN = originalToken
-          }),
-      )
-
       const result = yield* withAuthWellKnown(
         tmp.path,
         Effect.gen(function* () {
           const auth = yield* AuthWellKnown.Service
           return yield* auth.configs()
         }),
+        wellKnownConfigClient,
       )
 
-      expect(process.env.TEST_TOKEN).toBeUndefined()
       expect(result).toEqual([
         {
           url: "https://example.com",
