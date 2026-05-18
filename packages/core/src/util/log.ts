@@ -54,6 +54,29 @@ export interface Options {
   level?: Level
 }
 
+export interface Entry {
+  readonly time: string
+  readonly level: Level
+  readonly tags: Record<string, unknown>
+  readonly message: string
+}
+
+const MAX_ENTRIES = 5_000
+const memory: Entry[] = []
+
+function record(entry: Entry) {
+  memory.push(entry)
+  if (memory.length > MAX_ENTRIES) memory.splice(0, memory.length - MAX_ENTRIES)
+}
+
+export function entries(): Entry[] {
+  return memory.slice()
+}
+
+export function clearEntries() {
+  memory.length = 0
+}
+
 let logpath = ""
 export function file() {
   return logpath
@@ -139,24 +162,39 @@ export function create(tags?: Record<string, any>) {
     last = next.getTime()
     return [next.toISOString().split(".")[0], "+" + diff + "ms", prefix, message].filter(Boolean).join(" ") + "\n"
   }
+
+  function capture(level: Level, message: any, extra?: Record<string, any>) {
+    const text = message instanceof Error ? formatError(message) : message === undefined ? "" : String(message)
+    record({
+      time: new Date().toISOString(),
+      level,
+      tags: { ...tags, ...extra },
+      message: text,
+    })
+  }
+
   const result: Logger = {
     debug(message?: any, extra?: Record<string, any>) {
       if (shouldLog("DEBUG")) {
+        capture("DEBUG", message, extra)
         write("DEBUG " + build(message, extra))
       }
     },
     info(message?: any, extra?: Record<string, any>) {
       if (shouldLog("INFO")) {
+        capture("INFO", message, extra)
         write("INFO  " + build(message, extra))
       }
     },
     error(message?: any, extra?: Record<string, any>) {
       if (shouldLog("ERROR")) {
+        capture("ERROR", message, extra)
         write("ERROR " + build(message, extra))
       }
     },
     warn(message?: any, extra?: Record<string, any>) {
       if (shouldLog("WARN")) {
+        capture("WARN", message, extra)
         write("WARN  " + build(message, extra))
       }
     },
