@@ -19,7 +19,7 @@ const sessionB = SessionID.make("ses_storage_b")
 const sessionC = SessionID.make("ses_storage_c")
 const sessionD = SessionID.make("ses_storage_d")
 const encodeMessage = Schema.encodeSync(SessionMessage.Message)
-const memoryState: SessionStorageMemory.State = {
+const memoryState = {
   sessions: new Map(),
   messages: new Map(),
 }

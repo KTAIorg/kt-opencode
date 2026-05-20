@@ -2,17 +2,10 @@ import { DateTime, Effect, Layer } from "effect"
 import { SessionMessage } from "@opencode-ai/core/session-message"
 import { SessionStorage } from "./storage"
 
-export interface State {
+export const make = (state: {
   readonly sessions: Map<string, SessionStorage.SessionRow>
   readonly messages: Map<string, SessionMessage.Message[]>
-}
-
-const makeState = (): State => ({
-  sessions: new Map(),
-  messages: new Map(),
-})
-
-export const make = (state = makeState()) =>
+}) =>
   SessionStorage.Service.of({
     get: (sessionID) => Effect.sync(() => state.sessions.get(sessionID)),
     list: (input) =>
@@ -80,8 +73,10 @@ export const make = (state = makeState()) =>
   })
 
 const storageLayer = Layer.sync(SessionStorage.Service, () => {
-  const state = makeState()
-  return make(state)
+  return make({
+    sessions: new Map(),
+    messages: new Map(),
+  })
 })
 
 export const layer = storageLayer
