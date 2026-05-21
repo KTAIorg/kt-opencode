@@ -294,7 +294,7 @@ function providerCfg(url: string) {
   }
 }
 
-function toolChoiceRequiredDisabledProviderCfg(url: string) {
+function providerCfgWithoutRequiredToolChoice(url: string) {
   return {
     ...providerCfg(url),
     provider: {
@@ -508,7 +508,7 @@ it.instance("loop calls LLM and returns assistant message", () =>
 
 it.instance("structured output uses auto tool choice when model disables required tool choice", () =>
   Effect.gen(function* () {
-    const { llm } = yield* useServerConfig(toolChoiceRequiredDisabledProviderCfg)
+    const { llm } = yield* useServerConfig(providerCfgWithoutRequiredToolChoice)
     const prompt = yield* SessionPrompt.Service
     const sessions = yield* Session.Service
     const chat = yield* sessions.create({
