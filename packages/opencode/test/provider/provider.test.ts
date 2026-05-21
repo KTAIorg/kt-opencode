@@ -2048,16 +2048,32 @@ test("models.dev normalization fills required response fields", () => {
           output: 128_000,
         },
       },
+      "deepseek-reasoner": {
+        id: "deepseek-reasoner",
+        name: "DeepSeek Reasoner",
+        family: "deepseek",
+        tool_choice_required: false,
+        cost: {
+          input: 0.5,
+          output: 2,
+        },
+        limit: {
+          context: 64_000,
+          output: 8_000,
+        },
+      },
     },
   } as unknown as ModelsDev.Provider
 
   const model = Provider.fromModelsDevProvider(provider).models["gpt-5.4"]
+  const reasoner = Provider.fromModelsDevProvider(provider).models["deepseek-reasoner"]
   expect(model.api.url).toBe("")
   expect(model.capabilities.temperature).toBe(false)
   expect(model.capabilities.reasoning).toBe(false)
   expect(model.capabilities.attachment).toBe(false)
   expect(model.capabilities.toolcall).toBe(true)
   expect(model.capabilities.toolChoiceRequired).toBe(true)
+  expect(reasoner.capabilities.toolChoiceRequired).toBe(false)
   expect(model.release_date).toBe("")
 })
 

@@ -548,6 +548,38 @@ it.instance("structured output uses auto tool choice and errors when the model i
   }),
 )
 
+it.instance("structured output uses required tool choice by default", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({
+      title: "Pinned",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+    yield* llm.text("plain text")
+
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      model: { providerID: ProviderID.make("test"), modelID: ModelID.make("test-model") },
+      parts: [{ type: "text", text: "say hello" }],
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          properties: { answer: { type: "string" } },
+          required: ["answer"],
+        },
+      },
+    })
+
+    const inputs = yield* llm.inputs
+    expect(inputs).toHaveLength(1)
+    expect(inputs[0].tool_choice).toBe("required")
+  }),
+)
+
 noLLMServer.instance(
   "prompt emits v2 prompted and synthetic events",
   () =>
