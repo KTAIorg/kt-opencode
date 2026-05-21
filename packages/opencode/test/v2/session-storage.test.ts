@@ -9,8 +9,12 @@ import { SessionStorageMemory } from "@/v2/storage/session-memory"
 import { SessionStorageSql } from "@/v2/storage/session-sql"
 import { EventV2 } from "@opencode-ai/core/event"
 import { SessionMessage } from "@opencode-ai/core/session-message"
+import { EffectDrizzleSqlite } from "@opencode-ai/effect-drizzle-sqlite"
 import { eq, or } from "@/storage/db"
 import { DateTime, Effect, Layer, Schema } from "effect"
+import fs from "fs/promises"
+import os from "os"
+import path from "path"
 import { testEffect } from "../lib/effect"
 
 const projectID = ProjectID.make("project-session-storage")
@@ -157,7 +161,24 @@ function sessionStorageContract<R, E>(name: string, layer: Layer.Layer<SessionSt
   )
 }
 
-const sqlLayer = SessionStorageSql.layer.pipe(Layer.provideMerge(StorageDatabase.defaultLayer))
+const testDatabaseLayer = Layer.unwrap(
+  Effect.gen(function* () {
+    const dir = yield* Effect.acquireRelease(
+      Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "opencode-storage-test-"))),
+      (dir) => Effect.promise(() => fs.rm(dir, { recursive: true, force: true })),
+    )
+    return Layer.effect(
+      StorageDatabase.Service,
+      Effect.gen(function* () {
+        const db = yield* StorageDatabase.Service
+        yield* EffectDrizzleSqlite.migrate(db, { migrationsFolder: path.join(import.meta.dirname, "../../migration") })
+        return db
+      }),
+    ).pipe(Layer.provide(StorageDatabase.layerForPath(path.join(dir, "storage.db"))))
+  }),
+)
+
+const sqlLayer = SessionStorageSql.layer.pipe(Layer.provideMerge(testDatabaseLayer))
 
 const sqlSeeds: Seeds<StorageDatabase.Service> = {
   reset: resetSqlSeeds(),
