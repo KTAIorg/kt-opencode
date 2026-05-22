@@ -23,6 +23,10 @@ shape before writing config, **fetch that URL and read the schema directly**
 rather than guessing. opencode hard-fails on invalid config, so the cost of a
 wrong shape is a broken startup.
 
+The full schema is large. Prefer using JavaScript or Bash to fetch and extract
+the relevant property definition instead of reading the entire schema into
+context when you only need to check one setting.
+
 Independently, every `opencode.json` should declare
 `"$schema": "https://opencode.ai/config.json"` so the user's editor catches
 mistakes as they type.
@@ -126,7 +130,7 @@ Every field is optional.
     "mcp_timeout": 30000
   },
 
-  "tool_output": { "truncate": false, "max_lines": 200, "max_bytes": 8192 },
+  "tool_output": { "max_lines": 200, "max_bytes": 8192 },
 
   "compaction": { "auto": true, "tail_turns": 15 }
 }
@@ -140,7 +144,6 @@ Shape notes worth being explicit about:
 - `plugin` is an array of strings or `[name, options]` tuples, not an object.
 - `mcp[name].command` is an array of strings, never a single string. `type` is required.
 - `permission` is either a string action or an object keyed by tool name.
-- `tool_output.truncate: false` disables shared tool output truncation; use `max_lines` and `max_bytes` to override its thresholds.
 
 ## Skills
 

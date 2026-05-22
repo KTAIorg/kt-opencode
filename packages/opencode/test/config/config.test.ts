@@ -1455,6 +1455,21 @@ test("config parser preserves permission order while rejecting unknown top-level
   }
 })
 
+test("tool_output only accepts thresholds when truncation is enabled", () => {
+  expect(ConfigParse.schema(Config.Info, { tool_output: { truncate: false } }, "test").tool_output).toEqual({
+    truncate: false,
+  })
+  expect(
+    ConfigParse.schema(Config.Info, { tool_output: { max_lines: 200, max_bytes: 8192 } }, "test").tool_output,
+  ).toEqual({
+    max_lines: 200,
+    max_bytes: 8192,
+  })
+  expect(() =>
+    ConfigParse.schema(Config.Info, { tool_output: { truncate: false, max_lines: 200, max_bytes: 8192 } }, "test"),
+  ).toThrow()
+})
+
 // MCP config merging tests
 
 it.instance("project config can override MCP server enabled status", () =>

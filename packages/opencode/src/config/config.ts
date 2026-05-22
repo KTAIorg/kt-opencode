@@ -253,17 +253,22 @@ export const Info = Schema.Struct({
     }),
   ),
   tool_output: Schema.optional(
-    Schema.Struct({
-      truncate: Schema.optional(Schema.Boolean).annotate({
-        description: "Enable truncating tool output that exceeds the configured limits (default: true)",
+    Schema.Union([
+      Schema.Struct({
+        truncate: Schema.Literal(false).annotate({ description: "Disable tool output truncation" }),
+      }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+      Schema.Struct({
+        truncate: Schema.optional(Schema.Literal(true)).annotate({
+          description: "Enable truncating tool output that exceeds the configured limits (default: true)",
+        }),
+        max_lines: Schema.optional(PositiveInt).annotate({
+          description: "Maximum lines of tool output before it is truncated and saved to disk (default: 2000)",
+        }),
+        max_bytes: Schema.optional(PositiveInt).annotate({
+          description: "Maximum bytes of tool output before it is truncated and saved to disk (default: 51200)",
+        }),
       }),
-      max_lines: Schema.optional(PositiveInt).annotate({
-        description: "Maximum lines of tool output before it is truncated and saved to disk (default: 2000)",
-      }),
-      max_bytes: Schema.optional(PositiveInt).annotate({
-        description: "Maximum bytes of tool output before it is truncated and saved to disk (default: 51200)",
-      }),
-    }),
+    ]),
   ).annotate({
     description:
       "Configure tool output truncation. When output exceeds either limit, the full text is written to the truncation directory and a preview is returned.",
