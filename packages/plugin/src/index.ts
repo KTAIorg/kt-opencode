@@ -4,7 +4,7 @@ import type {
   Project,
   Model,
   Provider,
-  Permission,
+  PermissionRequest,
   UserMessage,
   Message,
   Part,
@@ -67,8 +67,16 @@ export type PluginInput = {
 
 export type PluginOptions = Record<string, unknown>
 
+type TuiConfig = {
+  scroll_speed?: number
+  scroll_acceleration?: { enabled?: boolean }
+  diff_style?: "auto" | "stacked"
+}
+
 export type Config = Omit<SDKConfig, "plugin"> & {
   plugin?: Array<string | [string, PluginOptions]>
+  theme?: string
+  tui?: TuiConfig
 }
 
 export type Plugin = (input: PluginInput, options?: PluginOptions) => Promise<Hooks>
@@ -257,7 +265,7 @@ export interface Hooks {
     input: { sessionID: string; agent: string; model: Model; provider: ProviderContext; message: UserMessage },
     output: { headers: Record<string, string> },
   ) => Promise<void>
-  "permission.ask"?: (input: Permission, output: { status: "ask" | "deny" | "allow" }) => Promise<void>
+  "permission.ask"?: (input: PermissionRequest, output: { status: "ask" | "deny" | "allow" }) => Promise<void>
   "command.execute.before"?: (
     input: { command: string; sessionID: string; arguments: string },
     output: { parts: Part[] },

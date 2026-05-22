@@ -4,7 +4,10 @@ import { createClient } from "./gen/client/client.gen.js"
 import { type Config } from "./gen/client/types.gen.js"
 import { OpencodeClient } from "./gen/sdk.gen.js"
 import { wrapClientError } from "./error-interceptor.js"
-export { type Config as OpencodeClientConfig, OpencodeClient }
+export { OpencodeClient }
+
+type Fetch = (request: Request) => ReturnType<typeof fetch>
+export type OpencodeClientConfig = Omit<Config, "fetch"> & { fetch?: Fetch; directory?: string }
 
 function pick(value: string | null, fallback?: string) {
   if (!value) return
@@ -30,9 +33,18 @@ function rewrite(request: Request, directory?: string) {
   return next
 }
 
-export function createOpencodeClient(config?: Config & { directory?: string }) {
+function toFetch(input: Fetch | undefined): typeof fetch | undefined {
+  if (!input) return
+  return Object.assign(
+    async (value: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+      input(value instanceof Request && init === undefined ? value : new Request(value, init)),
+    fetch,
+  )
+}
+
+export function createOpencodeClient(config?: OpencodeClientConfig) {
   if (!config?.fetch) {
-    const customFetch: any = (req: any) => {
+    const customFetch: Fetch = (req) => {
       // @ts-ignore
       req.timeout = false
       return fetch(req)
@@ -50,7 +62,7 @@ export function createOpencodeClient(config?: Config & { directory?: string }) {
     }
   }
 
-  const client = createClient(config)
+  const client = createClient({ ...config, fetch: toFetch(config?.fetch) })
   client.interceptors.request.use((request) => rewrite(request, config?.directory))
   client.interceptors.error.use(wrapClientError)
   return new OpencodeClient({ client })

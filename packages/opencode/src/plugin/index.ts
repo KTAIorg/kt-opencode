@@ -124,7 +124,6 @@ export const layer = Layer.effect(
         }
 
         const { Server } = yield* Effect.promise(() => import("../server/server"))
-
         const client = createOpencodeClient({
           baseUrl: "http://localhost:4096",
           directory: ctx.directory,
