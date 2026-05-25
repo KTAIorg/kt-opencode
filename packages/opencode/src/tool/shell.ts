@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect"
+import { Effect, Option, Stream } from "effect"
 import os from "os"
 import { createWriteStream } from "node:fs"
 import * as Tool from "./tool"
@@ -433,7 +433,10 @@ export const ShellTool = Tool.define(
       ctx: Tool.Context,
     ) {
       const limits = yield* trunc.limits()
-      const keep = limits.enabled ? limits.maxBytes * 2 : Number.POSITIVE_INFINITY
+      const keep = Option.match(limits, {
+        onNone: () => Number.POSITIVE_INFINITY,
+        onSome: (l) => l.maxBytes * 2,
+      })
       let full = ""
       let last = ""
       const list: Chunk[] = []
@@ -499,7 +502,7 @@ export const ShellTool = Tool.define(
                 sink?.write(chunk)
               } else {
                 full += chunk
-                if (limits.enabled && Buffer.byteLength(full, "utf-8") > limits.maxBytes) {
+                if (Option.isSome(limits) && Buffer.byteLength(full, "utf-8") > limits.value.maxBytes) {
                   return trunc.write(full).pipe(
                     Effect.andThen((next) =>
                       Effect.sync(() => {
@@ -566,7 +569,10 @@ export const ShellTool = Tool.define(
       }
       if (aborted) meta.push("User aborted the command")
       const raw = list.map((item) => item.text).join("")
-      const end = limits.enabled ? tail(raw, limits.maxLines, limits.maxBytes) : { text: raw, cut: false }
+      const end = Option.match(limits, {
+        onNone: () => ({ text: raw, cut: false }),
+        onSome: (l) => tail(raw, l.maxLines, l.maxBytes),
+      })
       if (end.cut) cut = true
       if (!file && end.cut) {
         file = yield* trunc.write(raw)

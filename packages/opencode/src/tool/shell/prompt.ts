@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Option, Schema } from "effect"
 import DESCRIPTION from "./shell.txt"
 import { PositiveInt } from "@opencode-ai/core/schema"
 import { Global } from "@opencode-ai/core/global"
@@ -15,7 +15,6 @@ const descriptions = {
 }
 
 export type Limits = {
-  enabled: boolean
   maxLines: number
   maxBytes: number
 }
@@ -84,12 +83,12 @@ function chainGuidance(name: string) {
   return "If the commands depend on each other and must run sequentially, use a single Bash call with '&&' to chain them together (e.g., `git add . && git commit -m \"message\" && git push`). For instance, if one operation must complete before another starts (like mkdir before cp, Write before Bash for git operations, or git add before git commit), run these operations sequentially instead."
 }
 
-function truncationGuidance(limits: Limits, commands: string) {
-  if (!limits.enabled) return ""
-  return `\n  - If the output exceeds ${limits.maxLines} lines or ${limits.maxBytes} bytes, it will be truncated and the full output will be written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Do NOT use ${commands} to limit output; the full output will already be captured to a file for more precise searching.`
+function truncationGuidance(limits: Option.Option<Limits>, commands: string) {
+  if (Option.isNone(limits)) return ""
+  return `\n  - If the output exceeds ${limits.value.maxLines} lines or ${limits.value.maxBytes} bytes, it will be truncated and the full output will be written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Do NOT use ${commands} to limit output; the full output will already be captured to a file for more precise searching.`
 }
 
-function bashCommandSection(chain: string, limits: Limits, defaultTimeoutMs: number) {
+function bashCommandSection(chain: string, limits: Option.Option<Limits>, defaultTimeoutMs: number) {
   return `Before executing the command, please follow these steps:
 
 1. Directory Verification:
@@ -136,7 +135,7 @@ function powershellCommandSection(
   name: string,
   chain: string,
   pathSep: string,
-  limits: Limits,
+  limits: Option.Option<Limits>,
   defaultTimeoutMs: number,
 ) {
   return `${powershellNotes(name)}
@@ -183,7 +182,7 @@ Usage notes:
     </bad-example>`
 }
 
-function cmdCommandSection(chain: string, limits: Limits, defaultTimeoutMs: number) {
+function cmdCommandSection(chain: string, limits: Option.Option<Limits>, defaultTimeoutMs: number) {
   return `# cmd.exe shell notes
 - Use double quotes for paths with spaces.
 - Use %VAR% for environment variables.
@@ -232,7 +231,7 @@ Usage notes:
     </bad-example>`
 }
 
-function profile(name: string, platform: NodeJS.Platform, limits: Limits, defaultTimeoutMs: number) {
+function profile(name: string, platform: NodeJS.Platform, limits: Option.Option<Limits>, defaultTimeoutMs: number) {
   const isPowerShell = PS.has(name)
   const chain = chainGuidance(name)
   if (CMD.has(name)) {
@@ -287,7 +286,7 @@ function profile(name: string, platform: NodeJS.Platform, limits: Limits, defaul
   }
 }
 
-export function render(name: string, platform: NodeJS.Platform, limits: Limits, defaultTimeoutMs: number) {
+export function render(name: string, platform: NodeJS.Platform, limits: Option.Option<Limits>, defaultTimeoutMs: number) {
   const selected = profile(name, platform, limits, defaultTimeoutMs)
   return {
     description: renderPrompt(DESCRIPTION, {

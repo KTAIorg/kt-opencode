@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test"
 import { NodeFileSystem } from "@effect/platform-node"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
-import { Effect, FileSystem, Layer } from "effect"
+import { Effect, FileSystem, Layer, Option } from "effect"
 import { Truncate } from "@/tool/truncate"
 import { Config } from "@/config/config"
 import { Identifier } from "../../src/id/id"
@@ -110,9 +110,11 @@ describe("Truncate", () => {
       Effect.gen(function* () {
         const svc = yield* Truncate.Service
         const resolved = yield* svc.limits()
-        expect(resolved.enabled).toBe(true)
-        expect(resolved.maxLines).toBe(Truncate.MAX_LINES)
-        expect(resolved.maxBytes).toBe(Truncate.MAX_BYTES)
+        expect(Option.isSome(resolved)).toBe(true)
+        if (Option.isSome(resolved)) {
+          expect(resolved.value.maxLines).toBe(Truncate.MAX_LINES)
+          expect(resolved.value.maxBytes).toBe(Truncate.MAX_BYTES)
+        }
       }),
     )
 
@@ -121,9 +123,11 @@ describe("Truncate", () => {
       limitsIt.live("limits() reflects config overrides", () =>
         Effect.gen(function* () {
           const resolved = yield* (yield* Truncate.Service).limits()
-          expect(resolved.enabled).toBe(true)
-          expect(resolved.maxLines).toBe(123)
-          expect(resolved.maxBytes).toBe(456)
+          expect(Option.isSome(resolved)).toBe(true)
+          if (Option.isSome(resolved)) {
+            expect(resolved.value.maxLines).toBe(123)
+            expect(resolved.value.maxBytes).toBe(456)
+          }
         }),
       )
 
@@ -169,7 +173,7 @@ describe("Truncate", () => {
           const svc = yield* Truncate.Service
           const resolved = yield* svc.limits()
           const result = yield* svc.output(content)
-          expect(resolved.enabled).toBe(false)
+          expect(Option.isNone(resolved)).toBe(true)
           expect(result).toEqual({ content, truncated: false })
         }),
       )

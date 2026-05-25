@@ -19,7 +19,7 @@ export const DIR = TRUNCATION_DIR
 export const GLOB = path.join(TRUNCATION_DIR, "*")
 
 export type Result = { content: string; truncated: false } | { content: string; truncated: true; outputPath: string }
-export type Limits = { enabled: boolean; maxLines: number; maxBytes: number }
+export type Limits = { maxLines: number; maxBytes: number }
 
 export interface Options {
   maxLines?: number
@@ -41,9 +41,11 @@ export interface Interface {
    */
   readonly output: (text: string, options?: Options, agent?: Agent.Info) => Effect.Effect<Result>
   /**
-   * Resolved truncation state and limits from `tool_output` in opencode config.
+   * Resolved truncation limits from `tool_output` in opencode config.
+   * Returns `None` when the user has disabled truncation (`tool_output.truncate: false`),
+   * in which case callers should pass output through without enforcing thresholds.
    */
-  readonly limits: () => Effect.Effect<Limits>
+  readonly limits: () => Effect.Effect<Option.Option<Limits>>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Truncate") {}
@@ -76,22 +78,21 @@ export const layer = Layer.effect(
 
     const limits = Effect.fn("Truncate.limits")(function* () {
       const configSvc = yield* Effect.serviceOption(Config.Service)
-      if (Option.isNone(configSvc)) return { enabled: true, maxLines: MAX_LINES, maxBytes: MAX_BYTES }
+      if (Option.isNone(configSvc)) return Option.some({ maxLines: MAX_LINES, maxBytes: MAX_BYTES })
       const cfg = yield* configSvc.value.get().pipe(Effect.catch(() => Effect.succeed(undefined)))
       const tool_output = cfg?.tool_output
-      if (tool_output?.truncate === false) return { enabled: false, maxLines: MAX_LINES, maxBytes: MAX_BYTES }
-      return {
-        enabled: true,
+      if (tool_output?.truncate === false) return Option.none<Limits>()
+      return Option.some({
         maxLines: tool_output?.max_lines ?? MAX_LINES,
         maxBytes: tool_output?.max_bytes ?? MAX_BYTES,
-      }
+      })
     })
 
     const output = Effect.fn("Truncate.output")(function* (text: string, options: Options = {}, agent?: Agent.Info) {
       const resolved = yield* limits()
-      if (!resolved.enabled) return { content: text, truncated: false } as const
-      const maxLines = options.maxLines ?? resolved.maxLines
-      const maxBytes = options.maxBytes ?? resolved.maxBytes
+      if (Option.isNone(resolved)) return { content: text, truncated: false } as const
+      const maxLines = options.maxLines ?? resolved.value.maxLines
+      const maxBytes = options.maxBytes ?? resolved.value.maxBytes
       const direction = options.direction ?? "head"
       const lines = text.split("\n")
       const totalBytes = Buffer.byteLength(text, "utf-8")
