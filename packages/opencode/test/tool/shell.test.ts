@@ -1207,7 +1207,7 @@ describe("tool.shell truncation", () => {
 
   it.live("does not truncate output when tool_output is disabled", () =>
     Effect.gen(function* () {
-      const tmp = yield* tmpdirScoped({ config: { tool_output: { truncate: false } } })
+      const tmp = yield* tmpdirScoped({ config: { tool_output: false } })
       yield* runIn(
         tmp,
         Effect.gen(function* () {

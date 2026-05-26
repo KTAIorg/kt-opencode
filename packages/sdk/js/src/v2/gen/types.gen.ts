@@ -1298,14 +1298,8 @@ export type Config = {
    * Configure tool output truncation. When output exceeds either limit, the full text is written to the truncation directory and a preview is returned.
    */
   tool_output?:
+    | false
     | {
-        /**
-         * Disable tool output truncation
-         */
-        truncate: false
-      }
-    | {
-        truncate?: true
         max_lines?: number
         max_bytes?: number
       }

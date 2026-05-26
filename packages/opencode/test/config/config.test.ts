@@ -1292,25 +1292,20 @@ test("config parser preserves permission order while rejecting unknown top-level
   }
 })
 
-test("tool_output only accepts thresholds when truncation is enabled", () => {
-  expect(ConfigParse.schema(Config.Info, { tool_output: { truncate: false } }, "test").tool_output).toEqual({
-    truncate: false,
-  })
+test("tool_output accepts thresholds or disables truncation", () => {
+  expect(ConfigParse.schema(Config.Info, { tool_output: false }, "test").tool_output).toBe(false)
   expect(
     ConfigParse.schema(Config.Info, { tool_output: { max_lines: 200, max_bytes: 8192 } }, "test").tool_output,
   ).toEqual({
     max_lines: 200,
     max_bytes: 8192,
   })
-  expect(() =>
-    ConfigParse.schema(Config.Info, { tool_output: { truncate: false, max_lines: 200, max_bytes: 8192 } }, "test"),
-  ).toThrow()
 })
 
 it.effect("project tool_output limits replace disabled global truncation", () =>
   withConfigTree(
     {
-      global: { tool_output: { truncate: false } },
+      global: { tool_output: false },
       project: { tool_output: { max_lines: 200 } },
     },
     Effect.gen(function* () {
@@ -1323,10 +1318,10 @@ it.effect("project disabled tool_output replaces global limits", () =>
   withConfigTree(
     {
       global: { tool_output: { max_lines: 200, max_bytes: 8192 } },
-      project: { tool_output: { truncate: false } },
+      project: { tool_output: false },
     },
     Effect.gen(function* () {
-      expect((yield* Config.use.get()).tool_output).toEqual({ truncate: false })
+      expect((yield* Config.use.get()).tool_output).toBe(false)
     }),
   ),
 )

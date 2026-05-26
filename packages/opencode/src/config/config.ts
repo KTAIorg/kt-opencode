@@ -49,13 +49,7 @@ const log = Log.create({ service: "config" })
 // Custom merge function that concatenates array fields instead of replacing them
 // Keep remeda's deep conditional merge type out of hot config-loading paths; TS profiling showed it dominates here.
 function mergeConfig(target: Info, source: Info): Info {
-  const merged = mergeDeep(target, source) as Info
-  if (!target.tool_output || !source.tool_output) return merged
-  if (target.tool_output.truncate !== false && source.tool_output.truncate !== false) return merged
-
-  // Disabled truncation and custom limits are separate config modes; the later layer selects the mode.
-  merged.tool_output = source.tool_output
-  return merged
+  return mergeDeep(target, source) as Info
 }
 
 function mergeConfigConcatArrays(target: Info, source: Info): Info {
@@ -260,13 +254,8 @@ export const Info = Schema.Struct({
   ),
   tool_output: Schema.optional(
     Schema.Union([
+      Schema.Literal(false).annotate({ description: "Disable tool output truncation" }),
       Schema.Struct({
-        truncate: Schema.Literal(false).annotate({ description: "Disable tool output truncation" }),
-      }).annotate({ parseOptions: { onExcessProperty: "error" } }),
-      Schema.Struct({
-        truncate: Schema.optional(Schema.Literal(true)).annotate({
-          description: "Enable truncating tool output that exceeds the configured limits (default: true)",
-        }),
         max_lines: Schema.optional(PositiveInt).annotate({
           description: "Maximum lines of tool output before it is truncated and saved to disk (default: 2000)",
         }),

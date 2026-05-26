@@ -42,7 +42,7 @@ export interface Interface {
   readonly output: (text: string, options?: Options, agent?: Agent.Info) => Effect.Effect<Result>
   /**
    * Resolved truncation limits from `tool_output` in opencode config.
-   * Returns `None` when the user has disabled truncation (`tool_output.truncate: false`),
+   * Returns `None` when the user has disabled truncation (`tool_output: false`),
    * in which case callers should pass output through without enforcing thresholds.
    */
   readonly limits: () => Effect.Effect<Option.Option<Limits>>
@@ -81,7 +81,7 @@ export const layer = Layer.effect(
       if (Option.isNone(configSvc)) return Option.some({ maxLines: MAX_LINES, maxBytes: MAX_BYTES })
       const cfg = yield* configSvc.value.get().pipe(Effect.catch(() => Effect.succeed(undefined)))
       const tool_output = cfg?.tool_output
-      if (tool_output?.truncate === false) return Option.none<Limits>()
+      if (tool_output === false) return Option.none<Limits>()
       return Option.some({
         maxLines: tool_output?.max_lines ?? MAX_LINES,
         maxBytes: tool_output?.max_bytes ?? MAX_BYTES,
