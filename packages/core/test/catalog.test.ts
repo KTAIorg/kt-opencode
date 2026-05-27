@@ -6,9 +6,14 @@ import { Location } from "@opencode-ai/core/location"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { ProviderV2 } from "@opencode-ai/core/provider"
+import { AbsolutePath } from "@opencode-ai/core/schema"
+import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 
-const locationLayer = Layer.succeed(Location.Service, Location.Service.of({ directory: "test" }))
+const locationLayer = Layer.succeed(
+  Location.Service,
+  Location.Service.of(location({ directory: AbsolutePath.make("test") })),
+)
 const it = testEffect(
   Catalog.layer.pipe(
     Layer.provideMerge(EventV2.defaultLayer),

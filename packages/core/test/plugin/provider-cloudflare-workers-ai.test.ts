@@ -9,6 +9,8 @@ import { PluginV2 } from "@opencode-ai/core/plugin"
 import { AccountPlugin } from "@opencode-ai/core/plugin/account"
 import { CloudflareWorkersAIPlugin } from "@opencode-ai/core/plugin/provider/cloudflare-workers-ai"
 import { ProviderV2 } from "@opencode-ai/core/provider"
+import { AbsolutePath } from "@opencode-ai/core/schema"
+import { location } from "../fixture/location"
 import { testEffect } from "../lib/effect"
 import { fakeSelectorSdk, it, model, npmLayer, withEnv } from "./provider-helper"
 
@@ -17,7 +19,9 @@ const itWithAccount = testEffect(
     Layer.provideMerge(PluginV2.defaultLayer),
     Layer.provideMerge(AccountV2.defaultLayer),
     Layer.provideMerge(EventV2.defaultLayer),
-    Layer.provideMerge(Layer.succeed(Location.Service, Location.Service.of({ directory: "test" }))),
+    Layer.provideMerge(
+      Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make("test") }))),
+    ),
     Layer.provideMerge(npmLayer),
   ),
 )

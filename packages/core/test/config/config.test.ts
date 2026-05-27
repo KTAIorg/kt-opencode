@@ -1,0 +1,208 @@
+import path from "path"
+import fs from "fs/promises"
+import { describe, expect } from "bun:test"
+import { Effect, Layer } from "effect"
+import { Config } from "@opencode-ai/core/config/config"
+import { ConfigProvider } from "@opencode-ai/core/config/provider"
+import { ConfigV2 } from "@opencode-ai/core/config/schema"
+import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { Global } from "@opencode-ai/core/global"
+import { Location } from "@opencode-ai/core/location"
+import { Project } from "@opencode-ai/core/project"
+import { AbsolutePath } from "@opencode-ai/core/schema"
+import { location } from "../fixture/location"
+import { tmpdir } from "../fixture/tmpdir"
+import { testEffect } from "../lib/effect"
+
+const it = testEffect(Layer.empty)
+
+function testLayer(
+  directory: string,
+  globalDirectory = path.join(directory, "global"),
+  projectDirectory = directory,
+  vcs?: Project.Vcs,
+) {
+  return Config.layer.pipe(
+    Layer.provide(AppFileSystem.defaultLayer),
+    Layer.provide(Global.layerWith({ config: globalDirectory })),
+    Layer.provide(
+      Layer.succeed(
+        Location.Service,
+        Location.Service.of(
+          location(
+            { directory: AbsolutePath.make(directory) },
+            { projectDirectory: AbsolutePath.make(projectDirectory), vcs },
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+const provider = {
+  endpoint: { type: "unknown" },
+  options: {
+    headers: {},
+    body: {},
+    aisdk: {
+      provider: {},
+      request: {},
+    },
+  },
+  models: {},
+}
+
+describe("Config", () => {
+  it.live("returns an empty configuration when directory files do not exist", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          const config = yield* Config.Service
+          const documents = yield* config.get()
+
+          expect(documents).toEqual([])
+        }).pipe(Effect.provide(testLayer(tmp.path))),
+      ),
+    ),
+  )
+
+  it.live("loads JSON and JSONC files from lowest to highest priority", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            Promise.all([
+              fs.writeFile(
+                path.join(tmp.path, "config.json"),
+                JSON.stringify({ $schema: "base", providers: { base: provider } }),
+              ),
+              fs.writeFile(
+                path.join(tmp.path, "opencode.json"),
+                JSON.stringify({ $schema: "middle", providers: { middle: provider } }),
+              ),
+              fs.writeFile(
+                path.join(tmp.path, "opencode.jsonc"),
+                `{
+                  // Later global files override scalar fields while retaining providers.
+                  "$schema": "last",
+                  "providers": { "last": ${JSON.stringify(provider)} },
+                }`,
+              ),
+            ]),
+          )
+          return yield* Effect.gen(function* () {
+            const config = yield* Config.Service
+            const documents = yield* config.get()
+
+            expect(documents).toHaveLength(3)
+            expect(documents.map((document) => document.source.type)).toEqual(["file", "file", "file"])
+            expect(documents.map((document) => document.info.$schema)).toEqual(["base", "middle", "last"])
+            expect(documents[0]).toBeInstanceOf(ConfigV2.Loaded)
+            expect(documents[0]?.source).toBeInstanceOf(ConfigV2.FileSource)
+            expect(documents[0]?.source.type === "file" ? documents[0].source.path : undefined).toBe(
+              path.join(tmp.path, "config.json"),
+            )
+            expect(documents[2]?.info.providers?.last).toBeInstanceOf(ConfigProvider.Info)
+
+            yield* Effect.promise(() =>
+              fs.writeFile(path.join(tmp.path, "opencode.jsonc"), JSON.stringify({ $schema: "changed" })),
+            )
+            expect((yield* config.get()).map((document) => document.info.$schema)).toEqual(["base", "middle", "last"])
+          }).pipe(Effect.provide(testLayer(tmp.path)))
+        }),
+      ),
+    ),
+  )
+
+  it.live("ignores invalid files while loading valid config values", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            Promise.all([
+              fs.writeFile(path.join(tmp.path, "config.json"), JSON.stringify({ $schema: "base" })),
+              fs.writeFile(path.join(tmp.path, "opencode.json"), "{ invalid"),
+              fs.writeFile(path.join(tmp.path, "opencode.jsonc"), JSON.stringify({ providers: { invalid: true } })),
+            ]),
+          )
+          return yield* Effect.gen(function* () {
+            const config = yield* Config.Service
+            const documents = yield* config.get()
+
+            expect(documents.map((document) => document.info.$schema)).toEqual(["base"])
+          }).pipe(Effect.provide(testLayer(tmp.path)))
+        }),
+      ),
+    ),
+  )
+
+  it.live("loads global, ancestor, and .opencode configuration up to the project boundary", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) => {
+        const global = path.join(tmp.path, "global")
+        const root = path.join(tmp.path, "repo")
+        const parent = path.join(root, "packages")
+        const directory = path.join(parent, "app")
+        return Effect.gen(function* () {
+          yield* Effect.promise(async () => {
+            await fs.mkdir(global, { recursive: true })
+            await fs.mkdir(directory, { recursive: true })
+            await fs.mkdir(path.join(root, ".opencode"), { recursive: true })
+            await fs.mkdir(path.join(directory, ".opencode"), { recursive: true })
+            await Promise.all([
+              fs.writeFile(path.join(tmp.path, "opencode.json"), JSON.stringify({ $schema: "outside" })),
+              fs.writeFile(path.join(global, "opencode.json"), JSON.stringify({ $schema: "global" })),
+              fs.writeFile(path.join(root, "opencode.json"), JSON.stringify({ $schema: "root" })),
+              fs.writeFile(path.join(parent, "opencode.jsonc"), JSON.stringify({ $schema: "parent" })),
+              fs.writeFile(path.join(directory, "config.json"), JSON.stringify({ $schema: "directory" })),
+              fs.writeFile(path.join(root, ".opencode", "opencode.json"), JSON.stringify({ $schema: "root-dot" })),
+              fs.writeFile(
+                path.join(directory, ".opencode", "opencode.jsonc"),
+                JSON.stringify({ $schema: "directory-dot" }),
+              ),
+            ])
+          })
+
+          return yield* Effect.gen(function* () {
+            const config = yield* Config.Service
+            const directories = yield* config.directories()
+            const documents = yield* config.get()
+
+            expect(directories).toEqual([
+              AbsolutePath.make(global),
+              AbsolutePath.make(path.join(root, ".opencode")),
+              AbsolutePath.make(path.join(directory, ".opencode")),
+            ])
+            expect(documents.map((document) => document.info.$schema)).toEqual([
+              "global",
+              "root",
+              "parent",
+              "directory",
+              "root-dot",
+              "directory-dot",
+            ])
+          }).pipe(
+            Effect.provide(
+              testLayer(directory, global, root, {
+                type: "git",
+                store: AbsolutePath.make(path.join(root, ".git")),
+              }),
+            ),
+          )
+        })
+      }),
+    ),
+  )
+})

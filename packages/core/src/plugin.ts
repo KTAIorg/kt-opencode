@@ -4,7 +4,6 @@ import { createDraft, finishDraft, type Draft } from "immer"
 import type { LanguageModelV3 } from "@ai-sdk/provider"
 import { Context, Effect, Exit, Layer, PubSub, Schema, Scope, Stream } from "effect"
 import type { ModelV2 } from "./model"
-import type { AgentV2 } from "./agent"
 import type { Catalog } from "./catalog"
 
 export const ID = Schema.String.pipe(Schema.brand("Plugin.ID"))
@@ -41,27 +40,6 @@ type HookSpec = {
     }
     output: {
       sdk?: any
-    }
-  }
-  "agent.update": {
-    input: {}
-    output: {
-      agent: AgentV2.Info
-      cancel: boolean
-    }
-  }
-  "agent.remove": {
-    input: {
-      agent: AgentV2.Info
-    }
-    output: {
-      cancel: boolean
-    }
-  }
-  "agent.default": {
-    input: {}
-    output: {
-      agent?: AgentV2.ID
     }
   }
 }
