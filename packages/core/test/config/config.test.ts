@@ -171,6 +171,29 @@ describe("Config", () => {
                 share: "disabled",
                 enterprise: { url: "https://share.example.com" },
                 username: "test-user",
+                permissions: [
+                  { permission: "bash", pattern: "*", action: "ask" },
+                  { permission: "bash", pattern: "git status", action: "allow" },
+                ],
+                agents: {
+                  reviewer: {
+                    model: "openrouter/openai/gpt-5",
+                    variant: "high",
+                    options: {
+                      headers: { "x-agent": "reviewer" },
+                      body: {},
+                      aisdk: { provider: {}, request: { reasoningEffort: "high" } },
+                    },
+                    description: "Review changes for correctness",
+                    system: "Find regressions.",
+                    mode: "subagent",
+                    hidden: false,
+                    color: "warning",
+                    steps: 12,
+                    disabled: false,
+                    permissions: [{ permission: "edit", pattern: "*", action: "deny" }],
+                  },
+                },
                 snapshots: false,
                 watcher: { ignore: ["node_modules/**", "dist/**", ".git"] },
                 formatter: { prettier: { disabled: true }, custom: { command: ["custom-fmt", "$FILE"], extensions: [".foo"] } },
@@ -203,6 +226,27 @@ describe("Config", () => {
             expect(documents[0]?.info.share).toBe("disabled")
             expect(documents[0]?.info.enterprise).toEqual({ url: "https://share.example.com" })
             expect(documents[0]?.info.username).toBe("test-user")
+            expect(documents[0]?.info.permissions).toEqual([
+              { permission: "bash", pattern: "*", action: "ask" },
+              { permission: "bash", pattern: "git status", action: "allow" },
+            ])
+            expect(documents[0]?.info.agents?.reviewer).toEqual({
+              model: "openrouter/openai/gpt-5",
+              variant: "high",
+              options: {
+                headers: { "x-agent": "reviewer" },
+                body: {},
+                aisdk: { provider: {}, request: { reasoningEffort: "high" } },
+              },
+              description: "Review changes for correctness",
+              system: "Find regressions.",
+              mode: "subagent",
+              hidden: false,
+              color: "warning",
+              steps: 12,
+              disabled: false,
+              permissions: [{ permission: "edit", pattern: "*", action: "deny" }],
+            })
             expect(documents[0]?.info.snapshots).toBe(false)
             expect(documents[0]?.info.watcher).toEqual({ ignore: ["node_modules/**", "dist/**", ".git"] })
             expect(documents[0]?.info.formatter).toEqual({

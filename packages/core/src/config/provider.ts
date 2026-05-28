@@ -22,7 +22,7 @@ class Model extends Schema.Class<Model>("ConfigV2.Model")({
     ...ProviderV2.Options.fields,
   }).pipe(Schema.Array, Schema.optional),
   cost: ModelV2.Cost.pipe(Schema.Array).pipe(Schema.optional),
-  enabled: Schema.Boolean.pipe(Schema.optional),
+  disabled: Schema.Boolean.pipe(Schema.optional),
   limit: Schema.Struct({
     context: Schema.Int,
     input: Schema.Int.pipe(Schema.optional),
@@ -110,7 +110,7 @@ export const Plugin = PluginV2.define({
                   cache: { ...cost.cache },
                 }))
               }
-              if (config.enabled !== undefined) model.enabled = config.enabled
+              if (config.disabled !== undefined) model.enabled = !config.disabled
               if (config.limit !== undefined) model.limit = { ...config.limit }
             })
           }

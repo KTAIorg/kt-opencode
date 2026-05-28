@@ -45,7 +45,7 @@ describe("ConfigProvider.Plugin", () => {
                       chat: {
                         name: "First",
                         capabilities: { tools: true, input: ["text"], output: ["text"] },
-                        enabled: false,
+                        disabled: true,
                         limit: { context: 100, output: 50 },
                         options: options({ first: "first", shared: "first" }, "retained"),
                         variants: [

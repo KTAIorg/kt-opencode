@@ -6,8 +6,10 @@ import { Context, Effect, Layer, Option, Schema } from "effect"
 import { AppFileSystem } from "./filesystem"
 import { Global } from "./global"
 import { Location } from "./location"
+import { PermissionV2 } from "./permission"
 import { Policy } from "./policy"
 import { AbsolutePath } from "./schema"
+import { ConfigAgent } from "./config/agent"
 import { ConfigAttachments } from "./config/attachments"
 import { ConfigExperimental } from "./config/experimental"
 import { ConfigFormatter } from "./config/formatter"
@@ -41,6 +43,12 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   username: Schema.String.pipe(Schema.optional).annotate({
     description: "Username displayed in conversations and used for telemetry identity",
+  }),
+  permissions: PermissionV2.Ruleset.pipe(Schema.optional).annotate({
+    description: "Ordered tool permission rules applied to agent tool use",
+  }),
+  agents: Schema.Record(Schema.String, ConfigAgent.Info).pipe(Schema.optional).annotate({
+    description: "Named built-in agent overrides and custom agent definitions",
   }),
   snapshots: Schema.Boolean.pipe(Schema.optional).annotate({
     description: "Enable snapshots used for undo and revert behavior",

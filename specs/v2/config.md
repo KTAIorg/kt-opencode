@@ -208,11 +208,67 @@ Agent behavior and tool-access policy. Review together because agent configurati
 
 | Field           | Current Purpose                                     | Status  | Notes                                       |
 | --------------- | --------------------------------------------------- | ------- | ------------------------------------------- |
-| `default_agent` | Choose default primary agent                        | pending |                                             |
-| `mode`          | Legacy agent configuration alias                    | pending | Deprecated in favor of `agent`.             |
-| `agent`         | Configure primary, subagent, and specialized agents | pending |                                             |
-| `permission`    | Tool permission rules                               | pending |                                             |
-| `tools`         | Legacy tool enable/disable map                      | pending | Converted to permissions by current loader. |
+| `default_agent` | Choose default primary agent                        | remove | Do not retain a separate top-level selector; default choice should be designed with the v2 agent configuration model. |
+| `mode`          | Legacy agent configuration alias                    | remove | Do not port deprecated alias; configure agents through the v2 agent surface only. |
+| `agent`         | Configure primary, subagent, and specialized agents | redesign | Rename to plural `agents`; retain a named map of built-in overrides and custom agent definitions. |
+| `permission`    | Tool permission rules                               | redesign | Rename to plural `permissions`; replace legacy map shorthand with an ordered array of `{ permission, pattern, action }` rules. |
+| `tools`         | Legacy tool enable/disable map                      | remove | Do not port boolean enable/disable alias; express tool access through permissions. |
+
+Do not port `default_agent` ahead of the v2 agent design. The legacy runtime uses it to choose a visible, non-subagent fallback instead of `build`, but exposing that selection as an isolated top-level field would pre-commit v2 to the legacy agent model before agents and their policy surface are defined together.
+
+Do not port `mode`. The legacy loader already merges this deprecated alias into `agent`, and v2 should expose only one authoring surface for agent definitions.
+
+Rename legacy `agent` to `agents` because the setting is a collection keyed by agent name. It should continue to support overriding built-in agents such as `build`, `plan`, and `title`, as well as declaring named custom agents. The nested entry schema remains open until agent-local `permission` and deprecated `tools` behavior are decided.
+
+Keep nested `agents.<name>.mode` with values `"primary"`, `"subagent"`, or `"all"`. This identifies an agent's runtime role and is separate from the removed top-level legacy `mode` alias, which was an alternate container for agent definitions.
+
+For named configurable entries across v2, use `disabled?: boolean` consistently when an entry should remain configured but inactive. Agent definitions should therefore redesign legacy `disable` as `disabled`; this matches formatters, language servers, future MCP server definitions, and configured model overrides. Runtime catalog state may still track active availability as `enabled`; that is not user-authored config.
+
+Keep separate `model` and `variant` fields on agent definitions. A model reference uses `provider/model-id`, but model IDs may themselves contain slash-delimited segments, such as `openrouter/openai/gpt-5`; appending a variant to that string would be ambiguous.
+
+Keep `color` on agent definitions. Agents are user-visible selectable entities, so a user-authored display color is appropriate metadata for the agent rather than an unrelated application presentation setting. Retain hex colors and named theme colors supported by the existing configuration.
+
+Keep agent-local `options` provisionally using the same structured provider options shape available on configured providers and models: headers, body, and AI SDK provider/request overrides. Its long-term ownership remains open for team review because reusable provider-specific presets can instead be modeled as variants. Do not retain dedicated agent `temperature` or `top_p` fields.
+
+Retain `description`, `hidden`, and `steps`; they define an agent's discoverability, visibility, and iteration budget rather than model request parameters. Rename legacy agent `prompt` to `system`, making clear that it supplies persistent system-level agent content without colliding with top-level ambient `instructions`. Remove deprecated `maxSteps` in favor of `steps`.
+
+```jsonc
+{
+  "agents": {
+    "reviewer": {
+      "model": "openrouter/openai/gpt-5",
+      "variant": "high",
+      "options": {
+        "headers": { "x-agent": "reviewer" },
+        "body": {},
+        "aisdk": { "provider": {}, "request": { "reasoningEffort": "high" } },
+      },
+      "description": "Review changes for correctness",
+      "system": "Find regressions and missing tests.",
+      "mode": "subagent",
+      "color": "warning",
+      "steps": 12,
+      "disabled": false,
+      "permissions": [
+        { "permission": "edit", "pattern": "*", "action": "deny" },
+      ],
+    },
+  },
+}
+```
+
+Do not port `tools`, either as a top-level setting or as an agent-entry alias. The legacy loader already converts tool booleans into permission rules, including collapsing write-adjacent tool names into `edit`; v2 should avoid carrying that lossy compatibility input forward.
+
+Rename legacy `permission` to `permissions` and expose the normalized ordered ruleset already modeled by `PermissionV2.Ruleset`. Rules retain the interactive `"ask"` action in addition to `"allow"` and `"deny"`; this is distinct from `experimental.policies`, whose provider enforcement currently needs only allow/deny decisions. The same `permissions` ruleset shape should be used inside future `agents` entries.
+
+```jsonc
+{
+  "permissions": [
+    { "permission": "bash", "pattern": "*", "action": "ask" },
+    { "permission": "bash", "pattern": "git status", "action": "allow" },
+  ],
+}
+```
 
 ## Group 9: Integrations
 
