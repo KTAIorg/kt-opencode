@@ -1,4 +1,5 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
+import { sql } from "drizzle-orm"
+import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { ProjectTable } from "../project/project.sql"
 import type { ProjectID } from "../project/schema"
 import type { WorkspaceID } from "./schema"
@@ -10,6 +11,7 @@ export const WorkspaceTable = sqliteTable("workspace", {
   branch: text(),
   directory: text(),
   extra: text({ mode: "json" }),
+  primary: integer({ mode: "boolean" }).notNull().default(false),
   project_id: text()
     .$type<ProjectID>()
     .notNull()
@@ -17,4 +19,8 @@ export const WorkspaceTable = sqliteTable("workspace", {
   time_used: integer()
     .notNull()
     .$default(() => Date.now()),
-})
+}, (table) => [
+  uniqueIndex("workspace_project_primary_idx")
+    .on(table.project_id)
+    .where(sql`${table.primary} = 1`),
+])

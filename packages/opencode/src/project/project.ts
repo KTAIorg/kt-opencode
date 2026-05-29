@@ -1,8 +1,10 @@
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, inArray, sql } from "drizzle-orm"
 import { Database } from "@/storage/db"
 import { ProjectTable } from "./project.sql"
 import { PermissionTable, SessionTable } from "../session/session.sql"
 import { WorkspaceTable } from "../control-plane/workspace.sql"
+import { WorkspaceID } from "../control-plane/schema"
+import path from "path"
 import * as Log from "@opencode-ai/core/util/log"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { BusEvent } from "@/bus/bus-event"
@@ -232,6 +234,61 @@ export const layer = Layer.effect(
       )
     })
 
+    const rememberWorkspaceV2 = Effect.fn("Project.rememberWorkspaceV2")(function* (input: {
+      projectID: ProjectID
+      directory: string
+      type: "directory" | "worktree"
+    }) {
+      if (input.projectID === ProjectID.global) return
+
+      yield* Effect.sync(() =>
+        Database.transaction(
+          (d) => {
+            const existing = d
+              .select()
+              .from(WorkspaceTable)
+              .where(
+                and(
+                  eq(WorkspaceTable.project_id, input.projectID),
+                  eq(WorkspaceTable.directory, input.directory),
+                  inArray(WorkspaceTable.type, ["directory", "worktree"]),
+                ),
+              )
+              .get()
+            const primary = d
+              .select({ id: WorkspaceTable.id })
+              .from(WorkspaceTable)
+              .where(and(eq(WorkspaceTable.project_id, input.projectID), eq(WorkspaceTable.primary, true)))
+              .get()
+
+            if (existing) {
+              if (!primary) {
+                d.update(WorkspaceTable).set({ primary: true }).where(eq(WorkspaceTable.id, existing.id)).run()
+              }
+              return
+            }
+
+            d.insert(WorkspaceTable)
+              .values({
+                id: WorkspaceID.ascending(),
+                type: input.type,
+                name: path.basename(input.directory),
+                directory: input.directory,
+                primary: !primary,
+                project_id: input.projectID,
+                time_used: Date.now(),
+              })
+              .run()
+          },
+          { behavior: "immediate" },
+        ),
+      ).pipe(
+        Effect.catchCause((cause) =>
+          Effect.sync(() => log.warn("workspace v2 persistence failed", { projectID: input.projectID, cause })),
+        ),
+      )
+    })
+
     const fromDirectory = Effect.fn("Project.fromDirectory")(function* (directory: string) {
       log.info("fromDirectory", { directory })
 
@@ -320,6 +377,12 @@ export const layer = Layer.effect(
             .run(),
         )
       }
+
+      yield* rememberWorkspaceV2({
+        projectID,
+        directory: data.directory,
+        type: data.vcs && path.resolve(data.vcs.store) !== path.join(data.directory, ".git") ? "worktree" : "directory",
+      })
 
       yield* emitUpdated(result)
       if (projectID !== ProjectID.global && data.vcs?.type === "git") {

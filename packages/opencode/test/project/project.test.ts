@@ -147,6 +147,15 @@ describe("Project.fromDirectory", () => {
       expect(project.id).not.toBe(ProjectID.global)
       expect(project.vcs).toBe("git")
       expect(project.worktree).toBe(tmp)
+      expect(
+        Database.use((db) => db.select().from(WorkspaceTable).where(eq(WorkspaceTable.project_id, project.id)).all()),
+      ).toEqual([
+        expect.objectContaining({
+          type: "directory",
+          directory: tmp,
+          primary: true,
+        }),
+      ])
     }),
   )
 
@@ -348,6 +357,22 @@ describe("Project.fromDirectory with worktrees", () => {
       const { project: wt } = yield* run((svc) => svc.fromDirectory(worktreePath))
 
       expect(wt.id).toBe(main.id)
+      expect(
+        Database.use((db) =>
+          db
+            .select()
+            .from(WorkspaceTable)
+            .where(eq(WorkspaceTable.project_id, main.id))
+            .all()
+            .map((row) => ({ directory: row.directory, primary: row.primary, type: row.type }))
+            .toSorted((a, b) => String(a.directory).localeCompare(String(b.directory))),
+        ),
+      ).toEqual(
+        [
+          { directory: tmp, primary: true, type: "directory" },
+          { directory: worktreePath, primary: false, type: "worktree" },
+        ].toSorted((a, b) => a.directory.localeCompare(b.directory)),
+      )
 
       const cache = path.join(tmp, ".git", "opencode")
       const exists = yield* Effect.promise(() => Bun.file(cache).exists())
@@ -372,6 +397,22 @@ describe("Project.fromDirectory with worktrees", () => {
       const { project: b } = yield* run((svc) => svc.fromDirectory(clone))
 
       expect(b.id).toBe(a.id)
+      expect(
+        Database.use((db) =>
+          db
+            .select()
+            .from(WorkspaceTable)
+            .where(eq(WorkspaceTable.project_id, a.id))
+            .all()
+            .map((row) => ({ directory: row.directory, primary: row.primary, type: row.type }))
+            .toSorted((left, right) => String(left.directory).localeCompare(String(right.directory))),
+        ),
+      ).toEqual(
+        [
+          { directory: tmp, primary: true, type: "directory" },
+          { directory: clone, primary: false, type: "directory" },
+        ].toSorted((left, right) => left.directory.localeCompare(right.directory)),
+      )
     }),
   )
 

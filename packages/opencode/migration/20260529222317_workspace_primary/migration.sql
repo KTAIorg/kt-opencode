@@ -1,0 +1,2 @@
+ALTER TABLE `workspace` ADD `primary` integer DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `workspace_project_primary_idx` ON `workspace` (`project_id`) WHERE "workspace"."primary" = 1;

@@ -2,9 +2,7 @@ import { Context, Effect, FiberMap, Iterable, Layer, Schema, Stream } from "effe
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { FetchHttpClient, HttpBody, HttpClient, HttpClientError, HttpClientRequest } from "effect/unstable/http"
 import { Database } from "@/storage/db"
-import { asc } from "drizzle-orm"
-import { eq } from "drizzle-orm"
-import { inArray } from "drizzle-orm"
+import { and, asc, eq, inArray, ne } from "drizzle-orm"
 import { Project } from "@/project/project"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
@@ -833,7 +831,7 @@ export const layer = Layer.effect(
         db
           .select()
           .from(WorkspaceTable)
-          .where(eq(WorkspaceTable.project_id, project.id))
+          .where(and(eq(WorkspaceTable.project_id, project.id), ne(WorkspaceTable.type, "directory")))
           .all()
           .map(fromRow)
           .sort((a, b) => a.id.localeCompare(b.id)),

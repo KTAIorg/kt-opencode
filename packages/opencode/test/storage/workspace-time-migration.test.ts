@@ -38,6 +38,19 @@ describe("workspace time migration", () => {
     )
 
     expect(() => migrate(db, entries.slice(index))).not.toThrow()
-    expect(sqlite.query("SELECT time_used FROM workspace WHERE id = ?").get("workspace_1")).toEqual({ time_used: 0 })
+    expect(sqlite.query("SELECT time_used, `primary` FROM workspace WHERE id = ?").get("workspace_1")).toEqual({
+      time_used: 0,
+      primary: 0,
+    })
+    sqlite.run(
+      "INSERT INTO workspace (id, type, name, directory, `primary`, project_id, time_used) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ["workspace_primary", "directory", "primary", "/tmp/project", true, "project_1", 1],
+    )
+    expect(() =>
+      sqlite.run(
+        "INSERT INTO workspace (id, type, name, directory, `primary`, project_id, time_used) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ["workspace_second_primary", "worktree", "secondary", "/tmp/secondary", true, "project_1", 1],
+      ),
+    ).toThrow()
   })
 })
