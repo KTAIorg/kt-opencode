@@ -12,9 +12,7 @@ import { List } from "@opencode-ai/ui/list"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
-
-const isFree = (provider: string, cost: { input: number } | undefined) =>
-  provider === "opencode" && (!cost || cost.input === 0)
+import { isFreeModel, sortModels } from "@/utils/model-sort"
 
 type ModelState = ReturnType<typeof useLocal>["model"]
 
@@ -44,7 +42,7 @@ const ModelList: Component<{
       items={models}
       current={model.current()}
       filterKeys={["provider.name", "name", "id"]}
-      sortBy={(a, b) => a.name.localeCompare(b.name)}
+      sortBy={sortModels}
       groupBy={(x) => x.provider.name}
       sortGroupsBy={(a, b) => {
         const aProvider = a.items[0].provider.id
@@ -58,7 +56,7 @@ const ModelList: Component<{
           class="w-full"
           placement="right-start"
           gutter={12}
-          value={<ModelTooltip model={item} latest={item.latest} free={isFree(item.provider.id, item.cost)} />}
+          value={<ModelTooltip model={item} latest={item.latest} free={isFreeModel(item)} />}
         >
           {node}
         </Tooltip>
@@ -73,7 +71,7 @@ const ModelList: Component<{
       {(i) => (
         <div class="w-full flex items-center gap-x-2 text-13-regular">
           <span class="truncate">{i.name}</span>
-          <Show when={isFree(i.provider.id, i.cost)}>
+          <Show when={isFreeModel(i)}>
             <Tag>{language.t("model.tag.free")}</Tag>
           </Show>
           <Show when={i.latest}>

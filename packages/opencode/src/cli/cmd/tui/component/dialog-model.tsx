@@ -70,20 +70,25 @@ export function DialogModel(props: { providerID?: string }) {
           entries(),
           filter(([_, info]) => info.status !== "deprecated"),
           filter(([_, info]) => (props.providerID ? info.providerID === props.providerID : true)),
-          map(([model, info]) => ({
-            value: { providerID: provider.id, modelID: model },
-            title: info.name ?? model,
-            releaseDate: info.release_date,
-            description: favorites.some((item) => item.providerID === provider.id && item.modelID === model)
-              ? "(Favorite)"
-              : undefined,
-            category: connected() ? provider.name : undefined,
-            disabled: provider.id === "opencode" && model.includes("-nano"),
-            footer: info.cost?.input === 0 && provider.id === "opencode" ? "Free" : undefined,
-            onSelect() {
-              onSelect(provider.id, model)
-            },
-          })),
+          map(([model, info]) => {
+            const free = info.cost?.input === 0 && provider.id === "opencode"
+            return {
+              value: { providerID: provider.id, modelID: model },
+              title: info.name ?? model,
+              description: favorites.some((item) => item.providerID === provider.id && item.modelID === model)
+                ? "(Favorite)"
+                : undefined,
+              category: connected() ? provider.name : undefined,
+              disabled: provider.id === "opencode" && model.includes("-nano"),
+              footer: free ? "Free" : undefined,
+              modelID: model,
+              releaseDate: info.release_date,
+              free,
+              onSelect() {
+                onSelect(provider.id, model)
+              },
+            }
+          }),
           filter((x) => {
             if (!showSections) return true
             if (favorites.some((item) => item.providerID === x.value.providerID && item.modelID === x.value.modelID))
@@ -172,14 +177,23 @@ export function DialogModel(props: { providerID?: string }) {
   )
 }
 
-export function sortModelOptions<T extends { footer?: string; releaseDate: string; title: string }>(
+export function sortModelOptions<
+  T extends { footer?: string; releaseDate: string; title: string; modelID?: string; free?: boolean },
+>(
   options: T[],
   newestFirst: boolean,
 ) {
-  if (newestFirst) return sortBy(options, [(option) => option.releaseDate, "desc"], (option) => option.title)
+  if (newestFirst)
+    return sortBy(
+      options,
+      (option) => (option.modelID === "big-pickle" ? 0 : 1),
+      [(option) => option.releaseDate, "desc"],
+      (option) => option.title,
+    )
   return sortBy(
     options,
-    (option) => option.footer !== "Free",
+    (option) => (option.modelID === "big-pickle" ? 0 : option.free || option.footer === "Free" ? 1 : 2),
+    [(option) => (option.free || option.footer === "Free" ? option.releaseDate : ""), "desc"],
     (option) => option.title,
   )
 }

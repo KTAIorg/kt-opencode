@@ -9,6 +9,7 @@ import { useLanguage } from "@/context/language"
 import { useModels } from "@/context/models"
 import { popularProviders } from "@/hooks/use-providers"
 import { SettingsList } from "./settings-list"
+import { sortModels } from "@/utils/model-sort"
 
 type ModelItem = ReturnType<ReturnType<typeof useModels>["list"]>[number]
 
@@ -39,7 +40,7 @@ export const SettingsModels: Component = () => {
     items: (_filter) => models.list(),
     key: (x) => `${x.provider.id}:${x.id}`,
     filterKeys: ["provider.name", "name", "id"],
-    sortBy: (a, b) => a.name.localeCompare(b.name),
+    sortBy: sortModels,
     groupBy: (x) => x.provider.id,
     sortGroupsBy: (a, b) => {
       const aIndex = popularProviders.indexOf(a.category)

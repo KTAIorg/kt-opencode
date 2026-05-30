@@ -7,6 +7,7 @@ import { RunFooterMenu, createFooterMenuState, type RunFooterMenuItem } from "./
 import { formatBindings } from "./keymap.shared"
 import type { RunFooterTheme } from "./theme"
 import type { FooterKeybinds, FooterSubagentTab, RunCommand, RunInput, RunProvider } from "./types"
+import { sortModelOptions } from "@/cli/util/model-sort"
 
 type PanelEntry = RunFooterMenuItem & {
   category: string
@@ -25,6 +26,8 @@ type ModelEntry = PanelEntry & {
   providerID: string
   modelID: string
   providerName: string
+  releaseDate: string
+  free: boolean
   current: boolean
 }
 
@@ -674,9 +677,10 @@ export function RunModelSelectBody(props: {
           .map(([modelID, model]) => {
             const title = model.name ?? modelID
             const current = props.current()?.providerID === provider.id && props.current()?.modelID === modelID
+            const free = model.cost?.input === 0 && provider.id === "opencode"
             const footer = current
               ? "current"
-              : model.cost?.input === 0 && provider.id === "opencode"
+              : free
                 ? "Free"
                 : title !== modelID
                   ? modelID
@@ -688,6 +692,9 @@ export function RunModelSelectBody(props: {
               category: provider.name,
               display: title,
               footer,
+              title,
+              releaseDate: model.release_date,
+              free,
               keywords: `${provider.id} ${provider.name} ${modelID} ${title} ${footer ?? ""}`,
               current,
             }
@@ -704,7 +711,7 @@ export function RunModelSelectBody(props: {
           return name
         }
 
-        return a.display.localeCompare(b.display)
+        return sortModelOptions(a, b)
       }),
   )
   const items = createMemo<ModelEntry[]>(() => match(query(), entries()))
