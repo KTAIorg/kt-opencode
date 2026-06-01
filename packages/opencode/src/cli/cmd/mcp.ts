@@ -1,4 +1,4 @@
-import { cmd, type WithDoubleDash } from "./cmd"
+import { cmd } from "./cmd"
 import { effectCmd, fail } from "../effect-cmd"
 import { Cause } from "effect"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -62,6 +62,15 @@ type McpAddArgs = {
   env?: string[]
   header?: string[]
   global?: boolean
+}
+
+type InlineMcpAdd = {
+  name?: string
+  positional: string[]
+  command: string[]
+  type?: "local" | "remote"
+  env?: string[]
+  header?: string[]
 }
 
 function configuredServers(config: Config.Info) {
@@ -445,7 +454,7 @@ async function addMcpToConfig(name: string, mcpConfig: ConfigMCP.Info, configPat
 }
 
 export const McpAddCommand = effectCmd({
-  command: "add [name] [args..]",
+  command: "add [name] [args...]",
   describe: "add an MCP server",
   builder: (yargs) =>
     yargs
@@ -454,7 +463,7 @@ export const McpAddCommand = effectCmd({
         type: "string",
       })
       .positional("args", {
-        describe: "URL for remote servers or command and arguments for local servers",
+        describe: "URL for remote servers",
         type: "string",
         array: true,
         default: [],
@@ -490,12 +499,18 @@ Examples:
   opencode mcp add local-env --env FOO=bar -- node server.js
   opencode mcp add sg --header Authorization=token https://sg.example/mcp
   opencode mcp add hugging-face https://huggingface.co/mcp`),
-  handler: Effect.fn("Cli.mcp.add")(function* (input: WithDoubleDash<McpAddArgs>) {
+  handler: Effect.fn("Cli.mcp.add")(function* (input) {
     const maybeCtx = yield* InstanceRef
     if (!maybeCtx) return yield* Effect.die("InstanceRef not provided")
     const ctx = maybeCtx
-    const inlineArgs = mcpAddArgs(input)
-    const inlineConfig = parseInlineMcpAdd(input, inlineArgs)
+    const inlineConfig = parseInlineMcpAdd({
+      name: input.name,
+      positional: input.args ?? [],
+      command: input["--"] ?? [],
+      type: input.type,
+      env: input.env,
+      header: input.header,
+    })
     if (inlineConfig && "error" in inlineConfig) return yield* fail(inlineConfig.error)
     yield* Effect.promise(async () => {
       UI.empty()
@@ -532,8 +547,8 @@ Examples:
       })()
 
       if (inlineConfig) {
-        await addMcpToConfig(input.name!.trim(), inlineConfig.config, configPath)
-        prompts.log.success(`MCP server "${input.name!.trim()}" added to ${configPath}`)
+        await addMcpToConfig(inlineConfig.name, inlineConfig.config, configPath)
+        prompts.log.success(`MCP server "${inlineConfig.name}" added to ${configPath}`)
         prompts.outro("MCP server added successfully")
         return
       }
@@ -661,51 +676,61 @@ Examples:
   }),
 })
 
-function mcpAddArgs(input: WithDoubleDash<McpAddArgs>) {
-  return [...(input.args ?? []), ...(input["--"] ?? [])]
-}
-
 function parseInlineMcpAdd(
-  input: McpAddArgs,
-  inlineArgs: string[],
-): { config: ConfigMCP.Info } | { error: string } | undefined {
-  if (!hasInlineMcpAdd(input, inlineArgs)) return undefined
+  input: InlineMcpAdd,
+): { name: string; config: ConfigMCP.Info } | { error: string } | undefined {
+  if (!hasInlineMcpAdd(input)) return undefined
   const name = input.name?.trim()
   if (!name) return { error: "MCP server name is required" }
-  if (inlineArgs.length === 0) return { error: "URL or command is required" }
-
-  const type = input.type ?? (inlineArgs.length === 1 && URL.canParse(inlineArgs[0]) ? "remote" : "local")
-  if (type === "local") return parseInlineLocalMcp(input, inlineArgs)
-  return parseInlineRemoteMcp(input, inlineArgs)
+  const result = input.command.length > 0 ? parseInlineLocalMcp(input) : parseInlineRemoteMcp(input)
+  if ("error" in result) return result
+  return { name, config: result.config }
 }
 
-function hasInlineMcpAdd(input: McpAddArgs, inlineArgs: string[]) {
-  return !!(input.name || inlineArgs.length > 0 || input.type || input.env?.length || input.header?.length)
+function hasInlineMcpAdd(input: InlineMcpAdd) {
+  return !!(
+    input.name ||
+    input.positional.length > 0 ||
+    input.command.length > 0 ||
+    input.type ||
+    input.env?.length ||
+    input.header?.length
+  )
 }
 
-function parseInlineLocalMcp(args: McpAddArgs, command: string[]): { config: ConfigMCP.Info } | { error: string } {
-  if (args.header?.length) return { error: "--header can only be used with --type remote" }
-  const environment = parseEnv(args.env)
+function parseInlineLocalMcp(input: InlineMcpAdd): { config: ConfigMCP.Info } | { error: string } {
+  if (input.positional.length > 0) return { error: "Remote URL arguments cannot be combined with -- <command>" }
+  if (input.type === "remote") return { error: "-- <command> can only be used with --type local" }
+  if (input.header?.length) return { error: "--header can only be used with remote MCP servers" }
+  const environment = parseEnv(input.env)
   if ("error" in environment) return environment
   return {
     config: {
       type: "local",
-      command,
+      command: input.command,
       ...(environment.value && { environment: environment.value }),
     },
   }
 }
 
-function parseInlineRemoteMcp(args: McpAddArgs, url: string[]): { config: ConfigMCP.Info } | { error: string } {
-  if (url.length !== 1) return { error: "Remote MCP servers require exactly one URL" }
-  if (!URL.canParse(url[0])) return { error: "Remote MCP server URL is invalid" }
-  if (args.env?.length) return { error: "--env can only be used with --type local" }
-  const headers = parseHeader(args.header)
+function parseInlineRemoteMcp(input: InlineMcpAdd): { config: ConfigMCP.Info } | { error: string } {
+  if (input.type === "local" || input.env?.length) return { error: "Local MCP commands must be passed after --" }
+  if (input.positional.length === 0) return { error: "URL or command is required" }
+  const wantsRemote = input.type === "remote" || !!input.header?.length
+  if (input.positional.length !== 1) {
+    return {
+      error: wantsRemote ? "Remote MCP servers require exactly one URL" : "Local MCP commands must be passed after --",
+    }
+  }
+  if (!URL.canParse(input.positional[0])) {
+    return { error: wantsRemote ? "Remote MCP server URL is invalid" : "Local MCP commands must be passed after --" }
+  }
+  const headers = parseHeader(input.header)
   if ("error" in headers) return headers
   return {
     config: {
       type: "remote",
-      url: url[0],
+      url: input.positional[0],
       ...(headers.value && { headers: headers.value }),
     },
   }

@@ -62,6 +62,10 @@ describe("opencode mcp", () => {
             },
           },
         })
+
+        const missingSeparator = yield* opencode.spawn(["mcp", "add", "bad-local", "node", "server.js", "--global"])
+        expect(missingSeparator.exitCode).not.toBe(0)
+        expect(missingSeparator.stderr).toContain("Local MCP commands must be passed after --")
       }),
     120_000,
   )
