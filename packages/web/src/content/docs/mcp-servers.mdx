@@ -44,6 +44,24 @@ You can also disable a server by setting `enabled` to `false`. This is useful if
 
 ---
 
+## CLI
+
+You can add MCP servers from the command line with `opencode mcp add`.
+
+```bash
+# Local server
+opencode mcp add mcp_everything npx -y @modelcontextprotocol/server-everything
+
+# Remote server
+opencode mcp add github https://api.githubcopilot.com/mcp \
+  --type remote \
+  --header "Authorization: Bearer YOUR_GITHUB_PAT"
+```
+
+Use `--env KEY=VALUE` for local server environment variables and repeat it for multiple values. Use `--global` to save to global config; otherwise the command saves to the current project when run inside a git repository.
+
+---
+
 ### Overriding remote defaults
 
 Organizations can provide default MCP servers via their `.well-known/opencode` endpoint. These servers may be disabled by default, allowing users to opt-in to the ones they need.

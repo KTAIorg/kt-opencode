@@ -27,11 +27,11 @@ exports[`opencode CLI help-text snapshots every documented command emits stable 
 manage MCP (Model Context Protocol) servers
 
 Commands:
-  opencode mcp add            add an MCP server
-  opencode mcp list           list MCP servers and their status                        [aliases: ls]
-  opencode mcp auth [name]    authenticate with an OAuth-enabled MCP server
-  opencode mcp logout [name]  remove OAuth credentials for an MCP server
-  opencode mcp debug <name>   debug OAuth connection for an MCP server
+  opencode mcp add [name] [urlOrCommand..]  add an MCP server
+  opencode mcp list                         list MCP servers and their status          [aliases: ls]
+  opencode mcp auth [name]                  authenticate with an OAuth-enabled MCP server
+  opencode mcp logout [name]                remove OAuth credentials for an MCP server
+  opencode mcp debug <name>                 debug OAuth connection for an MCP server
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -425,16 +425,34 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode mcp add --help 1`] = `
-"opencode mcp add
+"opencode mcp add [name] [urlOrCommand..]
 
 add an MCP server
 
+Positionals:
+  name          name of the MCP server                                                      [string]
+  urlOrCommand  URL for remote servers or command for local servers            [array] [default: []]
+
 Options:
-  -h, --help        show help                                                              [boolean]
-  -v, --version     show version number                                                    [boolean]
-      --print-logs  print logs to stderr                                                   [boolean]
-      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+  -h, --help                 show help                                                     [boolean]
+  -v, --version              show version number                                           [boolean]
+      --print-logs           print logs to stderr                                          [boolean]
+      --log-level            log level          [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure                 run without external plugins                                  [boolean]
+      --type                 server type: local or remote      [string] [choices: "local", "remote"]
+      --env                  environment variable for local servers (KEY=VALUE)              [array]
+      --header               HTTP header for remote servers (KEY=VALUE or 'KEY: VALUE')      [array]
+      --scope                where to save the server        [string] [choices: "project", "global"]
+  -g, --global               save to global config                                         [boolean]
+      --enabled              enable or disable the server on startup                       [boolean]
+      --timeout              timeout in milliseconds for MCP server requests                [number]
+      --oauth                enable OAuth for remote servers, or use --no-oauth to disable
+                             auto-detection                                                [boolean]
+      --oauth-client-id      OAuth client ID for remote servers                             [string]
+      --oauth-client-secret  OAuth client secret for remote servers                         [string]
+      --oauth-scope          OAuth scopes to request for remote servers                     [string]
+      --oauth-callback-port  OAuth local callback port for remote servers                   [number]
+      --oauth-redirect-uri   OAuth redirect URI for remote servers                          [string]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode mcp auth --help 1`] = `
