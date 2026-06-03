@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { Context } from "effect"
+import { Context, Schema } from "effect"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
 import * as Log from "@opencode-ai/core/util/log"
 import { resetDatabase } from "../fixture/db"
@@ -9,15 +9,40 @@ void Log.init({ print: false })
 
 const context = Context.empty() as Context.Context<unknown>
 
-function request(route: string, directory: string) {
+function request(route: string, directory: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers)
+  headers.set("x-opencode-directory", directory)
   return HttpApiApp.webHandler().handler(
     new Request(`http://localhost${route}`, {
-      headers: {
-        "x-opencode-directory": directory,
-      },
+      ...init,
+      headers,
     }),
     context,
   )
+}
+
+const Event = Schema.Struct({
+  id: Schema.String,
+  type: Schema.String,
+  location: Schema.Struct({
+    directory: Schema.String,
+    project: Schema.Struct({ id: Schema.String, directory: Schema.String }),
+  }),
+  data: Schema.Unknown,
+})
+
+async function readEvent(reader: ReadableStreamDefaultReader<Uint8Array>) {
+  const value = await reader.read()
+  if (value.done) throw new Error("event stream closed")
+  return Schema.decodeUnknownSync(Event)(JSON.parse(new TextDecoder().decode(value.value).replace(/^data: /, "")))
+}
+
+async function readEventType(reader: ReadableStreamDefaultReader<Uint8Array>, type: string) {
+  for (let index = 0; index < 20; index++) {
+    const event = await readEvent(reader)
+    if (event.type === type) return event
+  }
+  throw new Error(`timed out waiting for ${type}`)
 }
 
 afterEach(async () => {
@@ -37,5 +62,21 @@ describe("v2 location HttpApi", () => {
       expect(body.location.directory).toBe(tmp.path)
       expect(body.location.project.id).toBeTruthy()
     }
+  })
+
+  test("streams native EventV2 payloads with resolved locations", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const response = await request("/api/event", tmp.path)
+    const reader = response.body!.getReader()
+    expect((await readEvent(reader)).type).toBe("server.connected")
+
+    const created = await request("/session", tmp.path, { method: "POST" })
+    expect(created.status).toBe(200)
+    expect(await readEventType(reader, "session.created")).toMatchObject({
+      type: "session.created",
+      location: { directory: tmp.path, project: { directory: tmp.path } },
+      data: { sessionID: expect.any(String) },
+    })
+    await reader.cancel()
   })
 })
