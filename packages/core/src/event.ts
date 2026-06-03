@@ -30,6 +30,7 @@ export type Payload<D extends Definition = Definition> = {
   readonly type: D["type"]
   readonly data: Data<D>
   readonly version?: number
+  readonly sync?: SyncMetadata
   readonly location?: Location.Info
   readonly metadata?: Record<string, unknown>
 }
@@ -46,6 +47,11 @@ export type SerializedEvent = {
   readonly seq: number
   readonly aggregateID: string
   readonly data: Record<string, unknown>
+}
+
+export type SyncMetadata = {
+  readonly seq: number
+  readonly aggregateID: string
 }
 
 export class InvalidSyncEventError extends Schema.TaggedErrorClass<InvalidSyncEventError>()(
@@ -77,6 +83,12 @@ export function define<const Type extends string, Fields extends Schema.Struct.F
     metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
     type: Schema.Literal(input.type),
     version: Schema.optional(Schema.Number),
+    sync: Schema.optional(
+      Schema.Struct({
+        seq: Schema.Finite,
+        aggregateID: Schema.String,
+      }),
+    ),
     location: Schema.optional(Location.Info),
     data: Data,
   }).annotate({ identifier: input.type })
@@ -186,7 +198,7 @@ export const layer = Layer.effect(
             )
           } else {
             const list = projectors.get(event.type) ?? []
-            yield* db
+            return yield* db
               .transaction(
                 () =>
                   Effect.gen(function* () {
@@ -208,8 +220,12 @@ export const layer = Layer.effect(
                         }),
                       )
                     }
+                    const serialized = {
+                      seq,
+                      aggregateID,
+                    }
                     for (const projector of list) {
-                      yield* projector(event as Payload)
+                      yield* projector({ ...event, sync: serialized })
                     }
                     yield* db
                       .insert(EventSequenceTable)
@@ -233,6 +249,7 @@ export const layer = Layer.effect(
                       ])
                       .run()
                       .pipe(Effect.orDie)
+                    return serialized
                   }),
                 { behavior: "immediate" },
               )
@@ -247,14 +264,15 @@ export const layer = Layer.effect(
         for (const sync of syncHandlers) {
           yield* sync(event as Payload)
         }
-        yield* commitSyncEvent(event as Payload)
+        const sync = yield* commitSyncEvent(event as Payload)
+        const payload = sync ? { ...event, sync } : event
         for (const listener of listeners) {
-          yield* listener(event as Payload)
+          yield* listener(payload as Payload)
         }
         const pubsub = typed.get(event.type)
-        if (pubsub) yield* PubSub.publish(pubsub, event as Payload)
-        yield* PubSub.publish(all, event as Payload)
-        return event
+        if (pubsub) yield* PubSub.publish(pubsub, payload as Payload)
+        yield* PubSub.publish(all, payload as Payload)
+        return payload
       })
     }
 

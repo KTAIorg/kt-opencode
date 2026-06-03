@@ -44,6 +44,21 @@ export const layer = Layer.effect(
           workspace: workspaceID,
           payload: { id: event.id, type: event.type, properties: event.data },
         })
+        if (!event.sync || event.version === undefined) return
+        GlobalBus.emit("event", {
+          directory: event.location?.directory ?? ctx?.directory,
+          project: ctx?.project.id,
+          workspace: workspaceID,
+          payload: {
+            type: "sync",
+            syncEvent: {
+              id: event.id,
+              type: EventV2.versionedType(event.type, event.version),
+              ...event.sync,
+              data: event.data,
+            },
+          },
+        })
       }),
     )
     yield* Effect.addFinalizer(() => unsubscribe)

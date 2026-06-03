@@ -1789,6 +1789,7 @@ export type Config = {
       description?: string
       agent?: string
       model?: string
+      variant?: string
       subtask?: boolean
     }
   }
@@ -2856,369 +2857,447 @@ export type EventServerInstanceDisposed = {
 
 export type SyncEventSessionCreated = {
   type: "sync"
-  name: "session.created.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    sessionID: string
-    info: Session
+  syncEvent: {
+    type: "session.created.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      info: Session
+    }
   }
 }
 
 export type SyncEventSessionUpdated = {
   type: "sync"
-  name: "session.updated.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    sessionID: string
-    info: Session
+  syncEvent: {
+    type: "session.updated.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      info: Session
+    }
   }
 }
 
 export type SyncEventSessionDeleted = {
   type: "sync"
-  name: "session.deleted.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    sessionID: string
-    info: Session
+  syncEvent: {
+    type: "session.deleted.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      info: Session
+    }
   }
 }
 
 export type SyncEventMessageUpdated = {
   type: "sync"
-  name: "message.updated.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    sessionID: string
-    info: Message
+  syncEvent: {
+    type: "message.updated.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      info: Message
+    }
   }
 }
 
 export type SyncEventMessageRemoved = {
   type: "sync"
-  name: "message.removed.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    sessionID: string
-    messageID: string
+  syncEvent: {
+    type: "message.removed.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      messageID: string
+    }
   }
 }
 
 export type SyncEventMessagePartUpdated = {
   type: "sync"
-  name: "message.part.updated.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    sessionID: string
-    part: Part
-    time: number
+  syncEvent: {
+    type: "message.part.updated.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      part: Part
+      time: number
+    }
   }
 }
 
 export type SyncEventMessagePartRemoved = {
   type: "sync"
-  name: "message.part.removed.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    sessionID: string
-    messageID: string
-    partID: string
+  syncEvent: {
+    type: "message.part.removed.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      messageID: string
+      partID: string
+    }
   }
 }
 
 export type SyncEventSessionNextAgentSwitched = {
   type: "sync"
-  name: "session.next.agent.switched.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    agent: string
+  syncEvent: {
+    type: "session.next.agent.switched.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      agent: string
+    }
   }
 }
 
 export type SyncEventSessionNextModelSwitched = {
   type: "sync"
-  name: "session.next.model.switched.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    model: {
-      id: string
-      providerID: string
-      variant?: string
+  syncEvent: {
+    type: "session.next.model.switched.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      model: {
+        id: string
+        providerID: string
+        variant?: string
+      }
     }
   }
 }
 
 export type SyncEventSessionNextPrompted = {
   type: "sync"
-  name: "session.next.prompted.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    prompt: Prompt
+  syncEvent: {
+    type: "session.next.prompted.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      prompt: Prompt
+    }
   }
 }
 
 export type SyncEventSessionNextSynthetic = {
   type: "sync"
-  name: "session.next.synthetic.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    text: string
+  syncEvent: {
+    type: "session.next.synthetic.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      text: string
+    }
   }
 }
 
 export type SyncEventSessionNextShellStarted = {
   type: "sync"
-  name: "session.next.shell.started.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    callID: string
-    command: string
+  syncEvent: {
+    type: "session.next.shell.started.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      callID: string
+      command: string
+    }
   }
 }
 
 export type SyncEventSessionNextShellEnded = {
   type: "sync"
-  name: "session.next.shell.ended.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    callID: string
-    output: string
+  syncEvent: {
+    type: "session.next.shell.ended.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      callID: string
+      output: string
+    }
   }
 }
 
 export type SyncEventSessionNextStepStarted = {
   type: "sync"
-  name: "session.next.step.started.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    agent: string
-    model: {
-      id: string
-      providerID: string
-      variant?: string
+  syncEvent: {
+    type: "session.next.step.started.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      agent: string
+      model: {
+        id: string
+        providerID: string
+        variant?: string
+      }
+      snapshot?: string
     }
-    snapshot?: string
   }
 }
 
 export type SyncEventSessionNextStepEnded = {
   type: "sync"
-  name: "session.next.step.ended.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    finish: string
-    cost: number
-    tokens: {
-      input: number
-      output: number
-      reasoning: number
-      cache: {
-        read: number
-        write: number
+  syncEvent: {
+    type: "session.next.step.ended.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      finish: string
+      cost: number
+      tokens: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
       }
+      snapshot?: string
     }
-    snapshot?: string
   }
 }
 
 export type SyncEventSessionNextStepFailed = {
   type: "sync"
-  name: "session.next.step.failed.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    error: SessionErrorUnknown
+  syncEvent: {
+    type: "session.next.step.failed.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      error: SessionErrorUnknown
+    }
   }
 }
 
 export type SyncEventSessionNextTextStarted = {
   type: "sync"
-  name: "session.next.text.started.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
+  syncEvent: {
+    type: "session.next.text.started.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+    }
   }
 }
 
 export type SyncEventSessionNextTextDelta = {
   type: "sync"
-  name: "session.next.text.delta.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    delta: string
+  syncEvent: {
+    type: "session.next.text.delta.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      delta: string
+    }
   }
 }
 
 export type SyncEventSessionNextTextEnded = {
   type: "sync"
-  name: "session.next.text.ended.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    text: string
+  syncEvent: {
+    type: "session.next.text.ended.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      text: string
+    }
   }
 }
 
 export type SyncEventSessionNextReasoningStarted = {
   type: "sync"
-  name: "session.next.reasoning.started.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    reasoningID: string
+  syncEvent: {
+    type: "session.next.reasoning.started.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      reasoningID: string
+    }
   }
 }
 
 export type SyncEventSessionNextReasoningDelta = {
   type: "sync"
-  name: "session.next.reasoning.delta.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    reasoningID: string
-    delta: string
+  syncEvent: {
+    type: "session.next.reasoning.delta.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      reasoningID: string
+      delta: string
+    }
   }
 }
 
 export type SyncEventSessionNextReasoningEnded = {
   type: "sync"
-  name: "session.next.reasoning.ended.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    reasoningID: string
-    text: string
+  syncEvent: {
+    type: "session.next.reasoning.ended.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      reasoningID: string
+      text: string
+    }
   }
 }
 
 export type SyncEventSessionNextToolInputStarted = {
   type: "sync"
-  name: "session.next.tool.input.started.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    callID: string
-    name: string
+  syncEvent: {
+    type: "session.next.tool.input.started.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      callID: string
+      name: string
+    }
   }
 }
 
 export type SyncEventSessionNextToolInputDelta = {
   type: "sync"
-  name: "session.next.tool.input.delta.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    callID: string
-    delta: string
+  syncEvent: {
+    type: "session.next.tool.input.delta.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      callID: string
+      delta: string
+    }
   }
 }
 
 export type SyncEventSessionNextToolInputEnded = {
   type: "sync"
-  name: "session.next.tool.input.ended.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    callID: string
-    text: string
+  syncEvent: {
+    type: "session.next.tool.input.ended.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      callID: string
+      text: string
+    }
   }
 }
 
 export type SyncEventSessionNextToolCalled = {
   type: "sync"
-  name: "session.next.tool.called.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    callID: string
-    tool: string
-    input: {
-      [key: string]: unknown
-    }
-    provider: {
-      executed: boolean
-      metadata?: {
+  syncEvent: {
+    type: "session.next.tool.called.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      callID: string
+      tool: string
+      input: {
         [key: string]: unknown
+      }
+      provider: {
+        executed: boolean
+        metadata?: {
+          [key: string]: unknown
+        }
       }
     }
   }
@@ -3226,39 +3305,45 @@ export type SyncEventSessionNextToolCalled = {
 
 export type SyncEventSessionNextToolProgress = {
   type: "sync"
-  name: "session.next.tool.progress.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    callID: string
-    structured: {
-      [key: string]: unknown
+  syncEvent: {
+    type: "session.next.tool.progress.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      callID: string
+      structured: {
+        [key: string]: unknown
+      }
+      content: Array<ToolTextContent | ToolFileContent>
     }
-    content: Array<ToolTextContent | ToolFileContent>
   }
 }
 
 export type SyncEventSessionNextToolSuccess = {
   type: "sync"
-  name: "session.next.tool.success.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    callID: string
-    structured: {
-      [key: string]: unknown
-    }
-    content: Array<ToolTextContent | ToolFileContent>
-    provider: {
-      executed: boolean
-      metadata?: {
+  syncEvent: {
+    type: "session.next.tool.success.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      callID: string
+      structured: {
         [key: string]: unknown
+      }
+      content: Array<ToolTextContent | ToolFileContent>
+      provider: {
+        executed: boolean
+        metadata?: {
+          [key: string]: unknown
+        }
       }
     }
   }
@@ -3266,19 +3351,22 @@ export type SyncEventSessionNextToolSuccess = {
 
 export type SyncEventSessionNextToolFailed = {
   type: "sync"
-  name: "session.next.tool.failed.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    callID: string
-    error: SessionErrorUnknown
-    provider: {
-      executed: boolean
-      metadata?: {
-        [key: string]: unknown
+  syncEvent: {
+    type: "session.next.tool.failed.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      callID: string
+      error: SessionErrorUnknown
+      provider: {
+        executed: boolean
+        metadata?: {
+          [key: string]: unknown
+        }
       }
     }
   }
@@ -3286,55 +3374,67 @@ export type SyncEventSessionNextToolFailed = {
 
 export type SyncEventSessionNextRetried = {
   type: "sync"
-  name: "session.next.retried.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    attempt: number
-    error: SessionNextRetryError
+  syncEvent: {
+    type: "session.next.retried.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      attempt: number
+      error: SessionNextRetryError
+    }
   }
 }
 
 export type SyncEventSessionNextCompactionStarted = {
   type: "sync"
-  name: "session.next.compaction.started.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    reason: "auto" | "manual"
+  syncEvent: {
+    type: "session.next.compaction.started.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      reason: "auto" | "manual"
+    }
   }
 }
 
 export type SyncEventSessionNextCompactionDelta = {
   type: "sync"
-  name: "session.next.compaction.delta.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    text: string
+  syncEvent: {
+    type: "session.next.compaction.delta.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      text: string
+    }
   }
 }
 
 export type SyncEventSessionNextCompactionEnded = {
   type: "sync"
-  name: "session.next.compaction.ended.1"
   id: string
-  seq: number
-  aggregateID: "sessionID"
-  data: {
-    timestamp: number
-    sessionID: string
-    text: string
-    include?: string
+  syncEvent: {
+    type: "session.next.compaction.ended.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      text: string
+      include?: string
+    }
   }
 }
 
@@ -3592,6 +3692,15 @@ export type SessionMessage =
   | SessionMessageAssistant
   | SessionMessageCompaction
 
+export type LocationInfo = {
+  directory: string
+  workspaceID?: string
+  project: {
+    id: string
+    directory: string
+  }
+}
+
 export type ProviderV2Info = {
   id: string
   name: string
@@ -3675,6 +3784,27 @@ export type LocationFileSystemEntry = {
   uri: string
   type: "file" | "directory"
   mime: string
+}
+
+export type CommandV2Info = {
+  name: string
+  template: string
+  description?: string
+  agent?: string
+  model?: {
+    id: string
+    providerID: string
+    variant?: string
+  }
+  subtask?: boolean
+}
+
+export type SkillV2Info = {
+  name: string
+  description?: string
+  slash?: boolean
+  location: string
+  content: string
 }
 
 export type EventModelsDevRefreshed = {
@@ -8092,9 +8222,11 @@ export type V2SessionListError = V2SessionListErrors[keyof V2SessionListErrors]
 
 export type V2SessionListResponses = {
   /**
-   * V2SessionsResponse
+   * Success
    */
-  200: V2SessionsResponse
+  200: {
+    data: V2SessionsResponse
+  }
 }
 
 export type V2SessionListResponse = V2SessionListResponses[keyof V2SessionListResponses]
@@ -8137,9 +8269,11 @@ export type V2SessionPromptError = V2SessionPromptErrors[keyof V2SessionPromptEr
 
 export type V2SessionPromptResponses = {
   /**
-   * Session.Message
+   * Success
    */
-  200: SessionMessage
+  200: {
+    data: SessionMessage
+  }
 }
 
 export type V2SessionPromptResponse = V2SessionPromptResponses[keyof V2SessionPromptResponses]
@@ -8265,7 +8399,9 @@ export type V2SessionContextResponses = {
   /**
    * Success
    */
-  200: Array<SessionMessage>
+  200: {
+    data: Array<SessionMessage>
+  }
 }
 
 export type V2SessionContextResponse = V2SessionContextResponses[keyof V2SessionContextResponses]
@@ -8311,9 +8447,11 @@ export type V2SessionMessagesError = V2SessionMessagesErrors[keyof V2SessionMess
 
 export type V2SessionMessagesResponses = {
   /**
-   * V2SessionMessagesResponse
+   * Success
    */
-  200: V2SessionMessagesResponse
+  200: {
+    data: V2SessionMessagesResponse
+  }
 }
 
 export type V2SessionMessagesResponse2 = V2SessionMessagesResponses[keyof V2SessionMessagesResponses]
@@ -8351,7 +8489,10 @@ export type V2ModelListResponses = {
   /**
    * Success
    */
-  200: Array<ModelV2Info>
+  200: {
+    location: LocationInfo
+    data: Array<ModelV2Info>
+  }
 }
 
 export type V2ModelListResponse = V2ModelListResponses[keyof V2ModelListResponses]
@@ -8389,7 +8530,10 @@ export type V2ProviderListResponses = {
   /**
    * Success
    */
-  200: Array<ProviderV2Info>
+  200: {
+    location: LocationInfo
+    data: Array<ProviderV2Info>
+  }
 }
 
 export type V2ProviderListResponse = V2ProviderListResponses[keyof V2ProviderListResponses]
@@ -8431,9 +8575,12 @@ export type V2ProviderGetError = V2ProviderGetErrors[keyof V2ProviderGetErrors]
 
 export type V2ProviderGetResponses = {
   /**
-   * ProviderV2.Info
+   * Success
    */
-  200: ProviderV2Info
+  200: {
+    location: LocationInfo
+    data: ProviderV2Info
+  }
 }
 
 export type V2ProviderGetResponse = V2ProviderGetResponses[keyof V2ProviderGetResponses]
@@ -8467,7 +8614,10 @@ export type V2PermissionRequestListResponses = {
   /**
    * Success
    */
-  200: Array<PermissionV2Request>
+  200: {
+    location: LocationInfo
+    data: Array<PermissionV2Request>
+  }
 }
 
 export type V2PermissionRequestListResponse = V2PermissionRequestListResponses[keyof V2PermissionRequestListResponses]
@@ -8502,7 +8652,9 @@ export type V2SessionPermissionListResponses = {
   /**
    * Success
    */
-  200: Array<PermissionV2Request>
+  200: {
+    data: Array<PermissionV2Request>
+  }
 }
 
 export type V2SessionPermissionListResponse = V2SessionPermissionListResponses[keyof V2SessionPermissionListResponses]
@@ -8573,7 +8725,9 @@ export type V2PermissionSavedListResponses = {
   /**
    * Success
    */
-  200: Array<PermissionSavedInfo>
+  200: {
+    data: Array<PermissionSavedInfo>
+  }
 }
 
 export type V2PermissionSavedListResponse = V2PermissionSavedListResponses[keyof V2PermissionSavedListResponses]
@@ -8640,7 +8794,10 @@ export type V2FsReadResponses = {
   /**
    * Success
    */
-  200: LocationFileSystemTextContent | LocationFileSystemBinaryContent
+  200: {
+    location: LocationInfo
+    data: LocationFileSystemTextContent | LocationFileSystemBinaryContent
+  }
 }
 
 export type V2FsReadResponse = V2FsReadResponses[keyof V2FsReadResponses]
@@ -8676,10 +8833,121 @@ export type V2FsListResponses = {
   /**
    * Success
    */
-  200: Array<LocationFileSystemEntry>
+  200: {
+    location: LocationInfo
+    data: Array<LocationFileSystemEntry>
+  }
 }
 
 export type V2FsListResponse = V2FsListResponses[keyof V2FsListResponses]
+
+export type V2CommandListData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/command"
+}
+
+export type V2CommandListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2CommandListError = V2CommandListErrors[keyof V2CommandListErrors]
+
+export type V2CommandListResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Array<CommandV2Info>
+  }
+}
+
+export type V2CommandListResponse = V2CommandListResponses[keyof V2CommandListResponses]
+
+export type V2SkillListData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/skill"
+}
+
+export type V2SkillListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2SkillListError = V2SkillListErrors[keyof V2SkillListErrors]
+
+export type V2SkillListResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Array<SkillV2Info>
+  }
+}
+
+export type V2SkillListResponse = V2SkillListResponses[keyof V2SkillListResponses]
+
+export type V2EventSubscribeData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/event"
+}
+
+export type V2EventSubscribeErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2EventSubscribeError = V2EventSubscribeErrors[keyof V2EventSubscribeErrors]
+
+export type V2EventSubscribeResponses = {
+  /**
+   * Success
+   */
+  200: string
+}
+
+export type V2EventSubscribeResponse = V2EventSubscribeResponses[keyof V2EventSubscribeResponses]
 
 export type TuiAppendPromptData = {
   body?: {

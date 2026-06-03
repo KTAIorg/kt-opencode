@@ -109,6 +109,19 @@ describe("EventV2", () => {
     }),
   )
 
+  it.effect("publishes sync metadata", () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2.Service
+      const aggregateID = EventV2.ID.create()
+      const event = yield* events.publish(SyncMessage, { id: aggregateID, text: "hello" })
+
+      expect(event.sync).toEqual({
+        seq: 0,
+        aggregateID,
+      })
+    }),
+  )
+
   it.effect("stores definitions in the exported registry", () =>
     Effect.sync(() => {
       expect(EventV2.registry.get(Message.type)).toBe(Message)
