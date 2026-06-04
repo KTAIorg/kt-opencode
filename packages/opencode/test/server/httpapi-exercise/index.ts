@@ -637,7 +637,7 @@ const scenarios: Scenario[] = [
         Effect.sync(() => {
           check(result.contentType.includes("text/event-stream"), "v2 event should be an SSE stream")
           check(result.text.includes("server.connected"), "v2 event should emit initial connection event")
-          check(result.text.includes(ctx.directory), "v2 event should include the resolved location")
+          check(!!ctx.directory && result.text.includes(ctx.directory), "v2 event should include the resolved location")
         }),
       "status",
     ),
