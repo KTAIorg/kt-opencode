@@ -2,14 +2,14 @@ export * as SessionMessage from "./message"
 
 import { Schema } from "effect"
 import { ProviderMetadata } from "@opencode-ai/llm"
-import { EventV2 } from "../event"
 import { ModelV2 } from "../model"
 import { ToolOutput } from "../tool-output"
 import { V2Schema } from "../v2-schema"
 import { SessionEvent } from "./event"
+import { SessionMessageID } from "./message-id"
 import { Prompt } from "./prompt"
 
-export const ID = EventV2.ID
+export const ID = SessionMessageID.ID
 export type ID = Schema.Schema.Type<typeof ID>
 
 const Base = {

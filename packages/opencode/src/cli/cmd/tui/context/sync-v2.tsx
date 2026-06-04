@@ -1,4 +1,5 @@
 import { useEvent } from "@tui/context/event"
+import { EventV2 } from "@opencode-ai/core/event"
 import type {
   SessionMessage,
   SessionMessageAssistant,
@@ -9,6 +10,9 @@ import type {
 import { createStore, produce, reconcile } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import { useSDK } from "./sdk"
+import { SessionMessageID } from "@opencode-ai/core/session/message-id"
+
+const messageID = (eventID: string) => SessionMessageID.ID.fromEvent(EventV2.ID.make(eventID))
 
 function activeAssistant(messages: SessionMessage[]) {
   const index = messages.findIndex((message) => message.type === "assistant" && !message.time.completed)
@@ -82,7 +86,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.agent.switched":
           update(event.properties.sessionID, (draft) => {
             draft.unshift({
-              id: event.id,
+              id: messageID(event.id),
               type: "agent-switched",
               agent: event.properties.agent,
               time: { created: event.properties.timestamp },
@@ -92,7 +96,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.model.switched":
           update(event.properties.sessionID, (draft) => {
             draft.unshift({
-              id: event.id,
+              id: messageID(event.id),
               type: "model-switched",
               model: event.properties.model,
               time: { created: event.properties.timestamp },
@@ -102,7 +106,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.prompted": {
           update(event.properties.sessionID, (draft) => {
             draft.unshift({
-              id: event.id,
+              id: messageID(event.id),
               type: "user",
               text: event.properties.prompt.text,
               files: event.properties.prompt.files,
@@ -116,7 +120,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.synthetic":
           update(event.properties.sessionID, (draft) => {
             draft.unshift({
-              id: event.id,
+              id: messageID(event.id),
               type: "synthetic",
               sessionID: event.properties.sessionID,
               text: event.properties.text,
@@ -127,7 +131,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.shell.started":
           update(event.properties.sessionID, (draft) => {
             draft.unshift({
-              id: event.id,
+              id: messageID(event.id),
               type: "shell",
               callID: event.properties.callID,
               command: event.properties.command,
@@ -149,7 +153,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
             const currentAssistant = activeAssistant(draft)
             if (currentAssistant) currentAssistant.time.completed = event.properties.timestamp
             draft.unshift({
-              id: event.id,
+              id: messageID(event.id),
               type: "assistant",
               agent: event.properties.agent,
               model: event.properties.model,
@@ -161,7 +165,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
           break
         case "session.next.step.ended":
           update(event.properties.sessionID, (draft) => {
-            const currentAssistant = ownedAssistant(draft, event.properties.assistantMessageID)
+            const currentAssistant = ownedAssistant(draft, messageID(event.properties.assistantMessageID))
             if (!currentAssistant) return
             currentAssistant.time.completed = event.properties.timestamp
             currentAssistant.finish = event.properties.finish
@@ -173,7 +177,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
           break
         case "session.next.step.failed":
           update(event.properties.sessionID, (draft) => {
-            const currentAssistant = ownedAssistant(draft, event.properties.assistantMessageID)
+            const currentAssistant = ownedAssistant(draft, messageID(event.properties.assistantMessageID))
             if (!currentAssistant) return
             currentAssistant.time.completed = event.properties.timestamp
             currentAssistant.finish = "error"
@@ -199,7 +203,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
           break
         case "session.next.tool.input.started":
           update(event.properties.sessionID, (draft) => {
-            ownedAssistant(draft, event.properties.assistantMessageID)?.content.push({
+            ownedAssistant(draft, messageID(event.properties.assistantMessageID))?.content.push({
               type: "tool",
               id: event.properties.callID,
               name: event.properties.name,
@@ -211,7 +215,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.tool.input.delta":
           update(event.properties.sessionID, (draft) => {
             const match = latestTool(
-              ownedAssistant(draft, event.properties.assistantMessageID),
+              ownedAssistant(draft, messageID(event.properties.assistantMessageID)),
               event.properties.callID,
             )
             if (match?.state.status === "pending") match.state.input += event.properties.delta
@@ -220,7 +224,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.tool.input.ended":
           update(event.properties.sessionID, (draft) => {
             const match = latestTool(
-              ownedAssistant(draft, event.properties.assistantMessageID),
+              ownedAssistant(draft, messageID(event.properties.assistantMessageID)),
               event.properties.callID,
             )
             if (match?.state.status === "pending") match.state.input = event.properties.text
@@ -229,7 +233,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.tool.called":
           update(event.properties.sessionID, (draft) => {
             const match = latestTool(
-              ownedAssistant(draft, event.properties.assistantMessageID),
+              ownedAssistant(draft, messageID(event.properties.assistantMessageID)),
               event.properties.callID,
             )
             if (!match) return
@@ -241,7 +245,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.tool.progress":
           update(event.properties.sessionID, (draft) => {
             const match = latestTool(
-              ownedAssistant(draft, event.properties.assistantMessageID),
+              ownedAssistant(draft, messageID(event.properties.assistantMessageID)),
               event.properties.callID,
             )
             if (match?.state.status !== "running") return
@@ -252,7 +256,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.tool.success":
           update(event.properties.sessionID, (draft) => {
             const match = latestTool(
-              ownedAssistant(draft, event.properties.assistantMessageID),
+              ownedAssistant(draft, messageID(event.properties.assistantMessageID)),
               event.properties.callID,
             )
             if (match?.state.status !== "running") return
@@ -270,7 +274,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.tool.failed":
           update(event.properties.sessionID, (draft) => {
             const match = latestTool(
-              ownedAssistant(draft, event.properties.assistantMessageID),
+              ownedAssistant(draft, messageID(event.properties.assistantMessageID)),
               event.properties.callID,
             )
             if (!match || (match.state.status !== "pending" && match.state.status !== "running")) return
@@ -317,7 +321,7 @@ export const { use: useSyncV2, provider: SyncProviderV2 } = createSimpleContext(
         case "session.next.compaction.started":
           update(event.properties.sessionID, (draft) => {
             draft.unshift({
-              id: event.id,
+              id: messageID(event.id),
               type: "compaction",
               reason: event.properties.reason,
               summary: "",

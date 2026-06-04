@@ -3,7 +3,7 @@ export * as SessionInput from "./input"
 import { and, asc, eq, inArray, isNull } from "drizzle-orm"
 import { DateTime, Effect, Schema } from "effect"
 import type { Database } from "../database/database"
-import type { EventV2 } from "../event"
+import { EventV2 } from "../event"
 import { EventTable } from "../event/sql"
 import { NonNegativeInt, PositiveInt } from "../schema"
 import { V2Schema } from "../v2-schema"
@@ -66,7 +66,7 @@ export const admit = Effect.fn("SessionInput.admit")(function* (
           const event = yield* db
             .select({ id: EventTable.id })
             .from(EventTable)
-            .where(eq(EventTable.id, input.id))
+            .where(eq(EventTable.id, SessionMessage.ID.toEvent(input.id)))
             .get()
             .pipe(Effect.orDie)
           const message = yield* db
@@ -133,7 +133,7 @@ export const guardReservedID = Effect.fn("SessionInput.guardReservedID")(functio
   db: DatabaseService,
   event: EventV2.Payload,
 ) {
-  const admitted = yield* find(db, event.id)
+  const admitted = yield* find(db, SessionMessage.ID.fromEvent(event.id))
   if (admitted === undefined) return
   if (!Schema.is(SessionEvent.Prompted)(event))
     return yield* Effect.die("Durable event conflicts with admitted prompt input")
@@ -225,7 +225,7 @@ const publish = Effect.fn("SessionInput.publish")(function* (
         prompt: decodePrompt(row.prompt),
         delivery: row.delivery,
       },
-      { id: SessionMessage.ID.make(row.id) },
+      { id: SessionMessage.ID.toEvent(SessionMessage.ID.make(row.id)) },
     )
   }
   return rows.length

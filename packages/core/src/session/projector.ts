@@ -335,10 +335,11 @@ export const layer = Layer.effectDiscard(
     )
     yield* events.project(SessionEvent.Prompted, (event) =>
       Effect.gen(function* () {
+        const messageID = SessionMessage.ID.fromEvent(event.id)
         const existing = yield* db
           .select({ id: SessionMessageTable.id })
           .from(SessionMessageTable)
-          .where(eq(SessionMessageTable.id, event.id))
+          .where(eq(SessionMessageTable.id, messageID))
           .get()
           .pipe(Effect.orDie)
         if (existing) return yield* Effect.die(new PromptAlreadyProjected())
@@ -346,7 +347,7 @@ export const layer = Layer.effectDiscard(
         const row = yield* db
           .select()
           .from(SessionMessageTable)
-          .where(eq(SessionMessageTable.id, event.id))
+          .where(eq(SessionMessageTable.id, messageID))
           .get()
           .pipe(Effect.orDie)
         if (!row) return yield* Effect.die("Prompt projection was not stored")
@@ -355,7 +356,7 @@ export const layer = Layer.effectDiscard(
         if (event.seq === undefined)
           return yield* Effect.die("Synchronized Session event is missing aggregate sequence")
         yield* SessionInput.project(db, {
-          id: SessionMessage.ID.make(event.id),
+          id: messageID,
           sessionID: event.data.sessionID,
           prompt: event.data.prompt,
           delivery: event.data.delivery,

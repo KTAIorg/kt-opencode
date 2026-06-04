@@ -1,5 +1,6 @@
 import { castDraft, produce, type WritableDraft } from "immer"
 import { Effect } from "effect"
+import type { EventV2 } from "../event"
 import { SessionEvent } from "./event"
 import { SessionMessage } from "./message"
 
@@ -112,9 +113,9 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
   const latestReasoning = (assistant: DraftAssistant | undefined, reasoningID: string) =>
     assistant?.content.findLast((item): item is DraftReasoning => item.type === "reasoning" && item.id === reasoningID)
 
-  const updateOwnedAssistant = (messageID: SessionMessage.ID, recipe: (draft: DraftAssistant) => void) =>
+  const updateOwnedAssistant = (messageID: EventV2.ID, recipe: (draft: DraftAssistant) => void) =>
     Effect.gen(function* () {
-      const assistant = yield* adapter.getAssistant(messageID)
+      const assistant = yield* adapter.getAssistant(SessionMessage.ID.fromEvent(messageID))
       if (assistant) yield* adapter.updateAssistant(produce(assistant, recipe))
     })
 
@@ -123,7 +124,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
       "session.next.agent.switched": (event) => {
         return adapter.appendMessage(
           new SessionMessage.AgentSwitched({
-            id: event.id,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "agent-switched",
             metadata: event.metadata,
             agent: event.data.agent,
@@ -134,7 +135,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
       "session.next.model.switched": (event) => {
         return adapter.appendMessage(
           new SessionMessage.ModelSwitched({
-            id: event.id,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "model-switched",
             metadata: event.metadata,
             model: event.data.model,
@@ -145,7 +146,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
       "session.next.prompted": (event) => {
         return adapter.appendMessage(
           new SessionMessage.User({
-            id: event.id,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "user",
             metadata: event.metadata,
             text: event.data.prompt.text,
@@ -161,7 +162,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
           new SessionMessage.Synthetic({
             sessionID: event.data.sessionID,
             text: event.data.text,
-            id: event.id,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "synthetic",
             time: { created: event.data.timestamp },
           }),
@@ -170,7 +171,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
       "session.next.shell.started": (event) => {
         return adapter.appendMessage(
           new SessionMessage.Shell({
-            id: event.id,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "shell",
             metadata: event.metadata,
             callID: event.data.callID,
@@ -205,7 +206,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
           }
           yield* adapter.appendMessage(
             new SessionMessage.Assistant({
-              id: event.id,
+              id: SessionMessage.ID.fromEvent(event.id),
               type: "assistant",
               agent: event.data.agent,
               model: event.data.model,
@@ -419,7 +420,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
       "session.next.compaction.started": (event) => {
         return adapter.appendMessage(
           new SessionMessage.Compaction({
-            id: event.id,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "compaction",
             metadata: event.metadata,
             reason: event.data.reason,

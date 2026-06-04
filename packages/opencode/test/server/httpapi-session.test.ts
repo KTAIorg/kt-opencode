@@ -22,7 +22,6 @@ import * as HttpSessionError from "../../src/server/routes/instance/httpapi/hand
 import { SessionPaths } from "../../src/server/routes/instance/httpapi/groups/session"
 import { Session } from "@/session/session"
 import { MessageID, PartID, SessionID, type SessionID as SessionIDType } from "../../src/session/schema"
-import { MessageV2 } from "../../src/session/message-v2"
 import { Database } from "@opencode-ai/core/database/database"
 import { SessionInputTable, SessionMessageTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionMessage } from "@opencode-ai/core/session/message"
@@ -584,7 +583,7 @@ describe("session HttpApi", () => {
           request(`/api/session/${session.id}/prompt`, {
             method: "POST",
             headers: { ...headers, "content-type": "application/json" },
-            body: JSON.stringify({ id: "evt_http_prompt", prompt: { text: "hello" } }),
+            body: JSON.stringify({ id: "msg_http_prompt", prompt: { text: "hello" } }),
           })
         const first = yield* recordPrompt()
         const retried = yield* recordPrompt()
@@ -604,12 +603,12 @@ describe("session HttpApi", () => {
           db
             .select()
             .from(SessionInputTable)
-            .where(eq(SessionInputTable.id, SessionMessage.ID.make("evt_http_prompt")))
+            .where(eq(SessionInputTable.id, SessionMessage.ID.make("msg_http_prompt")))
             .get()
             .pipe(Effect.orDie),
         )
         expect(admitted).toMatchObject({
-          id: "evt_http_prompt",
+          id: "msg_http_prompt",
           session_id: session.id,
           delivery: "steer",
           promoted_seq: null,
@@ -618,13 +617,13 @@ describe("session HttpApi", () => {
         const conflict = yield* request(`/api/session/${session.id}/prompt`, {
           method: "POST",
           headers: { ...headers, "content-type": "application/json" },
-          body: JSON.stringify({ id: "evt_http_prompt", prompt: { text: "goodbye" } }),
+          body: JSON.stringify({ id: "msg_http_prompt", prompt: { text: "goodbye" } }),
         })
         expect(conflict.status).toBe(409)
         expect(yield* responseJson(conflict)).toEqual({
           _tag: "ConflictError",
-          message: "Prompt message ID conflicts with an existing durable record: evt_http_prompt",
-          resource: "evt_http_prompt",
+          message: "Prompt message ID conflicts with an existing durable record: msg_http_prompt",
+          resource: "msg_http_prompt",
         })
       }),
     { git: true, config: { formatter: false, lsp: false } },

@@ -310,7 +310,7 @@ describe("SessionV2.prompt", () => {
       yield* events.publish(
         SessionEvent.Prompted,
         { sessionID, timestamp: yield* DateTime.now, prompt, delivery: "steer" },
-        { id: messageID },
+        { id: SessionMessage.ID.toEvent(messageID) },
       )
 
       const retried = yield* session.prompt({ id: messageID, sessionID, prompt, resume: false })
@@ -329,7 +329,7 @@ describe("SessionV2.prompt", () => {
       yield* events.publish(
         SessionEvent.Prompted,
         { sessionID, timestamp: yield* DateTime.now, prompt, delivery: "queue" },
-        { id: messageID },
+        { id: SessionMessage.ID.toEvent(messageID) },
       )
 
       const retried = yield* session.prompt({ id: messageID, sessionID, prompt, delivery: "queue", resume: false })
@@ -339,7 +339,7 @@ describe("SessionV2.prompt", () => {
     }),
   )
 
-  it.effect("rejects an input ID already used by a durable non-prompt event", () =>
+  it.effect("rejects an input ID already used by a projected non-prompt message", () =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -347,7 +347,7 @@ describe("SessionV2.prompt", () => {
       yield* events.publish(
         SessionEvent.Synthetic,
         { sessionID, timestamp: yield* DateTime.now, text: "Collision" },
-        { id: messageID },
+        { id: SessionMessage.ID.toEvent(messageID) },
       )
 
       const failure = yield* session
@@ -359,10 +359,44 @@ describe("SessionV2.prompt", () => {
     }),
   )
 
-  it.effect("rejects a durable event ID reserved by an admitted prompt without poisoning promotion", () =>
+  it.effect("keeps event envelope IDs separate from admitted message IDs", () =>
     Effect.gen(function* () {
       yield* setup
       const { db } = yield* Database.Service
+      const session = yield* SessionV2.Service
+      const events = yield* EventV2.Service
+      const prompt = new Prompt({ text: "Reserved prompt" })
+      yield* session.prompt({ id: messageID, sessionID, prompt, resume: false })
+
+      yield* events.publish(
+        SessionEvent.Synthetic,
+        { sessionID, timestamp: yield* DateTime.now, text: "Synthetic" },
+        { id: EventV2.ID.make("evt_reserved_prompt") },
+      )
+
+      expect(yield* admitted(messageID)).not.toHaveProperty("promotedSeq")
+
+      yield* SessionInput.promoteSteers(db, events, sessionID)
+
+      expect(yield* admitted(messageID)).toMatchObject({ promotedSeq: 1 })
+      expect(yield* session.messages({ sessionID })).toMatchObject([
+        { id: messageID, type: "user", text: "Reserved prompt" },
+        { type: "synthetic", text: "Synthetic" },
+      ])
+    }),
+  )
+
+  it.effect("keeps Session message IDs in the msg namespace", () =>
+    Effect.sync(() => {
+      expect(SessionMessage.ID.create()).toMatch(/^msg_/)
+      expect(() => SessionMessage.ID.make("evt_wrong_namespace")).toThrow()
+      expect(() => SessionMessage.ID.make("msgx")).toThrow()
+    }),
+  )
+
+  it.effect("rejects a non-prompt event that reuses an admitted message ID", () =>
+    Effect.gen(function* () {
+      yield* setup
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
       const prompt = new Prompt({ text: "Reserved prompt" })
@@ -372,20 +406,13 @@ describe("SessionV2.prompt", () => {
         .publish(
           SessionEvent.Synthetic,
           { sessionID, timestamp: yield* DateTime.now, text: "Conflicting synthetic" },
-          { id: messageID },
+          { id: SessionMessage.ID.toEvent(messageID) },
         )
         .pipe(Effect.catchDefect(Effect.succeed))
 
       expect(failure).toBe("Durable event conflicts with admitted prompt input")
       expect(yield* admitted(messageID)).not.toHaveProperty("promotedSeq")
       expect(yield* session.messages({ sessionID })).toEqual([])
-
-      yield* SessionInput.promoteSteers(db, events, sessionID)
-
-      expect(yield* admitted(messageID)).toMatchObject({ promotedSeq: 0 })
-      expect(yield* session.messages({ sessionID })).toMatchObject([
-        { id: messageID, type: "user", text: "Reserved prompt" },
-      ])
     }),
   )
 

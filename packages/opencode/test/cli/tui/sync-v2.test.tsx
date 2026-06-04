@@ -49,14 +49,14 @@ test("sync v2 settles pending tools when a live failure arrives", async () => {
     await mounted
     events.emit(
       global({
-        id: "agent-1",
+        id: "evt_agent_1",
         type: "session.next.agent.switched",
         properties: { sessionID: "session-1", timestamp: 0, agent: "build" },
       }),
     )
     events.emit(
       global({
-        id: "model-1",
+        id: "evt_model_1",
         type: "session.next.model.switched",
         properties: {
           sessionID: "session-1",
@@ -67,7 +67,7 @@ test("sync v2 settles pending tools when a live failure arrives", async () => {
     )
     events.emit(
       global({
-        id: "assistant-1",
+        id: "evt_assistant_1",
         type: "session.next.step.started",
         properties: {
           sessionID: "session-1",
@@ -79,12 +79,12 @@ test("sync v2 settles pending tools when a live failure arrives", async () => {
     )
     events.emit(
       global({
-        id: "input-1",
+        id: "evt_input_1",
         type: "session.next.tool.input.started",
         properties: {
           sessionID: "session-1",
           timestamp: 2,
-          assistantMessageID: "assistant-1",
+          assistantMessageID: "evt_assistant_1",
           callID: "call-1",
           name: "bash",
         },
@@ -92,12 +92,12 @@ test("sync v2 settles pending tools when a live failure arrives", async () => {
     )
     events.emit(
       global({
-        id: "failed-1",
+        id: "evt_failed_1",
         type: "session.next.tool.failed",
         properties: {
           sessionID: "session-1",
           timestamp: 3,
-          assistantMessageID: "assistant-1",
+          assistantMessageID: "evt_assistant_1",
           callID: "call-1",
           error: { type: "unknown", message: "aborted" },
           provider: { executed: false },
@@ -117,6 +117,7 @@ test("sync v2 settles pending tools when a live failure arrives", async () => {
     const assistant = sync.session.message.fromSession("session-1")[0]
     expect(assistant?.type).toBe("assistant")
     if (assistant?.type !== "assistant") return
+    expect(assistant.id).toBe("msg_assistant_1")
     const tool = assistant.content[0]
     expect(tool?.type).toBe("tool")
     if (tool?.type !== "tool") return

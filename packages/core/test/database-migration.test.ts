@@ -7,9 +7,11 @@ import { EffectDrizzleSqlite } from "@opencode-ai/effect-drizzle-sqlite"
 import { Effect, Layer } from "effect"
 import { eq, inArray, sql } from "drizzle-orm"
 import { DatabaseMigration } from "@opencode-ai/core/database/migration"
+import { migrations } from "@opencode-ai/core/database/migration.gen"
 import sessionUsageMigration from "@opencode-ai/core/database/migration/20260510033149_session_usage"
 import normalizeStoragePathsMigration from "@opencode-ai/core/database/migration/20260601010001_normalize_storage_paths"
 import sessionMessageProjectionOrderMigration from "@opencode-ai/core/database/migration/20260603040000_session_message_projection_order"
+import sessionMessageIdentityMigration from "@opencode-ai/core/database/migration/20260604153000_session_message_identity"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
 import { AbsolutePath } from "@opencode-ai/core/schema"
@@ -62,7 +64,7 @@ describe("DatabaseMigration", () => {
         expect(
           yield* db.get(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_input'`),
         ).toEqual({ name: "session_input" })
-        expect(yield* db.get(sql`SELECT count(*) as count FROM migration`)).toEqual({ count: 29 })
+        expect(yield* db.get(sql`SELECT count(*) as count FROM migration`)).toEqual({ count: 30 })
         expect(
           yield* db.all(
             sql`SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('event_aggregate_seq_idx', 'event_aggregate_type_seq_idx', 'session_input_session_pending_seq_idx', 'session_input_session_pending_delivery_seq_idx', 'session_message_session_idx', 'session_message_session_type_idx', 'session_message_session_seq_idx', 'session_message_session_type_seq_idx', 'session_message_session_time_created_id_idx') ORDER BY name`,
@@ -131,6 +133,100 @@ describe("DatabaseMigration", () => {
         )
         expect(yield* db.get(sql`SELECT id, seq FROM session_message`)).toEqual({ id: "fresh_projection", seq: 7 })
       }),
+    )
+  })
+
+  test("resets unreleased EventV2 state without deleting canonical Session history", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* db.run(sql`CREATE TABLE session (id text PRIMARY KEY)`)
+        yield* db.run(sql`CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL)`)
+        yield* db.run(sql`CREATE TABLE part (id text PRIMARY KEY, message_id text NOT NULL, session_id text NOT NULL)`)
+        yield* db.run(sql`CREATE TABLE session_message (id text PRIMARY KEY)`)
+        yield* db.run(sql`CREATE TABLE session_input (id text PRIMARY KEY)`)
+        yield* db.run(
+          sql`CREATE TABLE event_sequence (aggregate_id text PRIMARY KEY, seq integer NOT NULL, owner_id text)`,
+        )
+        yield* db.run(sql`CREATE TABLE event (id text PRIMARY KEY, aggregate_id text NOT NULL, seq integer NOT NULL)`)
+        yield* db.run(sql`INSERT INTO session (id) VALUES ('session')`)
+        yield* db.run(sql`INSERT INTO message (id, session_id) VALUES ('legacy_message', 'session')`)
+        yield* db.run(
+          sql`INSERT INTO part (id, message_id, session_id) VALUES ('legacy_part', 'legacy_message', 'session')`,
+        )
+        yield* db.run(sql`INSERT INTO session_message (id) VALUES ('experimental_message')`)
+        yield* db.run(sql`INSERT INTO session_input (id) VALUES ('experimental_input')`)
+        yield* db.run(sql`INSERT INTO event_sequence (aggregate_id, seq, owner_id) VALUES ('session', 1, 'workspace')`)
+        yield* db.run(sql`INSERT INTO event (id, aggregate_id, seq) VALUES ('experimental_event', 'session', 1)`)
+
+        yield* DatabaseMigration.applyOnly(db, [sessionMessageIdentityMigration])
+
+        expect(yield* db.all(sql`SELECT id FROM session`)).toEqual([{ id: "session" }])
+        expect(yield* db.all(sql`SELECT id FROM message`)).toEqual([{ id: "legacy_message" }])
+        expect(yield* db.all(sql`SELECT id FROM part`)).toEqual([{ id: "legacy_part" }])
+        expect(yield* db.all(sql`SELECT id FROM session_message`)).toEqual([])
+        expect(yield* db.all(sql`SELECT id FROM session_input`)).toEqual([])
+        expect(yield* db.all(sql`SELECT id FROM event`)).toEqual([])
+        expect(yield* db.all(sql`SELECT aggregate_id FROM event_sequence`)).toEqual([])
+      }),
+    )
+  })
+
+  test("applies the Session-message identity reset through normal database startup", async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "identity-reset.sqlite")
+    const before = migrations.filter((migration) => migration.id !== sessionMessageIdentityMigration.id)
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* db.run(sql`PRAGMA foreign_keys = ON`)
+        yield* DatabaseMigration.applyOnly(db, before)
+        yield* db.run(
+          sql`INSERT INTO project (id, worktree, sandboxes, time_created, time_updated) VALUES ('project', '/project', '[]', 1, 1)`,
+        )
+        yield* db.run(
+          sql`INSERT INTO session (id, project_id, slug, directory, title, version, time_created, time_updated) VALUES ('session', 'project', 'session', '/project', 'Session', 'test', 1, 1)`,
+        )
+        yield* db.run(
+          sql`INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES ('legacy_message', 'session', 1, 1, '{}')`,
+        )
+        yield* db.run(
+          sql`INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES ('legacy_part', 'legacy_message', 'session', 1, 1, '{}')`,
+        )
+        yield* db.run(
+          sql`INSERT INTO todo (session_id, content, status, priority, position, time_created, time_updated) VALUES ('session', 'keep', 'pending', 'low', 0, 1, 1)`,
+        )
+        yield* db.run(
+          sql`INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data) VALUES ('evt_message', 'session', 'user', 1, 1, 1, '{}')`,
+        )
+        yield* db.run(
+          sql`INSERT INTO session_input (id, session_id, prompt, delivery, time_created) VALUES ('evt_input', 'session', '{}', 'queue', 1)`,
+        )
+        yield* db.run(sql`INSERT INTO event_sequence (aggregate_id, seq, owner_id) VALUES ('session', 1, 'workspace')`)
+        yield* db.run(
+          sql`INSERT INTO event (id, aggregate_id, seq, type, data) VALUES ('evt_event', 'session', 1, 'session.created.1', '{}')`,
+        )
+      }).pipe(Effect.provide(SqliteClient.layer({ filename, disableWAL: true })), Effect.scoped),
+    )
+
+    await Effect.runPromise(Effect.scoped(Layer.build(Database.layerFromPath(filename))))
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        expect(yield* db.all(sql`SELECT id FROM session`)).toEqual([{ id: "session" }])
+        expect(yield* db.all(sql`SELECT id FROM message`)).toEqual([{ id: "legacy_message" }])
+        expect(yield* db.all(sql`SELECT id FROM part`)).toEqual([{ id: "legacy_part" }])
+        expect(yield* db.all(sql`SELECT content FROM todo`)).toEqual([{ content: "keep" }])
+        expect(yield* db.all(sql`SELECT id FROM session_message`)).toEqual([])
+        expect(yield* db.all(sql`SELECT id FROM session_input`)).toEqual([])
+        expect(yield* db.all(sql`SELECT id FROM event`)).toEqual([])
+        expect(yield* db.all(sql`SELECT aggregate_id FROM event_sequence`)).toEqual([])
+        expect(yield* db.get(sql`SELECT id FROM migration WHERE id = ${sessionMessageIdentityMigration.id}`)).toEqual({
+          id: sessionMessageIdentityMigration.id,
+        })
+      }).pipe(Effect.provide(SqliteClient.layer({ filename, disableWAL: true })), Effect.scoped),
     )
   })
 

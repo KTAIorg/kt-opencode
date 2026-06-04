@@ -7,6 +7,7 @@ import { Location } from "@opencode-ai/core/location"
 import { AbsolutePath } from "@opencode-ai/core/schema"
 import { WorkspaceV2 } from "@opencode-ai/core/workspace"
 import { V2Schema } from "@opencode-ai/core/v2-schema"
+import { SessionMessage } from "@opencode-ai/core/session/message"
 import { eq } from "drizzle-orm"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
@@ -84,6 +85,21 @@ const SyncTimestamp = EventV2.define({
 })
 
 describe("EventV2", () => {
+  it.effect("keeps event IDs in the evt namespace", () =>
+    Effect.sync(() => {
+      expect(EventV2.ID.create()).toMatch(/^evt_/)
+      expect(() => EventV2.ID.make("msg_wrong_namespace")).toThrow()
+      expect(() => EventV2.ID.make("evtx")).toThrow()
+    }),
+  )
+
+  it.effect("round-trips Session message IDs through creator event IDs", () =>
+    Effect.sync(() => {
+      expect(String(SessionMessage.ID.fromEvent(EventV2.ID.make("evt_custom")))).toBe("msg_custom")
+      expect(String(SessionMessage.ID.toEvent(SessionMessage.ID.make("msg_custom")))).toBe("evt_custom")
+    }),
+  )
+
   it.effect("derives stable namespaced external IDs", () =>
     Effect.sync(() => {
       const input = { namespace: "opencord.agent-input", key: "input-1" }

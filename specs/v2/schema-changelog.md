@@ -6,6 +6,27 @@ This document covers meaningful contract changes introduced on the `feat/opencod
 
 ## Earlier Branch History
 
+### Independent Session Message Identity
+
+Affected schema:
+
+- V2 Session-message IDs and pre-launch `session_input` and `session_message` rows.
+
+Change:
+
+- Separate mutable Session-message identity (`msg_*`) from immutable event-envelope identity (`evt_*`).
+- Derive projected `msg_*` IDs reversibly from creator `evt_*` IDs without changing synchronized event payloads.
+
+Reason:
+
+- Event IDs identify immutable facts. Message IDs identify mutable timeline rows. Reusing one ID hid that boundary and leaked `evt_*` IDs into projected messages.
+- Clients can generate user-message IDs before prompt admission for optimistic rendering and exact retry. Promotion reverses that ID into the creator event ID, and projection derives the original message ID again.
+
+Compatibility:
+
+- The migration resets unreleased workspace-sync events, sequence state, V2 inbox rows, and V2 timeline projections. Canonical V1 `session`, `message`, and `part` history remains untouched.
+- Existing Sessions intentionally lose workspace-warp replayability across this pre-launch cutover until new replayable history is recorded.
+
 ### Replayable Session Event Refinement And Cursor Stream
 
 Affected schema:

@@ -8,7 +8,7 @@ import { Location } from "./location"
 import { externalID, type ExternalID, NonNegativeInt, withStatics } from "./schema"
 import { Identifier } from "./util/identifier"
 
-export const ID = Schema.String.pipe(
+export const ID = Schema.String.check(Schema.isStartsWith("evt_")).pipe(
   Schema.brand("Event.ID"),
   withStatics((schema) => ({
     create: () => schema.make("evt_" + Identifier.ascending()),

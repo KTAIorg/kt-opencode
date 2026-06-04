@@ -1218,30 +1218,30 @@ describe("SessionRunnerLLM", () => {
       const events = yield* EventV2.Service
       yield* session.prompt({ sessionID, prompt: new Prompt({ text: "Recover interrupted tool" }), resume: false })
       yield* SessionInput.promoteSteers((yield* Database.Service).db, events, sessionID)
-      const assistant = yield* events.publish(SessionEvent.Step.Started, {
+      const assistantMessageID = (yield* events.publish(SessionEvent.Step.Started, {
         sessionID,
         timestamp: yield* DateTime.now,
         agent: "build",
         model: { id: ModelV2.ID.make("fake-model"), providerID: ProviderV2.ID.make("fake") },
-      })
+      })).id
       yield* events.publish(SessionEvent.Tool.Input.Started, {
         sessionID,
         timestamp: yield* DateTime.now,
-        assistantMessageID: assistant.id,
+        assistantMessageID,
         callID: "call-interrupted",
         name: "echo",
       })
       yield* events.publish(SessionEvent.Tool.Input.Ended, {
         sessionID,
         timestamp: yield* DateTime.now,
-        assistantMessageID: assistant.id,
+        assistantMessageID,
         callID: "call-interrupted",
         text: '{"text":"stale"}',
       })
       yield* events.publish(SessionEvent.Tool.Called, {
         sessionID,
         timestamp: yield* DateTime.now,
-        assistantMessageID: assistant.id,
+        assistantMessageID,
         callID: "call-interrupted",
         tool: "echo",
         input: { text: "stale" },
@@ -1280,30 +1280,30 @@ describe("SessionRunnerLLM", () => {
         resume: false,
       })
       yield* SessionInput.promoteSteers((yield* Database.Service).db, events, sessionID)
-      const assistant = yield* events.publish(SessionEvent.Step.Started, {
+      const assistantMessageID = (yield* events.publish(SessionEvent.Step.Started, {
         sessionID,
         timestamp: yield* DateTime.now,
         agent: "build",
         model: { id: ModelV2.ID.make("fake-model"), providerID: ProviderV2.ID.make("fake") },
-      })
+      })).id
       yield* events.publish(SessionEvent.Tool.Input.Started, {
         sessionID,
         timestamp: yield* DateTime.now,
-        assistantMessageID: assistant.id,
+        assistantMessageID,
         callID: "call-hosted-interrupted",
         name: "web_search",
       })
       yield* events.publish(SessionEvent.Tool.Input.Ended, {
         sessionID,
         timestamp: yield* DateTime.now,
-        assistantMessageID: assistant.id,
+        assistantMessageID,
         callID: "call-hosted-interrupted",
         text: '{"query":"stale"}',
       })
       yield* events.publish(SessionEvent.Tool.Called, {
         sessionID,
         timestamp: yield* DateTime.now,
-        assistantMessageID: assistant.id,
+        assistantMessageID,
         callID: "call-hosted-interrupted",
         tool: "web_search",
         input: { query: "stale" },
@@ -1338,16 +1338,16 @@ describe("SessionRunnerLLM", () => {
         resume: false,
       })
       yield* SessionInput.promoteSteers((yield* Database.Service).db, events, sessionID)
-      const assistant = yield* events.publish(SessionEvent.Step.Started, {
+      const assistantMessageID = (yield* events.publish(SessionEvent.Step.Started, {
         sessionID,
         timestamp: yield* DateTime.now,
         agent: "build",
         model: { id: ModelV2.ID.make("fake-model"), providerID: ProviderV2.ID.make("fake") },
-      })
+      })).id
       yield* events.publish(SessionEvent.Tool.Input.Started, {
         sessionID,
         timestamp: yield* DateTime.now,
-        assistantMessageID: assistant.id,
+        assistantMessageID,
         callID: "call-pending-interrupted",
         name: "echo",
       })

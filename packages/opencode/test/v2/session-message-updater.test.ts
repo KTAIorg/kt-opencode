@@ -7,6 +7,7 @@ import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { SessionEvent } from "@opencode-ai/core/session/event"
 import { SessionMessageUpdater } from "@opencode-ai/core/session/message-updater"
+import { SessionMessage } from "@opencode-ai/core/session/message"
 import { ToolOutput } from "@opencode-ai/core/tool-output"
 
 test.skip("step snapshots carry over to assistant messages", () => {
@@ -62,10 +63,11 @@ test.skip("step snapshots carry over to assistant messages", () => {
 test.skip("text ended populates assistant text content", () => {
   const state: SessionMessageUpdater.MemoryState = { messages: [] }
   const sessionID = SessionID.make("session")
+  const assistantMessageID = EventV2.ID.create()
 
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
-      id: EventV2.ID.create(),
+      id: assistantMessageID,
       type: "session.next.step.started",
       data: {
         sessionID,
@@ -243,7 +245,7 @@ test.skip("compaction events reduce to compaction message", () => {
 
   expect(state.messages).toHaveLength(1)
   expect(state.messages[0]).toMatchObject({
-    id,
+    id: SessionMessage.ID.fromEvent(id),
     type: "compaction",
     reason: "auto",
     summary: "final summary",
