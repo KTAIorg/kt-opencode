@@ -14,6 +14,24 @@ import { skillHandlers } from "./handlers/v2/skill"
 import { eventHandlers } from "./handlers/v2/event"
 import { agentHandlers } from "./handlers/v2/agent"
 import { healthHandlers } from "./handlers/v2/health"
+import { questionHandlers, sessionQuestionHandlers } from "./handlers/v2/question"
+import { Database } from "@opencode-ai/core/database/database"
+import { EventV2 } from "@opencode-ai/core/event"
+import { ProjectV2 } from "@opencode-ai/core/project"
+import * as SessionExecutionLocal from "@opencode-ai/core/session/execution/local"
+import { SessionProjector } from "@opencode-ai/core/session/projector"
+import { SessionStore } from "@opencode-ai/core/session/store"
+
+const routedSessions = SessionV2.layer.pipe(
+  Layer.provide(SessionProjector.layer),
+  Layer.provide(SessionExecutionLocal.layer),
+  Layer.provide(LocationServiceMap.layer),
+  Layer.provide(SessionStore.layer),
+  Layer.provide(EventV2.layer),
+  Layer.provide(Database.defaultLayer),
+  Layer.provide(ProjectV2.defaultLayer),
+  Layer.orDie,
+)
 
 export const v2Handlers = Layer.mergeAll(
   healthHandlers,
@@ -29,9 +47,11 @@ export const v2Handlers = Layer.mergeAll(
   commandHandlers,
   skillHandlers,
   eventHandlers,
+  questionHandlers,
+  sessionQuestionHandlers,
 ).pipe(
   Layer.provide(v2LocationLayer),
   Layer.provide(LocationServiceMap.layer),
   Layer.provide(PermissionSaved.layer),
-  Layer.provide(SessionV2.defaultLayer),
+  Layer.provide(routedSessions),
 )

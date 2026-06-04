@@ -11,6 +11,7 @@ import { SkillGroup } from "./groups/v2/skill"
 import { EventGroup } from "./groups/v2/event"
 import { AgentGroup } from "./groups/v2/agent"
 import { HealthGroup } from "./groups/v2/health"
+import { QuestionGroup, SessionQuestionGroup } from "./groups/v2/question"
 
 export const V2Api = HttpApi.make("v2")
   .add(HealthGroup)
@@ -26,6 +27,8 @@ export const V2Api = HttpApi.make("v2")
   .add(CommandGroup)
   .add(SkillGroup)
   .add(EventGroup)
+  .add(QuestionGroup)
+  .add(SessionQuestionGroup)
   .annotateMerge(
     OpenApi.annotations({
       title: "opencode experimental HttpApi",

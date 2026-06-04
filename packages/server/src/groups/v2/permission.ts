@@ -8,7 +8,6 @@ import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/un
 import { PermissionNotFoundError, SessionNotFoundError } from "../../errors"
 import { V2Authorization } from "../../middleware/authorization"
 import { LocationQuery, locationQueryOpenApi, V2LocationMiddleware } from "./location"
-import { data } from "./response"
 
 export const PermissionGroup = HttpApiGroup.make("v2.permission")
   .add(
@@ -33,7 +32,7 @@ export const SessionPermissionGroup = HttpApiGroup.make("v2.session.permission")
   .add(
     HttpApiEndpoint.get("sessionPermissionRequests", "/api/session/:sessionID/permission/request", {
       params: { sessionID: SessionV2.ID },
-      success: data(Schema.Array(PermissionV2.Request)),
+      success: Schema.Struct({ data: Schema.Array(PermissionV2.Request) }),
       error: SessionNotFoundError,
     }).annotateMerge(
       OpenApi.annotations({
@@ -69,7 +68,7 @@ export const PermissionSavedGroup = HttpApiGroup.make("v2.permission.saved")
   .add(
     HttpApiEndpoint.get("savedPermissions", "/api/permission/saved", {
       query: Schema.Struct({ projectID: ProjectV2.ID.pipe(Schema.optional) }),
-      success: data(Schema.Array(PermissionSaved.Info)),
+      success: Schema.Struct({ data: Schema.Array(PermissionSaved.Info) }),
     }).annotateMerge(
       OpenApi.annotations({
         identifier: "v2.permission.saved.list",

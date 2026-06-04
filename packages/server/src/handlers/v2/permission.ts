@@ -10,7 +10,6 @@ import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { V2Api } from "../../api"
 import { PermissionNotFoundError, SessionNotFoundError } from "../../errors"
 import { response } from "../../groups/v2/location"
-import { make } from "../../groups/v2/response"
 
 function missingRequest(id: PermissionV2.ID) {
   return new PermissionNotFoundError({ requestID: id, message: `Permission request not found: ${id}` })
@@ -63,7 +62,7 @@ export const sessionPermissionHandlers = HttpApiBuilder.group(V2Api, "v2.session
         "sessionPermissionRequests",
         Effect.fn(function* (ctx) {
           return yield* withSessionPermission(ctx.params.sessionID, (permission) =>
-            permission.forSession(ctx.params.sessionID).pipe(Effect.map(make)),
+            permission.forSession(ctx.params.sessionID).pipe(Effect.map((data) => ({ data }))),
           )
         }),
       )
@@ -93,7 +92,7 @@ export const savedPermissionHandlers = HttpApiBuilder.group(V2Api, "v2.permissio
       .handle(
         "savedPermissions",
         Effect.fn(function* (ctx) {
-          return make(yield* saved.list({ projectID: ctx.query.projectID }))
+          return { data: yield* saved.list({ projectID: ctx.query.projectID }) }
         }),
       )
       .handle(

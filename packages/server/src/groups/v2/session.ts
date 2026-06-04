@@ -1,4 +1,5 @@
 import { SessionMessage } from "@opencode-ai/core/session/message"
+import { SessionInput } from "@opencode-ai/core/session/input"
 import { Prompt } from "@opencode-ai/core/session/prompt"
 import { SessionV2 } from "@opencode-ai/core/session"
 import { ProjectV2 } from "@opencode-ai/core/project"
@@ -7,6 +8,7 @@ import { WorkspaceV2 } from "@opencode-ai/core/workspace"
 import { Schema, Struct } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import {
+  ConflictError,
   InvalidCursorError,
   InvalidRequestError,
   ServiceUnavailableError,
@@ -14,7 +16,6 @@ import {
   UnknownError,
 } from "../../errors"
 import { V2Authorization } from "../../middleware/authorization"
-import { data } from "./response"
 
 const SessionsQueryFields = {
   workspace: WorkspaceV2.ID.pipe(Schema.optional),
@@ -87,13 +88,13 @@ export const SessionGroup = HttpApiGroup.make("v2.session")
   .add(
     HttpApiEndpoint.get("sessions", "/api/session", {
       query: SessionsQuery,
-      success: data(Schema.Struct({
-        items: Schema.Array(SessionV2.Info),
+      success: Schema.Struct({
+        data: Schema.Array(SessionV2.Info),
         cursor: Schema.Struct({
           previous: SessionsCursor.pipe(Schema.optional),
           next: SessionsCursor.pipe(Schema.optional),
         }),
-      }).annotate({ identifier: "V2SessionsResponse" })),
+      }).annotate({ identifier: "V2SessionsResponse" }),
       error: [InvalidCursorError, InvalidRequestError],
     }).annotateMerge(
       OpenApi.annotations({
@@ -108,16 +109,18 @@ export const SessionGroup = HttpApiGroup.make("v2.session")
     HttpApiEndpoint.post("prompt", "/api/session/:sessionID/prompt", {
       params: { sessionID: SessionV2.ID },
       payload: Schema.Struct({
+        id: SessionMessage.ID.pipe(Schema.optional),
         prompt: Prompt,
-        delivery: SessionV2.Delivery.pipe(Schema.optional),
+        delivery: SessionInput.Delivery.pipe(Schema.optional),
+        resume: Schema.Boolean.pipe(Schema.optional),
       }),
-      success: data(SessionMessage.Message),
-      error: [SessionNotFoundError, ServiceUnavailableError],
+      success: Schema.Struct({ data: SessionMessage.User }),
+      error: [ConflictError, SessionNotFoundError],
     }).annotateMerge(
       OpenApi.annotations({
         identifier: "v2.session.prompt",
         summary: "Send v2 message",
-        description: "Create a v2 session message and queue it for the agent loop.",
+        description: "Durably admit one v2 session input and schedule agent-loop execution unless resume is false.",
       }),
     ),
   )
@@ -150,7 +153,7 @@ export const SessionGroup = HttpApiGroup.make("v2.session")
   .add(
     HttpApiEndpoint.get("context", "/api/session/:sessionID/context", {
       params: { sessionID: SessionV2.ID },
-      success: data(Schema.Array(SessionMessage.Message)),
+      success: Schema.Struct({ data: Schema.Array(SessionMessage.Message) }),
       error: [SessionNotFoundError, UnknownError],
     }).annotateMerge(
       OpenApi.annotations({

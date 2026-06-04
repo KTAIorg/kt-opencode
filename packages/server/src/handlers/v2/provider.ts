@@ -1,5 +1,6 @@
 import { Catalog } from "@opencode-ai/core/catalog"
 import { PluginBoot } from "@opencode-ai/core/plugin/boot"
+import { ProviderV2 } from "@opencode-ai/core/provider"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { V2Api } from "../../api"

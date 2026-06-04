@@ -16,6 +16,15 @@ export class UnauthorizedError extends Schema.TaggedErrorClass<UnauthorizedError
   { httpApiStatus: 401 },
 ) {}
 
+export class ConflictError extends Schema.TaggedErrorClass<ConflictError>()(
+  "ConflictError",
+  {
+    message: Schema.String,
+    resource: Schema.optional(Schema.String),
+  },
+  { httpApiStatus: 409 },
+) {}
+
 export class ServiceUnavailableError extends Schema.TaggedErrorClass<ServiceUnavailableError>()(
   "ServiceUnavailableError",
   {
@@ -60,6 +69,15 @@ export class InvalidCursorError extends Schema.TaggedErrorClass<InvalidCursorErr
 
 export class PermissionNotFoundError extends Schema.TaggedErrorClass<PermissionNotFoundError>()(
   "PermissionNotFoundError",
+  {
+    requestID: Schema.String,
+    message: Schema.String,
+  },
+  { httpApiStatus: 404 },
+) {}
+
+export class QuestionNotFoundError extends Schema.TaggedErrorClass<QuestionNotFoundError>()(
+  "QuestionNotFoundError",
   {
     requestID: Schema.String,
     message: Schema.String,

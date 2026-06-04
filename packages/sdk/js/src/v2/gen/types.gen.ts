@@ -46,17 +46,21 @@ export type Event =
   | EventSessionError
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
-  | EventPermissionV2Asked
-  | EventPermissionV2Replied
   | EventFileEdited
   | EventAccountAdded
   | EventAccountRemoved
   | EventAccountSwitched
+  | EventPermissionV2Asked
+  | EventPermissionV2Replied
   | EventFileWatcherUpdated
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited
   | EventPtyDeleted
+  | EventQuestionV2Asked
+  | EventQuestionV2Replied
+  | EventQuestionV2Rejected
+  | EventTodoUpdated
   | EventLspUpdated
   | EventPermissionAsked
   | EventPermissionReplied
@@ -75,7 +79,6 @@ export type Event =
   | EventSessionStatus
   | EventSessionIdle
   | EventSessionCompacted
-  | EventTodoUpdated
   | EventVcsBranchUpdated
   | EventWorktreeReady
   | EventWorktreeFailed
@@ -631,6 +634,21 @@ export type Pty = {
   pid: number
 }
 
+export type Todo = {
+  /**
+   * Brief description of the task
+   */
+  content: string
+  /**
+   * Current status of the task: pending, in_progress, completed, cancelled
+   */
+  status: string
+  /**
+   * Priority level of the task: high, medium, low
+   */
+  priority: string
+}
+
 export type QuestionOption = {
   /**
    * Display text (1-5 words, concise)
@@ -687,21 +705,6 @@ export type SessionStatus =
   | {
       type: "busy"
     }
-
-export type Todo = {
-  /**
-   * Brief description of the task
-   */
-  content: string
-  /**
-   * Current status of the task: pending, in_progress, completed, cancelled
-   */
-  status: string
-  /**
-   * Priority level of the task: high, medium, low
-   */
-  priority: string
-}
 
 export type GlobalEvent = {
   directory: string
@@ -816,6 +819,7 @@ export type GlobalEvent = {
           timestamp: number
           sessionID: string
           prompt: Prompt
+          delivery: "steer" | "queue"
         }
       }
     | {
@@ -868,6 +872,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          assistantMessageID: string
           finish: string
           cost: number
           tokens: {
@@ -888,6 +893,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          assistantMessageID: string
           error: SessionErrorUnknown
         }
       }
@@ -897,6 +903,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          textID: string
         }
       }
     | {
@@ -905,6 +912,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          textID: string
           delta: string
         }
       }
@@ -914,6 +922,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          textID: string
           text: string
         }
       }
@@ -924,6 +933,11 @@ export type GlobalEvent = {
           timestamp: number
           sessionID: string
           reasoningID: string
+          providerMetadata?: {
+            [key: string]: {
+              [key: string]: unknown
+            }
+          }
         }
       }
     | {
@@ -944,6 +958,11 @@ export type GlobalEvent = {
           sessionID: string
           reasoningID: string
           text: string
+          providerMetadata?: {
+            [key: string]: {
+              [key: string]: unknown
+            }
+          }
         }
       }
     | {
@@ -952,6 +971,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          assistantMessageID: string
           callID: string
           name: string
         }
@@ -962,6 +982,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          assistantMessageID: string
           callID: string
           delta: string
         }
@@ -972,6 +993,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          assistantMessageID: string
           callID: string
           text: string
         }
@@ -982,6 +1004,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          assistantMessageID: string
           callID: string
           tool: string
           input: {
@@ -990,7 +1013,9 @@ export type GlobalEvent = {
           provider: {
             executed: boolean
             metadata?: {
-              [key: string]: unknown
+              [key: string]: {
+                [key: string]: unknown
+              }
             }
           }
         }
@@ -1001,6 +1026,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          assistantMessageID: string
           callID: string
           structured: {
             [key: string]: unknown
@@ -1014,15 +1040,19 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          assistantMessageID: string
           callID: string
           structured: {
             [key: string]: unknown
           }
           content: Array<ToolTextContent | ToolFileContent>
+          result?: unknown
           provider: {
             executed: boolean
             metadata?: {
-              [key: string]: unknown
+              [key: string]: {
+                [key: string]: unknown
+              }
             }
           }
         }
@@ -1033,12 +1063,16 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          assistantMessageID: string
           callID: string
           error: SessionErrorUnknown
+          result?: unknown
           provider: {
             executed: boolean
             metadata?: {
-              [key: string]: unknown
+              [key: string]: {
+                [key: string]: unknown
+              }
             }
           }
         }
@@ -1131,30 +1165,6 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "permission.v2.asked"
-        properties: {
-          id: string
-          sessionID: string
-          action: string
-          resources: Array<string>
-          save?: Array<string>
-          metadata?: {
-            [key: string]: unknown
-          }
-          source?: PermissionV2Source
-        }
-      }
-    | {
-        id: string
-        type: "permission.v2.replied"
-        properties: {
-          sessionID: string
-          requestID: string
-          reply: PermissionV2Reply
-        }
-      }
-    | {
-        id: string
         type: "file.edited"
         properties: {
           file: string
@@ -1181,6 +1191,30 @@ export type GlobalEvent = {
           serviceID: string
           from?: string
           to?: string
+        }
+      }
+    | {
+        id: string
+        type: "permission.v2.asked"
+        properties: {
+          id: string
+          sessionID: string
+          action: string
+          resources: Array<string>
+          save?: Array<string>
+          metadata?: {
+            [key: string]: unknown
+          }
+          source?: PermissionV2Source
+        }
+      }
+    | {
+        id: string
+        type: "permission.v2.replied"
+        properties: {
+          sessionID: string
+          requestID: string
+          reply: PermissionV2Reply
         }
       }
     | {
@@ -1218,6 +1252,44 @@ export type GlobalEvent = {
         type: "pty.deleted"
         properties: {
           id: string
+        }
+      }
+    | {
+        id: string
+        type: "question.v2.asked"
+        properties: {
+          id: string
+          sessionID: string
+          /**
+           * Questions to ask
+           */
+          questions: Array<QuestionV2Info>
+          tool?: QuestionV2Tool
+        }
+      }
+    | {
+        id: string
+        type: "question.v2.replied"
+        properties: {
+          sessionID: string
+          requestID: string
+          answers: Array<QuestionV2Answer>
+        }
+      }
+    | {
+        id: string
+        type: "question.v2.rejected"
+        properties: {
+          sessionID: string
+          requestID: string
+        }
+      }
+    | {
+        id: string
+        type: "todo.updated"
+        properties: {
+          sessionID: string
+          todos: Array<Todo>
         }
       }
     | {
@@ -1418,14 +1490,6 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "todo.updated"
-        properties: {
-          sessionID: string
-          todos: Array<Todo>
-        }
-      }
-    | {
-        id: string
         type: "vcs.branch.updated"
         properties: {
           branch?: string
@@ -1500,13 +1564,10 @@ export type GlobalEvent = {
     | SyncEventSessionNextStepEnded
     | SyncEventSessionNextStepFailed
     | SyncEventSessionNextTextStarted
-    | SyncEventSessionNextTextDelta
     | SyncEventSessionNextTextEnded
     | SyncEventSessionNextReasoningStarted
-    | SyncEventSessionNextReasoningDelta
     | SyncEventSessionNextReasoningEnded
     | SyncEventSessionNextToolInputStarted
-    | SyncEventSessionNextToolInputDelta
     | SyncEventSessionNextToolInputEnded
     | SyncEventSessionNextToolCalled
     | SyncEventSessionNextToolProgress
@@ -2581,7 +2642,7 @@ export type UnauthorizedError = {
 }
 
 export type V2SessionsResponse = {
-  items: Array<SessionV2Info>
+  data: Array<SessionV2Info>
   cursor: {
     previous?: string
     next?: string
@@ -2591,6 +2652,12 @@ export type V2SessionsResponse = {
 export type InvalidCursorError = {
   _tag: "InvalidCursorError"
   message: string
+}
+
+export type ConflictError = {
+  _tag: "ConflictError"
+  message: string
+  resource?: string
 }
 
 export type SessionNotFoundError = {
@@ -2612,7 +2679,7 @@ export type UnknownError1 = {
 }
 
 export type V2SessionMessagesResponse = {
-  items: Array<SessionMessage>
+  data: Array<SessionMessage>
   cursor: {
     previous?: string
     next?: string
@@ -2797,7 +2864,19 @@ export type ToolTextContent = {
 
 export type ToolFileContent = {
   type: "file"
-  uri: string
+  source:
+    | {
+        type: "data"
+        data: string
+      }
+    | {
+        type: "url"
+        url: string
+      }
+    | {
+        type: "file"
+        uri: string
+      }
   mime: string
   name?: string
 }
@@ -2814,14 +2893,6 @@ export type SessionNextRetryError = {
     [key: string]: string
   }
 }
-
-export type PermissionV2Source = {
-  type: "tool"
-  messageID: string
-  callID: string
-}
-
-export type PermissionV2Reply = "once" | "always" | "reject"
 
 export type AuthOAuthCredential = {
   type: "oauth"
@@ -2846,6 +2917,49 @@ export type AuthInfo = {
   description: string
   credential: AuthCredential
 }
+
+export type PermissionV2Source = {
+  type: "tool"
+  messageID: string
+  callID: string
+}
+
+export type PermissionV2Reply = "once" | "always" | "reject"
+
+export type QuestionV2Option = {
+  /**
+   * Display text (1-5 words, concise)
+   */
+  label: string
+  /**
+   * Explanation of choice
+   */
+  description: string
+}
+
+export type QuestionV2Info = {
+  /**
+   * Complete question
+   */
+  question: string
+  /**
+   * Very short label (max 30 chars)
+   */
+  header: string
+  /**
+   * Available choices
+   */
+  options: Array<QuestionV2Option>
+  multiple?: boolean
+  custom?: boolean
+}
+
+export type QuestionV2Tool = {
+  messageID: string
+  callID: string
+}
+
+export type QuestionV2Answer = Array<string>
 
 export type EventServerInstanceDisposed = {
   id: string
@@ -3010,6 +3124,7 @@ export type SyncEventSessionNextPrompted = {
       timestamp: number
       sessionID: string
       prompt: Prompt
+      delivery: "steer" | "queue"
     }
   }
 }
@@ -3090,13 +3205,14 @@ export type SyncEventSessionNextStepEnded = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "session.next.step.ended.1"
+    type: "session.next.step.ended.2"
     id: string
     seq: number
     aggregateID: string
     data: {
       timestamp: number
       sessionID: string
+      assistantMessageID: string
       finish: string
       cost: number
       tokens: {
@@ -3117,13 +3233,14 @@ export type SyncEventSessionNextStepFailed = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "session.next.step.failed.1"
+    type: "session.next.step.failed.2"
     id: string
     seq: number
     aggregateID: string
     data: {
       timestamp: number
       sessionID: string
+      assistantMessageID: string
       error: SessionErrorUnknown
     }
   }
@@ -3140,22 +3257,7 @@ export type SyncEventSessionNextTextStarted = {
     data: {
       timestamp: number
       sessionID: string
-    }
-  }
-}
-
-export type SyncEventSessionNextTextDelta = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "session.next.text.delta.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      timestamp: number
-      sessionID: string
-      delta: string
+      textID: string
     }
   }
 }
@@ -3171,6 +3273,7 @@ export type SyncEventSessionNextTextEnded = {
     data: {
       timestamp: number
       sessionID: string
+      textID: string
       text: string
     }
   }
@@ -3188,23 +3291,11 @@ export type SyncEventSessionNextReasoningStarted = {
       timestamp: number
       sessionID: string
       reasoningID: string
-    }
-  }
-}
-
-export type SyncEventSessionNextReasoningDelta = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "session.next.reasoning.delta.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      timestamp: number
-      sessionID: string
-      reasoningID: string
-      delta: string
+      providerMetadata?: {
+        [key: string]: {
+          [key: string]: unknown
+        }
+      }
     }
   }
 }
@@ -3222,6 +3313,11 @@ export type SyncEventSessionNextReasoningEnded = {
       sessionID: string
       reasoningID: string
       text: string
+      providerMetadata?: {
+        [key: string]: {
+          [key: string]: unknown
+        }
+      }
     }
   }
 }
@@ -3237,25 +3333,9 @@ export type SyncEventSessionNextToolInputStarted = {
     data: {
       timestamp: number
       sessionID: string
+      assistantMessageID: string
       callID: string
       name: string
-    }
-  }
-}
-
-export type SyncEventSessionNextToolInputDelta = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "session.next.tool.input.delta.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      timestamp: number
-      sessionID: string
-      callID: string
-      delta: string
     }
   }
 }
@@ -3271,6 +3351,7 @@ export type SyncEventSessionNextToolInputEnded = {
     data: {
       timestamp: number
       sessionID: string
+      assistantMessageID: string
       callID: string
       text: string
     }
@@ -3288,6 +3369,7 @@ export type SyncEventSessionNextToolCalled = {
     data: {
       timestamp: number
       sessionID: string
+      assistantMessageID: string
       callID: string
       tool: string
       input: {
@@ -3296,7 +3378,9 @@ export type SyncEventSessionNextToolCalled = {
       provider: {
         executed: boolean
         metadata?: {
-          [key: string]: unknown
+          [key: string]: {
+            [key: string]: unknown
+          }
         }
       }
     }
@@ -3314,6 +3398,7 @@ export type SyncEventSessionNextToolProgress = {
     data: {
       timestamp: number
       sessionID: string
+      assistantMessageID: string
       callID: string
       structured: {
         [key: string]: unknown
@@ -3334,15 +3419,19 @@ export type SyncEventSessionNextToolSuccess = {
     data: {
       timestamp: number
       sessionID: string
+      assistantMessageID: string
       callID: string
       structured: {
         [key: string]: unknown
       }
       content: Array<ToolTextContent | ToolFileContent>
+      result?: unknown
       provider: {
         executed: boolean
         metadata?: {
-          [key: string]: unknown
+          [key: string]: {
+            [key: string]: unknown
+          }
         }
       }
     }
@@ -3360,12 +3449,16 @@ export type SyncEventSessionNextToolFailed = {
     data: {
       timestamp: number
       sessionID: string
+      assistantMessageID: string
       callID: string
       error: SessionErrorUnknown
+      result?: unknown
       provider: {
         executed: boolean
         metadata?: {
-          [key: string]: unknown
+          [key: string]: {
+            [key: string]: unknown
+          }
         }
       }
     }
@@ -3530,7 +3623,20 @@ export type SessionV2Info = {
   subpath?: string
 }
 
-export type SessionDelivery = "immediate" | "deferred"
+export type SessionMessageUser = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  time: {
+    created: number
+  }
+  text: string
+  files?: Array<PromptFileAttachment>
+  agents?: Array<PromptAgentAttachment>
+  references?: Array<PromptReferenceAttachment>
+  type: "user"
+}
 
 export type SessionMessageAgentSwitched = {
   id: string
@@ -3558,21 +3664,6 @@ export type SessionMessageModelSwitched = {
     providerID: string
     variant?: string
   }
-}
-
-export type SessionMessageUser = {
-  id: string
-  metadata?: {
-    [key: string]: unknown
-  }
-  time: {
-    created: number
-  }
-  text: string
-  files?: Array<PromptFileAttachment>
-  agents?: Array<PromptAgentAttachment>
-  references?: Array<PromptReferenceAttachment>
-  type: "user"
 }
 
 export type SessionMessageSynthetic = {
@@ -3605,6 +3696,7 @@ export type SessionMessageShell = {
 
 export type SessionMessageAssistantText = {
   type: "text"
+  id: string
   text: string
 }
 
@@ -3612,6 +3704,11 @@ export type SessionMessageAssistantReasoning = {
   type: "reasoning"
   id: string
   text: string
+  providerMetadata?: {
+    [key: string]: {
+      [key: string]: unknown
+    }
+  }
 }
 
 export type SessionMessageToolStatePending = {
@@ -3640,6 +3737,7 @@ export type SessionMessageToolStateCompleted = {
   structured: {
     [key: string]: unknown
   }
+  result?: unknown
 }
 
 export type SessionMessageToolStateError = {
@@ -3652,6 +3750,7 @@ export type SessionMessageToolStateError = {
     [key: string]: unknown
   }
   error: SessionErrorUnknown
+  result?: unknown
 }
 
 export type SessionMessageAssistantTool = {
@@ -3661,7 +3760,14 @@ export type SessionMessageAssistantTool = {
   provider?: {
     executed: boolean
     metadata?: {
-      [key: string]: unknown
+      [key: string]: {
+        [key: string]: unknown
+      }
+    }
+    resultMetadata?: {
+      [key: string]: {
+        [key: string]: unknown
+      }
     }
   }
   state:
@@ -3800,20 +3906,20 @@ export type PermissionSavedInfo = {
   resource: string
 }
 
-export type LocationFileSystemTextContent = {
+export type FileSystemTextContent = {
   type: "text"
   content: string
   mime: string
 }
 
-export type LocationFileSystemBinaryContent = {
+export type FileSystemBinaryContent = {
   type: "binary"
   content: string
   encoding: "base64"
   mime: string
 }
 
-export type LocationFileSystemEntry = {
+export type FileSystemEntry = {
   path: string
   uri: string
   type: "file" | "directory"
@@ -3839,6 +3945,23 @@ export type SkillV2Info = {
   slash?: boolean
   location: string
   content: string
+}
+
+export type QuestionV2Request = {
+  id: string
+  sessionID: string
+  /**
+   * Questions to ask
+   */
+  questions: Array<QuestionV2Info>
+  tool?: QuestionV2Tool
+}
+
+export type QuestionV2Reply = {
+  /**
+   * User answers in order of questions (each answer is an array of selected labels)
+   */
+  answers: Array<QuestionV2Answer>
 }
 
 export type EventModelsDevRefreshed = {
@@ -4031,6 +4154,7 @@ export type EventSessionNextPrompted = {
     timestamp: number
     sessionID: string
     prompt: Prompt
+    delivery: "steer" | "queue"
   }
 }
 
@@ -4088,6 +4212,7 @@ export type EventSessionNextStepEnded = {
   properties: {
     timestamp: number
     sessionID: string
+    assistantMessageID: string
     finish: string
     cost: number
     tokens: {
@@ -4109,6 +4234,7 @@ export type EventSessionNextStepFailed = {
   properties: {
     timestamp: number
     sessionID: string
+    assistantMessageID: string
     error: SessionErrorUnknown
   }
 }
@@ -4119,6 +4245,7 @@ export type EventSessionNextTextStarted = {
   properties: {
     timestamp: number
     sessionID: string
+    textID: string
   }
 }
 
@@ -4128,6 +4255,7 @@ export type EventSessionNextTextDelta = {
   properties: {
     timestamp: number
     sessionID: string
+    textID: string
     delta: string
   }
 }
@@ -4138,6 +4266,7 @@ export type EventSessionNextTextEnded = {
   properties: {
     timestamp: number
     sessionID: string
+    textID: string
     text: string
   }
 }
@@ -4149,6 +4278,11 @@ export type EventSessionNextReasoningStarted = {
     timestamp: number
     sessionID: string
     reasoningID: string
+    providerMetadata?: {
+      [key: string]: {
+        [key: string]: unknown
+      }
+    }
   }
 }
 
@@ -4171,6 +4305,11 @@ export type EventSessionNextReasoningEnded = {
     sessionID: string
     reasoningID: string
     text: string
+    providerMetadata?: {
+      [key: string]: {
+        [key: string]: unknown
+      }
+    }
   }
 }
 
@@ -4180,6 +4319,7 @@ export type EventSessionNextToolInputStarted = {
   properties: {
     timestamp: number
     sessionID: string
+    assistantMessageID: string
     callID: string
     name: string
   }
@@ -4191,6 +4331,7 @@ export type EventSessionNextToolInputDelta = {
   properties: {
     timestamp: number
     sessionID: string
+    assistantMessageID: string
     callID: string
     delta: string
   }
@@ -4202,6 +4343,7 @@ export type EventSessionNextToolInputEnded = {
   properties: {
     timestamp: number
     sessionID: string
+    assistantMessageID: string
     callID: string
     text: string
   }
@@ -4213,6 +4355,7 @@ export type EventSessionNextToolCalled = {
   properties: {
     timestamp: number
     sessionID: string
+    assistantMessageID: string
     callID: string
     tool: string
     input: {
@@ -4221,7 +4364,9 @@ export type EventSessionNextToolCalled = {
     provider: {
       executed: boolean
       metadata?: {
-        [key: string]: unknown
+        [key: string]: {
+          [key: string]: unknown
+        }
       }
     }
   }
@@ -4233,6 +4378,7 @@ export type EventSessionNextToolProgress = {
   properties: {
     timestamp: number
     sessionID: string
+    assistantMessageID: string
     callID: string
     structured: {
       [key: string]: unknown
@@ -4247,15 +4393,19 @@ export type EventSessionNextToolSuccess = {
   properties: {
     timestamp: number
     sessionID: string
+    assistantMessageID: string
     callID: string
     structured: {
       [key: string]: unknown
     }
     content: Array<ToolTextContent | ToolFileContent>
+    result?: unknown
     provider: {
       executed: boolean
       metadata?: {
-        [key: string]: unknown
+        [key: string]: {
+          [key: string]: unknown
+        }
       }
     }
   }
@@ -4267,12 +4417,16 @@ export type EventSessionNextToolFailed = {
   properties: {
     timestamp: number
     sessionID: string
+    assistantMessageID: string
     callID: string
     error: SessionErrorUnknown
+    result?: unknown
     provider: {
       executed: boolean
       metadata?: {
-        [key: string]: unknown
+        [key: string]: {
+          [key: string]: unknown
+        }
       }
     }
   }
@@ -4373,32 +4527,6 @@ export type EventInstallationUpdateAvailable = {
   }
 }
 
-export type EventPermissionV2Asked = {
-  id: string
-  type: "permission.v2.asked"
-  properties: {
-    id: string
-    sessionID: string
-    action: string
-    resources: Array<string>
-    save?: Array<string>
-    metadata?: {
-      [key: string]: unknown
-    }
-    source?: PermissionV2Source
-  }
-}
-
-export type EventPermissionV2Replied = {
-  id: string
-  type: "permission.v2.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: PermissionV2Reply
-  }
-}
-
 export type EventFileEdited = {
   id: string
   type: "file.edited"
@@ -4430,6 +4558,32 @@ export type EventAccountSwitched = {
     serviceID: string
     from?: string
     to?: string
+  }
+}
+
+export type EventPermissionV2Asked = {
+  id: string
+  type: "permission.v2.asked"
+  properties: {
+    id: string
+    sessionID: string
+    action: string
+    resources: Array<string>
+    save?: Array<string>
+    metadata?: {
+      [key: string]: unknown
+    }
+    source?: PermissionV2Source
+  }
+}
+
+export type EventPermissionV2Replied = {
+  id: string
+  type: "permission.v2.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    reply: PermissionV2Reply
   }
 }
 
@@ -4472,6 +4626,48 @@ export type EventPtyDeleted = {
   type: "pty.deleted"
   properties: {
     id: string
+  }
+}
+
+export type EventQuestionV2Asked = {
+  id: string
+  type: "question.v2.asked"
+  properties: {
+    id: string
+    sessionID: string
+    /**
+     * Questions to ask
+     */
+    questions: Array<QuestionV2Info>
+    tool?: QuestionV2Tool
+  }
+}
+
+export type EventQuestionV2Replied = {
+  id: string
+  type: "question.v2.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    answers: Array<QuestionV2Answer>
+  }
+}
+
+export type EventQuestionV2Rejected = {
+  id: string
+  type: "question.v2.rejected"
+  properties: {
+    sessionID: string
+    requestID: string
+  }
+}
+
+export type EventTodoUpdated = {
+  id: string
+  type: "todo.updated"
+  properties: {
+    sessionID: string
+    todos: Array<Todo>
   }
 }
 
@@ -4631,15 +4827,6 @@ export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
     sessionID: string
-  }
-}
-
-export type EventTodoUpdated = {
-  id: string
-  type: "todo.updated"
-  properties: {
-    sessionID: string
-    todos: Array<Todo>
   }
 }
 
@@ -8939,19 +9126,19 @@ export type V2SessionListError = V2SessionListErrors[keyof V2SessionListErrors]
 
 export type V2SessionListResponses = {
   /**
-   * Success
+   * V2SessionsResponse
    */
-  200: {
-    data: V2SessionsResponse
-  }
+  200: V2SessionsResponse
 }
 
 export type V2SessionListResponse = V2SessionListResponses[keyof V2SessionListResponses]
 
 export type V2SessionPromptData = {
-  body?: {
+  body: {
+    id?: string
     prompt: Prompt
-    delivery?: SessionDelivery
+    delivery?: "steer" | "queue"
+    resume?: boolean
   }
   path: {
     sessionID: string
@@ -8974,9 +9161,9 @@ export type V2SessionPromptErrors = {
    */
   404: SessionNotFoundError
   /**
-   * ServiceUnavailableError
+   * ConflictError
    */
-  503: ServiceUnavailableError
+  409: ConflictError
 }
 
 export type V2SessionPromptError = V2SessionPromptErrors[keyof V2SessionPromptErrors]
@@ -8986,7 +9173,7 @@ export type V2SessionPromptResponses = {
    * Success
    */
   200: {
-    data: SessionMessage
+    data: SessionMessageUser
   }
 }
 
@@ -9150,11 +9337,9 @@ export type V2SessionMessagesError = V2SessionMessagesErrors[keyof V2SessionMess
 
 export type V2SessionMessagesResponses = {
   /**
-   * Success
+   * V2SessionMessagesResponse
    */
-  200: {
-    data: V2SessionMessagesResponse
-  }
+  200: V2SessionMessagesResponse
 }
 
 export type V2SessionMessagesResponse2 = V2SessionMessagesResponses[keyof V2SessionMessagesResponses]
@@ -9363,7 +9548,7 @@ export type V2SessionPermissionListResponses = {
 export type V2SessionPermissionListResponse = V2SessionPermissionListResponses[keyof V2SessionPermissionListResponses]
 
 export type V2SessionPermissionReplyData = {
-  body?: {
+  body: {
     reply: PermissionV2Reply
     message?: string
   }
@@ -9499,7 +9684,7 @@ export type V2FsReadResponses = {
    */
   200: {
     location: LocationInfo
-    data: LocationFileSystemTextContent | LocationFileSystemBinaryContent
+    data: FileSystemTextContent | FileSystemBinaryContent
   }
 }
 
@@ -9538,7 +9723,7 @@ export type V2FsListResponses = {
    */
   200: {
     location: LocationInfo
-    data: Array<LocationFileSystemEntry>
+    data: Array<FileSystemEntry>
   }
 }
 
@@ -9651,6 +9836,115 @@ export type V2EventSubscribeResponses = {
 }
 
 export type V2EventSubscribeResponse = V2EventSubscribeResponses[keyof V2EventSubscribeResponses]
+
+export type V2QuestionRequestListData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string
+      workspace?: string
+    }
+  }
+  url: "/api/question/request"
+}
+
+export type V2QuestionRequestListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2QuestionRequestListError = V2QuestionRequestListErrors[keyof V2QuestionRequestListErrors]
+
+export type V2QuestionRequestListResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo
+    data: Array<QuestionV2Request>
+  }
+}
+
+export type V2QuestionRequestListResponse = V2QuestionRequestListResponses[keyof V2QuestionRequestListResponses]
+
+export type V2SessionQuestionReplyData = {
+  body: QuestionV2Reply
+  path: {
+    sessionID: string
+    requestID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/question/request/{requestID}/reply"
+}
+
+export type V2SessionQuestionReplyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError | QuestionNotFoundError
+   */
+  404: SessionNotFoundError | QuestionNotFoundError
+}
+
+export type V2SessionQuestionReplyError = V2SessionQuestionReplyErrors[keyof V2SessionQuestionReplyErrors]
+
+export type V2SessionQuestionReplyResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2SessionQuestionReplyResponse = V2SessionQuestionReplyResponses[keyof V2SessionQuestionReplyResponses]
+
+export type V2SessionQuestionRejectData = {
+  body?: never
+  path: {
+    sessionID: string
+    requestID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/question/request/{requestID}/reject"
+}
+
+export type V2SessionQuestionRejectErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError | QuestionNotFoundError
+   */
+  404: SessionNotFoundError | QuestionNotFoundError
+}
+
+export type V2SessionQuestionRejectError = V2SessionQuestionRejectErrors[keyof V2SessionQuestionRejectErrors]
+
+export type V2SessionQuestionRejectResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2SessionQuestionRejectResponse = V2SessionQuestionRejectResponses[keyof V2SessionQuestionRejectResponses]
 
 export type PtyConnectData = {
   body?: never

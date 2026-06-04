@@ -33,6 +33,7 @@ import {
 import { color, printHeader, printResults } from "./report"
 import { coverageResult, parseOptions, routeKey, routeKeys, selectedScenarios } from "./routing"
 import { runScenario } from "./runner"
+import { disposeApps } from "./backend"
 import { runtime } from "./runtime"
 import { type Scenario } from "./types"
 
@@ -656,7 +657,8 @@ const scenarios: Scenario[] = [
     .get("/api/provider/{providerID}", "v2.provider.get")
     .at((ctx) => ({ path: route("/api/provider/{providerID}", { providerID: "missing" }), headers: ctx.headers() }))
     .json(404, object, "status"),
-  http.protected.get("/api/permission/request", "v2.permission.request.list").json(200, locationData(array)),
+  http.protected.get("/api/permission/request", "v2.permission.request.list").json(200, array),
+  http.protected.get("/api/question/request", "v2.question.request.list").json(200, array),
   http.protected
     .get("/api/session/{sessionID}/permission/request", "v2.session.permission.list")
     .seeded((ctx) => ctx.session({ title: "Permission list owner" }))
@@ -677,7 +679,30 @@ const scenarios: Scenario[] = [
       body: { reply: "once" },
     }))
     .json(404, object, "status"),
-  http.protected.get("/api/permission/saved", "v2.permission.saved.list").json(200, data(array)),
+  http.protected
+    .post("/api/session/{sessionID}/question/request/{requestID}/reply", "v2.session.question.reply")
+    .seeded((ctx) => ctx.session({ title: "Question reply owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/question/request/{requestID}/reply", {
+        sessionID: ctx.state.id,
+        requestID: "que_httpapi_missing",
+      }),
+      headers: ctx.headers(),
+      body: { answers: [] },
+    }))
+    .json(404, object, "status"),
+  http.protected
+    .post("/api/session/{sessionID}/question/request/{requestID}/reject", "v2.session.question.reject")
+    .seeded((ctx) => ctx.session({ title: "Question reject owner" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/question/request/{requestID}/reject", {
+        sessionID: ctx.state.id,
+        requestID: "que_httpapi_missing",
+      }),
+      headers: ctx.headers(),
+    }))
+    .json(404, object, "status"),
+  http.protected.get("/api/permission/saved", "v2.permission.saved.list").json(200, array),
   http.protected
     .delete("/api/permission/saved/{id}", "v2.permission.saved.remove")
     .at((ctx) => ({ path: route("/api/permission/saved/{id}", { id: "psv_httpapi_missing" }), headers: ctx.headers() }))
@@ -1432,7 +1457,7 @@ const llmScenarios = new Set([
 ])
 
 const main = Effect.gen(function* () {
-  yield* Effect.addFinalizer(() => cleanupExercisePaths)
+  yield* Effect.addFinalizer(() => Effect.promise(() => disposeApps()).pipe(Effect.andThen(cleanupExercisePaths)))
   const options = parseOptions(Bun.argv.slice(2))
   const modules = yield* Effect.promise(() => runtime())
   const effectRoutes = routeKeys(OpenApi.fromApi(modules.PublicApi))
