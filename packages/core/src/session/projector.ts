@@ -406,6 +406,7 @@ export const layer = Layer.effectDiscard(
         )
       }),
     )
+    yield* events.project(SessionEvent.Run.Failed, () => Effect.void)
     yield* events.project(SessionEvent.InterruptRequested, () => Effect.void)
     // TODO: Reconstruct context epoch replacement state during replay without adding replay state to every EventV2 payload.
     yield* events.project(SessionEvent.ContextUpdated, (event) => run(db, event))
