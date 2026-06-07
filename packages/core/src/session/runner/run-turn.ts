@@ -96,8 +96,10 @@ export const make = Effect.gen(function* () {
   /**
    * Promotes admitted input and builds one coherent immutable request snapshot.
    *
-   * Rebuild transitions before promotion preserve the requested delivery;
-   * transitions after promotion clear it so queued input cannot be promoted twice.
+   * If initialization becomes stale before input is promoted, the rebuilt
+   * attempt must still perform that promotion. Once promotion has completed,
+   * later rebuilds read it from durable history instead of promoting again;
+   * repeating a queue promotion could open the next queued prompt too early.
    */
   const prepareTurn = Effect.fn("SessionRunner.prepareTurn")(function* (
     sessionID: SessionSchema.ID,
