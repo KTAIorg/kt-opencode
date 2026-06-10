@@ -48,7 +48,9 @@ export const Plugin = PluginV2.define({
               if (config.capabilities !== undefined) {
                 model.capabilities = {
                   tools: config.capabilities.tools,
-                  reasoningOptions: config.capabilities.reasoningOptions?.map((option) => ({ ...option })),
+                  reasoningOptions: config.capabilities.reasoningOptions?.map((option) =>
+                    option.type === "effort" ? { ...option, values: [...option.values] } : { ...option },
+                  ),
                   input: [...config.capabilities.input],
                   output: [...config.capabilities.output],
                 }

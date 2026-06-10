@@ -1287,7 +1287,9 @@ test("mode cost preserves over-200k pricing from base model", () => {
 
 test("models.dev normalization fills required response fields", () => {
   const reasoningOptions: ModelsDev.ReasoningOption[] = [
+    { type: "toggle" },
     { type: "effort", values: [null, "low", "ultrathink"], default: "low" },
+    { type: "budget_tokens", min: 1024, future: true },
     { type: "future_dynamic_budget", curve: { min: 1, max: 10 } },
   ]
   const provider = {
@@ -1310,7 +1312,11 @@ test("models.dev normalization fills required response fields", () => {
   expect(model.api.url).toBe("")
   expect(model.capabilities.temperature).toBe(false)
   expect(model.capabilities.reasoning).toBe(false)
-  expect(model.capabilities.reasoningOptions).toEqual(reasoningOptions)
+  expect(model.capabilities.reasoningOptions).toEqual([
+    { type: "toggle" },
+    { type: "effort", values: ["low", "ultrathink"] },
+    { type: "budget_tokens", min: 1024 },
+  ])
   expect(model.capabilities.attachment).toBe(false)
   expect(model.capabilities.toolcall).toBe(true)
   expect(model.release_date).toBe("")

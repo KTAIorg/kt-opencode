@@ -43,10 +43,63 @@ const Cost = Schema.Struct({
   ),
 })
 
-export const ReasoningOption = Schema.StructWithRest(Schema.Struct({ type: Schema.String }), [
-  Schema.Record(Schema.String, Schema.MutableJson),
+const reasoningOption = <Fields extends Schema.Struct.Fields>(fields: Fields) =>
+  Schema.StructWithRest(Schema.Struct(fields), [Schema.Record(Schema.String, Schema.MutableJson)])
+
+export const ReasoningOption = Schema.Union([
+  reasoningOption({ type: Schema.Literal("toggle") }),
+  reasoningOption({
+    type: Schema.Literal("effort"),
+    values: Schema.Array(Schema.NullOr(Schema.String)),
+  }),
+  reasoningOption({
+    type: Schema.Literal("budget_tokens"),
+    min: Schema.optional(Schema.Finite),
+    max: Schema.optional(Schema.Finite),
+  }),
+  reasoningOption({ type: Schema.String }),
 ])
 export type ReasoningOption = typeof ReasoningOption.Type
+
+export const ResolvedReasoningOption = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("toggle") }),
+  Schema.Struct({
+    type: Schema.Literal("effort"),
+    values: Schema.Array(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("budget_tokens"),
+    min: Schema.optional(Schema.Finite),
+    max: Schema.optional(Schema.Finite),
+  }),
+])
+export type ResolvedReasoningOption =
+  | { type: "toggle" }
+  | { type: "effort"; values: string[] }
+  | { type: "budget_tokens"; min?: number; max?: number }
+
+export function resolveReasoningOptions(
+  options: readonly ReasoningOption[] | undefined,
+): ResolvedReasoningOption[] | undefined {
+  if (!options) return
+  return options
+    .map((option): ResolvedReasoningOption | undefined => {
+      if (option.type === "toggle") return { type: "toggle" }
+      if (option.type === "effort" && Array.isArray(option.values)) {
+        return {
+          type: "effort",
+          values: option.values.filter((value): value is string => typeof value === "string"),
+        }
+      }
+      if (option.type !== "budget_tokens") return
+      return {
+        type: "budget_tokens",
+        ...(typeof option.min === "number" && Number.isFinite(option.min) ? { min: option.min } : {}),
+        ...(typeof option.max === "number" && Number.isFinite(option.max) ? { max: option.max } : {}),
+      }
+    })
+    .filter((option): option is ResolvedReasoningOption => option !== undefined)
+}
 
 export const Model = Schema.Struct({
   id: Schema.String,

@@ -2082,9 +2082,20 @@ export type Model = {
   capabilities: {
     temperature: boolean
     reasoning: boolean
-    reasoningOptions?: Array<{
-      [key: string]: unknown
-    }>
+    reasoningOptions?: Array<
+      | {
+          type: "toggle"
+        }
+      | {
+          type: "effort"
+          values: Array<string>
+        }
+      | {
+          type: "budget_tokens"
+          min?: number
+          max?: number
+        }
+    >
     attachment: boolean
     toolcall: boolean
     input: {
@@ -2881,9 +2892,20 @@ export type ModelV2Info = {
       }
   capabilities: {
     tools: boolean
-    reasoningOptions?: Array<{
-      [key: string]: unknown
-    }>
+    reasoningOptions?: Array<
+      | {
+          type: "toggle"
+        }
+      | {
+          type: "effort"
+          values: Array<string>
+        }
+      | {
+          type: "budget_tokens"
+          min?: number
+          max?: number
+        }
+    >
     input: Array<string>
     output: Array<string>
   }
@@ -4236,9 +4258,20 @@ export type ModelV2Info1 = {
       }
   capabilities: {
     tools: boolean
-    reasoningOptions?: Array<{
-      [key: string]: unknown
-    }>
+    reasoningOptions?: Array<
+      | {
+          type: "toggle"
+        }
+      | {
+          type: "effort"
+          values: Array<string>
+        }
+      | {
+          type: "budget_tokens"
+          min?: number
+          max?: number
+        }
+    >
     input: Array<string>
     output: Array<string>
   }

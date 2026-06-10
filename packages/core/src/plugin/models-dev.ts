@@ -99,7 +99,7 @@ export const ModelsDevPlugin = PluginV2.define({
                   }
               draft.capabilities = {
                 tools: model.tool_call,
-                reasoningOptions: model.reasoning_options?.map((option) => ({ ...option })),
+                reasoningOptions: ModelsDev.resolveReasoningOptions(model.reasoning_options),
                 input: [...(model.modalities?.input ?? [])],
                 output: [...(model.modalities?.output ?? [])],
               }

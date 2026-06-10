@@ -2,6 +2,7 @@ import { DateTime, Schema } from "effect"
 import { DateTimeUtcFromMillis } from "effect/Schema"
 import { ProviderV2 } from "./provider"
 import { ModelRequest } from "./model-request"
+import { ModelsDev } from "./models-dev"
 
 export const ID = Schema.String.pipe(Schema.brand("ModelV2.ID"))
 export type ID = typeof ID.Type
@@ -15,7 +16,7 @@ export type Family = typeof Family.Type
 
 export const Capabilities = Schema.Struct({
   tools: Schema.Boolean,
-  reasoningOptions: Schema.Array(Schema.Record(Schema.String, Schema.Any)).pipe(Schema.optional),
+  reasoningOptions: Schema.Array(ModelsDev.ResolvedReasoningOption).pipe(Schema.optional),
   // mime patterns, image, audio, video/*, text/*
   input: Schema.String.pipe(Schema.Array),
   output: Schema.String.pipe(Schema.Array),
