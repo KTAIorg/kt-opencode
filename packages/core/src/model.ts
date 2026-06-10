@@ -15,6 +15,7 @@ export type Family = typeof Family.Type
 
 export const Capabilities = Schema.Struct({
   tools: Schema.Boolean,
+  reasoningOptions: Schema.Array(Schema.Record(Schema.String, Schema.Any)).pipe(Schema.optional),
   // mime patterns, image, audio, video/*, text/*
   input: Schema.String.pipe(Schema.Array),
   output: Schema.String.pipe(Schema.Array),

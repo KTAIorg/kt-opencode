@@ -957,9 +957,12 @@ const ProviderInterleaved = Schema.Union([
   }),
 ])
 
+const ProviderReasoningOption = Schema.Record(Schema.String, Schema.Any)
+
 const ProviderCapabilities = Schema.Struct({
   temperature: Schema.Boolean,
   reasoning: Schema.Boolean,
+  reasoningOptions: optionalOmitUndefined(Schema.Array(ProviderReasoningOption)),
   attachment: Schema.Boolean,
   toolcall: Schema.Boolean,
   input: ProviderModalities,
@@ -1178,6 +1181,7 @@ function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model
     capabilities: {
       temperature: model.temperature ?? false,
       reasoning: model.reasoning ?? false,
+      reasoningOptions: model.reasoning_options?.map((option) => ({ ...option })),
       attachment: model.attachment ?? false,
       toolcall: model.tool_call ?? true,
       input: {
@@ -1400,6 +1404,7 @@ export const layer = Layer.effect(
               capabilities: {
                 temperature: model.temperature ?? existingModel?.capabilities.temperature ?? false,
                 reasoning: model.reasoning ?? existingModel?.capabilities.reasoning ?? false,
+                reasoningOptions: existingModel?.capabilities.reasoningOptions,
                 attachment: model.attachment ?? existingModel?.capabilities.attachment ?? false,
                 toolcall: model.tool_call ?? existingModel?.capabilities.toolcall ?? true,
                 input: {

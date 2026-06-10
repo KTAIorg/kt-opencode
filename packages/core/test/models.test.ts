@@ -1,5 +1,5 @@
-import { describe, expect, beforeAll, beforeEach, afterAll } from "bun:test"
-import { Effect, Layer, Ref } from "effect"
+import { describe, expect, beforeAll, beforeEach, afterAll, test } from "bun:test"
+import { Effect, Layer, Ref, Schema } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Flag } from "@opencode-ai/core/flag/flag"
@@ -124,6 +124,19 @@ const initialState: MockState = {
   status: 200,
   calls: [],
 }
+
+test("reasoning options preserve unknown types and fields", () => {
+  const options: ModelsDev.ReasoningOption[] = [
+    { type: "effort", values: [null, "low", "ultrathink"], default: "low" },
+    { type: "future_dynamic_budget", curve: { min: 1, max: 10 }, enabled: true },
+  ]
+  const model = Schema.decodeUnknownSync(ModelsDev.Model)({
+    ...fixture.acme.models["acme-1"],
+    reasoning_options: options,
+  })
+
+  expect(model.reasoning_options).toEqual(options)
+})
 
 describe("ModelsDev Service", () => {
   it.live("get() returns providers from disk when cache file exists", () =>

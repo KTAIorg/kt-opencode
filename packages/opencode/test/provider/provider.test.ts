@@ -1286,6 +1286,10 @@ test("mode cost preserves over-200k pricing from base model", () => {
 })
 
 test("models.dev normalization fills required response fields", () => {
+  const reasoningOptions: ModelsDev.ReasoningOption[] = [
+    { type: "effort", values: [null, "low", "ultrathink"], default: "low" },
+    { type: "future_dynamic_budget", curve: { min: 1, max: 10 } },
+  ]
   const provider = {
     id: "gateway",
     name: "Gateway",
@@ -1295,6 +1299,7 @@ test("models.dev normalization fills required response fields", () => {
         id: "gpt-5.4",
         name: "GPT-5.4",
         family: "gpt",
+        reasoning_options: reasoningOptions,
         cost: { input: 2.5, output: 15 },
         limit: { context: 1_050_000, input: 922_000, output: 128_000 },
       },
@@ -1305,6 +1310,7 @@ test("models.dev normalization fills required response fields", () => {
   expect(model.api.url).toBe("")
   expect(model.capabilities.temperature).toBe(false)
   expect(model.capabilities.reasoning).toBe(false)
+  expect(model.capabilities.reasoningOptions).toEqual(reasoningOptions)
   expect(model.capabilities.attachment).toBe(false)
   expect(model.capabilities.toolcall).toBe(true)
   expect(model.release_date).toBe("")
