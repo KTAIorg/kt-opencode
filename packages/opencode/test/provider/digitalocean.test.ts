@@ -1,12 +1,27 @@
 import { expect } from "bun:test"
 import { Provider } from "../../src/provider/provider"
 
-import { Effect } from "effect"
-import { pollWithTimeout, testEffect } from "../lib/effect"
+import { Deferred, Effect } from "effect"
+import { testEffect } from "../lib/effect"
 import { ProviderV2 } from "@opencode-ai/core/provider"
+import { GlobalBus, type GlobalEvent } from "@/bus/global"
 
 const DIGITALOCEAN = ProviderV2.ID.make("digitalocean")
 const it = testEffect(Provider.defaultLayer)
+
+const refreshedModels = Effect.fn("DigitalOceanTest.refreshedModels")(function* () {
+  const provider = yield* Provider.Service
+  const refreshed = yield* Deferred.make<void>()
+  const listener = (event: GlobalEvent) => {
+    if (event.payload.type !== "provider.models.updated" || event.payload.properties.providerID !== DIGITALOCEAN) return
+    Deferred.doneUnsafe(refreshed, Effect.void)
+  }
+  GlobalBus.on("event", listener)
+  yield* Effect.addFinalizer(() => Effect.sync(() => GlobalBus.off("event", listener)))
+  yield* provider.list()
+  yield* Deferred.await(refreshed)
+  return (yield* provider.list())[DIGITALOCEAN].models
+})
 
 const withEnv = <A, E, R>(values: Record<string, string>, effect: Effect.Effect<A, E, R>) =>
   Effect.acquireUseRelease(
@@ -73,15 +88,7 @@ it.instance(
         oauth_expires: String(Date.now() + 60 * 60 * 1000),
       },
       Effect.gen(function* () {
-        const provider = yield* Provider.Service
-        const models = yield* pollWithTimeout(
-          provider.list().pipe(
-            Effect.map((providers) =>
-              providers[DIGITALOCEAN].models["router:my-router"] ? providers[DIGITALOCEAN].models : undefined,
-            ),
-          ),
-          "digitalocean router models were not refreshed",
-        )
+        const models = yield* refreshedModels()
         expect(models["router:my-router"]).toBeDefined()
         expect(models["router:my-router"].api.id).toBe("router:my-router")
         expect(models["router:my-router"].api.url).toBe("https://inference.do-ai.run/v1")
@@ -103,15 +110,7 @@ it.instance(
         oauth_expires: "1",
       },
       Effect.gen(function* () {
-        const provider = yield* Provider.Service
-        const models = yield* pollWithTimeout(
-          provider.list().pipe(
-            Effect.map((providers) =>
-              providers[DIGITALOCEAN].models["router:stale-router"] ? providers[DIGITALOCEAN].models : undefined,
-            ),
-          ),
-          "digitalocean cached router models were not restored",
-        )
+        const models = yield* refreshedModels()
         expect(models["router:stale-router"]).toBeDefined()
       }),
     ),
