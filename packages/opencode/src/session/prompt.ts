@@ -992,7 +992,7 @@ export const layer = Layer.effect(
       )
 
       const parts = yield* Effect.forEach(resolvedParts, (part) =>
-        part.type === "file" && part.mime.startsWith("image/")
+        part.type === "file" && part.source?.type !== "resource" && part.mime.startsWith("image/")
           ? image.normalize(part).pipe(
               Effect.catchIf(
                 (error) => error instanceof Image.ResizerUnavailableError,
