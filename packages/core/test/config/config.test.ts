@@ -5,9 +5,9 @@ import { Effect, Layer, Schema } from "effect"
 import { FastCheck } from "effect/testing"
 import { Config } from "@opencode-ai/core/config"
 import { ConfigProvider } from "@opencode-ai/core/config/provider"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { ConfigMigrateV1 } from "@opencode-ai/core/v1/config/migrate"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
-import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Global } from "@opencode-ai/core/global"
 import { Location } from "@opencode-ai/core/location"
 import { Policy } from "@opencode-ai/core/policy"
@@ -25,21 +25,24 @@ function testLayer(
   projectDirectory = directory,
   vcs?: Project.Vcs,
 ) {
-  return Config.locationLayer.pipe(
-    Layer.provide(FSUtil.defaultLayer),
-    Layer.provide(Global.layerWith({ config: globalDirectory })),
-    Layer.provide(
-      Layer.succeed(
-        Location.Service,
-        Location.Service.of(
-          location(
-            { directory: AbsolutePath.make(directory) },
-            { projectDirectory: AbsolutePath.make(projectDirectory), vcs },
-          ),
+  const locationNode = LayerNode.make(
+    Layer.succeed(
+      Location.Service,
+      Location.Service.of(
+        location(
+          { directory: AbsolutePath.make(directory) },
+          { projectDirectory: AbsolutePath.make(projectDirectory), vcs },
         ),
       ),
     ),
+    [],
   )
+  const policyNode = Policy.node(locationNode)
+  return LayerNode.buildLayer(LayerNode.group([Config.node(locationNode, policyNode), policyNode, locationNode]), {
+    replacements: [
+      LayerNode.replace(Global.node, Global.layerWith({ config: globalDirectory })),
+    ],
+  })
 }
 
 const provider = {

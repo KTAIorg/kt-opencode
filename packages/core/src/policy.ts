@@ -3,6 +3,7 @@ export * as Policy from "./policy"
 import { Context, Effect as EffectRuntime, Layer, Schema } from "effect"
 import { Wildcard } from "./util/wildcard"
 import { Location } from "./location"
+import { LayerNode } from "./effect/layer-node"
 
 export const Effect = Schema.Literals(["allow", "deny"]).annotate({ identifier: "Policy.Effect" })
 export type Effect = typeof Effect.Type
@@ -44,3 +45,4 @@ export const layer = Layer.effect(
 )
 
 export const locationLayer = layer
+export const node = (location: LayerNode.Node<Location.Service>) => LayerNode.make(layer, [location])
