@@ -3,6 +3,7 @@ export * as SessionExecution from "./execution"
 import { Context, Effect, Layer } from "effect"
 import { SessionRunner } from "./runner/index"
 import { SessionSchema } from "./schema"
+import { LayerNode } from "../effect/layer-node"
 
 export interface Interface {
   /** Explicitly drain one Session, making at least one provider attempt. */
@@ -21,3 +22,5 @@ export const noopLayer = Layer.succeed(
   Service,
   Service.of({ resume: () => Effect.void, wake: () => Effect.void, interrupt: () => Effect.void }),
 )
+
+export const node = LayerNode.make(noopLayer, [])

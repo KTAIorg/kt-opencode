@@ -29,6 +29,7 @@ import { logFailure } from "./session/logging"
 import { MessageDecodeError } from "./session/error"
 import { SessionEvent } from "./session/event"
 import { SessionInput } from "./session/input"
+import { LayerNode } from "./effect/layer-node"
 
 // get project -> project.locations
 //
@@ -424,6 +425,15 @@ export const layer = Layer.effect(
     return result
   }),
 )
+
+export const node = LayerNode.make(layer, [
+  SessionExecution.node,
+  SessionStore.node,
+  SessionProjector.node,
+  EventV2.node,
+  Database.node,
+  ProjectV2.node,
+])
 
 export const defaultLayer = layer.pipe(
   Layer.provide(SessionExecution.noopLayer),

@@ -9,6 +9,7 @@ import { SessionMessage } from "./message"
 import { SessionSchema } from "./schema"
 import { SessionMessageTable, SessionTable } from "./sql"
 import { fromRow } from "./info"
+import { LayerNode } from "../effect/layer-node"
 
 export interface Interface {
   readonly get: (sessionID: SessionSchema.ID) => Effect.Effect<SessionSchema.Info | undefined>
@@ -58,5 +59,7 @@ export const layer = Layer.effect(
     })
   }),
 )
+
+export const node = LayerNode.make(layer, [Database.node])
 
 export const defaultLayer = layer.pipe(Layer.provide(Database.defaultLayer))
