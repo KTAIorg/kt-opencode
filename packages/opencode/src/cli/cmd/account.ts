@@ -7,7 +7,13 @@ import { effectCmd } from "../effect-cmd"
 import * as Prompt from "../effect/prompt"
 import open from "open"
 
-const openBrowser = (url: string) => Effect.promise(() => open(url).catch(() => undefined))
+export const hasBrowserOpener = (platform: NodeJS.Platform, xdgOpen: string | null) =>
+  platform !== "linux" || xdgOpen !== null
+
+const openBrowser = (url: string) => {
+  if (!hasBrowserOpener(process.platform, Bun.which("xdg-open"))) return Effect.void
+  return Effect.promise(() => open(url).catch(() => undefined))
+}
 
 const println = (msg: string) => Effect.sync(() => UI.println(msg))
 
