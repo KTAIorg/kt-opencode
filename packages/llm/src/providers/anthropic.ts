@@ -38,11 +38,11 @@ export const configure = (input: Config = {}) => {
 }
 
 export const provider = configure()
-export const model: ProviderPackage.Definition<Settings>["model"] = (id, settings) =>
+export const model: ProviderPackage.Definition<Settings>["model"] = (modelID, settings) =>
   configure({
     apiKey: settings.apiKey,
     baseURL: settings.baseURL,
     headers: settings.headers === undefined ? undefined : { ...settings.headers },
     http: settings.body === undefined ? undefined : { body: { ...settings.body } },
     limits: settings.limits,
-  }).model(id)
+  }).model(modelID)
