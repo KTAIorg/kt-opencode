@@ -2296,7 +2296,7 @@ export class Auth2 extends HeyApiClient {
   /**
    * Complete MCP OAuth
    *
-   * Complete OAuth authentication for a Model Context Protocol (MCP) server using the authorization code.
+   * Complete OAuth authentication for a Model Context Protocol (MCP) server using the authorization code and state returned by the start endpoint.
    */
   public callback<ThrowOnError extends boolean = false>(
     parameters: {

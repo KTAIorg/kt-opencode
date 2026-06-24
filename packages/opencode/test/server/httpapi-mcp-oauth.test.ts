@@ -2,7 +2,7 @@ import { NodeHttpServer, NodeServices } from "@effect/platform-node"
 import Http from "node:http"
 import path from "node:path"
 import { describe, expect } from "bun:test"
-import { Config, Context, Effect, Layer } from "effect"
+import { Config, Context, Effect, Layer, Ref } from "effect"
 import {
   HttpClient,
   HttpClientRequest,
@@ -32,7 +32,7 @@ const it = testEffect(
 const callbackPath = McpPaths.authCallback.replace(":name", "secure-oauth")
 const authPath = McpPaths.auth.replace(":name", "secure-oauth")
 
-function listenOAuthServer(tokenCalls: { value: number }) {
+function listenOAuthServer(tokenCalls: Ref.Ref<number>) {
   return Effect.gen(function* () {
     const context = yield* Layer.build(NodeHttpServer.layer(Http.createServer, { host: "127.0.0.1", port: 0 }))
     const server = Context.get(context, HttpServer.HttpServer)
@@ -57,7 +57,7 @@ function listenOAuthServer(tokenCalls: { value: number }) {
         if (url.pathname === "/token")
           return Effect.gen(function* () {
             yield* request.text
-            tokenCalls.value++
+            yield* Ref.update(tokenCalls, (value) => value + 1)
             return yield* HttpServerResponse.json({ access_token: "access-token", token_type: "Bearer" })
           })
         if (url.pathname !== "/mcp") return Effect.succeed(HttpServerResponse.empty({ status: 404 }))
@@ -130,7 +130,7 @@ function assertPortAvailable(port: number) {
 function setup() {
   return Effect.gen(function* () {
     const directory = yield* tmpdirScoped({ git: true })
-    const tokenCalls = { value: 0 }
+    const tokenCalls = yield* Ref.make(0)
     const upstream = yield* listenOAuthServer(tokenCalls)
     const callbackPort = yield* availablePort()
     yield* Effect.promise(() =>
@@ -169,24 +169,19 @@ describe("mcp HttpApi OAuth", () => {
 
       const missing = yield* request(test.directory, callbackPath, { code: "missing-state" })
       expect(missing.status).toBe(400)
-      expect(test.tokenCalls.value).toBe(0)
+      expect(yield* Ref.get(test.tokenCalls)).toBe(0)
 
       const wrong = yield* request(test.directory, callbackPath, { code: "wrong-state", state: "wrong" })
       expect(wrong.status).toBe(400)
-      expect(test.tokenCalls.value).toBe(0)
+      expect(yield* Ref.get(test.tokenCalls)).toBe(0)
 
-      const restarted = yield* request(test.directory, authPath)
-      expect(restarted.status).toBe(200)
-      const second = (yield* restarted.json) as { oauthState: string }
-      expect(second.oauthState).not.toBe(first.oauthState)
-
-      const correct = yield* request(test.directory, callbackPath, { code: "valid-code", state: second.oauthState })
+      const correct = yield* request(test.directory, callbackPath, { code: "valid-code", state: first.oauthState })
       expect(correct.status).toBe(200)
-      expect(test.tokenCalls.value).toBe(1)
+      expect(yield* Ref.get(test.tokenCalls)).toBe(1)
 
-      const replayed = yield* request(test.directory, callbackPath, { code: "replayed-code", state: second.oauthState })
+      const replayed = yield* request(test.directory, callbackPath, { code: "replayed-code", state: first.oauthState })
       expect(replayed.status).toBe(400)
-      expect(test.tokenCalls.value).toBe(1)
+      expect(yield* Ref.get(test.tokenCalls)).toBe(1)
     }),
   )
 

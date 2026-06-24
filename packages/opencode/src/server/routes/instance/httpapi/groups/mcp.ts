@@ -88,7 +88,7 @@ export const McpApi = HttpApi.make("mcp")
             identifier: "mcp.auth.callback",
             summary: "Complete MCP OAuth",
             description:
-              "Complete OAuth authentication for a Model Context Protocol (MCP) server using the authorization code.",
+              "Complete OAuth authentication for a Model Context Protocol (MCP) server using the authorization code and state returned by the start endpoint.",
           }),
         ),
         HttpApiEndpoint.post("authAuthenticate", McpPaths.authAuthenticate, {

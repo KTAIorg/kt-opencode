@@ -147,11 +147,10 @@ export const layer = Layer.effect(
       return yield* Effect.gen(function* () {
         const data = yield* read()
         const entry = data[mcpName]
-        if (!entry?.oauthState) return false
-        const matches = entry.oauthState === oauthState
+        if (entry?.oauthState !== oauthState) return false
         delete entry.oauthState
         yield* fs.writeJson(filepath, { ...data, [mcpName]: entry }, 0o600).pipe(Effect.orDie)
-        return matches
+        return true
       }).pipe(flock.withLock(lockKey), Effect.orDie)
     })
 

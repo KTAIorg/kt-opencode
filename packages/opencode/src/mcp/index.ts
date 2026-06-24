@@ -951,12 +951,14 @@ export const layer = Layer.effect(
       oauthState: string,
     ) {
       yield* requireMcpConfig(mcpName)
-      const transport = pendingOAuthTransports.get(mcpName)
-      if (!transport) return yield* new OAuthError({ message: `No pending OAuth flow for MCP server: ${mcpName}` })
-
       if (!(yield* auth.consumeOAuthState(mcpName, oauthState))) {
-        yield* cleanupAuth(mcpName)
         return yield* new OAuthError({ message: "Invalid or expired OAuth state - potential CSRF attack" })
+      }
+
+      const transport = pendingOAuthTransports.get(mcpName)
+      if (!transport) {
+        yield* cleanupAuth(mcpName)
+        return yield* new OAuthError({ message: `No pending OAuth flow for MCP server: ${mcpName}` })
       }
 
       const result = yield* Effect.tryPromise({
