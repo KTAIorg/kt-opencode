@@ -226,7 +226,8 @@ export const layer = Layer.effect(
       key: string,
       mcp: ConfigMCPV1.Info & { type: "remote" },
     ) {
-      const oauthDisabled = mcp.oauth === false
+      const oauthDisabled =
+        mcp.oauth === false || Object.keys(mcp.headers ?? {}).some((key) => key.toLowerCase() === "authorization")
       const oauthConfig = typeof mcp.oauth === "object" ? mcp.oauth : undefined
       const url = remoteURL(mcp.url)
       if (!url) {
@@ -797,6 +798,8 @@ export const layer = Layer.effect(
       const mcpConfig = yield* requireMcpConfig(mcpName)
       if (mcpConfig.type !== "remote") throw new Error(`MCP server ${mcpName} is not a remote server`)
       if (mcpConfig.oauth === false) throw new Error(`MCP server ${mcpName} has OAuth explicitly disabled`)
+      if (Object.keys(mcpConfig.headers ?? {}).some((key) => key.toLowerCase() === "authorization"))
+        throw new Error(`MCP server ${mcpName} uses static Authorization`)
       const url = remoteURL(mcpConfig.url)
       if (!url) throw new Error(`Invalid MCP URL for "${mcpName}"`)
 

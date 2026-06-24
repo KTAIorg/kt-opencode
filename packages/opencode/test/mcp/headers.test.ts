@@ -49,7 +49,7 @@ const { MCP } = await import("../../src/mcp/index")
 const it = testEffect(MCP.defaultLayer)
 
 describe("mcp.headers", () => {
-  it.instance("headers are passed to transports when oauth is enabled (default)", () =>
+  it.instance("static authorization is passed to transports without oauth", () =>
     Effect.gen(function* () {
       const mcp = yield* MCP.Service
       yield* mcp
@@ -72,8 +72,8 @@ describe("mcp.headers", () => {
           Authorization: "Bearer test-token",
           "X-Custom-Header": "custom-value",
         })
-        // OAuth should be enabled by default, so authProvider should exist
-        expect(call.options.authProvider).toBeDefined()
+        // Static Authorization and OAuth are mutually exclusive.
+        expect(call.options.authProvider).toBeUndefined()
       }
     }),
   )
@@ -100,6 +100,28 @@ describe("mcp.headers", () => {
           Authorization: "Bearer test-token",
         })
         // OAuth is disabled, so no authProvider
+        expect(call.options.authProvider).toBeUndefined()
+      }
+    }),
+  )
+
+  it.instance("case-insensitive authorization disables oauth", () =>
+    Effect.gen(function* () {
+      const mcp = yield* MCP.Service
+      yield* mcp
+        .add("test-server-lowercase-auth", {
+          type: "remote",
+          url: "https://example.com/mcp",
+          headers: { authorization: "Bearer test-token", "X-Custom-Header": "custom-value" },
+        })
+        .pipe(Effect.catch(() => Effect.void))
+
+      expect(transportCalls.length).toBeGreaterThanOrEqual(1)
+      for (const call of transportCalls) {
+        expect(call.options.requestInit?.headers).toEqual({
+          authorization: "Bearer test-token",
+          "X-Custom-Header": "custom-value",
+        })
         expect(call.options.authProvider).toBeUndefined()
       }
     }),

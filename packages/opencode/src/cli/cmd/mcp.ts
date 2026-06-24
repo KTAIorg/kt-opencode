@@ -769,7 +769,10 @@ export const McpDebugCommand = effectCmd({
           prompts.log.info(`WWW-Authenticate: ${wwwAuth}`)
         }
 
-        if (response.status === 401) {
+        if (
+          response.status === 401 &&
+          !Object.keys(serverConfig.headers ?? {}).some((key) => key.toLowerCase() === "authorization")
+        ) {
           prompts.log.warn("Server returned 401 Unauthorized")
 
           // Try to discover OAuth metadata
