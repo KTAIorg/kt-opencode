@@ -63,7 +63,7 @@ export const provider = {
   configure,
 }
 
-export const model: ProviderPackage.Definition<Settings>["model"] = (id, settings) =>
+export const model: ProviderPackage.Definition<Settings>["model"] = (modelID, settings) =>
   configure({
     apiKey: settings.apiKey,
     baseURL: settings.baseURL,
@@ -71,7 +71,7 @@ export const model: ProviderPackage.Definition<Settings>["model"] = (id, setting
     http: settings.body === undefined ? undefined : { body: { ...settings.body } },
     limits: settings.limits,
     provider: settings.provider,
-  }).model(id)
+  }).model(modelID)
 
 export const baseten = define(profiles.baseten)
 export const cerebras = define(profiles.cerebras)
