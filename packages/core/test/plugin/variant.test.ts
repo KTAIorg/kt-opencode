@@ -42,21 +42,20 @@ describe("VariantPlugin", () => {
       const service = yield* Catalog.Service
       yield* service.transform((catalog) => {
         catalog.provider.update(ProviderV2.ID.opencode, (provider) => {
-          provider.api = { type: "aisdk", package: "@ai-sdk/openai-compatible" }
+          provider.package = "@ai-sdk/openai-compatible"
+          provider.aisdk = true
         })
         catalog.model.update(ProviderV2.ID.opencode, ModelV2.ID.make("glm-5.2"), (model) => {
-          model.api = {
-            id: ModelV2.ID.make("glm-5.2"),
-            type: "aisdk",
-            package: "@ai-sdk/openai-compatible",
-          }
+          model.modelID = ModelV2.ID.make("glm-5.2")
+          model.package = "@ai-sdk/openai-compatible"
+          model.aisdk = true
         })
       })
       yield* VariantPlugin.Plugin.effect(host({ catalog: catalogHost(service) }))
 
       expect((yield* service.model.get(ProviderV2.ID.opencode, ModelV2.ID.make("glm-5.2")))?.variants).toEqual([
-        expect.objectContaining({ id: "high", body: { reasoning_effort: "high" } }),
-        expect.objectContaining({ id: "max", body: { reasoning_effort: "max" } }),
+        expect.objectContaining({ id: "high", settings: { reasoningEffort: "high" } }),
+        expect.objectContaining({ id: "max", settings: { reasoningEffort: "max" } }),
       ])
     }),
   )
@@ -66,13 +65,11 @@ describe("VariantPlugin", () => {
       const service = yield* Catalog.Service
       yield* service.transform((catalog) => {
         catalog.model.update(ProviderV2.ID.opencode, ModelV2.ID.make("glm-5.2"), (model) => {
-          model.api = {
-            id: ModelV2.ID.make("glm-5.2"),
-            type: "aisdk",
-            package: "@ai-sdk/openai-compatible",
-          }
+          model.modelID = ModelV2.ID.make("glm-5.2")
+          model.package = "@ai-sdk/openai-compatible"
+          model.aisdk = true
           model.variants = [
-            { id: ModelV2.VariantID.make("high"), headers: { custom: "true" }, body: {} },
+            { id: ModelV2.VariantID.make("high"), headers: { custom: "true" } },
           ]
         })
       })
@@ -80,7 +77,7 @@ describe("VariantPlugin", () => {
 
       expect((yield* service.model.get(ProviderV2.ID.opencode, ModelV2.ID.make("glm-5.2")))?.variants).toEqual([
         expect.objectContaining({ id: "high", headers: { custom: "true" } }),
-        expect.objectContaining({ id: "max", body: { reasoning_effort: "max" } }),
+        expect.objectContaining({ id: "max", settings: { reasoningEffort: "max" } }),
       ])
     }),
   )

@@ -20,15 +20,10 @@ export const Cost = Model.Cost
 export const Ref = Model.Ref
 export type Ref = typeof Ref.Type
 
-export const Api = Model.Api
-export type Api = Model.Api
-
 export const Info = Model.Info
 export type Info = Model.Info
 
-export type MutableInfo = Omit<Types.DeepMutable<Info>, "api"> & {
-  api: ProviderV2.MutableApi<Api>
-}
+export type MutableInfo = Types.DeepMutable<Info>
 
 export function parse(input: string): { providerID: ProviderV2.ID; modelID: ID } {
   const [providerID, ...modelID] = input.split("/")

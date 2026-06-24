@@ -50,6 +50,7 @@ export const Variant = Schema.Struct({
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 export const Info = Schema.Struct({
   id: ID,
+  modelID: ID.pipe(Schema.optional),
   providerID: Provider.ID,
   family: Family.pipe(Schema.optional),
   name: Schema.String,
