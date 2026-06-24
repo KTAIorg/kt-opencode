@@ -117,12 +117,74 @@ type ResourceInfo = Awaited<ReturnType<MCPClient["listResources"]>>["resources"]
 type ResourceTemplateInfo = Awaited<ReturnType<MCPClient["listResourceTemplates"]>>["resourceTemplates"][number]
 type McpEntry = NonNullable<ConfigV1.Info["mcp"]>[string]
 
+const LOCAL_MCP_INHERITED_ENV = [
+  "APPDATA",
+  "COMSPEC",
+  "HOME",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "LANG",
+  "LANGUAGE",
+  "LC_ADDRESS",
+  "LC_ALL",
+  "LC_COLLATE",
+  "LC_CTYPE",
+  "LC_IDENTIFICATION",
+  "LC_MEASUREMENT",
+  "LC_MESSAGES",
+  "LC_MONETARY",
+  "LC_NAME",
+  "LC_NUMERIC",
+  "LC_PAPER",
+  "LC_TELEPHONE",
+  "LC_TIME",
+  "LOCALAPPDATA",
+  "LOGNAME",
+  "PATH",
+  "PATHEXT",
+  "PROCESSOR_ARCHITECTURE",
+  "PROGRAMDATA",
+  "PROGRAMFILES",
+  "PROGRAMFILES(X86)",
+  "SHELL",
+  "SYSTEMDRIVE",
+  "SYSTEMROOT",
+  "TEMP",
+  "TERM",
+  "TMP",
+  "TMPDIR",
+  "USER",
+  "USERNAME",
+  "USERPROFILE",
+  "WINDIR",
+  "XDG_CACHE_HOME",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_RUNTIME_DIR",
+  "XDG_STATE_HOME",
+] as const
+
 function isMcpConfigured(entry: McpEntry): entry is ConfigMCPV1.Info {
   return typeof entry === "object" && entry !== null && "type" in entry
 }
 
 function remoteURL(value: string) {
   if (URL.canParse(value)) return new URL(value)
+}
+
+function localMcpEnvironment(command: string, environment?: Record<string, string>) {
+  const inherited = Object.fromEntries(
+    LOCAL_MCP_INHERITED_ENV.flatMap((key) => {
+      const value = process.env[key]
+      if (value === undefined || value.startsWith("()")) return []
+      return [[key, value] as const]
+    }),
+  )
+  return {
+    ...inherited,
+    ...(command === "opencode" ? { BUN_BE_BUN: "1" } : {}),
+    ...environment,
+  }
 }
 
 interface CreateResult {
@@ -338,11 +400,7 @@ export const layer = Layer.effect(
         command: cmd,
         args,
         cwd,
-        env: {
-          ...process.env,
-          ...(cmd === "opencode" ? { BUN_BE_BUN: "1" } : {}),
-          ...mcp.environment,
-        },
+        env: localMcpEnvironment(cmd, mcp.environment),
       })
 
       const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
