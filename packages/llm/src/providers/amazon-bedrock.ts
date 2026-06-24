@@ -50,7 +50,7 @@ export const configure = (input: Config = {}) => {
 }
 
 export const provider = configure()
-export const model: ProviderPackage.Definition<Settings>["model"] = (id, settings) => {
+export const model: ProviderPackage.Definition<Settings>["model"] = (modelID, settings) => {
   if (settings.auth === "bearer" && settings.apiKey === undefined)
     throw new Error("Amazon Bedrock bearer auth requires apiKey")
   if (settings.auth === "sigv4" && settings.apiKey !== undefined)
@@ -64,5 +64,5 @@ export const model: ProviderPackage.Definition<Settings>["model"] = (id, setting
     http: settings.body === undefined ? undefined : { body: { ...settings.body } },
     limits: settings.limits,
     region: settings.region,
-  }).model(id)
+  }).model(modelID)
 }

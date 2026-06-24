@@ -10,7 +10,7 @@ export interface Settings extends Readonly<Record<string, unknown>> {
 }
 
 export interface Definition<ProviderSettings extends Settings = Settings> {
-  readonly model: (id: string, settings: ProviderSettings) => Model
+  readonly model: (modelID: string, settings: ProviderSettings) => Model
 }
 
 export * as ProviderPackage from "./provider-package"

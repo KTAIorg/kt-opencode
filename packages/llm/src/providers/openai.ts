@@ -76,15 +76,15 @@ const config = (settings: Settings): Config => ({
   queryParams: settings.queryParams === undefined ? undefined : { ...settings.queryParams },
 })
 
-export const model: ProviderPackage.Definition<Settings>["model"] = (id, settings) => {
+export const model: ProviderPackage.Definition<Settings>["model"] = (modelID, settings) => {
   const configured = configure(config(settings))
-  if (settings.transport === undefined || settings.transport === "http") return configured.responses(id)
-  if (settings.transport === "websocket") return configured.responsesWebSocket(id)
+  if (settings.transport === undefined || settings.transport === "http") return configured.responses(modelID)
+  if (settings.transport === "websocket") return configured.responsesWebSocket(modelID)
   throw new Error(`Unsupported OpenAI Responses transport: ${String(settings.transport)}`)
 }
 
-export const chatModel: ProviderPackage.Definition<Settings>["model"] = (id, settings) =>
-  configure(config(settings)).chat(id)
+export const chatModel: ProviderPackage.Definition<Settings>["model"] = (modelID, settings) =>
+  configure(config(settings)).chat(modelID)
 export const responses = provider.responses
 export const responsesWebSocket = provider.responsesWebSocket
 export const chat = provider.chat
