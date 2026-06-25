@@ -23,6 +23,7 @@ export interface MockServerConfig {
   onMessages?: (input: { sessionID: string; before?: string; phase: "start" | "end" }) => void
   events?: () => unknown[]
   eventRetry?: number
+  todos?: (sessionID: string) => unknown[]
 }
 
 export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
@@ -66,7 +67,9 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
       return json(route, session ?? {})
     }
 
-    if (/^\/session\/[^/]+\/(children|todo|diff)$/.test(path)) return json(route, [])
+    const todoMatch = path.match(/^\/session\/([^/]+)\/todo$/)
+    if (todoMatch) return json(route, config.todos?.(todoMatch[1]!) ?? [])
+    if (/^\/session\/[^/]+\/(children|diff)$/.test(path)) return json(route, [])
 
     const messagesMatch = path.match(/^\/session\/([^/]+)\/message$/)
     if (messagesMatch) {

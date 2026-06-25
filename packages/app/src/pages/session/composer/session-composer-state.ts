@@ -21,6 +21,8 @@ export const todoState = (input: {
   return "close"
 }
 
+export const todoDockAtBoundary = (state: ReturnType<typeof todoState>) => state === "open"
+
 const idle = { type: "idle" as const }
 
 export function createSessionComposerState(options?: { closeMs?: number | (() => number) }) {
@@ -61,7 +63,7 @@ export function createSessionComposerState(options?: { closeMs?: number | (() =>
 
   const [store, setStore] = createStore({
     responding: undefined as string | undefined,
-    dock: todos().length > 0 && live(),
+    dock: todos().length > 0 && !done() && live(),
     closing: false,
     opening: false,
   })
@@ -116,8 +118,8 @@ export function createSessionComposerState(options?: { closeMs?: number | (() =>
 
   createEffect(
     on(
-      () => [todos().length, done(), live()] as const,
-      ([count, complete, active]) => {
+      () => [params.id, todos().length, done(), live()] as const,
+      ([id, count, complete, active], previous) => {
         if (raf) cancelAnimationFrame(raf)
         raf = undefined
 
@@ -126,6 +128,14 @@ export function createSessionComposerState(options?: { closeMs?: number | (() =>
           done: complete,
           live: active,
         })
+
+        if (!previous || previous[0] !== id) {
+          if (timer) window.clearTimeout(timer)
+          timer = undefined
+          setStore({ dock: todoDockAtBoundary(next), closing: false, opening: false })
+          if (next === "clear") clear()
+          return
+        }
 
         if (next === "hide") {
           if (timer) window.clearTimeout(timer)
