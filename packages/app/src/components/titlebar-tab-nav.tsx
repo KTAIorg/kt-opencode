@@ -10,8 +10,8 @@ import { projectForSession } from "@/pages/layout/helpers"
 import { SessionTabAvatar } from "@/pages/layout/session-tab-avatar"
 import { showToast } from "@/utils/toast"
 import type { Session } from "@opencode-ai/sdk/v2"
+import { normalizeTabColor } from "@/context/tab-color"
 import { canOpenTabRename, forwardTabRef } from "./titlebar-tab-gesture"
-import { TabColorPill } from "./titlebar-tab-color"
 import "./titlebar-tab-nav.css"
 
 export function TabNavItem(props: {
@@ -180,7 +180,9 @@ export function TabNavItem(props: {
       data-slot="titlebar-tab-item"
       data-title-overflow={titleOverflowing()}
       data-editing={editing()}
+      data-tab-color={normalizeTabColor(props.color) ? "" : undefined}
       class="group relative flex h-7 w-full min-w-0 max-w-56 select-none flex-row items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[6px] bg-[var(--tab-bg)] px-1.5 [container-type:inline-size] [--tab-bg:var(--v2-background-bg-deep)] hover:[--tab-bg:var(--v2-background-bg-layer-02)] has-[>a:focus-visible]:[--tab-bg:var(--v2-background-bg-layer-02)] data-[active='true']:[--tab-bg:var(--v2-background-bg-layer-02)] data-[dragging='true']:[--tab-bg:var(--v2-background-bg-layer-02)] data-[pressed='true']:[--tab-bg:var(--v2-background-bg-layer-02)] data-[editing='true']:[--tab-bg:var(--v2-background-bg-layer-02)]"
+      style={{ "--tab-color": normalizeTabColor(props.color) }}
       classList={{ invisible: props.hidden }}
       data-active={props.active}
       data-dragging={props.dragging}
@@ -272,7 +274,6 @@ export function TabNavItem(props: {
           icon={<IconV2 name="xmark-small" />}
         />
       </div>
-      <TabColorPill color={props.color} />
     </div>
   )
 }
@@ -303,7 +304,9 @@ export function DraftTabItem(props: {
       data-active={props.active}
       data-dragging={props.dragging}
       data-pressed={props.pressed}
+      data-tab-color={normalizeTabColor(props.color) ? "" : undefined}
       class="group relative flex h-7 w-full min-w-0 max-w-56 flex-row items-center gap-1.5 overflow-hidden rounded-[6px] bg-[var(--tab-bg)] pl-1.5 pr-8 [container-type:inline-size] whitespace-nowrap [--tab-bg:var(--v2-background-bg-deep)] hover:[--tab-bg:var(--v2-background-bg-layer-02)] has-[>a:focus-visible]:[--tab-bg:var(--v2-background-bg-layer-02)] data-[active='true']:has-[>a:focus-visible]:[--tab-bg:var(--v2-background-bg-layer-02)] data-[active='true']:[--tab-bg:var(--v2-overlay-simple-overlay-pressed)] data-[dragging='true']:[--tab-bg:var(--v2-background-bg-layer-02)] data-[pressed='true']:[--tab-bg:var(--v2-background-bg-layer-02)] data-[active='true'][data-pressed='true']:[--tab-bg:var(--v2-overlay-simple-overlay-pressed)]"
+      style={{ "--tab-color": normalizeTabColor(props.color) }}
       classList={{ invisible: props.hidden }}
       onMouseDown={(event) => {
         if (event.button !== 1) return
@@ -350,7 +353,6 @@ export function DraftTabItem(props: {
           aria-label="Close tab"
         />
       </div>
-      <TabColorPill color={props.color} />
     </div>
   )
 }

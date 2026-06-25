@@ -128,18 +128,3 @@ export function TabColorMenu(props: {
     </>
   )
 }
-
-export function TabColorPill(props: { color?: string }) {
-  return (
-    <Show when={normalizeTabColor(props.color)}>
-      {(color) => (
-        <span
-          data-slot="tab-color"
-          aria-hidden="true"
-          class="pointer-events-none absolute bottom-px left-1 right-1 h-1 rounded-b-[5px] border border-t-0"
-          style={{ "border-color": color() }}
-        />
-      )}
-    </Show>
-  )
-}
