@@ -2,7 +2,13 @@ import { Resource } from "sst/resource"
 import type { AthenaData } from "../athena"
 import type { GeoStatAggregate } from "./geo"
 import type { ModelStatAggregate } from "./model"
-import { EXCLUDED_MODELS, MODEL_AUTHOR_RULES, statModel, statProvider } from "./model-normalization"
+import {
+  EXCLUDED_MODELS,
+  MODEL_AUTHOR_RULES,
+  RETIRED_STAT_PROVIDERS,
+  statModel,
+  statProvider,
+} from "./model-normalization"
 import type { ProviderStatAggregate } from "./provider"
 import { normalizeCountry, normalizeTier, type StatBaseAggregate } from "./stat"
 
@@ -11,6 +17,8 @@ export type StatDimension = "model" | "provider" | "geo" | "geo_model"
 export function buildStatsQuery(periodStart: Date, periodEnd: Date, dimension: StatDimension) {
   const periodStartValue = sqlString(periodStart.toISOString())
   const periodEndValue = sqlString(periodEnd.toISOString())
+  const periodStartDateValue = sqlString(periodStart.toISOString().slice(0, 10))
+  const periodEndDateValue = sqlString(periodEnd.toISOString().slice(0, 10))
   const sourceTable = [Resource.InferenceEvent.catalog, Resource.InferenceEvent.database, Resource.InferenceEvent.table]
     .map(sqlIdentifier)
     .join(".")
@@ -34,6 +42,7 @@ export function buildStatsQuery(periodStart: Date, periodEnd: Date, dimension: S
   const aggregateColumns = `
     COUNT(DISTINCT session) AS sessions,
     COUNT(*) AS requests,
+    COUNT(DISTINCT user_key) AS unique_users,
     COALESCE(SUM(tokens_input), 0) AS input_tokens,
     COALESCE(SUM(tokens_output), 0) AS output_tokens,
     COALESCE(SUM(tokens_reasoning), 0) AS reasoning_tokens,
@@ -60,9 +69,13 @@ WITH normalized AS (
     model AS raw_model,
     ${statModelSql("model", "provider_model")} AS model,
     COALESCE(NULLIF(provider_model, ''), '') AS provider_model,
+    COALESCE(NULLIF(provider, ''), '') AS raw_provider,
     UPPER(COALESCE(NULLIF(cf_country, ''), 'ZZ')) AS country,
     COALESCE(NULLIF(cf_continent, ''), '') AS continent,
     session,
+    COALESCE(NULLIF(workspace, ''), '') AS workspace,
+    COALESCE(NULLIF(api_key, ''), '') AS api_key,
+    COALESCE(NULLIF(user_id, ''), '') AS user_id,
     status,
     duration AS duration_ms,
     time_to_first_byte AS ttfb_ms,
@@ -73,6 +86,7 @@ WITH normalized AS (
     tokens_reasoning,
     tokens_cache_read,
     tokens_cache_write_5m,
+    tokens_cache_write_1h,
     cost_input_microcents,
     cost_output_microcents,
     cost_total_microcents,
@@ -84,7 +98,9 @@ WITH normalized AS (
   WHERE event_type = 'completions'
     AND model IS NOT NULL
     AND model <> ''
-    AND (strpos(COALESCE(user_agent, ''), 'ai-sdk') > 0 OR strpos(COALESCE(user_agent, ''), 'opencode') > 0)
+    AND source = 'lite'
+    AND event_date >= ${periodStartDateValue}
+    AND event_date <= ${periodEndDateValue}
     AND event_timestamp >= ${periodStartValue}
     AND event_timestamp < ${periodEndValue}
 ), filtered AS (
@@ -95,12 +111,13 @@ WITH normalized AS (
       WHEN raw_model IN ('gpt-5-nano', 'grok-code', 'big-pickle') OR regexp_like(raw_model, '-free(:global)?$') THEN 'Free'
       ELSE 'Paid'
     END AS tier,
-    ${statProviderSql("model", "provider_model")} AS provider,
+    ${statProviderSql("model", "provider_model", "raw_provider")} AS provider,
     provider_model,
     model,
     country,
     continent,
     session,
+    COALESCE(NULLIF(user_id, ''), NULLIF(workspace, ''), NULLIF(api_key, '')) AS user_key,
     status,
     duration_ms,
     ttfb_ms,
@@ -112,7 +129,7 @@ WITH normalized AS (
     tokens_output,
     tokens_reasoning,
     tokens_cache_read,
-    COALESCE(tokens_cache_read, 0) + COALESCE(tokens_cache_write_5m, 0) + COALESCE(tokens_input, 0) + COALESCE(tokens_output, 0) AS tokens_total,
+    COALESCE(tokens_cache_read, 0) + COALESCE(tokens_cache_write_5m, 0) + COALESCE(tokens_cache_write_1h, 0) + COALESCE(tokens_input, 0) + COALESCE(tokens_output, 0) AS tokens_total,
     COALESCE(cost_input_microcents, cost_input * 1000000) AS cost_input_microcents,
     COALESCE(cost_output_microcents, cost_output * 1000000) AS cost_output_microcents,
     COALESCE(cost_total_microcents, cost_total * 1000000) AS cost_total_microcents
@@ -190,6 +207,7 @@ function toStatBaseAggregate(data: AthenaData): StatBaseAggregate[] {
       tier: normalizeTier(data.tier || "unknown"),
       sessions: integer(data, "sessions"),
       requests: integer(data, "requests"),
+      unique_users: integer(data, "unique_users"),
       input_tokens: integer(data, "input_tokens"),
       output_tokens: integer(data, "output_tokens"),
       reasoning_tokens: integer(data, "reasoning_tokens"),
@@ -241,15 +259,16 @@ function sqlString(value: string) {
 
 function statModelSql(model: string, providerModel: string) {
   return `COALESCE(NULLIF(regexp_replace(CASE
-      WHEN ${model} = 'big-pickle' THEN COALESCE(NULLIF(${providerModel}, ''), ${model})
+      WHEN lower(${model}) = 'big-pickle' THEN NULLIF(${providerModel}, '')
       ELSE ${model}
     END, '(-free|:global)+$', ''), ''), 'unknown')`
 }
 
-function statProviderSql(model: string, providerModel: string) {
+function statProviderSql(model: string, providerModel: string, provider: string) {
   return `CASE
 ${MODEL_AUTHOR_RULES.map((item) => `      WHEN strpos(lower(${providerModel}), ${sqlString(item.match)}) > 0 THEN ${sqlString(item.author)}`).join("\n")}
 ${MODEL_AUTHOR_RULES.map((item) => `      WHEN strpos(lower(${model}), ${sqlString(item.match)}) > 0 THEN ${sqlString(item.author)}`).join("\n")}
+      WHEN ${provider} <> '' AND lower(${provider}) NOT IN (${RETIRED_STAT_PROVIDERS.map(sqlString).join(", ")}) THEN ${provider}
       ELSE 'unknown'
     END`
 }
