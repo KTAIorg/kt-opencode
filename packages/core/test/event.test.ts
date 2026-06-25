@@ -116,7 +116,7 @@ describe("EventV2", () => {
       const event = yield* events.publish(VersionedMessage, { id: "one", text: "hello" })
 
       expect(event.type).toBe("test.versioned")
-      expect(event.durable?.version).toBe(2)
+      expect(event.durable.version).toBe(2)
     }),
   )
 
@@ -764,7 +764,7 @@ describe("EventV2", () => {
       const replayed = {
         id: published.id,
         type: EventV2.versionedType(DurableMessage.type, 1),
-        seq: published.durable!.seq,
+        seq: published.durable.seq,
         aggregateID,
         data: published.data,
       }

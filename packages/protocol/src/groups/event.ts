@@ -8,18 +8,24 @@ import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 const fields = {
   id: Event.ID,
   metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
-  durable: Schema.optional(Schema.Struct({ aggregateID: Schema.String, seq: Schema.Int, version: Schema.Int })),
   location: Schema.optional(Location.Ref),
 }
 
 const schema = (definitions: ReadonlyArray<Definition>) =>
   Schema.Union([
     ...definitions.map((definition) =>
-      Schema.Struct({
-        ...fields,
-        type: Schema.Literal(definition.type),
-        data: definition.data,
-      }).annotate({ identifier: `V2Event.${definition.type}` }),
+      definition.durable
+        ? Schema.Struct({
+            ...fields,
+            durable: Event.durableEnvelope(definition.durable.version),
+            type: Schema.Literal(definition.type),
+            data: definition.data,
+          }).annotate({ identifier: `V2Event.${definition.type}` })
+        : Schema.Struct({
+            ...fields,
+            type: Schema.Literal(definition.type),
+            data: definition.data,
+          }).annotate({ identifier: `V2Event.${definition.type}` }),
     ),
     ...(definitions.some((definition) => definition.type === "server.connected")
       ? []

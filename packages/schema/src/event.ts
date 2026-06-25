@@ -3,7 +3,7 @@ export * as Event from "./event"
 import { Schema } from "effect"
 import { ascending } from "./identifier"
 import { Location } from "./location"
-import { statics } from "./schema"
+import { NonNegativeInt, statics } from "./schema"
 
 export const ID = Schema.String.check(Schema.isStartsWith("evt_")).pipe(
   Schema.brand("Event.ID"),
@@ -11,53 +11,95 @@ export const ID = Schema.String.check(Schema.isStartsWith("evt_")).pipe(
 )
 export type ID = typeof ID.Type
 
-export type Definition<
+export type DurableOptions = {
+  readonly version: number
+  readonly aggregate: string
+}
+
+export type DurableEnvelope<Version extends number = number> = {
+  readonly aggregateID: string
+  readonly seq: number
+  readonly version: Version
+}
+
+export const durableEnvelope = <const Version extends number>(version: Version) =>
+  Schema.Struct({ aggregateID: Schema.String, seq: NonNegativeInt, version: Schema.Literal(version) })
+
+const NoDurableEnvelope = Schema.optional(Schema.Never)
+
+export type LiveDefinition<
   Type extends string = string,
   DataSchema extends Schema.Codec<unknown, unknown> = Schema.Codec<unknown, unknown>,
 > = Schema.Top & {
   readonly type: Type
-  readonly durable?: {
-    readonly version: number
-    readonly aggregate: string
-  }
   readonly data: DataSchema
+  readonly durable?: never
 }
+
+export type DurableDefinition<
+  Type extends string = string,
+  DataSchema extends Schema.Codec<unknown, unknown> = Schema.Codec<unknown, unknown>,
+  Durability extends DurableOptions = DurableOptions,
+> = Schema.Top & {
+  readonly type: Type
+  readonly data: DataSchema
+  readonly durable: Durability
+}
+
+export type Definition = LiveDefinition | DurableDefinition
+
+type Defined<
+  Type extends string,
+  DataSchema extends Schema.Codec<unknown, unknown>,
+  Durability extends DurableOptions | undefined,
+> = Durability extends DurableOptions
+  ? DurableDefinition<Type, DataSchema, Durability>
+  : LiveDefinition<Type, DataSchema>
 
 export type Data<D extends Definition> = Schema.Schema.Type<D["data"]>
 
-export type Payload<D extends Definition = Definition> = {
-  readonly id: ID
-  readonly type: D["type"]
-  readonly data: Data<D>
-  readonly durable?: {
-    readonly aggregateID: string
-    readonly seq: number
-    readonly version: number
-  }
-  readonly location?: Location.Ref
-  readonly metadata?: Record<string, unknown>
-}
+export type UncommittedPayload<D extends Definition = Definition> = D extends Definition
+  ? {
+      readonly id: ID
+      readonly type: D["type"]
+      readonly data: Data<D>
+      readonly location?: Location.Ref
+      readonly metadata?: Record<string, unknown>
+    }
+  : never
+
+export type PublishedPayload<D extends Definition = Definition> = D extends Definition
+  ? UncommittedPayload<D> &
+      (D extends { readonly durable: infer Durability extends DurableOptions }
+        ? { readonly durable: DurableEnvelope<Durability["version"]> }
+        : { readonly durable?: never })
+  : never
+
+export type Payload<D extends Definition = Definition> = PublishedPayload<D>
+
+type EventSchema<
+  Type extends string,
+  Fields extends Readonly<Record<PropertyKey, Schema.Codec<unknown, unknown>>>,
+  Durability extends DurableOptions | undefined,
+> = Schema.Schema<PublishedPayload<Defined<Type, Schema.Struct<Fields>, Durability>>> &
+  Defined<Type, Schema.Struct<Fields>, Durability>
 
 export function define<
   const Type extends string,
   Fields extends Readonly<Record<PropertyKey, Schema.Codec<unknown, unknown>>>,
+  const Durability extends DurableOptions | undefined = undefined,
 >(input: {
   readonly type: Type
-  readonly durable?: {
-    readonly version: number
-    readonly aggregate: string
-  }
+  readonly durable?: Durability
   readonly schema: Fields
-}): Schema.Schema<Payload<Definition<Type, Schema.Struct<Fields>>>> & Definition<Type, Schema.Struct<Fields>> {
+}): EventSchema<Type, Fields, Durability> {
   const data = Schema.Struct(input.schema)
   return Object.assign(
     Schema.Struct({
       id: ID,
       metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
       type: Schema.Literal(input.type),
-      durable: Schema.optional(
-        Schema.Struct({ aggregateID: Schema.String, seq: Schema.Number, version: Schema.Number }),
-      ),
+      durable: input.durable === undefined ? NoDurableEnvelope : durableEnvelope(input.durable.version),
       location: Schema.optional(Location.Ref),
       data,
     }).annotate({ identifier: input.type }),
@@ -66,7 +108,7 @@ export function define<
       ...(input.durable === undefined ? {} : { durable: input.durable }),
       data,
     },
-  ) as Schema.Schema<Payload<Definition<Type, Schema.Struct<Fields>>>> & Definition<Type, Schema.Struct<Fields>>
+  ) as unknown as EventSchema<Type, Fields, Durability>
 }
 
 export function inventory<const Definitions extends ReadonlyArray<Definition>>(...definitions: Definitions) {
@@ -103,7 +145,7 @@ export function durable(definitions: ReadonlyArray<Definition>) {
       if (result.has(key)) throw new Error(`Duplicate durable event definition for ${key}`)
       result.set(key, definition)
       return result
-    }, new Map<string, Definition>()),
+    }, new Map<string, DurableDefinition>()),
   )
 }
 

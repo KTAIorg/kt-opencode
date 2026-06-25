@@ -9,6 +9,12 @@ import { SessionEvent } from "@opencode-ai/core/session/event"
 import { SessionMessageUpdater } from "@opencode-ai/core/session/message-updater"
 import { SessionMessage } from "@opencode-ai/core/session/message"
 
+function durable(sessionID: SessionID, seq?: number): { aggregateID: SessionID; seq: number; version: 1 }
+function durable(sessionID: SessionID, seq: number, version: 2): { aggregateID: SessionID; seq: number; version: 2 }
+function durable(sessionID: SessionID, seq = 0, version: 1 | 2 = 1) {
+  return { aggregateID: sessionID, seq, version }
+}
+
 test.skip("step snapshots carry over to assistant messages", () => {
   const state: SessionMessageUpdater.MemoryState = { messages: [] }
   const sessionID = SessionID.make("session")
@@ -17,6 +23,7 @@ test.skip("step snapshots carry over to assistant messages", () => {
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id: EventV2.ID.create(),
+      durable: durable(sessionID),
       type: "session.next.step.started",
       data: {
         sessionID,
@@ -38,6 +45,7 @@ test.skip("step snapshots carry over to assistant messages", () => {
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id: EventV2.ID.create(),
+      durable: durable(sessionID, 1, 2),
       type: "session.next.step.ended",
       data: {
         sessionID,
@@ -70,6 +78,7 @@ test.skip("text ended populates assistant text content", () => {
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id: EventV2.ID.create(),
+      durable: durable(sessionID),
       type: "session.next.step.started",
       data: {
         sessionID,
@@ -88,6 +97,7 @@ test.skip("text ended populates assistant text content", () => {
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id: EventV2.ID.create(),
+      durable: durable(sessionID, 1),
       type: "session.next.text.started",
       data: {
         sessionID,
@@ -101,6 +111,7 @@ test.skip("text ended populates assistant text content", () => {
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id: EventV2.ID.create(),
+      durable: durable(sessionID, 2),
       type: "session.next.text.ended",
       data: {
         sessionID,
@@ -126,6 +137,7 @@ test.skip("tool completion stores completed timestamp", () => {
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id: EventV2.ID.create(),
+      durable: durable(sessionID),
       type: "session.next.step.started",
       data: {
         sessionID,
@@ -144,6 +156,7 @@ test.skip("tool completion stores completed timestamp", () => {
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id: EventV2.ID.create(),
+      durable: durable(sessionID, 1),
       type: "session.next.tool.input.started",
       data: {
         sessionID,
@@ -158,6 +171,7 @@ test.skip("tool completion stores completed timestamp", () => {
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id: EventV2.ID.create(),
+      durable: durable(sessionID, 2),
       type: "session.next.tool.called",
       data: {
         sessionID,
@@ -174,6 +188,7 @@ test.skip("tool completion stores completed timestamp", () => {
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id: EventV2.ID.create(),
+      durable: durable(sessionID, 3),
       type: "session.next.tool.success",
       data: {
         sessionID,
@@ -204,6 +219,7 @@ test("compaction events reduce to compaction message only when completed", () =>
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id,
+      durable: durable(sessionID),
       type: "session.next.compaction.started",
       data: {
         sessionID,
@@ -245,6 +261,7 @@ test("compaction events reduce to compaction message only when completed", () =>
   Effect.runSync(
     SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
       id: EventV2.ID.create(),
+      durable: durable(sessionID, 3),
       type: "session.next.compaction.ended",
       data: {
         sessionID,

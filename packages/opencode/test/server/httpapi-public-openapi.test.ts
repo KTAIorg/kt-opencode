@@ -99,6 +99,16 @@ describe("PublicApi OpenAPI v2 errors", () => {
     })
   })
 
+  test("documents durable metadata only on durable events", () => {
+    const spec = OpenApi.fromApi(PublicApi) as OpenApiSpec
+    const durable = spec.components.schemas.V2EventSessionCreated
+    const live = spec.components.schemas.V2EventSessionNextTextDelta
+
+    expect(durable?.required).toContain("durable")
+    expect(durable?.properties?.durable).toBeDefined()
+    expect(live?.properties?.durable).toBeUndefined()
+  })
+
   test("preserves /api auth responses", () => {
     const spec = OpenApi.fromApi(PublicApi) as OpenApiSpec
 

@@ -2,7 +2,14 @@ export * as EventV2 from "./event"
 
 import { Cause, Context, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
 import { Event } from "@opencode-ai/schema/event"
-import type { Data, Definition, Payload } from "@opencode-ai/schema/event"
+import type {
+  Data,
+  Definition,
+  DurableDefinition,
+  Payload,
+  PublishedPayload,
+  UncommittedPayload,
+} from "@opencode-ai/schema/event"
 import { and, asc, eq, gt } from "drizzle-orm"
 import { Database } from "./database/database"
 import { EventSequenceTable, EventTable } from "./event/sql"
@@ -13,7 +20,14 @@ import { Durable } from "@opencode-ai/schema/durable-event-manifest"
 
 export const ID = Event.ID
 export type ID = import("@opencode-ai/schema/event").ID
-export type { Data, Definition, Payload } from "@opencode-ai/schema/event"
+export type {
+  Data,
+  Definition,
+  DurableDefinition,
+  Payload,
+  PublishedPayload,
+  UncommittedPayload,
+} from "@opencode-ai/schema/event"
 
 export type Subscriber<D extends Definition = Definition> = (event: Payload<D>) => Effect.Effect<void>
 export type Unsubscribe = Effect.Effect<void>
@@ -66,10 +80,13 @@ export interface Interface {
   ) => Effect.Effect<Payload<D>>
   readonly subscribe: <D extends Definition>(definition: D) => Stream.Stream<Payload<D>>
   readonly all: () => Stream.Stream<Payload>
-  readonly durable: (input: { readonly aggregateID: string; readonly after?: number }) => Stream.Stream<Payload>
+  readonly durable: (input: {
+    readonly aggregateID: string
+    readonly after?: number
+  }) => Stream.Stream<Payload<DurableDefinition>>
   /** @deprecated Use `all()` and consume the returned stream. */
   readonly listen: (listener: Subscriber) => Effect.Effect<Unsubscribe>
-  readonly project: <D extends Definition>(definition: D, projector: Subscriber<D>) => Effect.Effect<void>
+  readonly project: <D extends DurableDefinition>(definition: D, projector: Subscriber<D>) => Effect.Effect<void>
   readonly replay: (
     event: SerializedEvent,
     options?: { readonly publish?: boolean; readonly ownerID?: string; readonly strictOwner?: boolean },
@@ -124,8 +141,8 @@ export const layerWith = (options?: LayerOptions) =>
       )
 
       function commitDurableEvent(
-        definition: Definition,
-        event: Payload,
+        definition: DurableDefinition,
+        event: UncommittedPayload<DurableDefinition>,
         input?: {
           readonly seq: number
           readonly aggregateID: string
@@ -135,7 +152,7 @@ export const layerWith = (options?: LayerOptions) =>
         commit?: (seq: number) => Effect.Effect<void>,
       ) {
         return Effect.gen(function* () {
-          const durable = definition?.durable
+          const durable = definition.durable
           if (durable) {
             const aggregateID = (event.data as Record<string, unknown>)[durable.aggregate]
             if (typeof aggregateID !== "string") {
@@ -200,7 +217,7 @@ export const layerWith = (options?: LayerOptions) =>
                                   .run()
                                   .pipe(Effect.orDie)
                               }
-                              return
+                              return undefined
                             }
                             yield* Effect.die(
                               new InvalidDurableEventError({
@@ -210,7 +227,7 @@ export const layerWith = (options?: LayerOptions) =>
                             )
                           }
                           if (input && row?.ownerID && row.ownerID !== input.ownerID) {
-                            return
+                            return undefined
                           }
                           const seq = input?.seq ?? latest + 1
                           if (input && seq !== latest + 1) {
@@ -234,10 +251,10 @@ export const layerWith = (options?: LayerOptions) =>
                                 message: `Event ${event.id} already exists at aggregate ${stored.aggregateID} sequence ${stored.seq}`,
                               }),
                             )
-                          const committed = {
+                          const committed: Payload<DurableDefinition> = {
                             ...event,
                             durable: { aggregateID, seq, version: durable.version },
-                          } as Payload
+                          }
                           for (const projector of list) {
                             yield* projector(committed)
                           }
@@ -267,14 +284,14 @@ export const layerWith = (options?: LayerOptions) =>
                             ])
                             .run()
                             .pipe(Effect.orDie)
-                          return { aggregateID, seq }
+                          return committed
                         }),
                       { behavior: "immediate" },
                     )
                     .pipe(Effect.orDie)
                   if (committed) {
                     yield* Effect.forEach(
-                      pubsub.durable.get(committed.aggregateID) ?? [],
+                      pubsub.durable.get(committed.durable.aggregateID) ?? [],
                       (wake) => PubSub.publish(wake, undefined),
                       { discard: true },
                     )
@@ -287,7 +304,11 @@ export const layerWith = (options?: LayerOptions) =>
         })
       }
 
-      function publishEvent<D extends Definition>(definition: D, event: Payload<D>, commit?: PublishOptions["commit"]) {
+      function publishEvent<D extends Definition>(
+        definition: D,
+        event: UncommittedPayload<D>,
+        commit?: PublishOptions["commit"],
+      ): Effect.Effect<PublishedPayload<D>> {
         return Effect.gen(function* () {
           if (!definition?.durable && commit)
             return yield* Effect.die(
@@ -297,22 +318,22 @@ export const layerWith = (options?: LayerOptions) =>
               }),
             )
           if (definition?.durable) {
-            const committed = yield* commitDurableEvent(definition, event as Payload, undefined, commit)
-            if (committed) {
-              event = {
-                ...event,
-                durable: {
-                  aggregateID: committed.aggregateID,
-                  seq: committed.seq,
-                  version: definition.durable.version,
-                },
-              }
-              yield* notify(event as Payload, true)
-              return event
-            }
+            const committed = yield* commitDurableEvent(
+              definition,
+              event as UncommittedPayload<DurableDefinition>,
+              undefined,
+              commit,
+            )
+            if (!committed)
+              return yield* Effect.die(
+                new InvalidDurableEventError({ type: event.type, message: "New durable event was not committed" }),
+              )
+            yield* notify(committed, true)
+            return committed as PublishedPayload<D>
           }
-          yield* notify(event as Payload, false)
-          return event
+          const published = event as PublishedPayload<D>
+          yield* notify(published, false)
+          return published
         })
       }
 
@@ -353,7 +374,7 @@ export const layerWith = (options?: LayerOptions) =>
               type: definition.type,
               ...(location ? { location } : {}),
               data,
-            } as Payload<D>,
+            } as UncommittedPayload<D>,
             options?.commit,
           )
         })
@@ -370,11 +391,11 @@ export const layerWith = (options?: LayerOptions) =>
               new InvalidDurableEventError({ type: event.type, message: `Unknown durable event type ${event.type}` }),
             )
           } else {
-            const payload = {
+            const payload: UncommittedPayload<DurableDefinition> = {
               id: event.id,
               type: definition.type,
               data: Schema.decodeUnknownSync(definition.data)(event.data),
-            } as Payload
+            }
             const committed = yield* commitDurableEvent(definition, payload, {
               seq: event.seq,
               aggregateID: event.aggregateID,
@@ -382,17 +403,7 @@ export const layerWith = (options?: LayerOptions) =>
               strictOwner: options?.strictOwner,
             })
             if (committed && options?.publish) {
-              yield* notify(
-                {
-                  ...payload,
-                  durable: {
-                    aggregateID: committed.aggregateID,
-                    seq: committed.seq,
-                    version: definition.durable.version,
-                  },
-                },
-                true,
-              )
+              yield* notify(committed, true)
             }
           }
         })
@@ -459,7 +470,7 @@ export const layerWith = (options?: LayerOptions) =>
 
       const streamAll = (): Stream.Stream<Payload> => Stream.fromPubSub(pubsub.all)
 
-      const decodeSerializedEvent = (event: SerializedEvent) => {
+      const decodeSerializedEvent = (event: SerializedEvent): Payload<DurableDefinition> => {
         const definition = Durable.get(event.type)
         if (!definition?.durable) {
           throw new InvalidDurableEventError({ type: event.type, message: `Unknown durable event type ${event.type}` })
@@ -516,7 +527,10 @@ export const layerWith = (options?: LayerOptions) =>
           return subscription
         })
 
-      const durable = (input: { readonly aggregateID: string; readonly after?: number }): Stream.Stream<Payload> =>
+      const durable = (input: {
+        readonly aggregateID: string
+        readonly after?: number
+      }): Stream.Stream<Payload<DurableDefinition>> =>
         Stream.unwrap(
           Effect.gen(function* () {
             const wakes = yield* subscribeDurable(input.aggregateID)
@@ -524,7 +538,7 @@ export const layerWith = (options?: LayerOptions) =>
             const read = Effect.suspend(() => readAfter(input.aggregateID, sequence)).pipe(
               Effect.tap((events) =>
                 Effect.sync(() => {
-                  sequence = events.at(-1)?.durable?.seq ?? sequence
+                  sequence = events.at(-1)?.durable.seq ?? sequence
                 }),
               ),
             )
@@ -546,7 +560,7 @@ export const layerWith = (options?: LayerOptions) =>
           })
         })
 
-      const project = <D extends Definition>(definition: D, projector: Subscriber<D>): Effect.Effect<void> =>
+      const project = <D extends DurableDefinition>(definition: D, projector: Subscriber<D>): Effect.Effect<void> =>
         Effect.sync(() => {
           const list = projectors.get(definition.type) ?? []
           list.push((event) => projector(event as Payload<D>))

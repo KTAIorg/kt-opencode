@@ -4328,11 +4328,6 @@ export type V2EventModelsDevRefreshed = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "models-dev.refreshed"
   data: {
@@ -4344,11 +4339,6 @@ export type V2EventIntegrationUpdated = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "integration.updated"
@@ -4362,11 +4352,6 @@ export type V2EventIntegrationConnectionUpdated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "integration.connection.updated"
   data: {
@@ -4378,11 +4363,6 @@ export type V2EventCatalogUpdated = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "catalog.updated"
@@ -4396,12 +4376,12 @@ export type V2EventSessionCreated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.created"
   data: {
     sessionID: string
@@ -4414,12 +4394,12 @@ export type V2EventSessionUpdated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.updated"
   data: {
     sessionID: string
@@ -4432,12 +4412,12 @@ export type V2EventSessionDeleted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.deleted"
   data: {
     sessionID: string
@@ -4450,12 +4430,12 @@ export type V2EventMessageUpdated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "message.updated"
   data: {
     sessionID: string
@@ -4468,12 +4448,12 @@ export type V2EventMessageRemoved = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "message.removed"
   data: {
     sessionID: string
@@ -4486,12 +4466,12 @@ export type V2EventMessagePartUpdated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "message.part.updated"
   data: {
     sessionID: string
@@ -4505,12 +4485,12 @@ export type V2EventMessagePartRemoved = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "message.part.removed"
   data: {
     sessionID: string
@@ -4524,12 +4504,12 @@ export type V2EventSessionNextAgentSwitched = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.agent.switched"
   data: {
     timestamp: number
@@ -4544,12 +4524,12 @@ export type V2EventSessionNextModelSwitched = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.model.switched"
   data: {
     timestamp: number
@@ -4568,12 +4548,12 @@ export type V2EventSessionNextMoved = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.moved"
   data: {
     timestamp: number
@@ -4588,12 +4568,12 @@ export type V2EventSessionNextPrompted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.prompted"
   data: {
     timestamp: number
@@ -4609,12 +4589,12 @@ export type V2EventSessionNextPromptAdmitted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.prompt.admitted"
   data: {
     timestamp: number
@@ -4630,12 +4610,12 @@ export type V2EventSessionNextContextUpdated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.context.updated"
   data: {
     timestamp: number
@@ -4650,12 +4630,12 @@ export type V2EventSessionNextSynthetic = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.synthetic"
   data: {
     timestamp: number
@@ -4670,12 +4650,12 @@ export type V2EventSessionNextShellStarted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.shell.started"
   data: {
     timestamp: number
@@ -4691,12 +4671,12 @@ export type V2EventSessionNextShellEnded = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.shell.ended"
   data: {
     timestamp: number
@@ -4711,12 +4691,12 @@ export type V2EventSessionNextStepStarted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.step.started"
   data: {
     timestamp: number
@@ -4737,12 +4717,12 @@ export type V2EventSessionNextStepEnded = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 2
   }
-  location?: LocationRef
   type: "session.next.step.ended"
   data: {
     timestamp: number
@@ -4769,12 +4749,12 @@ export type V2EventSessionNextStepFailed = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 2
   }
-  location?: LocationRef
   type: "session.next.step.failed"
   data: {
     timestamp: number
@@ -4789,12 +4769,12 @@ export type V2EventSessionNextTextStarted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.text.started"
   data: {
     timestamp: number
@@ -4808,11 +4788,6 @@ export type V2EventSessionNextTextDelta = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "session.next.text.delta"
@@ -4830,12 +4805,12 @@ export type V2EventSessionNextTextEnded = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.text.ended"
   data: {
     timestamp: number
@@ -4851,12 +4826,12 @@ export type V2EventSessionNextReasoningStarted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.reasoning.started"
   data: {
     timestamp: number
@@ -4876,11 +4851,6 @@ export type V2EventSessionNextReasoningDelta = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "session.next.reasoning.delta"
   data: {
@@ -4897,12 +4867,12 @@ export type V2EventSessionNextReasoningEnded = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.reasoning.ended"
   data: {
     timestamp: number
@@ -4923,12 +4893,12 @@ export type V2EventSessionNextToolInputStarted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.tool.input.started"
   data: {
     timestamp: number
@@ -4943,11 +4913,6 @@ export type V2EventSessionNextToolInputDelta = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "session.next.tool.input.delta"
@@ -4965,12 +4930,12 @@ export type V2EventSessionNextToolInputEnded = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.tool.input.ended"
   data: {
     timestamp: number
@@ -4986,12 +4951,12 @@ export type V2EventSessionNextToolCalled = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.tool.called"
   data: {
     timestamp: number
@@ -5018,12 +4983,12 @@ export type V2EventSessionNextToolProgress = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.tool.progress"
   data: {
     timestamp: number
@@ -5042,12 +5007,12 @@ export type V2EventSessionNextToolSuccess = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.tool.success"
   data: {
     timestamp: number
@@ -5076,12 +5041,12 @@ export type V2EventSessionNextToolFailed = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.tool.failed"
   data: {
     timestamp: number
@@ -5106,12 +5071,12 @@ export type V2EventSessionNextRetried = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.retried"
   data: {
     timestamp: number
@@ -5126,12 +5091,12 @@ export type V2EventSessionNextCompactionStarted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.compaction.started"
   data: {
     timestamp: number
@@ -5145,11 +5110,6 @@ export type V2EventSessionNextCompactionDelta = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "session.next.compaction.delta"
@@ -5166,12 +5126,12 @@ export type V2EventSessionNextCompactionEnded = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.compaction.ended"
   data: {
     timestamp: number
@@ -5188,12 +5148,12 @@ export type V2EventSessionNextRevertStaged = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.revert.staged"
   data: {
     timestamp: number
@@ -5213,12 +5173,12 @@ export type V2EventSessionNextRevertCleared = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.revert.cleared"
   data: {
     timestamp: number
@@ -5231,12 +5191,12 @@ export type V2EventSessionNextRevertCommitted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
+  location?: LocationRef
+  durable: {
     aggregateID: string
     seq: number
-    version: number
+    version: 1
   }
-  location?: LocationRef
   type: "session.next.revert.committed"
   data: {
     timestamp: number
@@ -5249,11 +5209,6 @@ export type V2EventMessagePartDelta = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "message.part.delta"
@@ -5271,11 +5226,6 @@ export type V2EventSessionDiff = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "session.diff"
   data: {
@@ -5288,11 +5238,6 @@ export type V2EventSessionError = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "session.error"
@@ -5315,11 +5260,6 @@ export type V2EventInstallationUpdated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "installation.updated"
   data: {
@@ -5331,11 +5271,6 @@ export type V2EventInstallationUpdateAvailable = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "installation.update-available"
@@ -5349,11 +5284,6 @@ export type V2EventFileEdited = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "file.edited"
   data: {
@@ -5366,11 +5296,6 @@ export type V2EventReferenceUpdated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "reference.updated"
   data: {
@@ -5382,11 +5307,6 @@ export type V2EventPermissionV2Asked = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "permission.v2.asked"
@@ -5408,11 +5328,6 @@ export type V2EventPermissionV2Replied = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "permission.v2.replied"
   data: {
@@ -5427,11 +5342,6 @@ export type V2EventPluginAdded = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "plugin.added"
   data: {
@@ -5444,11 +5354,6 @@ export type V2EventProjectDirectoriesUpdated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "project.directories.updated"
   data: {
@@ -5460,11 +5365,6 @@ export type V2EventFileWatcherUpdated = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "file.watcher.updated"
@@ -5479,11 +5379,6 @@ export type V2EventPtyCreated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "pty.created"
   data: {
@@ -5496,11 +5391,6 @@ export type V2EventPtyUpdated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "pty.updated"
   data: {
@@ -5512,11 +5402,6 @@ export type V2EventPtyExited = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "pty.exited"
@@ -5531,11 +5416,6 @@ export type V2EventPtyDeleted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "pty.deleted"
   data: {
@@ -5547,11 +5427,6 @@ export type V2EventQuestionV2Asked = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "question.v2.asked"
@@ -5571,11 +5446,6 @@ export type V2EventQuestionV2Replied = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "question.v2.replied"
   data: {
@@ -5590,11 +5460,6 @@ export type V2EventQuestionV2Rejected = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "question.v2.rejected"
   data: {
@@ -5607,11 +5472,6 @@ export type V2EventTodoUpdated = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "todo.updated"
@@ -5626,11 +5486,6 @@ export type V2EventLspUpdated = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "lsp.updated"
   data: {
@@ -5642,11 +5497,6 @@ export type V2EventPermissionAsked = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "permission.asked"
@@ -5671,11 +5521,6 @@ export type V2EventPermissionReplied = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "permission.replied"
   data: {
@@ -5690,11 +5535,6 @@ export type V2EventTuiPromptAppend = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "tui.prompt.append"
   data: {
@@ -5706,11 +5546,6 @@ export type V2EventTuiCommandExecute = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "tui.command.execute"
@@ -5741,11 +5576,6 @@ export type V2EventTuiToastShow = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "tui.toast.show"
   data: {
@@ -5760,11 +5590,6 @@ export type V2EventTuiSessionSelect = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "tui.session.select"
@@ -5781,11 +5606,6 @@ export type V2EventMcpToolsChanged = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "mcp.tools.changed"
   data: {
@@ -5797,11 +5617,6 @@ export type V2EventMcpBrowserOpenFailed = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "mcp.browser.open.failed"
@@ -5815,11 +5630,6 @@ export type V2EventCommandExecuted = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "command.executed"
@@ -5835,11 +5645,6 @@ export type V2EventProjectUpdated = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "project.updated"
@@ -5873,11 +5678,6 @@ export type V2EventSessionStatus = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "session.status"
   data: {
@@ -5891,11 +5691,6 @@ export type V2EventSessionIdle = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "session.idle"
   data: {
@@ -5907,11 +5702,6 @@ export type V2EventQuestionAsked = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "question.asked"
@@ -5931,11 +5721,6 @@ export type V2EventQuestionReplied = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "question.replied"
   data: {
@@ -5950,11 +5735,6 @@ export type V2EventQuestionRejected = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "question.rejected"
   data: {
@@ -5968,11 +5748,6 @@ export type V2EventSessionCompacted = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "session.compacted"
   data: {
@@ -5984,11 +5759,6 @@ export type V2EventVcsBranchUpdated = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "vcs.branch.updated"
@@ -6002,11 +5772,6 @@ export type V2EventWorkspaceReady = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "workspace.ready"
   data: {
@@ -6019,11 +5784,6 @@ export type V2EventWorkspaceFailed = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "workspace.failed"
   data: {
@@ -6035,11 +5795,6 @@ export type V2EventWorkspaceStatus = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "workspace.status"
@@ -6054,11 +5809,6 @@ export type V2EventWorktreeReady = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "worktree.ready"
   data: {
@@ -6072,11 +5822,6 @@ export type V2EventWorktreeFailed = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "worktree.failed"
   data: {
@@ -6089,11 +5834,6 @@ export type V2EventServerConnected = {
   metadata?: {
     [key: string]: unknown
   }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
   location?: LocationRef
   type: "server.connected"
   data: {
@@ -6105,11 +5845,6 @@ export type V2EventGlobalDisposed = {
   id: string
   metadata?: {
     [key: string]: unknown
-  }
-  durable?: {
-    aggregateID: string
-    seq: number
-    version: number
   }
   location?: LocationRef
   type: "global.disposed"
