@@ -11,7 +11,7 @@ import { Truncate } from "@/tool/truncate"
 
 import { Plugin } from "@/plugin"
 import type { TaskPromptOps } from "@/tool/task"
-import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSchema } from "ai"
+import { type Tool as AITool, tool, jsonSchema, type JSONSchema7, type ToolExecutionOptions, asSchema } from "ai"
 import { Effect } from "effect"
 import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
@@ -21,6 +21,7 @@ import { EffectBridge } from "@/effect/bridge"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { isRecord } from "@/util/record"
+import { Flag } from "@opencode-ai/core/flag/flag"
 
 const MCP_RESOURCE_TOOLS = {
   list: "list_mcp_resources",
@@ -381,11 +382,14 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     })
   }
 
+  const mcpTools: Record<string, AITool> = {}
+  const mcpSchemas: Record<string, JSONSchema7> = {}
   for (const [key, item] of Object.entries(yield* mcp.tools())) {
     const execute = item.execute
     if (!execute) continue
 
     const schema = yield* Effect.promise(() => Promise.resolve(asSchema(item.inputSchema).jsonSchema))
+    mcpSchemas[key] = { ...schema, properties: schema.properties ?? {} }
     const transformed = ProviderTransform.schema(input.model, { ...schema, properties: schema.properties ?? {} })
     item.inputSchema = jsonSchema(transformed)
     item.execute = (args, opts) =>
@@ -479,9 +483,33 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           return output
         }),
       )
-    tools[key] = item
+    mcpTools[key] = item
   }
 
+  if (!Flag.OPENCODE_EXPERIMENTAL_MCP_TOOL_SEARCH) {
+    Object.assign(tools, mcpTools)
+    return tools
+  }
+
+  const { McpToolSearch } = yield* Effect.promise(() => import("@/mcp/tool-search"))
+  const disabled = Permission.disabled(
+    Object.keys(mcpTools),
+    Permission.merge(input.agent.permission, input.session.permission ?? []),
+  )
+  const user = input.messages.findLast((message) => message.info.role === "user")
+  const overrides = user?.info.role === "user" ? user.info.tools : undefined
+  const searchable = Object.fromEntries(
+    Object.entries(mcpTools).filter(([key]) => overrides?.[key] !== false && !disabled.has(key)),
+  )
+  const schemas = Object.fromEntries(Object.keys(searchable).map((key) => [key, mcpSchemas[key]]))
+  const controls = McpToolSearch.create({
+    tools: searchable,
+    schemas,
+    transformSchema: (schema) => ProviderTransform.schema(input.model, schema),
+  })
+  const collision = Object.keys(controls).find((key) => tools[key])
+  if (collision) throw new Error(`Tool name reserved for MCP tool search: ${collision}`)
+  Object.assign(tools, controls)
   return tools
 })
 

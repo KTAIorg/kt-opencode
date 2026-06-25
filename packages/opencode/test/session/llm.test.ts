@@ -25,8 +25,10 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Permission } from "@/permission"
 import { LLMAISDK } from "@/session/llm/ai-sdk"
 import { Session as SessionNs } from "@/session/session"
+import { LLMRequestPrep } from "@/session/llm/request"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
+import { Flag } from "@opencode-ai/core/flag/flag"
 
 type ConfigModel = NonNullable<NonNullable<ConfigV1.Info["provider"]>[string]["models"]>[string]
 
@@ -170,6 +172,78 @@ describe("session.llm.hasToolCalls", () => {
       },
     ] as ModelMessage[]
     expect(LLM.hasToolCalls(messages)).toBe(true)
+  })
+})
+
+describe("session.llm.resolveTools", () => {
+  test("keeps MCP search controls under a generic deny rule", () => {
+    const previous = Flag.OPENCODE_EXPERIMENTAL_MCP_TOOL_SEARCH
+    Flag.OPENCODE_EXPERIMENTAL_MCP_TOOL_SEARCH = true
+    try {
+      const agent = {
+        name: "test",
+        mode: "primary",
+        options: {},
+        permission: [
+          { permission: "*", pattern: "*", action: "deny" },
+          { permission: "github_create_issue", pattern: "*", action: "allow" },
+        ],
+      } satisfies Agent.Info
+      const user = {
+        id: MessageID.make("msg_mcp_tool_search"),
+        sessionID: SessionID.make("ses_mcp_tool_search"),
+        role: "user",
+        time: { created: Date.now() },
+        agent: agent.name,
+        model: { providerID: ProviderV2.ID.make("test"), modelID: ModelV2.ID.make("test") },
+      } satisfies SessionV1.User
+      const control = tool({ inputSchema: z.object({}), execute: async () => ({ output: "" }) })
+      expect(
+        Object.keys(
+          LLMRequestPrep.resolveTools({
+            tools: { mcp_search: control, mcp_describe: control, mcp_call: control },
+            agent,
+            user,
+          }),
+        ),
+      ).toEqual(["mcp_search", "mcp_describe", "mcp_call"])
+    } finally {
+      Flag.OPENCODE_EXPERIMENTAL_MCP_TOOL_SEARCH = previous
+    }
+  })
+
+  test("honors explicit MCP search control denies", () => {
+    const previous = Flag.OPENCODE_EXPERIMENTAL_MCP_TOOL_SEARCH
+    Flag.OPENCODE_EXPERIMENTAL_MCP_TOOL_SEARCH = true
+    try {
+      const agent = {
+        name: "test",
+        mode: "primary",
+        options: {},
+        permission: [
+          { permission: "*", pattern: "*", action: "deny" },
+          { permission: "mcp_*", pattern: "*", action: "deny" },
+        ],
+      } satisfies Agent.Info
+      const user = {
+        id: MessageID.make("msg_mcp_tool_search_deny"),
+        sessionID: SessionID.make("ses_mcp_tool_search_deny"),
+        role: "user",
+        time: { created: Date.now() },
+        agent: agent.name,
+        model: { providerID: ProviderV2.ID.make("test"), modelID: ModelV2.ID.make("test") },
+      } satisfies SessionV1.User
+      const control = tool({ inputSchema: z.object({}), execute: async () => ({ output: "" }) })
+      expect(
+        LLMRequestPrep.resolveTools({
+          tools: { mcp_search: control, mcp_describe: control, mcp_call: control },
+          agent,
+          user,
+        }),
+      ).toEqual({})
+    } finally {
+      Flag.OPENCODE_EXPERIMENTAL_MCP_TOOL_SEARCH = previous
+    }
   })
 })
 
