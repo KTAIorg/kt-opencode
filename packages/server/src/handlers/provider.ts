@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
 import { ProviderNotFoundError } from "@opencode-ai/protocol/errors"
+import { ProviderV2 } from "@opencode-ai/core/provider"
 import { response } from "../location"
 
 export const ProviderHandler = HttpApiBuilder.group(Api, "server.provider", (handlers) =>
@@ -12,7 +13,9 @@ export const ProviderHandler = HttpApiBuilder.group(Api, "server.provider", (han
         "provider.list",
         Effect.fn(function* () {
           const catalog = yield* Catalog.Service
-          return yield* response(catalog.provider.available())
+          return yield* response(
+            catalog.provider.available().pipe(Effect.map((providers) => providers.map(ProviderV2.flatten))),
+          )
         }),
       )
       .handle(
@@ -25,7 +28,7 @@ export const ProviderHandler = HttpApiBuilder.group(Api, "server.provider", (han
               providerID: ctx.params.providerID,
               message: `Provider not found: ${ctx.params.providerID}`,
             })
-          return yield* response(Effect.succeed(provider))
+          return yield* response(Effect.succeed(ProviderV2.flatten(provider)))
         }),
       )
   }),

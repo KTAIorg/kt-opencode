@@ -78,6 +78,34 @@ export const Info = Schema.Struct({
 
 export type MutableInfo = Omit<DeepMutable<Info>, "api"> & { api: ProviderV2.MutableApi<Api> }
 
+export function flatten(info: Info): Model.Info {
+  return Model.Info.make({
+    id: info.id,
+    modelID: info.api.id === info.id ? undefined : info.api.id,
+    providerID: info.providerID,
+    family: info.family,
+    name: info.name,
+    package: info.api.type === "aisdk" ? `aisdk:${info.api.package}` : undefined,
+    settings: {
+      ...info.api.settings,
+      ...(info.api.url === undefined ? {} : { baseURL: info.api.url }),
+    },
+    headers: info.request.headers,
+    body: info.request.body,
+    capabilities: info.capabilities,
+    variants: info.variants.map((variant) => ({
+      id: variant.id,
+      headers: variant.headers,
+      body: variant.body,
+    })),
+    time: info.time,
+    cost: info.cost,
+    status: info.status,
+    enabled: info.enabled,
+    limit: info.limit,
+  })
+}
+
 export function parse(input: string): { providerID: ProviderV2.ID; modelID: ID } {
   const [providerID, ...modelID] = input.split("/")
   return {

@@ -59,3 +59,19 @@ export type MutableApi<T extends Api = Api> = T extends Api
   : never
 
 export type MutableInfo = Omit<DeepMutable<Info>, "api"> & { api: MutableApi }
+
+export function flatten(info: Info): Provider.Info {
+  return Provider.Info.make({
+    id: info.id,
+    integrationID: info.integrationID,
+    name: info.name,
+    disabled: info.disabled,
+    package: info.api.type === "aisdk" ? `aisdk:${info.api.package}` : "",
+    settings: {
+      ...info.api.settings,
+      ...(info.api.url === undefined ? {} : { baseURL: info.api.url }),
+    },
+    headers: info.request.headers,
+    body: info.request.body,
+  })
+}
