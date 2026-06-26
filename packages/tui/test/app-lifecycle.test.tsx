@@ -7,34 +7,15 @@ import { createTuiResolvedConfig } from "./fixture/tui-runtime"
 import { createEventSource, createFetch, directory, json } from "./fixture/tui-sdk"
 
 test("renderer initialization preserves the original error message", async () => {
-  const core = await import("@opentui/core")
   const message = 'Failed to open library "opentui.dll": error code 126'
-  mock.module("@opentui/core", () => ({
-    ...core,
-    createCliRenderer: async () => {
-      throw new Error(message)
-    },
-  }))
-
-  try {
-    const { run } = await import("../src/app")
-    await expect(
-      Effect.runPromise(
-        run({
-          url: "http://test",
-          directory,
-          config: createTuiResolvedConfig({ plugin_enabled: {} }),
-          args: {},
-          pluginHost: {
-            async start() {},
-            async dispose() {},
-          },
-        }).pipe(Effect.provide(Global.defaultLayer)),
-      ),
-    ).rejects.toThrow(message)
-  } finally {
-    mock.restore()
+  const { initializeRenderer } = await import("../src/app")
+  const factory = async () => {
+    throw new Error(message)
   }
+
+  await expect(
+    Effect.runPromise(initializeRenderer(createTuiResolvedConfig({ plugin_enabled: {} }), factory)),
+  ).rejects.toThrow(message)
 })
 
 test("SIGHUP clears title and disposes scoped resources once", async () => {
