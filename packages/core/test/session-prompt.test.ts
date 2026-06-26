@@ -22,6 +22,7 @@ import { testEffect } from "./lib/effect"
 const executionCalls: SessionV2.ID[] = []
 const interruptCalls: SessionV2.ID[] = []
 const wakeCalls: SessionV2.ID[] = []
+const activeSessions = new Set<SessionV2.ID>()
 let activityObserver: ((active: boolean) => void) | undefined
 let activityState = false
 const setActivity = (active: boolean) =>
@@ -32,7 +33,7 @@ const setActivity = (active: boolean) =>
 const execution = Layer.succeed(
   SessionExecution.Service,
   SessionExecution.Service.of({
-    active: Effect.succeed(new Set()),
+    active: Effect.sync(() => new Set(activeSessions)),
     activity: () =>
       Effect.sync(() => {
         activityState = false
@@ -128,6 +129,13 @@ const eventCount = (type: string) =>
   )
 
 describe("SessionV2.prompt", () => {
+  it.effect("exposes the execution registry", () =>
+    Effect.gen(function* () {
+      activeSessions.add(sessionID)
+      expect(Array.from(yield* (yield* SessionV2.Service).active)).toEqual([sessionID])
+    }).pipe(Effect.ensuring(Effect.sync(() => activeSessions.clear()))),
+  )
+
   it.effect("delegates execution continuation through SessionExecution", () =>
     Effect.gen(function* () {
       yield* setup

@@ -106,7 +106,6 @@ export type MessageNotFoundError = SessionRevert.MessageNotFoundError
 export type Error = NotFoundError | MessageDecodeError | OperationUnavailableError | PromptConflictError
 
 export interface Interface {
-  readonly active: Effect.Effect<ReadonlySet<SessionSchema.ID>>
   readonly list: (input?: ListInput) => Effect.Effect<SessionSchema.Info[]>
   readonly create: (input: CreateInput) => Effect.Effect<SessionSchema.Info>
   readonly get: (sessionID: SessionSchema.ID) => Effect.Effect<SessionSchema.Info, NotFoundError>
@@ -156,6 +155,7 @@ export interface Interface {
   }) => Effect.Effect<void, OperationUnavailableError>
   readonly compact: (input: CompactInput) => Effect.Effect<void, NotFoundError | OperationUnavailableError>
   readonly wait: (id: SessionSchema.ID) => Effect.Effect<void, NotFoundError | OperationUnavailableError>
+  readonly active: Effect.Effect<ReadonlySet<SessionSchema.ID>>
   readonly resume: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError | SessionRunner.RunError>
   readonly interrupt: (sessionID: SessionSchema.ID) => Effect.Effect<void>
   readonly revert: {
@@ -202,7 +202,6 @@ export const layer = Layer.unwrap(
             )
 
           const result = Service.of({
-            active: execution.active,
             create: Effect.fn("V2Session.create")(function* (input) {
               const sessionID = input.id ?? SessionSchema.ID.create()
               const recorded = yield* store.get(sessionID)
@@ -432,6 +431,7 @@ export const layer = Layer.unwrap(
               yield* result.get(sessionID)
               return yield* new OperationUnavailableError({ operation: "wait" })
             }),
+            active: execution.active,
             resume: Effect.fn("V2Session.resume")(function* (sessionID) {
               yield* result.get(sessionID)
               yield* execution.resume(sessionID)
