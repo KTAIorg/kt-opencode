@@ -66,6 +66,7 @@ import { promptPlaceholder } from "./prompt-input/placeholder"
 import { createPromptInputTransientState } from "./prompt-input/transient-state"
 import { showToast } from "@/utils/toast"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
+import { SessionProgressIndicatorV2 } from "@opencode-ai/session-ui/v2/session-progress-indicator-v2"
 
 export type PromptInputState = ReturnType<typeof usePrompt>
 
@@ -339,6 +340,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     () => prompt.capture(),
     Math.floor(Math.random() * EXAMPLES.length),
   )
+  const [submissionState, setSubmissionState] = createStore({ interrupting: false })
   const buttonsSpring = useSpring(() => (store.mode === "normal" ? 1 : 0), { visualDuration: 0.2, bounce: 0 })
   const motion = (value: number) => ({
     opacity: value,
@@ -1180,6 +1182,22 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       onSubmit: props.onSubmit,
     })
 
+  const interrupt = () => {
+    if (submissionState.interrupting) return
+    if (platform.platform !== "desktop" || !props.controls.newLayoutDesigns) return abort()
+
+    setSubmissionState("interrupting", true)
+    return Promise.resolve()
+      .then(() => abort())
+      .finally(() => setSubmissionState("interrupting", false))
+  }
+
+  const handleV2Submit = (event: Event) => {
+    if (!stopping() || platform.platform !== "desktop") return handleSubmit(event)
+    event.preventDefault()
+    return interrupt()
+  }
+
   const handleKeyDown = (event: KeyboardEvent) => {
     if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "u") {
       event.preventDefault()
@@ -1232,7 +1250,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       }
 
       if (working()) {
-        void abort()
+        void interrupt()
         event.preventDefault()
         event.stopPropagation()
         return
@@ -1298,7 +1316,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         return
       }
       if (working()) {
-        void abort()
+        void interrupt()
         event.preventDefault()
       }
       return
@@ -1410,7 +1428,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <div class="flex flex-col gap-3">
             <DockShellForm
               data-component={newSession() ? "session-new-composer" : "session-composer"}
-              onSubmit={handleSubmit}
+              onSubmit={handleV2Submit}
               classList={{
                 "group/prompt-input min-h-[96px] w-full rounded-xl bg-v2-background-bg-base shadow-[var(--v2-elevation-raised)]": true,
                 "border-icon-info-active border-dashed": store.draggingType !== null,
@@ -1554,20 +1572,27 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </Show>
                 </div>
                 <Tooltip placement="top" inactive={!working() && blank()} value={tip()}>
-                  <IconButton
-                    data-action="prompt-submit"
-                    type="submit"
-                    disabled={!working() && blank()}
-                    tabIndex={store.mode === "normal" ? undefined : -1}
-                    icon={stopping() ? "stop" : store.mode === "shell" ? "arrow-undo-down" : "arrow-up"}
-                    variant="primary"
-                    class="size-7 rounded-md p-[6px] text-v2-icon-icon-muted shadow-[var(--v2-elevation-button-contrast)] disabled:opacity-50"
-                    style={{
-                      "background-image":
-                        "linear-gradient(180deg,var(--v2-alpha-light-20) 0%,var(--v2-alpha-light-0) 100%),linear-gradient(90deg,var(--v2-background-bg-contrast) 0%,var(--v2-background-bg-contrast) 100%)",
-                    }}
-                    aria-label={stopping() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
-                  />
+                  <span class="relative flex size-7">
+                    <IconButton
+                      data-action="prompt-submit"
+                      type="submit"
+                      disabled={submissionState.interrupting || (!working() && blank())}
+                      tabIndex={store.mode === "normal" ? undefined : -1}
+                      icon={stopping() ? "stop" : store.mode === "shell" ? "arrow-undo-down" : "arrow-up"}
+                      variant="primary"
+                      class="size-7 rounded-md p-[6px] text-v2-icon-icon-muted shadow-[var(--v2-elevation-button-contrast)] disabled:opacity-50"
+                      classList={{ "[&_[data-slot=icon-svg]]:invisible": submissionState.interrupting }}
+                      style={{
+                        "background-image":
+                          "linear-gradient(180deg,var(--v2-alpha-light-20) 0%,var(--v2-alpha-light-0) 100%),linear-gradient(90deg,var(--v2-background-bg-contrast) 0%,var(--v2-background-bg-contrast) 100%)",
+                      }}
+                      aria-label={stopping() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
+                      aria-busy={submissionState.interrupting}
+                    />
+                    <Show when={submissionState.interrupting}>
+                      <SessionProgressIndicatorV2 class="pointer-events-none absolute inset-[6px] size-4 opacity-50" />
+                    </Show>
+                  </span>
                 </Tooltip>
               </div>
             </DockShellForm>
