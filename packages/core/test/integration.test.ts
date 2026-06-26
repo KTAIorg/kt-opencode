@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Duration, Effect, Exit, Fiber, Layer, Scope, Stream } from "effect"
+import { Deferred, Duration, Effect, Exit, Fiber, Layer, Scope, Stream } from "effect"
 import * as TestClock from "effect/testing/TestClock"
 import { Integration } from "@opencode-ai/core/integration"
 import { Credential } from "@opencode-ai/core/credential"
@@ -346,4 +346,116 @@ describe("Integration", () => {
         }),
     )
   })
+
+  it.effect("shares concurrent OAuth credential refreshes", () =>
+    Effect.gen(function* () {
+      const integrations = yield* Integration.Service
+      const credentials = yield* Credential.Service
+      const integrationID = Integration.ID.make("openai")
+      const methodID = Integration.MethodID.make("chatgpt")
+      const started = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      let refreshes = 0
+      const value = Credential.OAuth.make({
+        type: "oauth",
+        methodID,
+        access: "refreshed",
+        refresh: "refresh-2",
+        expires: Duration.toMillis(Duration.hours(1)),
+      })
+      yield* integrations.transform((editor) =>
+        editor.method.update({
+          integrationID,
+          method: { id: methodID, type: "oauth", label: "ChatGPT" },
+          authorize: () => Effect.die("unexpected authorization"),
+          refresh: () =>
+            Effect.sync(() => refreshes++).pipe(
+              Effect.andThen(Deferred.succeed(started, undefined)),
+              Effect.andThen(Deferred.await(release)),
+              Effect.as(value),
+            ),
+        }),
+      )
+      const credential = yield* credentials.create({
+        integrationID,
+        value: Credential.OAuth.make({
+          type: "oauth",
+          methodID,
+          access: "expired",
+          refresh: "refresh-1",
+          expires: 0,
+        }),
+      })
+      const connection = { type: "credential" as const, id: credential.id, label: credential.label }
+
+      const first = yield* integrations.connection.resolve(connection).pipe(Effect.forkChild)
+      yield* Deferred.await(started)
+      const second = yield* integrations.connection.resolve(connection).pipe(Effect.forkChild)
+      yield* Effect.yieldNow
+      expect(refreshes).toBe(1)
+
+      yield* Deferred.succeed(release, undefined)
+      expect(yield* Effect.all([Fiber.join(first), Fiber.join(second)], { concurrency: "unbounded" })).toEqual([
+        value,
+        value,
+      ])
+      expect(refreshes).toBe(1)
+      expect((yield* credentials.get(credential.id))?.value).toEqual(value)
+    }),
+  )
+
+  it.effect("shares concurrent refresh failures and retries later", () =>
+    Effect.gen(function* () {
+      const integrations = yield* Integration.Service
+      const credentials = yield* Credential.Service
+      const integrationID = Integration.ID.make("openai")
+      const methodID = Integration.MethodID.make("chatgpt")
+      const started = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const failure = new Error("refresh failed")
+      let refreshes = 0
+      yield* integrations.transform((editor) =>
+        editor.method.update({
+          integrationID,
+          method: { id: methodID, type: "oauth", label: "ChatGPT" },
+          authorize: () => Effect.die("unexpected authorization"),
+          refresh: () =>
+            Effect.sync(() => refreshes++).pipe(
+              Effect.andThen(Deferred.succeed(started, undefined)),
+              Effect.andThen(Deferred.await(release)),
+              Effect.andThen(Effect.fail(failure)),
+            ),
+        }),
+      )
+      const credential = yield* credentials.create({
+        integrationID,
+        value: Credential.OAuth.make({
+          type: "oauth",
+          methodID,
+          access: "expired",
+          refresh: "refresh",
+          expires: 0,
+        }),
+      })
+      const connection = { type: "credential" as const, id: credential.id, label: credential.label }
+
+      const first = yield* integrations.connection.resolve(connection).pipe(Effect.flip, Effect.forkChild)
+      yield* Deferred.await(started)
+      const second = yield* integrations.connection.resolve(connection).pipe(Effect.flip, Effect.forkChild)
+      yield* Effect.yieldNow
+      expect(refreshes).toBe(1)
+
+      yield* Deferred.succeed(release, undefined)
+      const results = yield* Effect.all([Fiber.join(first), Fiber.join(second)], { concurrency: "unbounded" })
+      expect(results).toEqual([
+        new Integration.AuthorizationError({ cause: failure }),
+        new Integration.AuthorizationError({ cause: failure }),
+      ])
+
+      expect(yield* integrations.connection.resolve(connection).pipe(Effect.flip)).toEqual(
+        new Integration.AuthorizationError({ cause: failure }),
+      )
+      expect(refreshes).toBe(2)
+    }),
+  )
 })

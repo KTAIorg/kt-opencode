@@ -1,6 +1,7 @@
 export * as Integration from "./integration"
 
 import {
+  Cache,
   Cause,
   Clock,
   Context,
@@ -310,6 +311,25 @@ export const locationLayer = Layer.effect(
     const authorize = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(Effect.mapError((cause) => new AuthorizationError({ cause })))
 
+    const refreshes = yield* Cache.make<Credential.ID, Credential.Value | undefined, AuthorizationError>({
+      capacity: Number.POSITIVE_INFINITY,
+      timeToLive: Duration.zero,
+      lookup: Effect.fnUntraced(function* (credentialID) {
+        const credential = yield* credentials.get(credentialID)
+        if (!credential || credential.value.type === "key") return credential?.value
+        const implementation = state
+          .get()
+          .integrations.get(credential.integrationID)
+          ?.implementations.get(credential.value.methodID)
+        if (!implementation?.refresh) return credential.value
+        const now = yield* Clock.currentTimeMillis
+        if (credential.value.expires > now + Duration.toMillis(Duration.minutes(5))) return credential.value
+        const value = yield* authorize(implementation.refresh(credential.value))
+        yield* credentials.update(credentialID, { value })
+        return value
+      }),
+    })
+
     const close = (attemptScope: Scope.Closeable) =>
       Scope.close(attemptScope, Exit.void).pipe(Effect.forkIn(scope, { startImmediately: true }), Effect.asVoid)
 
@@ -396,9 +416,7 @@ export const locationLayer = Layer.effect(
           if (!implementation?.refresh) return credential.value
           const now = yield* Clock.currentTimeMillis
           if (credential.value.expires > now + Duration.toMillis(Duration.minutes(5))) return credential.value
-          const value = yield* authorize(implementation.refresh(credential.value))
-          yield* credentials.update(credential.id, { value })
-          return value
+          return yield* Cache.get(refreshes, credential.id)
         }),
         key: Effect.fn("Integration.connection.key")(function* (input) {
           const method = state
