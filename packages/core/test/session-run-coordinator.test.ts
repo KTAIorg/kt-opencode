@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import { SessionRunCoordinator } from "@opencode-ai/core/session/run-coordinator"
 import { testEffect } from "./lib/effect"
 
@@ -111,12 +111,11 @@ describe("SessionRunCoordinator", () => {
 
         const run = yield* coordinator.run("session").pipe(Effect.forkChild)
         yield* Deferred.await(started)
-        expect(yield* activity.snapshot).toBeTrue()
-
-        const inactive = yield* activity.changes.pipe(Stream.take(1), Stream.runCollect, Effect.forkChild)
+        const transitions = new Array<boolean>()
+        expect(yield* activity.attach((active) => transitions.push(active))).toBeTrue()
         yield* Deferred.succeed(gate, undefined)
         yield* Fiber.join(run)
-        expect(Array.from(yield* Fiber.join(inactive))).toEqual([false])
+        expect(transitions).toEqual([false])
       }),
     ),
   )
