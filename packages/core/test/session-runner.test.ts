@@ -4,6 +4,11 @@ import {
   LLMError,
   LLMEvent,
   Model,
+  HttpContext,
+  HttpRateLimitDetails,
+  HttpRequestDetails,
+  HttpResponseDetails,
+  RateLimitReason,
   TransportReason,
   InvalidRequestReason,
   type LLMClientShape,
@@ -515,13 +520,21 @@ const verifyPartialFlushOnFailure = (kind: FragmentKind) =>
     responseStream = Stream.concat(Stream.fromIterable(fixture.partialEvents), Stream.fail(failure))
 
     expect(yield* session.resume(sessionID).pipe(Effect.flip)).toBe(failure)
+    const expectedContent =
+      kind === "tool input"
+        ? {
+            type: "tool",
+            id: fragmentID(kind, "partial"),
+            state: { status: "error", error: { message: "Tool execution interrupted" } },
+          }
+        : fixture.expectedContent
     expect(yield* session.context(sessionID)).toMatchObject([
       { type: "user", text: prompt },
       {
         type: "assistant",
         finish: "error",
-        error: { type: "unknown", message: "Provider unavailable" },
-        content: [fixture.expectedContent],
+        error: { type: "provider", category: "transport", message: "Provider connection failed", retryable: false },
+        content: [expectedContent],
       },
     ])
   })
@@ -1196,7 +1209,16 @@ describe("SessionRunnerLLM", () => {
       expect(requests).toHaveLength(3)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "compaction" },
-        { type: "assistant", finish: "error", error: { message: "prompt too long" } },
+        {
+          type: "assistant",
+          finish: "error",
+          error: {
+            type: "provider",
+            category: "invalid-request",
+            message: "Provider rejected the request",
+            retryable: false,
+          },
+        },
       ])
     }),
   )
@@ -1244,7 +1266,16 @@ describe("SessionRunnerLLM", () => {
       expect(context.some((message) => message.type === "compaction")).toBe(false)
       expect(context.slice(-2)).toMatchObject([
         { type: "user", text: "Continue" },
-        { type: "assistant", finish: "error", error: { message: "prompt too long" } },
+        {
+          type: "assistant",
+          finish: "error",
+          error: {
+            type: "provider",
+            category: "invalid-request",
+            message: "Provider rejected the request",
+            retryable: false,
+          },
+        },
       ])
     }),
   )
@@ -2920,7 +2951,16 @@ describe("SessionRunnerLLM", () => {
       expect(requests).toHaveLength(1)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Fail durably" },
-        { type: "assistant", finish: "error", error: { type: "unknown", message: "Provider unavailable" } },
+        {
+          type: "assistant",
+          finish: "error",
+          error: {
+            type: "provider",
+            category: "unknown",
+            message: "Provider request failed",
+            retryable: false,
+          },
+        },
       ])
     }),
   )
@@ -2939,7 +2979,16 @@ describe("SessionRunnerLLM", () => {
       expect(requests).toHaveLength(1)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Fail before step" },
-        { type: "assistant", finish: "error", error: { type: "unknown", message: "Provider unavailable" } },
+        {
+          type: "assistant",
+          finish: "error",
+          error: {
+            type: "provider",
+            category: "unknown",
+            message: "Provider request failed",
+            retryable: false,
+          },
+        },
       ])
     }),
   )
@@ -2966,7 +3015,12 @@ describe("SessionRunnerLLM", () => {
         {
           type: "assistant",
           finish: "error",
-          error: { message: "prompt too long" },
+          error: {
+            type: "provider",
+            category: "invalid-request",
+            message: "Provider rejected the request",
+            retryable: false,
+          },
           content: [{ type: "text", text: "Partial" }],
         },
       ])
@@ -2985,8 +3039,135 @@ describe("SessionRunnerLLM", () => {
       yield* replaySessionProjection(sessionID)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Fail raw stream durably" },
-        { type: "assistant", finish: "error", error: { type: "unknown", message: "Provider unavailable" } },
+        {
+          type: "assistant",
+          finish: "error",
+          error: { type: "provider", category: "transport", message: "Provider connection failed", retryable: false },
+        },
       ])
+    }),
+  )
+
+  it.effect("does not publish step ended when the provider throws after step finish", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const db = yield* Database.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Fail after finish" }), resume: false })
+      const failure = providerUnavailable()
+      responseStream = Stream.concat(
+        Stream.fromIterable([LLMEvent.stepFinish({ index: 0, reason: "stop" })]),
+        Stream.fail(failure),
+      )
+
+      expect(yield* session.resume(sessionID).pipe(Effect.flip)).toBe(failure)
+
+      const types = yield* db.db.select({ type: EventTable.type }).from(EventTable).all().pipe(Effect.orDie)
+      expect(types).toContainEqual({
+        type: EventV2.versionedType(SessionEvent.Step.Failed.type, 2),
+      })
+      expect(types).not.toContainEqual({
+        type: EventV2.versionedType(SessionEvent.Step.Ended.type, 2),
+      })
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Fail after finish" },
+        {
+          type: "assistant",
+          finish: "error",
+          error: { type: "provider", category: "transport", message: "Provider connection failed" },
+        },
+      ])
+    }),
+  )
+
+  it.effect("preserves sanitized HTTP rate-limit details in the durable event and projection", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const db = yield* Database.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Fail with rate limit" }), resume: false })
+      const failure = new LLMError({
+        module: "RequestExecutor",
+        method: "execute",
+        reason: new RateLimitReason({
+          message: "secret provider response message",
+          retryAfterMs: 12_000,
+          rateLimit: new HttpRateLimitDetails({ retryAfterMs: 12_000, limit: { requests: "secret-limit" } }),
+          http: new HttpContext({
+            request: new HttpRequestDetails({
+              method: "POST",
+              url: "https://secret.example/v1/responses?api_key=credential",
+              headers: { authorization: "Bearer credential" },
+            }),
+            response: new HttpResponseDetails({ status: 429, headers: { "x-secret": "secret-header" } }),
+            body: '{"secret":"provider body"}',
+            requestId: "secret-request-id",
+          }),
+        }),
+      })
+      responseStream = Stream.fail(failure)
+
+      expect(yield* session.resume(sessionID).pipe(Effect.flip)).toBe(failure)
+
+      const event = yield* db.db
+        .select({ data: EventTable.data })
+        .from(EventTable)
+        .where(eq(EventTable.type, EventV2.versionedType(SessionEvent.Step.Failed.type, 2)))
+        .get()
+        .pipe(Effect.orDie)
+      const expected = {
+        type: "provider",
+        category: "rate-limit",
+        message: "Provider rate limit exceeded",
+        status: 429,
+        retryable: true,
+        retryAfterMs: 12_000,
+      }
+      expect(event?.data.error).toEqual(expected)
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Fail with rate limit" },
+        { type: "assistant", finish: "error", error: expected },
+      ])
+      expect(JSON.stringify(event)).not.toMatch(
+        /secret provider|secret\.example|credential|secret-header|provider body|secret-request-id|secret-limit/,
+      )
+      expect(JSON.stringify(yield* session.context(sessionID))).not.toMatch(
+        /secret provider|secret\.example|credential|secret-header|provider body|secret-request-id|secret-limit/,
+      )
+    }),
+  )
+
+  it.effect("projects categorized in-band failures without fabricating an HTTP status", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Fail in band" }), resume: false })
+      response = [
+        LLMEvent.providerError({
+          message: "rate_limit_exceeded: secret provider message",
+          category: "rate-limit",
+          retryable: false,
+        }),
+      ]
+
+      yield* session.resume(sessionID)
+
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Fail in band" },
+        {
+          type: "assistant",
+          finish: "error",
+          error: {
+            type: "provider",
+            category: "rate-limit",
+            message: "Provider rate limit exceeded",
+            retryable: false,
+          },
+        },
+      ])
+      const assistant = (yield* session.context(sessionID))[1]
+      expect(assistant?.type === "assistant" ? assistant.error : undefined).not.toHaveProperty("status")
+      expect(JSON.stringify(assistant)).not.toContain("secret provider message")
     }),
   )
 
@@ -3005,13 +3186,25 @@ describe("SessionRunnerLLM", () => {
       response = [
         LLMEvent.stepStart({ index: 0 }),
         LLMEvent.toolCall({ id: "call-before-provider-error", name: "echo", input: { text: "settled" } }),
-        LLMEvent.providerError({ message: "Provider unavailable" }),
+        LLMEvent.providerError({ message: "secret provider failure" }),
       ]
 
       yield* session.resume(sessionID)
 
       expect(requests).toHaveLength(1)
       expect(executions.slice(executionCount)).toEqual(["settled"])
+      const assistant = (yield* session.context(sessionID))[1]
+      expect(assistant).toMatchObject({
+        type: "assistant",
+        finish: "error",
+        error: {
+          type: "provider",
+          category: "unknown",
+          message: "Provider request failed",
+          retryable: false,
+        },
+      })
+      expect(JSON.stringify(assistant)).not.toContain("secret provider failure")
     }),
   )
 
@@ -3101,7 +3294,12 @@ describe("SessionRunnerLLM", () => {
         {
           type: "assistant",
           finish: "error",
-          error: { type: "unknown", message: "Provider unavailable" },
+          error: {
+            type: "provider",
+            category: "transport",
+            message: "Provider connection failed",
+            retryable: false,
+          },
           content: [{ type: "tool", id: "call-hosted-raw-failure", state: { status: "error" } }],
         },
       ])

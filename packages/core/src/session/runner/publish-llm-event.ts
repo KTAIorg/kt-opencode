@@ -50,6 +50,33 @@ const settledOutput = (value: ToolOutput | undefined, result: ToolResultValue): 
   return { structured: record(settled.structured), content: settled.content }
 }
 
+const providerMessages: Record<SessionMessage.ProviderErrorCategory, string> = {
+  "invalid-request": "Provider rejected the request",
+  "no-route": "Provider unavailable: no provider route",
+  authentication: "Provider authentication failed",
+  "rate-limit": "Provider rate limit exceeded",
+  "quota-exceeded": "Provider quota exceeded",
+  "content-policy": "Provider rejected the invalid request due to content policy",
+  "provider-internal": "Provider service unavailable",
+  transport: "Provider connection failed",
+  "invalid-provider-output": "Provider returned an invalid response",
+  unknown: "Provider request failed",
+}
+
+export const providerError = (input: {
+  readonly category: SessionMessage.ProviderErrorCategory
+  readonly status?: number
+  readonly retryable?: boolean
+  readonly retryAfterMs?: number
+}): SessionMessage.ProviderError => ({
+  type: "provider",
+  category: input.category,
+  message: providerMessages[input.category],
+  status: input.status,
+  retryable: input.retryable ?? (input.category === "rate-limit" || input.category === "provider-internal"),
+  retryAfterMs: input.retryAfterMs,
+})
+
 /** Persist one provider turn without executing tools or starting a continuation turn. */
 export const createLLMEventPublisher = (events: EventV2.Interface, input: Input) => {
   const tools = new Map<
@@ -67,7 +94,6 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
   const timestamp = DateTime.now
   let assistantMessageID: SessionMessage.ID | undefined
   let assistantActive = false
-  let assistantFailed = false
   let providerFailed = false
   let stepSettlement: { readonly finish: string; readonly tokens: ReturnType<typeof tokens> } | undefined
 
@@ -196,17 +222,17 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
     yield* flushFragments()
   })
 
-  const failAssistant = Effect.fnUntraced(function* (message: string) {
-    if (assistantFailed) return
+  const failAssistant = Effect.fnUntraced(function* (error: SessionMessage.Error) {
+    if (providerFailed) return
+    providerFailed = true
     yield* flush()
     const assistantMessageID = yield* startAssistant()
     assistantActive = false
-    assistantFailed = true
     yield* events.publish(SessionEvent.Step.Failed, {
       sessionID: input.sessionID,
       timestamp: yield* timestamp,
       assistantMessageID,
-      error: { type: "unknown", message },
+      error,
     })
   })
 
@@ -402,8 +428,13 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
       case "finish":
         return
       case "provider-error":
-        providerFailed = true
-        yield* failAssistant(event.message)
+        yield* failAssistant(
+          providerError({
+            category: event.category ?? (event.classification === "context-overflow" ? "invalid-request" : "unknown"),
+            status: event.status,
+            retryable: event.retryable,
+          }),
+        )
         return
     }
   })
