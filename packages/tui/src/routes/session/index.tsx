@@ -69,6 +69,7 @@ import { OPENCODE_BASE_MODE, useBindings } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
 import { LocationProvider } from "../../context/location"
 import { createSessionRows, type PartRef, type SessionRow } from "./rows"
+import { ChildSessionPicker } from "./child-session-picker"
 
 addDefaultParsers(parsers.parsers)
 
@@ -137,6 +138,10 @@ function use() {
 }
 
 export function Session() {
+  const route = useRouteData("session")
+  const [childPicker, setChildPicker] = createSignal(false)
+
+  function SessionView() {
   const setEpilogue = useEpilogue()
   const clipboard = useClipboard()
   const writeExport = async (file: string, content: string) => {
@@ -175,8 +180,23 @@ export function Session() {
     if (session()?.parentID) return []
     return data.session.question.list(route.sessionID) ?? []
   })
-  const visible = createMemo(() => !session()?.parentID && permissions().length === 0 && questions().length === 0)
   const disabled = createMemo(() => permissions().length > 0 || questions().length > 0)
+  const childSessions = createMemo(() => {
+    const parentID = session()?.parentID ?? session()?.id
+    if (!parentID) return []
+    return data.session
+      .list()
+      .filter((item) => item.parentID === parentID)
+      .toSorted((a, b) => {
+        const running =
+          Number(data.session.status(b.id) === "running") - Number(data.session.status(a.id) === "running")
+        return running || b.time.updated - a.time.updated
+      })
+  })
+  const childPickerVisible = createMemo(
+    () => (!!session()?.parentID || childPicker()) && !disabled() && childSessions().length > 0,
+  )
+  const visible = createMemo(() => !session()?.parentID && !childPickerVisible() && !disabled())
 
   const pending = createMemo(() => {
     const completed = messages().findLast((x) => x.type === "assistant" && x.time.completed)?.id
@@ -726,11 +746,15 @@ export function Session() {
       run: () => unavailable("Backgrounding subagents"),
     },
     {
-      title: "Go to child session",
+      title: "View child agents",
       value: "session.child.first",
       category: "Session",
       hidden: true,
-      run: () => unavailable("Child session discovery"),
+      enabled: childSessions().length > 0 && !disabled(),
+      run: () => {
+        setChildPicker(true)
+        dialog.clear()
+      },
     },
     {
       title: "Go to parent session",
@@ -863,7 +887,28 @@ export function Session() {
                     directory={session()?.location.directory}
                   />
                 </Show>
-                <Show when={session()?.parentID}>
+                <Show when={childPickerVisible()}>
+                  <ChildSessionPicker
+                    sessions={childSessions()}
+                    currentID={route.sessionID}
+                    child={!!session()?.parentID}
+                    status={(sessionID) => data.session.status(sessionID)}
+                    onSelect={(sessionID) => {
+                      if (sessionID !== route.sessionID) navigate({ type: "session", sessionID })
+                    }}
+                    onEscape={() => {
+                      const parentID = session()?.parentID
+                      if (parentID) {
+                        setChildPicker(true)
+                        navigate({ type: "session", sessionID: parentID })
+                        return
+                      }
+                      setChildPicker(false)
+                      queueMicrotask(() => prompt?.focus())
+                    }}
+                  />
+                </Show>
+                <Show when={session()?.parentID && !childPickerVisible()}>
                   <SubagentFooter />
                 </Show>
                 <Show when={visible()}>
@@ -915,6 +960,13 @@ export function Session() {
         </box>
       </context.Provider>
     </LocationProvider>
+  )
+  }
+
+  return (
+    <Show when={route.sessionID || undefined} keyed>
+      {(_sessionID: string) => <SessionView />}
+    </Show>
   )
 }
 
