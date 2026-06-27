@@ -75,7 +75,10 @@ const manifestName = ".httpapi-codegen.json"
 
 export function compile<Id extends string, Groups extends HttpApiGroup.Any>(
   api: HttpApi.HttpApi<Id, Groups>,
-  options?: { readonly groupNames?: Readonly<Record<string, string>> },
+  options?: {
+    readonly groupNames?: Readonly<Record<string, string>>
+    readonly endpointNames?: Readonly<Record<string, string>>
+  },
 ): Contract {
   const endpoints: Array<Endpoint> = []
   const portable = new Map<SchemaAST.AST, boolean>()
@@ -150,7 +153,7 @@ export function compile<Id extends string, Groups extends HttpApiGroup.Any>(
         effectPortable,
         operation: {
           group: groupName,
-          name: clientEndpointName(endpoint.name),
+          name: options?.endpointNames?.[endpoint.name] ?? clientEndpointName(endpoint.name),
           input: inputs.map(({ name, source }) => ({ name, source })),
           inputMode: inputs.length === 0 ? "none" : inputs.every((field) => field.optional) ? "optional" : "required",
           success: isStreamSchema(success.schema)
@@ -245,7 +248,13 @@ export function emitPromise(contract: Contract): Output {
       },
       {
         path: "client.ts",
-        content: renderPromiseClient(groups).replace("let next: ReadableStreamReadResult<Uint8Array>", "let next"),
+        content: renderPromiseClient(groups)
+          .replace("readonly empty: boolean\n}", "readonly empty: boolean\n  readonly binary: boolean\n}")
+          .replace(
+            "return await json(response) as A",
+            'if (descriptor.binary) {\n      try {\n        return new Uint8Array(await response.arrayBuffer()) as A\n      } catch (cause) {\n        throw new ClientError("Transport", { cause })\n      }\n    }\n    return await json(response) as A',
+          )
+          .replace("let next: ReadableStreamReadResult<Uint8Array>", "let next"),
       },
       {
         path: "index.ts",
@@ -277,13 +286,13 @@ function assertPromiseEndpoint(endpoint: Endpoint) {
     }
   } else if (
     !HttpApiSchema.isNoContent(success.ast) &&
-    (resolveHttpApiEncoding(success.ast)?._tag ?? "Json") !== "Json"
+    !["Json", "Uint8Array"].includes(resolveHttpApiEncoding(success.ast)?._tag ?? "Json")
   ) {
     throw new GenerationError({ reason: `Unsupported Promise success encoding: ${name}` })
   }
   for (const error of endpoint.errors) {
-    if (taggedErrorFields(error) === undefined) {
-      throw new GenerationError({ reason: `Promise error must be tagged: ${name}` })
+    if (declaredErrorFields(error) === undefined) {
+      throw new GenerationError({ reason: `Promise error must have a literal discriminator: ${name}` })
     }
     if ((resolveHttpApiEncoding(error.ast)?._tag ?? "Json") !== "Json") {
       throw new GenerationError({ reason: `Unsupported Promise error encoding: ${name}` })
@@ -422,7 +431,7 @@ function renderPromiseTypes(groups: ReadonlyArray<Group>) {
     groups.flatMap((group) =>
       group.endpoints.flatMap((endpoint) =>
         endpoint.errors.flatMap((schema) => {
-          const tagged = taggedErrorFields(schema)
+          const tagged = declaredErrorFields(schema)
           return tagged === undefined ? [] : [[tagged.tag, tagged] as const]
         }),
       ),
@@ -432,7 +441,7 @@ function renderPromiseTypes(groups: ReadonlyArray<Group>) {
     const fields = error.fields
       .map(([name, schema, optional]) => `readonly ${JSON.stringify(name)}${optional ? "?" : ""}: ${typeOf(schema)}`)
       .join("; ")
-    return `export type ${error.identifier} = { readonly _tag: ${JSON.stringify(error.tag)}; ${fields} }\nexport const is${error.identifier} = (value: unknown): value is ${error.identifier} => typeof value === "object" && value !== null && "_tag" in value && value._tag === ${JSON.stringify(error.tag)}`
+    return `export type ${error.identifier} = { readonly ${JSON.stringify(error.key)}: ${JSON.stringify(error.tag)}; ${fields} }\nexport const is${error.identifier} = (value: unknown): value is ${error.identifier} => typeof value === "object" && value !== null && ${JSON.stringify(error.key)} in value && value[${JSON.stringify(error.key)}] === ${JSON.stringify(error.tag)}`
   })
   const operations = groups
     .flatMap((group) =>
@@ -505,7 +514,7 @@ function renderPromiseClient(groups: ReadonlyArray<Group>) {
           endpoint.errors.map((schema) => resolveHttpApiStatus(schema.ast)).filter((status) => status !== undefined),
         ),
       ]
-      const descriptor = `{ method: ${JSON.stringify(endpoint.endpoint.method)}, path: ${path}${parts.length === 0 ? "" : `, ${parts.join(", ")}`}, successStatus: ${resolveHttpApiStatus(endpoint.successes[0].ast) ?? 200}, declaredStatuses: [${declaredStatuses.join(", ")}], empty: ${endpoint.operation.success === "void"} }`
+      const descriptor = `{ method: ${JSON.stringify(endpoint.endpoint.method)}, path: ${path}${parts.length === 0 ? "" : `, ${parts.join(", ")}`}, successStatus: ${resolveHttpApiStatus(endpoint.successes[0].ast) ?? 200}, declaredStatuses: [${declaredStatuses.join(", ")}], empty: ${endpoint.operation.success === "void"}, binary: ${resolveHttpApiEncoding(endpoint.successes[0].ast)?._tag === "Uint8Array"} }`
       if (endpoint.operation.success === "stream") {
         const success = endpoint.successes[0]
         if (!isStreamSchema(success) || success._tag !== "StreamSse" || success.sseMode !== "data") {
@@ -556,9 +565,12 @@ function structuralType(schema: Schema.Top) {
   )
   const expand = (type: string, seen = new Set<string>()): string => {
     for (const [reference, value] of references) {
-      if (!type.includes(reference)) continue
-      if (seen.has(reference)) throw new GenerationError({ reason: "Recursive Promise types are not implemented" })
-      type = type.replaceAll(reference, `(${expand(value, new Set([...seen, reference]))})`)
+      const pattern = `(?<![A-Za-z0-9_$.'"])${reference.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9_$.'"])`
+      if (!new RegExp(pattern).test(type)) continue
+      if (seen.has(reference)) {
+        throw new GenerationError({ reason: `Recursive Promise types are not implemented: ${reference}` })
+      }
+      type = type.replace(new RegExp(pattern, "g"), `(${expand(value, new Set([...seen, reference]))})`)
     }
     return type
   }
@@ -921,18 +933,26 @@ function serializable(value: unknown): boolean {
 }
 
 function taggedErrorFields(schema: Schema.Top) {
+  const fields = declaredErrorFields(schema)
+  return fields?.key === "_tag" ? fields : undefined
+}
+
+function declaredErrorFields(schema: Schema.Top) {
   if (!SchemaAST.isDeclaration(schema.ast) || schema.ast.annotations?.["~effect/Schema/Class"] === undefined) {
     return undefined
   }
   const fields = schema.ast.typeParameters[0]
   if (!SchemaAST.isObjects(fields) || fields.indexSignatures.length > 0) return undefined
-  const tag = fields.propertySignatures.find((field) => field.name === "_tag")?.type
+  const key = fields.propertySignatures.find((field) => field.name === "_tag" || field.name === "name")?.name
+  if (key !== "_tag" && key !== "name") return undefined
+  const tag = fields.propertySignatures.find((field) => field.name === key)?.type
   if (tag === undefined || !SchemaAST.isLiteral(tag) || typeof tag.literal !== "string") return undefined
   return {
+    key,
     tag: tag.literal,
     identifier: SchemaAST.resolveIdentifier(schema.ast) ?? tag.literal,
     fields: fields.propertySignatures.flatMap((field) =>
-      field.name === "_tag" || typeof field.name !== "string"
+      field.name === key || typeof field.name !== "string"
         ? []
         : [[field.name, Schema.make(field.type), SchemaAST.isOptional(field.type)] as const],
     ),

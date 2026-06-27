@@ -151,6 +151,19 @@ describe("HttpApiCodegen.generate", () => {
     expect(effect).toContain('raw["session.get"]')
   })
 
+  test("supports explicit public endpoint names", () => {
+    const source = HttpApi.make("test").add(
+      HttpApiGroup.make("server.permission")
+        .add(HttpApiEndpoint.get("permission.request.list", "/request", { success: Schema.String }))
+        .add(HttpApiEndpoint.get("session.permission.list", "/session", { success: Schema.String })),
+    )
+    const contract = compileContract(source, {
+      endpointNames: { "permission.request.list": "listRequests" },
+    })
+
+    expect(contract.groups[0]?.endpoints.map((endpoint) => endpoint.operation.name)).toEqual(["listRequests", "list"])
+  })
+
   test("preserves optional keys in Promise error types", () => {
     class OptionalError extends Schema.TaggedErrorClass<OptionalError>()(
       "OptionalError",
@@ -164,6 +177,22 @@ describe("HttpApiCodegen.generate", () => {
     expect(output.files.find((file) => file.path === "types.ts")?.content).toContain(
       'readonly "message": string; readonly "detail"?: string | undefined',
     )
+  })
+
+  test("supports name-discriminated Promise errors", () => {
+    class NamedError extends Schema.ErrorClass<NamedError>("NamedError")(
+      { name: Schema.Literal("NamedError"), message: Schema.String },
+      { httpApiStatus: 400 },
+    ) {}
+    const output = emitPromise(
+      compileContract(
+        api(HttpApiEndpoint.get("get", "/session", { success: Schema.NumberFromString, error: NamedError })),
+      ),
+    )
+    const types = output.files.find((file) => file.path === "types.ts")?.content
+
+    expect(types).toContain('readonly "name": "NamedError"')
+    expect(types).toContain('"name" in value && value["name"] === "NamedError"')
   })
 
   test("erases brands from Promise wire types", () => {
@@ -197,6 +226,26 @@ describe("HttpApiCodegen.generate", () => {
 
     expect(output.files.find((file) => file.path === "types.ts")?.content).toContain(
       'export type SessionGetOutput = ({ readonly "data": ({ readonly "value": string }) })["data"]',
+    )
+  })
+
+  test("expands Promise references only at identifier boundaries", () => {
+    const Session = Schema.Struct({ name: Schema.Literal("Session"), id: Schema.String }).annotate({
+      identifier: "Session",
+    })
+    const SessionID = Schema.String.annotate({ identifier: "SessionID" })
+    const output = emitPromise(
+      compileContract(
+        api(
+          HttpApiEndpoint.get("get", "/session", {
+            success: Schema.Struct({ session: Session, sessionID: SessionID }),
+          }),
+        ),
+      ),
+    )
+
+    expect(output.files.find((file) => file.path === "types.ts")?.content).toContain(
+      'readonly "session": ({ readonly "name": "Session", readonly "id": string })',
     )
   })
 
@@ -258,6 +307,32 @@ describe("HttpApiCodegen.generate", () => {
         ),
       ),
     ).toThrow("Unsupported Promise stream: session.events")
+  })
+
+  test("executes an emitted binary Promise response", async () => {
+    const output = emitPromise(
+      compileContract(
+        api(
+          HttpApiEndpoint.get("read", "/file", {
+            success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
+          }),
+        ),
+      ),
+    )
+    const directory = await mkdtemp(join(tmpdir(), "opencode-httpapi-codegen-"))
+
+    try {
+      await Promise.all(output.files.map((file) => Bun.write(join(directory, file.path), file.content)))
+      const generated = await import(`${join(directory, "index.ts")}?t=${crypto.randomUUID()}`)
+      const client = generated.OpenCode.make({
+        baseUrl: "https://example.com",
+        fetch: async () => new Response(new Uint8Array([1, 2, 3])),
+      })
+
+      expect(await client.session.read()).toEqual(new Uint8Array([1, 2, 3]))
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 
   test("executes an emitted Promise GET through fetch", async () => {
