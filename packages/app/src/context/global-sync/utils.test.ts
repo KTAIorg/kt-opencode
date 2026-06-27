@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Agent } from "@opencode-ai/sdk/v2/client"
-import { directoryKey, normalizeAgentList } from "./utils"
+import { directoryKey, findProjectMetadata, normalizeAgentList } from "./utils"
 
 const agent = (name = "build") =>
   ({
@@ -48,5 +48,13 @@ describe("directoryKey", () => {
     expect(String(directoryKey("C:/Repos/sst/opencode/"))).toBe("C:/Repos/sst/opencode")
     expect(String(directoryKey("C:/"))).toBe("C:/")
     expect(String(directoryKey("/"))).toBe("/")
+  })
+})
+
+describe("findProjectMetadata", () => {
+  test("matches sandbox directories to their root project", () => {
+    const project = { id: "project", worktree: "/repo", sandboxes: ["/repo-worktree"] }
+
+    expect(findProjectMetadata([project], { worktree: "/repo-worktree" })).toBe(project)
   })
 })

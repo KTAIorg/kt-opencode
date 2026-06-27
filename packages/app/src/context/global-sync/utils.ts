@@ -49,3 +49,12 @@ export function sanitizeProject(project: Project) {
     },
   }
 }
+
+export function findProjectMetadata<T extends { id?: string; worktree: string; sandboxes?: string[] }>(
+  projects: T[],
+  input: { projectID?: string; worktree: string },
+) {
+  const byID = input.projectID ? projects.find((project) => project.id === input.projectID) : undefined
+  if (byID) return byID
+  return projects.find((project) => project.worktree === input.worktree || project.sandboxes?.includes(input.worktree))
+}
