@@ -7,6 +7,7 @@ import { BackgroundJob } from "../background-job"
 import { EventV2 } from "../event"
 import { LocationServiceMap } from "../location-service-map"
 import { SessionV2 } from "../session"
+import { SessionRuntime } from "../session/runtime"
 import { SessionEvent } from "../session/event"
 import { SessionMessage } from "../session/message"
 import { SessionSchema } from "../session/schema"
@@ -116,7 +117,9 @@ export const layer = Layer.effectDiscard(
                 .pipe(
                   Effect.mapError(() => new ToolFailure({ message: `Parent session not found: ${context.sessionID}` })),
                 )
-              const agents = yield* AgentV2.Service.pipe(Effect.provide(locations.get(parent.location)))
+              const locationLayer = locations.get(parent.location)
+              const agents = yield* AgentV2.Service.pipe(Effect.provide(locationLayer))
+              const runtime = yield* SessionRuntime.Service.pipe(Effect.provide(locationLayer))
               const agent = yield* agents.resolve(input.agent)
               if (agent === undefined) return yield* new ToolFailure({ message: `Unknown agent: ${input.agent}` })
               if (agent.mode === "primary")
@@ -141,8 +144,8 @@ export const layer = Layer.effectDiscard(
 
               const run = Effect.gen(function* () {
                 // The child session owns its agent/model (set at create); prompt only admits input.
-                yield* sessions.prompt({ sessionID: child.id, prompt: { text: input.prompt }, resume: false })
-                yield* sessions.resume(child.id)
+                yield* runtime.prompt({ sessionID: child.id, prompt: { text: input.prompt }, resume: false })
+                yield* runtime.resume(child.id)
                 return yield* latestAssistantText(child.id)
               })
 
@@ -166,7 +169,7 @@ export const layer = Layer.effectDiscard(
                 jobs.waitForPromotion(child.id),
               ).pipe(
                 Effect.onInterrupt(() =>
-                  Effect.all([sessions.interrupt(child.id), jobs.cancel(child.id)], { discard: true }),
+                  Effect.all([runtime.interrupt(child.id), jobs.cancel(child.id)], { discard: true }),
                 ),
               )
               if (result?.metadata?.background === true)
