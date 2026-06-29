@@ -69,9 +69,12 @@ void invalidNodeReplacement
 // @ts-expect-error Replacement cannot introduce a new error
 LayerNode.compile(a, [[a, Layer.effect(A, Effect.fail(new OtherError()))]])
 
-// @ts-expect-error Node replacement cannot introduce a new error
-const invalidNodeErrorReplacement = () =>
-  LayerNode.compile(a, [[a, make({ service: A, layer: Layer.effect(A, Effect.fail(new OtherError())), deps: [] })]])
+const invalidNodeErrorReplacement = () => {
+  return LayerNode.compile(a, [
+    // @ts-expect-error Node replacement cannot introduce a new error
+    [a, make({ service: A, layer: Layer.effect(A, Effect.fail(new OtherError())), deps: [] })],
+  ])
+}
 void invalidNodeErrorReplacement
 
 class TagA extends Context.Service<TagA, {}>()("test/TagA") {}
