@@ -55,7 +55,6 @@ export class ServerInfo extends Schema.Class<ServerInfo>("MCP.ServerInfo")({
 export class ServerInstructions extends Schema.Class<ServerInstructions>("MCP.ServerInstructions")({
   server: ServerName,
   instructions: Schema.String,
-  tools: Schema.Array(Schema.String),
 }) {}
 
 export class Tool extends Schema.Class<Tool>("MCP.Tool")({
@@ -271,7 +270,13 @@ export const layer = Layer.effect(
       }),
       instructions: Effect.fn("MCP.instructions")(function* () {
         yield* whenAllReady
-        return []
+        return Array.from(runtime)
+          .flatMap(([server, entry]) => {
+            const instructions = entry.client?.instructions
+            if (!instructions) return []
+            return [new ServerInstructions({ server, instructions })]
+          })
+          .toSorted((a, b) => a.server.localeCompare(b.server))
       }),
       prompts: Effect.fn("MCP.prompts")(function* () {
         yield* whenAllReady

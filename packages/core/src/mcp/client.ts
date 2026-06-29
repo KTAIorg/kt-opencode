@@ -24,6 +24,8 @@ export class ConnectError extends Schema.TaggedErrorClass<ConnectError>()("MCP.C
 
 /** Handle over a connected MCP server that keeps the SDK `Client` out of the rest of core. */
 export interface Connection {
+  /** Server-supplied usage instructions from the initialize result, if any. */
+  readonly instructions: string | undefined
   readonly onClose: (callback: () => void) => void
 }
 
@@ -73,6 +75,7 @@ export const connect = Effect.fnUntraced(function* (
   if (Exit.isSuccess(exit)) {
     yield* Effect.addFinalizer(() => Effect.promise(() => client.close()).pipe(Effect.ignore))
     return {
+      instructions: client.getInstructions()?.trim() || undefined,
       onClose: (callback) => {
         client.onclose = callback
       },
