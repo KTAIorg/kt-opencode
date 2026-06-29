@@ -1260,7 +1260,7 @@ export const layer = Layer.effect(
               instruction.system().pipe(Effect.orDie),
               sys.mcp(agent, session.permission),
               tools.search_deferred_tools && tools.call_deferred_tool
-                ? SessionTools.deferredSystemPrompt({ agent, session }).pipe(
+                ? SessionTools.deferredSystemPrompt({ agent, session, messages: msgs }).pipe(
                     Effect.provideService(MCP.Service, mcp),
                     Effect.provideService(RuntimeFlags.Service, flags),
                   )

@@ -54,6 +54,14 @@ const assistant = {
   time: { created: 0 },
   sessionID,
 } satisfies SessionV1.Assistant
+const user = {
+  id: MessageID.make("msg_user"),
+  sessionID,
+  role: "user",
+  time: { created: 0 },
+  agent: agent.name,
+  model: { providerID: ProviderV2.ID.make(model.providerID), modelID: ModelV2.ID.make(model.id) },
+} satisfies SessionV1.User
 const processor = {
   message: assistant,
   updateToolCall: () => Effect.succeed(undefined),
@@ -124,14 +132,14 @@ const belowThresholdIt = makeIt({
   queryDescription: "Natural language analytics query",
 })
 
-function resolveTools() {
+function resolveTools(messages: SessionV1.WithParts[] = []) {
   return SessionTools.resolve({
     agent,
     model,
     session,
     processor,
     bypassAgentCheck: false,
-    messages: [],
+    messages,
     promptOps,
   })
 }
@@ -172,10 +180,37 @@ describe("session.tools", () => {
 
   deferredIt.instance("lists deferred MCP servers in the system prompt", () =>
     Effect.gen(function* () {
-      const prompt = yield* SessionTools.deferredSystemPrompt({ agent, session })
+      const prompt = yield* SessionTools.deferredSystemPrompt({ agent, session, messages: [] })
 
       expect(prompt).toContain("Deferred MCP servers available through `search_deferred_tools`:")
       expect(prompt).toContain("- posthog: 2 tools")
+    }),
+  )
+
+  deferredIt.instance("does not expose per-message disabled MCP tools through deferred search", () =>
+    Effect.gen(function* () {
+      const tools = yield* resolveTools([
+        {
+          info: { ...user, tools: { posthog_feature_flags: false } },
+          parts: [],
+        },
+      ])
+
+      const search = tools.search_deferred_tools.execute
+      if (!search) throw new Error("missing search_deferred_tools executor")
+      const searchResult = yield* Effect.promise(() =>
+        Promise.resolve(search({ query: "feature flags" }, toolExecutionOptions)),
+      )
+      const parsed = JSON.parse(searchResult.output) as { tools: Array<{ tool_id: string }> }
+      expect(parsed.tools.map((item) => item.tool_id)).not.toContain("posthog_feature_flags")
+
+      const call = tools.call_deferred_tool.execute
+      if (!call) throw new Error("missing call_deferred_tool executor")
+      yield* Effect.promise(async () => {
+        await expect(
+          Promise.resolve(call({ tool_id: "posthog_feature_flags", arguments: {} }, toolExecutionOptions)),
+        ).rejects.toThrow('Deferred tool "posthog_feature_flags" is not available')
+      })
     }),
   )
 

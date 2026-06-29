@@ -238,7 +238,10 @@ export const resolve = Effect.fn("SessionMcpTools.resolve")(function* (input: In
     Object.keys(mcpTools),
     Permission.merge(input.agent.permission, input.session.permission ?? []),
   )
-  const allowedMcpTools = Object.fromEntries(Object.entries(mcpTools).filter(([key]) => !mcpDisabled.has(key)))
+  const userTools = currentUserToolOverrides(input.messages)
+  const allowedMcpTools = Object.fromEntries(
+    Object.entries(mcpTools).filter(([key]) => userTools?.[key] !== false && !mcpDisabled.has(key)),
+  )
   const deferredDescriptors =
     flags.experimentalToolSearch && Object.keys(allowedMcpTools).length > 0
       ? yield* deferredToolDescriptors(allowedMcpTools)
@@ -277,6 +280,7 @@ export const resolve = Effect.fn("SessionMcpTools.resolve")(function* (input: In
 export const systemPrompt = Effect.fn("SessionMcpTools.systemPrompt")(function* (input: {
   agent: Agent.Info
   session: Session.Info
+  messages: SessionV1.WithParts[]
 }) {
   const mcp = yield* MCP.Service
   const flags = yield* RuntimeFlags.Service
@@ -287,7 +291,10 @@ export const systemPrompt = Effect.fn("SessionMcpTools.systemPrompt")(function* 
     Object.keys(mcpTools),
     Permission.merge(input.agent.permission, input.session.permission ?? []),
   )
-  const allowedTools = Object.fromEntries(Object.entries(mcpTools).filter(([key]) => !mcpDisabled.has(key)))
+  const userTools = currentUserToolOverrides(input.messages)
+  const allowedTools = Object.fromEntries(
+    Object.entries(mcpTools).filter(([key]) => userTools?.[key] !== false && !mcpDisabled.has(key)),
+  )
   if (Object.keys(allowedTools).length === 0) return undefined
 
   const deferredDescriptors = yield* deferredToolDescriptors(allowedTools)
@@ -753,6 +760,11 @@ function searchDeferredTools(descriptors: DeferredToolDescriptor[], query: strin
     .toSorted((a, b) => b.score - a.score || a.descriptor.id.localeCompare(b.descriptor.id))
     .slice(0, limit)
     .map((item) => item.descriptor)
+}
+
+function currentUserToolOverrides(messages: SessionV1.WithParts[]) {
+  const user = messages.findLast((message) => message.info.role === "user")
+  return user?.info.role === "user" ? user.info.tools : undefined
 }
 
 function mcpToolContent(result: unknown): McpToolContent[] {
