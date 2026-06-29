@@ -17,7 +17,7 @@ import type {
 } from "@opencode-ai/sdk/v2/client"
 import { NormalizedProviderListResponse } from "@opencode-ai/session-ui/context"
 import type { Accessor } from "solid-js"
-import type { SetStoreFunction, Store } from "solid-js/store"
+import type { SetStoreFunction } from "solid-js/store"
 
 export type ProjectMeta = {
   name?: string
@@ -79,19 +79,19 @@ export type State = {
 }
 
 export type VcsCache = {
-  store: Store<{ value: VcsInfo | undefined }>
+  store: Accessor<{ value: VcsInfo | undefined }>
   setStore: SetStoreFunction<{ value: VcsInfo | undefined }>
   ready: Accessor<boolean>
 }
 
 export type MetaCache = {
-  store: Store<{ value: ProjectMeta | undefined }>
+  store: Accessor<{ value: ProjectMeta | undefined }>
   setStore: SetStoreFunction<{ value: ProjectMeta | undefined }>
   ready: Accessor<boolean>
 }
 
 export type IconCache = {
-  store: Store<{ value: string | undefined }>
+  store: Accessor<{ value: string | undefined }>
   setStore: SetStoreFunction<{ value: string | undefined }>
   ready: Accessor<boolean>
 }

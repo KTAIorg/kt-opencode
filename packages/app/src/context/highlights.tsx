@@ -144,7 +144,7 @@ export const { use: useHighlights, provider: HighlightsProvider } = createSimple
     const platform = usePlatform()
     const dialog = useDialog()
     const settings = useSettings()
-    const [store, setStore, _, ready] = persisted("highlights.v1", createStore<Store>({ version: undefined }))
+    const [store, setStore, ready] = persisted("highlights.v1", createStore<Store>({ version: undefined }))
 
     const [range, setRange] = createStore({
       from: undefined as string | undefined,
@@ -208,7 +208,7 @@ export const { use: useHighlights, provider: HighlightsProvider } = createSimple
       if (!platform.version) return
       state.started = true
 
-      const previous = store.version
+      const previous = store().version
       if (!previous) {
         setStore("version", platform.version)
         return
@@ -225,7 +225,7 @@ export const { use: useHighlights, provider: HighlightsProvider } = createSimple
       from: () => range.from,
       to: () => range.to,
       get last() {
-        return store.version
+        return store().version
       },
       markSeen,
     }

@@ -268,10 +268,10 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
             const matchRoute = (route: LayoutRoute) => {
               if (route.type === "home") return
               if (route.type === "draft") {
-                return tabsStore.find((item) => item.type === "draft" && item.draftID === route.draftID)
+                return tabsStore().find((item) => item.type === "draft" && item.draftID === route.draftID)
               }
               if (route.type === "session") {
-                const main = tabsStore.find(
+                const main = tabsStore().find(
                   (item) =>
                     item.type === "session" && item.server === route.server && item.sessionId === route.sessionId,
                 )
@@ -279,7 +279,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
                 const s = session()
                 if (s?.parentID) {
                   const parentID = s.parentID
-                  const parent = tabsStore.find(
+                  const parent = tabsStore().find(
                     (item) => item.type === "session" && item.server === route.server && item.sessionId === parentID,
                   )
                   if (parent) return parent
@@ -373,7 +373,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
                   keybind: "mod+w",
                   hidden: true,
                   onSelect: () => {
-                    tabsStoreActions.removeTab(tabsStore.findIndex((tab) => current === tab))
+                    tabsStoreActions.removeTab(tabsStore().findIndex((tab) => current === tab))
                   },
                 },
                 {
@@ -383,13 +383,13 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
                   keybind: `mod+option+ArrowLeft,ctrl+shift+tab`,
                   hidden: true,
                   onSelect: () => {
-                    let index = tabsStore.findIndex((tab) => tab === currentTab())
+                    let index = tabsStore().findIndex((tab) => tab === currentTab())
                     if (index === -1) return
 
                     index -= 1
-                    if (index === -1) index = tabsStore.length - 1
+                    if (index === -1) index = tabsStore().length - 1
 
-                    const next = tabsStore[index]
+                    const next = tabsStore()[index]
                     if (next) tabs.select(next)
                   },
                 },
@@ -400,13 +400,13 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
                   keybind: `mod+option+ArrowRight,ctrl+tab`,
                   hidden: true,
                   onSelect: () => {
-                    let index = tabsStore.findIndex((tab) => tab === currentTab())
+                    let index = tabsStore().findIndex((tab) => tab === currentTab())
                     if (index === -1) return
 
                     index += 1
-                    if (index === tabsStore.length) index = 0
+                    if (index === tabsStore().length) index = 0
 
-                    const next = tabsStore[index]
+                    const next = tabsStore()[index]
                     if (next) tabs.select(next)
                   },
                 },
@@ -453,7 +453,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
                 </TooltipV2>
 
                 <TitlebarTabStrip
-                  tabs={tabsStore}
+                  tabs={tabsStore()}
                   currentTab={currentTab}
                   activeServerKey={server.key}
                   forceTruncate={tabsAreOverflowing()}
@@ -463,7 +463,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
                     el?.scrollIntoView({ behavior: "instant" })
                   }}
                   onClose={(tab) => {
-                    const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
+                    const index = tabsStore().findIndex((item) => tabKey(item) === tabKey(tab))
                     if (index !== -1) tabsStoreActions.removeTab(index)
                   }}
                   onReorder={(keys) => tabsStoreActions.reorder(keys)}

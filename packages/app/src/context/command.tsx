@@ -253,8 +253,8 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
     const warnedDuplicates = new Set<string>()
 
     type CommandCatalog = Record<string, CommandCatalogItem>
-    const [catalog, setCatalog, _, catalogReady] = persisted(
-      Persist.global("command.catalog.v1"),
+    const [catalog, setCatalog, catalogReady] = persisted(
+      Persist.global("command.catalog().v1"),
       createStore<CommandCatalog>({}),
     )
 
@@ -416,7 +416,7 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
     const keybindConfig = (id: string) => {
       if (id === PALETTE_ID) return settings.keybinds.get(PALETTE_ID) ?? DEFAULT_PALETTE_KEYBIND
       const base = actionId(id)
-      return options().find((x) => actionId(x.id) === base)?.keybind ?? bind(base, catalog[base]?.keybind)
+      return options().find((x) => actionId(x.id) === base)?.keybind ?? bind(base, catalog()[base]?.keybind)
     }
 
     return {

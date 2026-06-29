@@ -226,7 +226,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     canonicalLocalServer?: ServerConnection.Key
     servers?: Array<ServerConnection.Any>
   }) => {
-    const [store, setStore, _, ready] = persisted(
+    const [store, setStore, ready] = persisted(
       {
         ...Persist.global("server", ["server.v3"]),
         migrate: (value) => migrateCanonicalLocalServerState(value, props.canonicalLocalServer),
@@ -241,7 +241,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     const url = (x: StoredServer) => (typeof x === "string" ? x : "type" in x ? x.http.url : x.url)
 
     const allServers = createMemo((): Array<ServerConnection.Any> => {
-      return resolveServerList({ stored: store.list, props: props.servers })
+      return resolveServerList({ stored: store().list, props: props.servers })
     })
 
     const [state, setState] = createStore({
@@ -257,11 +257,11 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       if (!url_) return
       const conn: ServerConnection.Http = { ...input, authToken: undefined, http: { ...input.http, url: url_ } }
       return batch(() => {
-        const existing = store.list.findIndex((x) => url(x) === url_)
+        const existing = store().list.findIndex((x) => url(x) === url_)
         if (existing !== -1) {
           setStore("list", existing, conn)
         } else {
-          setStore("list", store.list.length, conn)
+          setStore("list", store().list.length, conn)
         }
         setState("active", ServerConnection.key(conn))
         return conn
@@ -270,7 +270,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
     function remove(key: ServerConnection.Key) {
       const next = nextServerAfterRemoval(allServers(), key, props.defaultServer)
-      const list = store.list.filter((x) => url(x) !== key)
+      const list = store().list.filter((x) => url(x) !== key)
       batch(() => {
         setStore("list", list)
         if (state.active === key) setState("active", next)
@@ -280,12 +280,12 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     const isReady = createMemo(() => ready() && !!state.active)
 
     const scope = (key = state.active) => ServerScope.fromServerKey(key, props.canonicalLocalServer)
-    const projects = createServerProjects({ scope, store, setStore })
+    const projects = createServerProjects({ scope, store: store(), setStore })
     const projectStores = new Map<ServerConnection.Key, ReturnType<typeof createServerProjects>>()
     const projectsForServer = (key: ServerConnection.Key) => {
       const existing = projectStores.get(key)
       if (existing) return existing
-      const next = createServerProjects({ scope: () => scope(key), store, setStore })
+      const next = createServerProjects({ scope: () => scope(key), store: store(), setStore })
       projectStores.set(key, next)
       return next
     }

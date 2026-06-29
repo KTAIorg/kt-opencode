@@ -1,4 +1,4 @@
-import { createRoot, createSignal, getOwner, onCleanup, runWithOwner, type Owner } from "solid-js"
+import { createRoot, createSignal, getOwner, onCleanup, runWithOwner, type Accessor, type Owner } from "solid-js"
 import { createStore, type SetStoreFunction, type Store } from "solid-js/store"
 import { Persist, persisted } from "@/utils/persist"
 import type { VcsInfo } from "@opencode-ai/sdk/v2/client"
@@ -157,7 +157,7 @@ export function createChildStoreManager(input: {
       )
       if (!vcs) throw new Error(input.translate("error.childStore.persistedCacheCreateFailed"))
       const vcsStore = vcs[0]
-      vcsCache.set(key, { store: vcsStore, setStore: vcs[1], ready: vcs[3] })
+      vcsCache.set(key, { store: vcsStore, setStore: vcs[1], ready: vcs[2] })
 
       const meta = runWithOwner(input.owner, () =>
         input.persist(
@@ -166,7 +166,7 @@ export function createChildStoreManager(input: {
         ),
       )
       if (!meta) throw new Error(input.translate("error.childStore.persistedProjectMetadataCreateFailed"))
-      metaCache.set(key, { store: meta[0], setStore: meta[1], ready: meta[3] })
+      metaCache.set(key, { store: meta[0], setStore: meta[1], ready: meta[2] })
 
       const icon = runWithOwner(input.owner, () =>
         input.persist(
@@ -175,12 +175,12 @@ export function createChildStoreManager(input: {
         ),
       )
       if (!icon) throw new Error(input.translate("error.childStore.persistedProjectIconCreateFailed"))
-      iconCache.set(key, { store: icon[0], setStore: icon[1], ready: icon[3] })
+      iconCache.set(key, { store: icon[0], setStore: icon[1], ready: icon[2] })
 
       const init = () =>
         createRoot((dispose) => {
-          const initialMeta = meta[0].value
-          const initialIcon = icon[0].value
+          const initialMeta = meta[0]().value
+          const initialIcon = icon[0]().value
           const [mcpEnabled, setMcpEnabled] = createSignal(false)
 
           const pathQuery = useQuery(() => input.queryOptions.path(key))
@@ -233,7 +233,7 @@ export function createChildStoreManager(input: {
             get lsp() {
               return lspQuery.isLoading ? [] : (lspQuery.data ?? [])
             },
-            vcs: vcsStore.value,
+            vcs: vcsStore().value,
             limit: 5,
             message: {},
             part: {},
@@ -243,28 +243,28 @@ export function createChildStoreManager(input: {
           disposers.set(key, dispose)
           mcpToggles.set(key, setMcpEnabled)
 
-          const onPersistedInit = (init: Promise<string> | string | null, run: () => void) => {
-            if (!(init instanceof Promise)) return
-            void init.then(() => {
+          const onPersistedInit = (ready: Accessor<boolean> & { promise: undefined | Promise<any> }, run: () => void) => {
+            if (!ready.promise) return
+            void ready.promise.then(() => {
               if (children[key] !== child) return
               run()
             })
           }
 
           onPersistedInit(vcs[2], () => {
-            const cached = vcsStore.value
+            const cached = vcsStore().value
             if (!cached?.branch) return
             child[1]("vcs", (value) => value ?? cached)
           })
 
           onPersistedInit(meta[2], () => {
             if (child[0].projectMeta !== initialMeta) return
-            child[1]("projectMeta", meta[0].value)
+            child[1]("projectMeta", meta[0]().value)
           })
 
           onPersistedInit(icon[2], () => {
             if (child[0].icon !== initialIcon) return
-            child[1]("icon", icon[0].value)
+            child[1]("icon", icon[0]().value)
           })
         })
 

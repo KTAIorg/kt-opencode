@@ -28,7 +28,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
   init: (props: { directory?: Accessor<string | undefined> } = {}) => {
     const providers = useProviders(props.directory)
 
-    const [store, setStore, _, ready] = persisted(
+    const [store, setStore, ready] = persisted(
       Persist.global("model", ["model.v1"]),
       createStore<Store>({
         user: [],
@@ -89,7 +89,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
 
     const visibility = createMemo(() => {
       const map = new Map<string, Visibility>()
-      for (const item of store.user) map.set(`${item.providerID}:${item.modelID}`, item.visibility)
+      for (const item of store().user) map.set(`${item.providerID}:${item.modelID}`, item.visibility)
       return map
     })
 
@@ -104,12 +104,12 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     const find = (key: ModelKey) => list().find((m) => m.id === key.modelID && m.provider.id === key.providerID)
 
     function update(model: ModelKey, state: Visibility) {
-      const index = store.user.findIndex((x) => x.modelID === model.modelID && x.providerID === model.providerID)
+      const index = store().user.findIndex((x) => x.modelID === model.modelID && x.providerID === model.providerID)
       if (index >= 0) {
         setStore("user", index, (current) => ({ ...current, visibility: state }))
         return
       }
-      setStore("user", store.user.length, { ...model, visibility: state })
+      setStore("user", store().user.length, { ...model, visibility: state })
     }
 
     const visible = (model: ModelKey) => {
@@ -128,17 +128,17 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     }
 
     const push = (model: ModelKey) => {
-      const uniq = uniqueBy([model, ...store.recent], (x) => `${x.providerID}:${x.modelID}`)
+      const uniq = uniqueBy([model, ...store().recent], (x) => `${x.providerID}:${x.modelID}`)
       if (uniq.length > RECENT_LIMIT) uniq.pop()
       setStore("recent", uniq)
     }
 
     const variantKey = (model: ModelKey) => `${model.providerID}/${model.modelID}`
-    const getVariant = (model: ModelKey) => store.variant?.[variantKey(model)]
+    const getVariant = (model: ModelKey) => store().variant?.[variantKey(model)]
 
     const setVariant = (model: ModelKey, value: string | undefined) => {
       const key = variantKey(model)
-      if (!store.variant) {
+      if (!store().variant) {
         setStore("variant", { [key]: value })
         return
       }
@@ -147,7 +147,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
 
     const [recentModels] = createResource(
       async () => {
-        const recent = store.recent
+        const recent = store().recent
         await ready.promise
         return recent
       },

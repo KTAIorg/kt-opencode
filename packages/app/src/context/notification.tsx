@@ -127,7 +127,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
     const activeServer = createMemo(() => {
       if (params.serverKey) return requireServerKey(params.serverKey)
       if (search.draftId) {
-        const draft = tabs.store.find((tab): tab is DraftTab => tab.type === "draft" && tab.draftID === search.draftId)
+        const draft = tabs.store().find((tab): tab is DraftTab => tab.type === "draft" && tab.draftID === search.draftId)
         if (draft) return draft.server
       }
       return server.key
@@ -222,13 +222,13 @@ function createServerNotificationState(input: {
   const currentDirectory = input.directory
   const currentSession = input.sessionID
 
-  const [store, setStore, _, ready] = persisted(
+  const [store, setStore, ready] = persisted(
     Persist.serverGlobal(serverSDK().scope, "notification", ["notification.v1"]),
     createStore({
       list: [] as Notification[],
     }),
   )
-  const [index, setIndex] = createStore<NotificationIndex>(buildNotificationIndex(store.list))
+  const [index, setIndex] = createStore<NotificationIndex>(buildNotificationIndex(store().list))
 
   const meta = { pruned: false, disposed: false }
 
@@ -285,7 +285,7 @@ function createServerNotificationState(input: {
     if (!ready()) return
     if (meta.pruned) return
     meta.pruned = true
-    const list = pruneNotifications(store.list)
+    const list = pruneNotifications(store().list)
     batch(() => {
       setStore("list", list)
       setIndex(reconcile(buildNotificationIndex(list), { merge: false }))
@@ -293,9 +293,9 @@ function createServerNotificationState(input: {
   })
 
   const append = (notification: Notification) => {
-    const list = pruneNotifications([...store.list, notification])
+    const list = pruneNotifications([...store().list, notification])
     const keep = new Set(list)
-    const removed = store.list.filter((n) => !keep.has(n))
+    const removed = store().list.filter((n) => !keep.has(n))
 
     batch(() => {
       if (keep.has(notification)) appendToIndex(notification)

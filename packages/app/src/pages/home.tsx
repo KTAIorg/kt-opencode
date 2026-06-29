@@ -528,14 +528,14 @@ function HomeProjectColumn(props: {
   const global = useGlobal()
   const dialog = useDialog()
   const controller = useServerManagementController({ navigateOnAdd: false })
-  const [_state, setState, _, ready] = persisted(
+  const [_state, setState, ready] = persisted(
     Persist.global("home.servers", ["home.servers.v1"]),
     createStore({ collapsed: {} as Record<string, boolean> }),
   )
   const [state] = createResource(
     () => ready.promise ?? Promise.resolve(),
-    (p) => p.then(() => _state),
-    { initialValue: _state },
+    (p) => p.then(() => _state()),
+    { initialValue: _state() },
   )
 
   return (
@@ -856,7 +856,7 @@ function HomeSessionLeading(props: {
   activeServer: boolean
 }) {
   const tabs = useTabs()
-  const hasOpenTab = createMemo(() => sessionHasOpenTab(tabs.store, props.server, props.session))
+  const hasOpenTab = createMemo(() => sessionHasOpenTab(tabs.store(), props.server, props.session))
   return (
     <div class="relative shrink-0">
       <Show when={hasOpenTab()}>

@@ -61,9 +61,9 @@ export function useUsageExceededDialogs() {
       const keys = goUpsellKeys(evt.properties.status)
       if (!keys) return
 
-      const seen = goUpsellState[keys.lastSeenAt]
+      const seen = goUpsellState()[keys.lastSeenAt]
       if (seen && Date.now() - seen < GO_UPSELL_WINDOW) return
-      if (goUpsellState[keys.dontShow]) return
+      if (goUpsellState()[keys.dontShow]) return
 
       if (action.reason === "free_tier_limit") {
         dialog.show(() => (

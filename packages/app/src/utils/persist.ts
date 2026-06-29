@@ -6,11 +6,9 @@ import type { SetStoreFunction, Store } from "solid-js/store"
 import { pathKey } from "@/utils/path-key"
 import { ScopedKey, ServerScope, type ServerScope as ServerScopeValue } from "@/utils/server-scope"
 
-type InitType = Promise<string> | string | null
 type PersistedWithReady<T> = [
-  Store<T>,
+  Accessor<T>,
   SetStoreFunction<T>,
-  InitType,
   Accessor<boolean> & { promise: undefined | Promise<any> },
 ]
 
@@ -619,20 +617,20 @@ export function persisted<T>(
   const [state, setState, init] = makePersisted(store, { name: config.key, storage })
 
   const isAsync = init instanceof Promise
-  const [ready] = createResource(
+
+  const [storeResource] = createResource(
     () => init,
-    async (initValue) => {
-      if (initValue instanceof Promise) await initValue
-      return true
+    async () => {
+      if (init instanceof Promise) await init
+      return state
     },
-    { initialValue: !isAsync },
+    { initialValue: state },
   )
 
   return [
-    state,
+    () => storeResource() as T,
     setState,
-    init,
-    Object.assign(() => (ready.loading ? false : ready.latest === true), {
+    Object.assign(() => !isAsync || !storeResource.loading, {
       promise: init instanceof Promise ? init : undefined,
     }),
   ]

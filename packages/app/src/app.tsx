@@ -79,7 +79,7 @@ const SessionRoute = () => {
     return (
       <Show when={tabs.ready()}>
         {(_) => {
-          const persisted = tabs.store.filter((item) => item.type === "session")
+          const persisted = tabs.store().filter((item) => item.type === "session")
           return <Navigate href={sessionHref(legacySessionServer(persisted, sessionID, server.key), sessionID)} />
         }}
       </Show>
@@ -211,7 +211,7 @@ function DraftRoute() {
   return (
     <Show when={tabs.ready()}>
       <Show
-        when={tabs.store.find((tab): tab is DraftTab => tab.type === "draft" && tab.draftID === search.draftId)}
+        when={tabs.store().find((tab): tab is DraftTab => tab.type === "draft" && tab.draftID === search.draftId)}
         keyed
         fallback={<Navigate href="/" />}
       >
@@ -620,7 +620,7 @@ function LegacyTargetSessionRoute() {
       <Navigate
         href={sessionHref(
           legacySessionServer(
-            tabs.store.filter((item) => item.type === "session"),
+            tabs.store().filter((item) => item.type === "session"),
             params.id,
             server.key,
           ),

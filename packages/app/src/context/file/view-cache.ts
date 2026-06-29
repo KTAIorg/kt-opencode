@@ -37,7 +37,7 @@ function equalSelectedLines(a: SelectedLineRange | null | undefined, b: Selected
 function createViewSession(scope: ServerScope, dir: string, id: string | undefined) {
   const legacyViewKey = `${dir}/file${id ? "/" + id : ""}.v1`
 
-  const [view, setView, _, ready] = persisted(
+  const [view, setView, ready] = persisted(
     Persist.serverScoped(scope, dir, id, "file-view", [legacyViewKey]),
     createStore<{
       file: Record<string, FileViewState>
@@ -49,7 +49,7 @@ function createViewSession(scope: ServerScope, dir: string, id: string | undefin
   const meta = { pruned: false }
 
   const pruneView = (keep?: string) => {
-    const keys = Object.keys(view.file)
+    const keys = Object.keys(view().file)
     if (keys.length <= MAX_VIEW_FILES) return
 
     const drop = keys.filter((key) => key !== keep).slice(0, keys.length - MAX_VIEW_FILES)
@@ -71,9 +71,9 @@ function createViewSession(scope: ServerScope, dir: string, id: string | undefin
     pruneView()
   })
 
-  const scrollTop = (path: string) => view.file[path]?.scrollTop
-  const scrollLeft = (path: string) => view.file[path]?.scrollLeft
-  const selectedLines = (path: string) => view.file[path]?.selectedLines
+  const scrollTop = (path: string) => view().file[path]?.scrollTop
+  const scrollLeft = (path: string) => view().file[path]?.scrollLeft
+  const selectedLines = (path: string) => view().file[path]?.selectedLines
 
   const setScrollTop = (path: string, top: number) => {
     setView(

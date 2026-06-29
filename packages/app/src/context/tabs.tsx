@@ -49,7 +49,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
     const server = useServer()
     const platform = usePlatform()
     const fallback = server.key
-    const [store, setStore, _, ready] = persisted(
+    const [store, setStore, ready] = persisted(
       {
         ...Persist.global("tabs"),
         migrate: (value: unknown) => {
@@ -62,7 +62,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
       },
       createStore<Tab[]>([]),
     )
-    const [recent, setRecent, , recentReady] = persisted(Persist.global("tabs.recent"), createStore<RecentTab>({}))
+    const [recent, setRecent, recentReady] = persisted(Persist.global("tabs.recent"), createStore<RecentTab>({}))
 
     const params = useParams()
     const navigate = useNavigate()
@@ -73,7 +73,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
     let recentWrite = 0
     let recentValue: string | undefined
 
-    const recentKey = () => (recentWrite ? recentValue : recent.key)
+    const recentKey = () => (recentWrite ? recentValue : recent().key)
 
     const setRecentKey = (key: string | undefined) => {
       const write = ++recentWrite
@@ -96,14 +96,14 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
     createEffect(() => {
       if (!ready() || !recentReady()) return
       const servers = new Set(server.list.map(ServerConnection.key))
-      const next = store.filter((tab) => servers.has(tab.server))
-      if (next.length !== store.length) {
-        for (const tab of store) {
+      const next = store().filter((tab) => servers.has(tab.server))
+      if (next.length !== store().length) {
+        for (const tab of store()) {
           if (!servers.has(tab.server)) memory.remove(tabKey(tab))
         }
         setStore(() => next)
       }
-      if (recent.key && !next.some((tab) => tabKey(tab) === recent.key)) setRecentKey(undefined)
+      if (recent().key && !next.some((tab) => tabKey(tab) === recent().key)) setRecentKey(undefined)
     })
 
     const navigateTab = (tab: Tab) => {
@@ -113,11 +113,11 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
     }
 
     const removeTab = (index: number) => {
-      const tab = store[index]
+      const tab = store()[index]
       if (!tab) return
       const key = tabKey(tab)
       const draftID = tab.type === "draft" ? tab.draftID : undefined
-      const nextTab = store[index + 1] ?? store[index - 1]
+      const nextTab = store()[index + 1] ?? store()[index - 1]
       closing.add(key)
       void startTransition(() => {
         setStore(
@@ -125,7 +125,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
             tabs.splice(index, 1)
           }),
         )
-        if (recent.key === key) setRecentKey(nextTab && tabKey(nextTab))
+        if (recent().key === key) setRecentKey(nextTab && tabKey(nextTab))
         if (nextTab) navigateTab(nextTab)
         else navigate("/")
       }).finally(() => closing.delete(key))
@@ -136,7 +136,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
     const actions = {
       addSessionTab: (tab: Omit<SessionTab, "type">) => {
         const next = { type: "session" as const, ...tab }
-        const existing = store.find((item) => tabKey(item) === tabKey(next))
+        const existing = store().find((item) => tabKey(item) === tabKey(next))
         if (existing) return existing
         void startTransition(() => {
           setStore(
@@ -159,7 +159,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
         )
       },
       draft(draftID: string) {
-        const tab = store.find((item) => item.type === "draft" && item.draftID === draftID)
+        const tab = store().find((item) => item.type === "draft" && item.draftID === draftID)
         if (!tab || tab.type !== "draft") throw new Error(`Draft not found: ${draftID}`)
         return tab
       },
@@ -184,7 +184,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
       },
       promoteDraft(draftID: string, session: Omit<SessionTab, "type">) {
         // Keep the replacement and navigation atomic so /new-session never renders
-        // after its backing draft tab has been removed from the store.
+        // after its backing draft tab has been removed from the store().
         const active = location.pathname === "/new-session" && location.query.draftId === draftID
         const next = { type: "session" as const, ...session }
         void startTransition(() => {
@@ -194,7 +194,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
               if (index !== -1) tabs[index] = next
             }),
           )
-          if (recent.key === `draft:${draftID}`) setRecentKey(tabKey(next))
+          if (recent().key === `draft:${draftID}`) setRecentKey(tabKey(next))
           if (active) navigateTab(next)
         })
         memory.remove(`draft:${draftID}`)
@@ -202,23 +202,24 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
       },
       removeTab,
       removeSessionTab(input: Omit<SessionTab, "type">) {
-        const index = store.findIndex(
+        const index = store().findIndex(
           (tab) => tab.type === "session" && tab.server === input.server && tab.sessionId === input.sessionId,
         )
         if (index !== -1) removeTab(index)
       },
       removeServer(key: ServerConnection.Key) {
-        const drafts = store.flatMap((tab) => (tab.type === "draft" && tab.server === key ? [tab.draftID] : []))
-        const removed = store.filter((tab) => tab.server === key).map(tabKey)
+        const drafts = store().flatMap((tab) => (tab.type === "draft" && tab.server === key ? [tab.draftID] : []))
+        const removed = store().filter((tab) => tab.server === key).map(tabKey)
         setStore((tabs) => tabs.filter((tab) => tab.server !== key))
         for (const key of removed) memory.remove(key)
-        if (recent.key && removed.includes(recent.key)) setRecentKey(undefined)
+        const recentKey = recent().key
+        if (recentKey && removed.includes(recentKey)) setRecentKey(undefined)
         for (const draftID of drafts) removeDraftPersisted(draftID)
         if (server.key === key) navigate("/")
       },
       removeSessions: (input: SessionTabsRemovedDetail) => {
         const targetServer = input.server ?? server.key
-        const removed = store
+        const removed = store()
           .filter(
             (tab) => tab.type === "session" && tab.server === targetServer && input.sessionIDs.includes(tab.sessionId),
           )
@@ -262,7 +263,8 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
               else navigate("/")
             }),
           )
-          if (recent.key && removed.includes(recent.key)) setRecentKey(undefined)
+          const recentKey = recent().key
+          if (recentKey && removed.includes(recentKey)) setRecentKey(undefined)
         })
         for (const key of removed) memory.remove(key)
       },
@@ -273,7 +275,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
       },
       toggleHome(input: { home: boolean; current?: Tab }) {
         if (input.home) {
-          const tab = store.find((tab) => tabKey(tab) === recentKey())
+          const tab = store().find((tab) => tabKey(tab) === recentKey())
           if (tab) navigateTab(tab)
           return
         }

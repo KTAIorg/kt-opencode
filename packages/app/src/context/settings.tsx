@@ -152,45 +152,45 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
   name: "Settings",
   gate: false,
   init: () => {
-    const [store, setStore, _, ready] = persisted("settings.v3", createStore<Settings>(defaultSettings))
-    const showFileTree = withFallback(() => store.general?.showFileTree, defaultSettings.general.showFileTree)
-    const showSearch = withFallback(() => store.general?.showSearch, defaultSettings.general.showSearch)
-    const showStatus = withFallback(() => store.general?.showStatus, defaultSettings.general.showStatus)
+    const [store, setStore, ready] = persisted("settings.v3", createStore<Settings>(defaultSettings))
+    const showFileTree = withFallback(() => store().general?.showFileTree, defaultSettings.general.showFileTree)
+    const showSearch = withFallback(() => store().general?.showSearch, defaultSettings.general.showSearch)
+    const showStatus = withFallback(() => store().general?.showStatus, defaultSettings.general.showStatus)
     const showCustomAgents = withFallback(
-      () => store.general?.showCustomAgents,
+      () => store().general?.showCustomAgents,
       defaultSettings.general.showCustomAgents,
     )
-    const newLayoutDesigns = withFallback(() => store.general?.newLayoutDesigns, newLayoutDesignsDefault)
+    const newLayoutDesigns = withFallback(() => store().general?.newLayoutDesigns, newLayoutDesignsDefault)
     const visible = (preference: () => boolean) => createMemo(() => !newLayoutDesigns() || preference())
 
     createEffect(() => {
       if (typeof document === "undefined") return
       const root = document.documentElement
-      root.style.setProperty("--font-family-mono", monoFontFamily(store.appearance?.mono))
-      root.style.setProperty("--font-family-sans", sansFontFamily(store.appearance?.sans))
+      root.style.setProperty("--font-family-mono", monoFontFamily(store().appearance?.mono))
+      root.style.setProperty("--font-family-sans", sansFontFamily(store().appearance?.sans))
     })
 
     createEffect(() => {
-      if (store.general?.followup !== "queue") return
+      if (store().general?.followup !== "queue") return
       setStore("general", "followup", "steer")
     })
 
     return {
       ready,
       get current() {
-        return store
+        return store()
       },
       general: {
-        autoSave: withFallback(() => store.general?.autoSave, defaultSettings.general.autoSave),
+        autoSave: withFallback(() => store().general?.autoSave, defaultSettings.general.autoSave),
         setAutoSave(value: boolean) {
           setStore("general", "autoSave", value)
         },
-        releaseNotes: withFallback(() => store.general?.releaseNotes, defaultSettings.general.releaseNotes),
+        releaseNotes: withFallback(() => store().general?.releaseNotes, defaultSettings.general.releaseNotes),
         setReleaseNotes(value: boolean) {
           setStore("general", "releaseNotes", value)
         },
         followup: withFallback(
-          () => (store.general?.followup === "queue" ? "steer" : store.general?.followup),
+          () => (store().general?.followup === "queue" ? "steer" : store().general?.followup),
           defaultSettings.general.followup,
         ),
         setFollowup(value: "queue" | "steer") {
@@ -200,7 +200,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setShowFileTree(value: boolean) {
           setStore("general", "showFileTree", value)
         },
-        showNavigation: withFallback(() => store.general?.showNavigation, defaultSettings.general.showNavigation),
+        showNavigation: withFallback(() => store().general?.showNavigation, defaultSettings.general.showNavigation),
         setShowNavigation(value: boolean) {
           setStore("general", "showNavigation", value)
         },
@@ -212,26 +212,26 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setShowStatus(value: boolean) {
           setStore("general", "showStatus", value)
         },
-        showTerminal: withFallback(() => store.general?.showTerminal, defaultSettings.general.showTerminal),
+        showTerminal: withFallback(() => store().general?.showTerminal, defaultSettings.general.showTerminal),
         setShowTerminal(value: boolean) {
           setStore("general", "showTerminal", value)
         },
         showReasoningSummaries: withFallback(
-          () => store.general?.showReasoningSummaries,
+          () => store().general?.showReasoningSummaries,
           defaultSettings.general.showReasoningSummaries,
         ),
         setShowReasoningSummaries(value: boolean) {
           setStore("general", "showReasoningSummaries", value)
         },
         shellToolPartsExpanded: withFallback(
-          () => store.general?.shellToolPartsExpanded,
+          () => store().general?.shellToolPartsExpanded,
           defaultSettings.general.shellToolPartsExpanded,
         ),
         setShellToolPartsExpanded(value: boolean) {
           setStore("general", "shellToolPartsExpanded", value)
         },
         editToolPartsExpanded: withFallback(
-          () => store.general?.editToolPartsExpanded,
+          () => store().general?.editToolPartsExpanded,
           defaultSettings.general.editToolPartsExpanded,
         ),
         setEditToolPartsExpanded(value: boolean) {
@@ -242,7 +242,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
           setStore("general", "showCustomAgents", value)
         },
         mobileTitlebarPosition: withFallback(
-          () => store.general?.mobileTitlebarPosition,
+          () => store().general?.mobileTitlebarPosition,
           defaultSettings.general.mobileTitlebarPosition,
         ),
         setMobileTitlebarPosition(value: "top" | "bottom") {
@@ -260,25 +260,25 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         customAgents: visible(showCustomAgents),
       },
       appearance: {
-        fontSize: withFallback(() => store.appearance?.fontSize, defaultSettings.appearance.fontSize),
+        fontSize: withFallback(() => store().appearance?.fontSize, defaultSettings.appearance.fontSize),
         setFontSize(value: number) {
           setStore("appearance", "fontSize", value)
         },
-        font: withFallback(() => store.appearance?.mono, defaultSettings.appearance.mono),
+        font: withFallback(() => store().appearance?.mono, defaultSettings.appearance.mono),
         setFont(value: string) {
           setStore("appearance", "mono", value.trim() ? value : "")
         },
-        uiFont: withFallback(() => store.appearance?.sans, defaultSettings.appearance.sans),
+        uiFont: withFallback(() => store().appearance?.sans, defaultSettings.appearance.sans),
         setUIFont(value: string) {
           setStore("appearance", "sans", value.trim() ? value : "")
         },
-        terminalFont: withFallback(() => store.appearance?.terminal, defaultSettings.appearance.terminal),
+        terminalFont: withFallback(() => store().appearance?.terminal, defaultSettings.appearance.terminal),
         setTerminalFont(value: string) {
           setStore("appearance", "terminal", value.trim() ? value : "")
         },
       },
       keybinds: {
-        get: (action: string) => store.keybinds?.[action],
+        get: (action: string) => store().keybinds?.[action],
         set(action: string, keybind: string) {
           setStore("keybinds", action, keybind)
         },
@@ -295,50 +295,50 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         },
       },
       permissions: {
-        autoApprove: withFallback(() => store.permissions?.autoApprove, defaultSettings.permissions.autoApprove),
+        autoApprove: withFallback(() => store().permissions?.autoApprove, defaultSettings.permissions.autoApprove),
         setAutoApprove(value: boolean) {
           setStore("permissions", "autoApprove", value)
         },
       },
       notifications: {
-        agent: withFallback(() => store.notifications?.agent, defaultSettings.notifications.agent),
+        agent: withFallback(() => store().notifications?.agent, defaultSettings.notifications.agent),
         setAgent(value: boolean) {
           setStore("notifications", "agent", value)
         },
-        permissions: withFallback(() => store.notifications?.permissions, defaultSettings.notifications.permissions),
+        permissions: withFallback(() => store().notifications?.permissions, defaultSettings.notifications.permissions),
         setPermissions(value: boolean) {
           setStore("notifications", "permissions", value)
         },
-        errors: withFallback(() => store.notifications?.errors, defaultSettings.notifications.errors),
+        errors: withFallback(() => store().notifications?.errors, defaultSettings.notifications.errors),
         setErrors(value: boolean) {
           setStore("notifications", "errors", value)
         },
       },
       sounds: {
-        agentEnabled: withFallback(() => store.sounds?.agentEnabled, defaultSettings.sounds.agentEnabled),
+        agentEnabled: withFallback(() => store().sounds?.agentEnabled, defaultSettings.sounds.agentEnabled),
         setAgentEnabled(value: boolean) {
           setStore("sounds", "agentEnabled", value)
         },
-        agent: withFallback(() => store.sounds?.agent, defaultSettings.sounds.agent),
+        agent: withFallback(() => store().sounds?.agent, defaultSettings.sounds.agent),
         setAgent(value: string) {
           setStore("sounds", "agent", value)
         },
         permissionsEnabled: withFallback(
-          () => store.sounds?.permissionsEnabled,
+          () => store().sounds?.permissionsEnabled,
           defaultSettings.sounds.permissionsEnabled,
         ),
         setPermissionsEnabled(value: boolean) {
           setStore("sounds", "permissionsEnabled", value)
         },
-        permissions: withFallback(() => store.sounds?.permissions, defaultSettings.sounds.permissions),
+        permissions: withFallback(() => store().sounds?.permissions, defaultSettings.sounds.permissions),
         setPermissions(value: string) {
           setStore("sounds", "permissions", value)
         },
-        errorsEnabled: withFallback(() => store.sounds?.errorsEnabled, defaultSettings.sounds.errorsEnabled),
+        errorsEnabled: withFallback(() => store().sounds?.errorsEnabled, defaultSettings.sounds.errorsEnabled),
         setErrorsEnabled(value: boolean) {
           setStore("sounds", "errorsEnabled", value)
         },
-        errors: withFallback(() => store.sounds?.errors, defaultSettings.sounds.errors),
+        errors: withFallback(() => store().sounds?.errors, defaultSettings.sounds.errors),
         setErrors(value: string) {
           setStore("sounds", "errors", value)
         },

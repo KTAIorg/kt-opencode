@@ -124,7 +124,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const scope = createMemo<State | undefined>(() => {
       const session = id()
       if (!session) return store.draft
-      return saved.session[session] ?? handoff.get(handoffKey(serverSDK().scope, sdk().directory, session))
+      return saved().session[session] ?? handoff.get(handoffKey(serverSDK().scope, sdk().directory, session))
     })
 
     createEffect(() => {
@@ -134,7 +134,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const key = handoffKey(serverSDK().scope, sdk().directory, session)
       const next = handoff.get(key)
       if (!next) return
-      if (saved.session[session] !== undefined) {
+      if (saved().session[session] !== undefined) {
         handoff.delete(key)
         return
       }
@@ -392,7 +392,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const session = id()
           if (!session) return
           if (msg.sessionID !== session) return
-          if (saved.session[session] !== undefined) return
+          if (saved().session[session] !== undefined) return
           if (handoff.has(handoffKey(serverSDK().scope, sdk().directory, session))) return
 
           setSaved("session", session, {

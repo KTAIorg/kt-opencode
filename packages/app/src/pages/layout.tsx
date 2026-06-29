@@ -85,7 +85,7 @@ import { SidebarContent } from "./layout/sidebar-shell"
 
 export default function LegacyLayout(props: ParentProps) {
   const serverSDK = useServerSDK()
-  const [store, setStore, , ready] = persisted(
+  const [store, setStore, ready] = persisted(
     Persist.serverGlobal(serverSDK().scope, "layout.page", ["layout.page.v1"]),
     createStore({
       lastProjectSession: {} as { [directory: string]: { directory: string; id: string; at: number } },
@@ -556,11 +556,11 @@ export default function LegacyLayout(props: ParentProps) {
 
   const workspaceName = (directory: string, projectId?: string, branch?: string) => {
     const key = pathKey(directory)
-    const direct = store.workspaceName[key] ?? store.workspaceName[directory]
+    const direct = store().workspaceName[key] ?? store().workspaceName[directory]
     if (direct) return direct
     if (!projectId) return
     if (!branch) return
-    return store.workspaceBranchName[projectId]?.[branch]
+    return store().workspaceBranchName[projectId]?.[branch]
   }
 
   const setWorkspaceName = (directory: string, next: string, projectId?: string, branch?: string) => {
@@ -568,7 +568,7 @@ export default function LegacyLayout(props: ParentProps) {
     setStore("workspaceName", key, next)
     if (!projectId) return
     if (!branch) return
-    if (!store.workspaceBranchName[projectId]) {
+    if (!store().workspaceBranchName[projectId]) {
       setStore("workspaceBranchName", projectId, {})
     }
     setStore("workspaceBranchName", projectId, branch, next)
@@ -591,7 +591,7 @@ export default function LegacyLayout(props: ParentProps) {
 
     const activeDir = currentDir()
     return workspaceIds(project).filter((directory) => {
-      const expanded = store.workspaceExpanded[directory] ?? directory === project.worktree
+      const expanded = store().workspaceExpanded[directory] ?? directory === project.worktree
       const active = pathKey(directory) === pathKey(activeDir)
       return expanded || active
     })
@@ -601,7 +601,7 @@ export default function LegacyLayout(props: ParentProps) {
     if (!pageReady()) return
     if (!layoutReady()) return
     const projects = layout.projects.list()
-    for (const [directory, expanded] of Object.entries(store.workspaceExpanded)) {
+    for (const [directory, expanded] of Object.entries(store().workspaceExpanded)) {
       if (!expanded) continue
       const key = pathKey(directory)
       const project = projects.find(
@@ -1139,7 +1139,7 @@ export default function LegacyLayout(props: ParentProps) {
       .find((item) => pathKey(item.worktree) === key || item.sandboxes?.some((sandbox) => pathKey(sandbox) === key))
     if (project) return project.worktree
 
-    const known = Object.entries(store.workspaceOrder).find(
+    const known = Object.entries(store().workspaceOrder).find(
       ([root, dirs]) => pathKey(root) === key || dirs.some((item) => pathKey(item) === key),
     )
     if (known) return known[0]
@@ -1162,7 +1162,7 @@ export default function LegacyLayout(props: ParentProps) {
   }
 
   function clearLastProjectSession(root: string) {
-    if (!store.lastProjectSession[root]) return
+    if (!store().lastProjectSession[root]) return
     setStore(
       "lastProjectSession",
       produce((draft) => {
@@ -1174,7 +1174,7 @@ export default function LegacyLayout(props: ParentProps) {
   function syncSessionRoute(directory: string, id: string, root = activeProjectRoot(directory)) {
     rememberSessionRoute(directory, id, root)
     notification.session.markViewed(id)
-    const expanded = untrack(() => store.workspaceExpanded[directory])
+    const expanded = untrack(() => store().workspaceExpanded[directory])
     if (expanded === false) {
       setStore("workspaceExpanded", directory, true)
     }
@@ -1188,7 +1188,7 @@ export default function LegacyLayout(props: ParentProps) {
     server.projects.touch(root)
     const project = layout.projects.list().find((item) => item.worktree === root)
     let dirs = project
-      ? effectiveWorkspaceOrder(root, [root, ...(project.sandboxes ?? [])], store.workspaceOrder[root])
+      ? effectiveWorkspaceOrder(root, [root, ...(project.sandboxes ?? [])], store().workspaceOrder[root])
       : [root]
     const canOpen = (value: string | undefined) => {
       if (!value) return false
@@ -1200,7 +1200,7 @@ export default function LegacyLayout(props: ParentProps) {
         .client.worktree.list({ directory: root })
         .then((x) => x.data ?? [])
         .catch(() => [] as string[])
-      dirs = effectiveWorkspaceOrder(root, [root, ...listed], store.workspaceOrder[root])
+      dirs = effectiveWorkspaceOrder(root, [root, ...listed], store().workspaceOrder[root])
       return canOpen(target)
     }
     const openSession = async (target: { directory: string; id: string }) => {
@@ -1222,7 +1222,7 @@ export default function LegacyLayout(props: ParentProps) {
       return true
     }
 
-    const projectSession = store.lastProjectSession[root]
+    const projectSession = store().lastProjectSession[root]
     if (projectSession?.id) {
       await refreshDirs(projectSession.directory)
       const opened = await openSession(projectSession)
@@ -1413,7 +1413,7 @@ export default function LegacyLayout(props: ParentProps) {
 
     if (!result) return
 
-    if (pathKey(store.lastProjectSession[root]?.directory ?? "") === pathKey(directory)) {
+    if (pathKey(store().lastProjectSession[root]?.directory ?? "") === pathKey(directory)) {
       clearLastProjectSession(root)
     }
 
@@ -1436,7 +1436,7 @@ export default function LegacyLayout(props: ParentProps) {
     const nextKey = pathKey(nextCurrent)
     const project = layout.projects.list().find((item) => item.worktree === root)
     const dirs = project
-      ? effectiveWorkspaceOrder(root, [root, ...(project.sandboxes ?? [])], store.workspaceOrder[root])
+      ? effectiveWorkspaceOrder(root, [root, ...(project.sandboxes ?? [])], store().workspaceOrder[root])
       : [root]
     const valid = dirs.some((item) => pathKey(item) === nextKey)
 
@@ -1783,7 +1783,7 @@ export default function LegacyLayout(props: ParentProps) {
         : undefined
     const pending = extra ? WorktreeState.get(serverSDK().scope, extra)?.status === "pending" : false
 
-    const ordered = effectiveWorkspaceOrder(local, dirs, store.workspaceOrder[project.worktree])
+    const ordered = effectiveWorkspaceOrder(local, dirs, store().workspaceOrder[project.worktree])
     if (pending && extra) return [local, extra, ...ordered.filter((item) => item !== local)]
     if (!extra) return ordered
     if (pending) return ordered
@@ -1887,7 +1887,7 @@ export default function LegacyLayout(props: ParentProps) {
     setEditor,
     InlineEditor,
     isBusy,
-    workspaceExpanded: (directory, local) => store.workspaceExpanded[directory] ?? local,
+    workspaceExpanded: (directory, local) => store().workspaceExpanded[directory] ?? local,
     setWorkspaceExpanded: (directory, value) => setStore("workspaceExpanded", directory, value),
     showResetWorkspaceDialog: (root, directory) =>
       dialog.show(() => <DialogResetWorkspace root={root} directory={directory} />),
@@ -2183,7 +2183,7 @@ export default function LegacyLayout(props: ParentProps) {
                         <DragOverlay>
                           <WorkspaceDragOverlay
                             sidebarProject={sidebarProject}
-                            activeWorkspace={() => store.activeWorkspace}
+                            activeWorkspace={() => store().activeWorkspace}
                             workspaceLabel={workspaceLabel}
                           />
                         </DragOverlay>
@@ -2199,7 +2199,7 @@ export default function LegacyLayout(props: ParentProps) {
         <div
           class="shrink-0 px-3 py-3"
           classList={{
-            hidden: store.gettingStartedDismissed || !(providers.all().size > 0 && providers.paid().length === 0),
+            hidden: store().gettingStartedDismissed || !(providers.all().size > 0 && providers.paid().length === 0),
           }}
         >
           <div class="rounded-xl bg-background-base shadow-xs-border-base" data-component="getting-started">
@@ -2229,7 +2229,7 @@ export default function LegacyLayout(props: ParentProps) {
   }
 
   const projects = () => layout.projects.list()
-  const projectOverlay = () => <ProjectDragOverlay projects={projects} activeProject={() => store.activeProject} />
+  const projectOverlay = () => <ProjectDragOverlay projects={projects} activeProject={() => store().activeProject} />
   const sidebarContent = (mobile?: boolean) => (
     <SidebarContent
       mobile={mobile}

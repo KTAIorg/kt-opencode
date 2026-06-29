@@ -549,7 +549,7 @@ describe("applyDirectoryEvent", () => {
       directory: "/tmp",
       loadLsp() {},
       vcsCache: {
-        store: cacheStore,
+        store: () => cacheStore,
         setStore: setCacheStore,
         ready: () => true,
       },

@@ -308,7 +308,7 @@ export default function Page() {
   })
 
   const [followup, setFollowup] = persisted(
-    Persist.serverWorkspace(serverSDK().scope, sdk().directory, "followup", ["followup.v1"]),
+    Persist.serverWorkspace(serverSDK().scope, sdk().directory, "followup", ["followup().v1"]),
     createStore<{
       items: Record<string, FollowupItem[] | undefined>
       failed: Record<string, string | undefined>
@@ -1293,19 +1293,19 @@ export default function Page() {
   const queuedFollowups = createMemo(() => {
     const id = params.id
     if (!id) return emptyFollowups
-    return followup.items[id] ?? emptyFollowups
+    return followup().items[id] ?? emptyFollowups
   })
 
   const editingFollowup = createMemo(() => {
     const id = params.id
     if (!id) return
-    return followup.edit[id]
+    return followup().edit[id]
   })
 
   const followupMutation = useMutation(() => ({
     mutationFn: async (input: { sessionID: string; id: string; manual?: boolean }) => {
       const owner = sessionOwnership.capture()
-      const item = (followup.items[input.sessionID] ?? []).find((entry) => entry.id === input.id)
+      const item = (followup().items[input.sessionID] ?? []).find((entry) => entry.id === input.id)
       if (!item) return
 
       if (input.manual) setFollowup("paused", input.sessionID, undefined)
@@ -1375,7 +1375,7 @@ export default function Page() {
 
   const sendFollowup = (sessionID: string, id: string, opts?: { manual?: boolean }) => {
     if (sync().session.get(sessionID)?.parentID) return Promise.resolve()
-    const item = (followup.items[sessionID] ?? []).find((entry) => entry.id === id)
+    const item = (followup().items[sessionID] ?? []).find((entry) => entry.id === id)
     if (!item) return Promise.resolve()
     if (followupBusy(sessionID)) return Promise.resolve()
 
@@ -1497,8 +1497,8 @@ export default function Page() {
     const item = queuedFollowups()[0]
     if (!item) return
     if (followupBusy(sessionID)) return
-    if (followup.failed[sessionID] === item.id) return
-    if (followup.paused[sessionID]) return
+    if (followup().failed[sessionID] === item.id) return
+    if (followup().paused[sessionID]) return
     if (isChildSession()) return
     if (composer.blocked()) return
     if (busy(sessionID)) return

@@ -195,12 +195,12 @@ function promptTarget(serverScope: ServerScope, scope: Scope) {
 }
 
 export function createPromptSession(serverScope: ServerScope, scope: Scope) {
-  const [store, setStore, _, ready] = persisted(
+  const [store, setStore, ready] = persisted(
     promptTarget(serverScope, scope),
     createStore<PromptStore>(promptStore()),
   )
 
-  return { ready, ...createPromptStateValue(store, setStore) }
+  return { ready, ...createPromptStateValue(store(), setStore) }
 }
 
 export function createPromptReady(session: Accessor<PromptSession>) {
@@ -316,7 +316,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
     const scope = () =>
       search.draftId ? { draftID: search.draftId } : { dir: base64Encode(sdk().directory), id: params.id }
     const load = (scope: Scope) => {
-      const current = settings.general.newLayoutDesigns() ? selectPromptTab(tabs.store, scope, serverKey()) : undefined
+      const current = settings.general.newLayoutDesigns() ? selectPromptTab(tabs.store(), scope, serverKey()) : undefined
       if (current) {
         return createTabPromptState(tabs, current, serverSDK().scope, scope)
       }

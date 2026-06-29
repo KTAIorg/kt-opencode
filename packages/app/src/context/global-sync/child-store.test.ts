@@ -9,9 +9,8 @@ import { ServerScope } from "@/utils/server-scope"
 let createChildStoreManager: typeof import("./child-store").createChildStoreManager
 const querySingles: Array<() => { queryKey?: unknown[]; enabled?: boolean }> = []
 const persist: typeof import("@/utils/persist").persisted = (_target, store) => [
-  store[0],
+  () => store[0],
   store[1],
-  null,
   Object.assign(() => true, { promise: undefined }),
 ]
 

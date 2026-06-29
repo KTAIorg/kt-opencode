@@ -151,7 +151,7 @@ function createWorkspaceTerminalSession(
 ) {
   const legacy = scope === ServerScope.local ? getLegacyTerminalStorageKeys(dir, legacySessionID) : []
 
-  const [store, setStore, _, ready] = persisted(
+  const [store, setStore, ready] = persisted(
     {
       ...terminalPersistTarget(scope, dir, legacy),
       migrate: migrateTerminalState,
@@ -166,7 +166,7 @@ function createWorkspaceTerminalSession(
 
   const pickNextTerminalNumber = () => {
     const existingTitleNumbers = new Set(
-      store.all.flatMap((pty) => {
+      store().all.flatMap((pty) => {
         const direct = Number.isFinite(pty.titleNumber) && pty.titleNumber > 0 ? pty.titleNumber : undefined
         if (direct !== undefined) return [direct]
         const parsed = numberFromTitle(pty.title)
@@ -183,10 +183,10 @@ function createWorkspaceTerminalSession(
   }
 
   const removeExited = (id: string) => {
-    const all = store.all
+    const all = store().all
     const index = all.findIndex((x) => x.id === id)
     if (index === -1) return
-    const active = store.active === id ? (index === 0 ? all[1]?.id : all[0]?.id) : store.active
+    const active = store().active === id ? (index === 0 ? all[1]?.id : all[0]?.id) : store().active
     batch(() => {
       setStore("active", active)
       setStore(
@@ -204,8 +204,8 @@ function createWorkspaceTerminalSession(
   onCleanup(unsub)
 
   const update = (client: DirectorySDK["client"], pty: Partial<LocalPTY> & { id: string }) => {
-    const index = store.all.findIndex((x) => x.id === pty.id)
-    const previous = index >= 0 ? store.all[index] : undefined
+    const index = store().all.findIndex((x) => x.id === pty.id)
+    const previous = index >= 0 ? store().all[index] : undefined
     if (index >= 0) {
       setStore("all", index, (item) => ({ ...item, ...pty }))
     }
@@ -217,7 +217,7 @@ function createWorkspaceTerminalSession(
       })
       .catch((error: unknown) => {
         if (previous) {
-          const currentIndex = store.all.findIndex((item) => item.id === pty.id)
+          const currentIndex = store().all.findIndex((item) => item.id === pty.id)
           if (currentIndex >= 0) setStore("all", currentIndex, previous)
         }
         console.error("Failed to update terminal", error)
@@ -225,8 +225,8 @@ function createWorkspaceTerminalSession(
   }
 
   const clone = async (client: DirectorySDK["client"], id: string) => {
-    const index = store.all.findIndex((x) => x.id === id)
-    const pty = store.all[index]
+    const index = store().all.findIndex((x) => x.id === id)
+    const pty = store().all[index]
     if (!pty) return
     const next = await client.pty
       .create({
@@ -238,7 +238,7 @@ function createWorkspaceTerminalSession(
       })
     if (!next?.data) return
 
-    const active = store.active === pty.id
+    const active = store().active === pty.id
 
     batch(() => {
       setStore("all", index, {
@@ -259,8 +259,8 @@ function createWorkspaceTerminalSession(
 
   return {
     ready,
-    all: createMemo(() => store.all),
-    active: createMemo(() => store.active),
+    all: createMemo(() => store().all),
+    active: createMemo(() => store().active),
     clear() {
       batch(() => {
         setStore("active", undefined)
@@ -280,7 +280,7 @@ function createWorkspaceTerminalSession(
             title: pty.data?.title ?? defaultTitle(nextNumber),
             titleNumber: nextNumber,
           }
-          setStore("all", store.all.length, newTerminal)
+          setStore("all", store().all.length, newTerminal)
           setStore("active", id)
         })
         .catch((error: unknown) => {
@@ -291,7 +291,7 @@ function createWorkspaceTerminalSession(
       update(sdk.client, pty)
     },
     trim(id: string) {
-      const index = store.all.findIndex((x) => x.id === id)
+      const index = store().all.findIndex((x) => x.id === id)
       if (index === -1) return
       setStore("all", index, (pty) => trimTerminal(pty))
     },
@@ -309,7 +309,7 @@ function createWorkspaceTerminalSession(
       const client = sdk.client
       return {
         trim(id: string) {
-          const index = store.all.findIndex((x) => x.id === id)
+          const index = store().all.findIndex((x) => x.id === id)
           if (index === -1) return
           setStore("all", index, (pty) => trimTerminal(pty))
         },
@@ -325,23 +325,23 @@ function createWorkspaceTerminalSession(
       setStore("active", id)
     },
     next() {
-      const index = store.all.findIndex((x) => x.id === store.active)
+      const index = store().all.findIndex((x) => x.id === store().active)
       if (index === -1) return
-      const nextIndex = (index + 1) % store.all.length
-      setStore("active", store.all[nextIndex]?.id)
+      const nextIndex = (index + 1) % store().all.length
+      setStore("active", store().all[nextIndex]?.id)
     },
     previous() {
-      const index = store.all.findIndex((x) => x.id === store.active)
+      const index = store().all.findIndex((x) => x.id === store().active)
       if (index === -1) return
-      const prevIndex = index === 0 ? store.all.length - 1 : index - 1
-      setStore("active", store.all[prevIndex]?.id)
+      const prevIndex = index === 0 ? store().all.length - 1 : index - 1
+      setStore("active", store().all[prevIndex]?.id)
     },
     async close(id: string) {
-      const index = store.all.findIndex((f) => f.id === id)
+      const index = store().all.findIndex((f) => f.id === id)
       if (index !== -1) {
         batch(() => {
-          if (store.active === id) {
-            const next = index > 0 ? store.all[index - 1]?.id : store.all[1]?.id
+          if (store().active === id) {
+            const next = index > 0 ? store().all[index - 1]?.id : store().all[1]?.id
             setStore("active", next)
           }
           setStore(
@@ -358,7 +358,7 @@ function createWorkspaceTerminalSession(
       })
     },
     move(id: string, to: number) {
-      const index = store.all.findIndex((f) => f.id === id)
+      const index = store().all.findIndex((f) => f.id === id)
       if (index === -1) return
       setStore(
         "all",

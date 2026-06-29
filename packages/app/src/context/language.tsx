@@ -201,14 +201,14 @@ export const { use: useLanguage, provider: LanguageProvider } = createSimpleCont
   gate: false,
   init: (props: { locale?: Locale }) => {
     const initial = props.locale ?? readStoredLocale() ?? detectLocale()
-    const [store, setStore, _, ready] = persisted(
+    const [store, setStore, ready] = persisted(
       Persist.global("language", ["language.v1"]),
       createStore({
         locale: initial,
       }),
     )
 
-    const locale = createMemo<Locale>(() => normalizeLocale(store.locale))
+    const locale = createMemo<Locale>(() => normalizeLocale(store().locale))
     const intl = createMemo(() => INTL[locale()])
 
     const [dict] = createResource(locale, loadDict, {

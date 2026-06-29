@@ -168,7 +168,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (value.type === "home") return value
       if (value.server) return value
       if (value.type === "draft") {
-        const draft = tabs.store.find((tab): tab is DraftTab => tab.type === "draft" && tab.draftID === value.draftID)
+        const draft = tabs.store().find((tab): tab is DraftTab => tab.type === "draft" && tab.draftID === value.draftID)
         if (draft) return { ...value, server: draft.server }
       }
       return { ...value, server: server.key }
@@ -264,7 +264,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     const target = Persist.serverGlobal(serverSdk().scope, "layout", ["layout.v6"])
-    const [store, setStore, _, ready] = persisted(
+    const [store, setStore, ready] = persisted(
       { ...target, migrate },
       createStore({
         sidebar: {
@@ -343,8 +343,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         keep,
         max: MAX_SESSION_KEYS,
         used: usage.used,
-        view: Object.keys(store.sessionView),
-        tabs: Object.keys(store.sessionTabs),
+        view: Object.keys(store().sessionView),
+        tabs: Object.keys(store().sessionTabs),
       })
       if (drop.length === 0) return
 
@@ -378,9 +378,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     const scroll = createScrollPersistence({
       debounceMs: 250,
-      getSnapshot: (sessionKey) => store.sessionView[sessionKey]?.scroll,
+      getSnapshot: (sessionKey) => store().sessionView[sessionKey]?.scroll,
       onFlush: (sessionKey, next) => {
-        const current = store.sessionView[sessionKey]
+        const current = store().sessionView[sessionKey]
         const keep = usage.active ?? sessionKey
         if (!current) {
           setStore("sessionView", sessionKey, { scroll: next })
@@ -590,18 +590,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       route,
       ready,
       home: {
-        selection: createMemo(() => store.home.selection),
+        selection: createMemo(() => store().home.selection),
         setSelection(selection: HomeProjectSelection) {
           setStore("home", "selection", reconcile(selection))
         },
       },
       handoff: {
-        tabs: createMemo(() => store.handoff?.tabs),
+        tabs: createMemo(() => store().handoff?.tabs),
         setTabs(dir: string, id: string) {
           setStore("handoff", "tabs", { scope: serverSdk().scope, dir, id, at: Date.now() })
         },
         clearTabs() {
-          if (!store.handoff?.tabs) return
+          if (!store().handoff?.tabs) return
           setStore("handoff", "tabs", undefined)
         },
       },
@@ -627,7 +627,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       sidebar: {
-        opened: createMemo(() => store.sidebar.opened),
+        opened: createMemo(() => store().sidebar.opened),
         open() {
           setStore("sidebar", "opened", true)
         },
@@ -637,31 +637,31 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         toggle() {
           setStore("sidebar", "opened", (x) => !x)
         },
-        width: createMemo(() => store.sidebar.width),
+        width: createMemo(() => store().sidebar.width),
         resize(width: number) {
           setStore("sidebar", "width", width)
         },
         workspaces(directory: string) {
-          return () => store.sidebar.workspaces[directory] ?? store.sidebar.workspacesDefault ?? false
+          return () => store().sidebar.workspaces[directory] ?? store().sidebar.workspacesDefault ?? false
         },
         setWorkspaces(directory: string, value: boolean) {
           setStore("sidebar", "workspaces", directory, value)
         },
         toggleWorkspaces(directory: string) {
-          const current = store.sidebar.workspaces[directory] ?? store.sidebar.workspacesDefault ?? false
+          const current = store().sidebar.workspaces[directory] ?? store().sidebar.workspacesDefault ?? false
           setStore("sidebar", "workspaces", directory, !current)
         },
       },
       terminal: {
-        height: createMemo(() => store.terminal.height),
+        height: createMemo(() => store().terminal.height),
         resize(height: number) {
           setStore("terminal", "height", height)
         },
       },
       review: {
-        diffStyle: createMemo(() => store.review?.diffStyle ?? "split"),
+        diffStyle: createMemo(() => store().review?.diffStyle ?? "split"),
         setDiffStyle(diffStyle: ReviewDiffStyle) {
-          if (!store.review) {
+          if (!store().review) {
             setStore("review", { diffStyle, panelOpened: true })
             return
           }
@@ -669,39 +669,39 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       fileTree: {
-        opened: createMemo(() => store.fileTree?.opened ?? true),
-        width: createMemo(() => store.fileTree?.width ?? DEFAULT_FILE_TREE_WIDTH),
-        tab: createMemo(() => store.fileTree?.tab ?? "changes"),
+        opened: createMemo(() => store().fileTree?.opened ?? true),
+        width: createMemo(() => store().fileTree?.width ?? DEFAULT_FILE_TREE_WIDTH),
+        tab: createMemo(() => store().fileTree?.tab ?? "changes"),
         setTab(tab: "changes" | "all") {
-          if (!store.fileTree) {
+          if (!store().fileTree) {
             setStore("fileTree", { opened: true, width: DEFAULT_FILE_TREE_WIDTH, tab })
             return
           }
           setStore("fileTree", "tab", tab)
         },
         open() {
-          if (!store.fileTree) {
+          if (!store().fileTree) {
             setStore("fileTree", { opened: true, width: DEFAULT_FILE_TREE_WIDTH, tab: "changes" })
             return
           }
           setStore("fileTree", "opened", true)
         },
         close() {
-          if (!store.fileTree) {
+          if (!store().fileTree) {
             setStore("fileTree", { opened: false, width: DEFAULT_FILE_TREE_WIDTH, tab: "changes" })
             return
           }
           setStore("fileTree", "opened", false)
         },
         toggle() {
-          if (!store.fileTree) {
+          if (!store().fileTree) {
             setStore("fileTree", { opened: true, width: DEFAULT_FILE_TREE_WIDTH, tab: "changes" })
             return
           }
           setStore("fileTree", "opened", (x) => !x)
         },
         resize(width: number) {
-          if (!store.fileTree) {
+          if (!store().fileTree) {
             setStore("fileTree", { opened: true, width, tab: "changes" })
             return
           }
@@ -709,9 +709,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       session: {
-        width: createMemo(() => store.session?.width ?? DEFAULT_SESSION_WIDTH),
+        width: createMemo(() => store().session?.width ?? DEFAULT_SESSION_WIDTH),
         resize(width: number) {
-          if (!store.session) {
+          if (!store().session) {
             setStore("session", { width })
             return
           }
@@ -719,7 +719,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       mobileSidebar: {
-        opened: createMemo(() => store.mobileSidebar?.opened ?? false),
+        opened: createMemo(() => store().mobileSidebar?.opened ?? false),
         show() {
           setStore("mobileSidebar", "opened", true)
         },
@@ -734,7 +734,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         set(sessionKey: string, messageID: string) {
           const at = Date.now()
           touch(sessionKey)
-          const current = store.sessionView[sessionKey]
+          const current = store().sessionView[sessionKey]
           if (!current) {
             setStore("sessionView", sessionKey, {
               scroll: {},
@@ -755,7 +755,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           )
         },
         consume(sessionKey: string) {
-          const current = store.sessionView[sessionKey]
+          const current = store().sessionView[sessionKey]
           const message = current?.pendingMessage
           const at = current?.pendingMessageAt
           if (!message || !at) return
@@ -775,12 +775,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       view(sessionKey: string | Accessor<string>) {
         const key = createSessionKeyReader(sessionKey, ensureKey)
-        const s = createMemo(() => store.sessionView[key()] ?? { scroll: {} })
-        const terminalOpened = createMemo(() => store.terminal?.opened ?? false)
-        const reviewPanelOpened = createMemo(() => store.review?.panelOpened ?? true)
+        const s = createMemo(() => store().sessionView[key()] ?? { scroll: {} })
+        const terminalOpened = createMemo(() => store().terminal?.opened ?? false)
+        const reviewPanelOpened = createMemo(() => store().review?.panelOpened ?? true)
 
         function setTerminalOpened(next: boolean) {
-          const current = store.terminal
+          const current = store().terminal
           if (!current) {
             setStore("terminal", { height: DEFAULT_TERMINAL_HEIGHT, opened: next })
             return
@@ -792,7 +792,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }
 
         function setReviewPanelOpened(next: boolean) {
-          const current = store.review
+          const current = store().review
           if (!current) {
             setStore("review", { diffStyle: "split" as ReviewDiffStyle, panelOpened: next })
             return
@@ -814,7 +814,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             get: () => s().todoCollapsed ?? false,
             set(collapsed: boolean) {
               const session = key()
-              const current = store.sessionView[session]
+              const current = store().sessionView[session]
               if (!current) {
                 setStore("sessionView", session, { scroll: {}, todoCollapsed: collapsed })
               } else {
@@ -851,7 +851,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             setOpen(open: string[]) {
               const session = key()
               const next = Array.from(new Set(open))
-              const current = store.sessionView[session]
+              const current = store().sessionView[session]
               if (!current) {
                 setStore("sessionView", session, {
                   scroll: {},
@@ -865,7 +865,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             },
             openPath(path: string) {
               const session = key()
-              const current = store.sessionView[session]
+              const current = store().sessionView[session]
               if (!current) {
                 setStore("sessionView", session, {
                   scroll: {},
@@ -884,7 +884,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             },
             closePath(path: string) {
               const session = key()
-              const current = store.sessionView[session]?.reviewOpen
+              const current = store().sessionView[session]?.reviewOpen
               if (!current) return
 
               const index = current.indexOf(path)
@@ -901,7 +901,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             },
             togglePath(path: string) {
               const session = key()
-              const current = store.sessionView[session]?.reviewOpen
+              const current = store().sessionView[session]?.reviewOpen
               if (!current || !current.includes(path)) {
                 this.openPath(path)
                 return
@@ -915,7 +915,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       tabs(sessionKey: string | Accessor<string>) {
         const key = createSessionKeyReader(sessionKey, ensureKey)
         const path = createMemo(() => sessionPath(key()))
-        const tabs = createMemo(() => store.sessionTabs[key()] ?? { all: [] })
+        const tabs = createMemo(() => store().sessionTabs[key()] ?? { all: [] })
         const normalize = (tab: string) => normalizeSessionTab(path(), tab)
         const normalizeAll = (all: string[]) => normalizeSessionTabList(path(), all)
         return {
@@ -925,7 +925,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setActive(tab: string | undefined) {
             const session = key()
             const next = tab ? normalize(tab) : tab
-            if (!store.sessionTabs[session]) {
+            if (!store().sessionTabs[session]) {
               setStore("sessionTabs", session, { all: [], active: next })
             } else {
               setStore("sessionTabs", session, "active", next)
@@ -934,7 +934,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setAll(all: string[]) {
             const session = key()
             const next = normalizeAll(all).filter((tab) => tab !== "review")
-            if (!store.sessionTabs[session]) {
+            if (!store().sessionTabs[session]) {
               setStore("sessionTabs", session, { all: next, active: undefined })
             } else {
               setStore("sessionTabs", session, "all", next)
@@ -942,12 +942,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           },
           async open(tab: string) {
             const session = key()
-            const next = nextSessionTabsForOpen(store.sessionTabs[session], normalize(tab))
+            const next = nextSessionTabsForOpen(store().sessionTabs[session], normalize(tab))
             setStore("sessionTabs", session, next)
           },
           close(tab: string) {
             const session = key()
-            const current = store.sessionTabs[session]
+            const current = store().sessionTabs[session]
             if (!current) return
 
             if (tab === "review") {
@@ -971,7 +971,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           },
           move(tab: string, to: number) {
             const session = key()
-            const current = store.sessionTabs[session]
+            const current = store().sessionTabs[session]
             if (!current) return
             const index = current.all.findIndex((f) => f === tab)
             if (index === -1) return

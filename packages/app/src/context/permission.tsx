@@ -59,7 +59,7 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       return hasPermissionPromptRules(store.config.permission)
     })
 
-    const [store, setStore, _, ready] = persisted(
+    const [store, setStore, ready] = persisted(
       {
         ...Persist.serverGlobal(serverSDK().scope, "permission", ["permission.v3"]),
         migrate(value) {
@@ -91,7 +91,7 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       const perm = childStore.config.permission
       if (typeof perm === "string" && perm === "allow") {
         const key = directoryAcceptKey(directory)
-        if (store.autoAccept[key] === undefined) {
+        if (store().autoAccept[key] === undefined) {
           setStore(
             produce((draft) => {
               draft.autoAccept[key] = true
@@ -143,16 +143,16 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
 
     function isAutoAccepting(sessionID: string, directory?: string) {
       const session = directory ? serverSync().child(directory, { bootstrap: false })[0].session : []
-      return autoRespondsPermission(store.autoAccept, session, { sessionID }, directory)
+      return autoRespondsPermission(store().autoAccept, session, { sessionID }, directory)
     }
 
     function isAutoAcceptingDirectory(directory: string) {
-      return isDirectoryAutoAccepting(store.autoAccept, directory)
+      return isDirectoryAutoAccepting(store().autoAccept, directory)
     }
 
     function shouldAutoRespond(permission: PermissionRequest, directory?: string) {
       const session = directory ? serverSync().child(directory, { bootstrap: false })[0].session : []
-      return autoRespondsPermission(store.autoAccept, session, permission, directory)
+      return autoRespondsPermission(store().autoAccept, session, permission, directory)
     }
 
     function bumpEnableVersion(sessionID: string, directory?: string) {

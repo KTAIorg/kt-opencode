@@ -11,6 +11,7 @@ import {
   createResource,
   Switch,
   Match,
+  type Accessor,
   type JSX,
 } from "solid-js"
 import { createStore, type SetStoreFunction, type Store } from "solid-js/store"
@@ -114,21 +115,21 @@ export type PromptInputControls = {
 export function createPromptInputHistory(): PromptInputHistory {
   const [normal, setNormal] = createStore<PromptHistoryState>({ entries: [] })
   const [shell, setShell] = createStore<PromptHistoryState>({ entries: [] })
-  return createPromptInputHistoryStore(normal, setNormal, shell, setShell)
+  return createPromptInputHistoryStore(() => normal, setNormal, () => shell, setShell)
 }
 
 type PromptHistoryState = { entries: PromptHistoryStoredEntry[] }
 
 function createPromptInputHistoryStore(
-  normal: Store<PromptHistoryState>,
+  normal: Accessor<PromptHistoryState>,
   setNormal: SetStoreFunction<PromptHistoryState>,
-  shell: Store<PromptHistoryState>,
+  shell: Accessor<PromptHistoryState>,
   setShell: SetStoreFunction<PromptHistoryState>,
 ): PromptInputHistory {
   return {
-    entries: (mode) => (mode === "shell" ? shell.entries : normal.entries),
+    entries: (mode) => (mode === "shell" ? shell().entries : normal().entries),
     add(prompt, mode, comments) {
-      const current = mode === "shell" ? shell : normal
+      const current = mode === "shell" ? shell() : normal()
       const setCurrent = mode === "shell" ? setShell : setNormal
       const next = prependHistoryEntry(current.entries, prompt, comments)
       if (next === current.entries) return
