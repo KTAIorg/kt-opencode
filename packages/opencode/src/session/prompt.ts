@@ -1237,6 +1237,7 @@ export const layer = Layer.effect(
               Effect.provideService(ToolRegistry.Service, registry),
               Effect.provideService(MCP.Service, mcp),
               Effect.provideService(Truncate.Service, truncate),
+              Effect.provideService(RuntimeFlags.Service, flags),
             )
 
             if (lastUser.format?.type === "json_schema") {
@@ -1264,6 +1265,7 @@ export const layer = Layer.effect(
               ...env,
               ...instructions,
               ...(mcpInstructions ? [mcpInstructions] : []),
+              ...(tools.search_deferred_tools && tools.call_deferred_tool ? [SessionTools.DEFERRED_TOOL_SYSTEM_PROMPT] : []),
               ...(skills ? [skills] : []),
             ]
             const format = lastUser.format ?? { type: "text" as const }
