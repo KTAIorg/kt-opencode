@@ -2,6 +2,7 @@ export * as MCP from "./mcp"
 
 import { Context, Effect, Layer, Schema } from "effect"
 import { makeLocationNode } from "./effect/app-node"
+import { Config } from "./config"
 import { ConfigMCP } from "./config/mcp"
 import { Integration } from "./integration"
 import { IntegrationConnection } from "./integration/connection"
@@ -157,7 +158,23 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/v2
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
+    const config = yield* Config.Service
+    const documents = (yield* config.entries()).filter((entry): entry is Config.Document => entry.type === "document")
+    // Global MCP timeout defaults, later config files overriding earlier ones.
+    const timeout = Object.assign(
+      {},
+      ...documents.flatMap((entry) => (entry.info.mcp?.timeout ? [entry.info.mcp.timeout] : [])),
+    )
+    // Later config files win for duplicate server names; per-server timeout overrides globals.
     const runtime = new Map<ServerName, ServerEntry>()
+    for (const entry of documents) {
+      for (const [name, server] of Object.entries(entry.info.mcp?.servers ?? {})) {
+        runtime.set(ServerName.make(name), {
+          config: { ...server, timeout: { ...timeout, ...server.timeout } },
+          status: server.disabled ? { status: "disabled" } : { status: "disconnected" },
+        })
+      }
+    }
 
     const requireServer = Effect.fnUntraced(function* (server: ServerName | string) {
       const name = ServerName.make(server)
@@ -224,4 +241,4 @@ export const layer = Layer.effect(
   }),
 )
 
-export const node = makeLocationNode({ service: Service, layer, deps: [] })
+export const node = makeLocationNode({ service: Service, layer, deps: [Config.node] })
