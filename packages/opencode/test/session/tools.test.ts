@@ -22,7 +22,9 @@ import { testEffect } from "../lib/effect"
 const model = ProviderTest.model()
 const sessionID = SessionID.make("ses_deferred-tools")
 const largeSchemaDescription = "analytics trends schema ".repeat(10_000)
-const mcpClient = new Client({ name: "test", version: "0.0.0" })
+const mcpClient = Object.assign(new Client({ name: "test", version: "0.0.0" }), {
+  getServerCapabilities: () => ({}),
+})
 const agent = {
   name: "build",
   mode: "primary",
