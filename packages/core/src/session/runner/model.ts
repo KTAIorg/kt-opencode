@@ -108,19 +108,6 @@ export interface Dependencies {
   readonly loadAISDK?: (model: ModelV2.Info) => Effect.Effect<Model, AISDK.InitError>
 }
 
-const unsupported = (model: ModelV2.Info, packageName = model.package ?? "unknown") =>
-  new UnsupportedPackageError({
-    providerID: model.providerID,
-    modelID: model.id,
-    package: packageName,
-  })
-
-const credentialSettings = (credential: Credential.Value | undefined) => ({
-  ...(credential?.type === "key" ? { apiKey: credential.key } : {}),
-  ...(credential?.type === "oauth" ? { apiKey: credential.access } : {}),
-  ...credential?.metadata,
-})
-
 export const fromCatalogModel = (
   model: ModelV2.Info,
   credential?: Credential.Value,
@@ -134,35 +121,72 @@ export const fromCatalogModel = (
         })
   if (ProviderV2.isAISDK(resolved.package)) {
     if (!dependencies.loadAISDK) {
-      return Effect.fail(unsupported(resolved))
+      return Effect.fail(
+        new UnsupportedPackageError({
+          providerID: resolved.providerID,
+          modelID: resolved.id,
+          package: resolved.package ?? "unknown",
+        }),
+      )
     }
     const runtime = produce(resolved, (draft) => {
-      draft.settings = ProviderV2.mergeOverlay(draft.settings, credentialSettings(credential))
+      draft.settings = ProviderV2.mergeOverlay(draft.settings, {
+        ...(credential?.type === "key" ? { apiKey: credential.key } : {}),
+        ...(credential?.type === "oauth" ? { apiKey: credential.access } : {}),
+        ...credential?.metadata,
+      })
     })
     return dependencies.loadAISDK(runtime).pipe(
-      Effect.mapError(() => unsupported(resolved)),
+      Effect.mapError(
+        () =>
+          new UnsupportedPackageError({
+            providerID: resolved.providerID,
+            modelID: resolved.id,
+            package: resolved.package ?? "unknown",
+          }),
+      ),
     )
   }
   if (resolved.package) {
     const specifier = resolved.package
     return Effect.gen(function* () {
       const module = yield* (dependencies.loadPackage ?? ProviderV2.loadPackage)(specifier).pipe(
-        Effect.mapError(() => unsupported(resolved, specifier)),
+        Effect.mapError(
+          () =>
+            new UnsupportedPackageError({
+              providerID: resolved.providerID,
+              modelID: resolved.id,
+              package: specifier,
+            }),
+        ),
       )
       const settings = {
         ...resolved.settings,
-        ...credentialSettings(credential),
+        ...(credential?.type === "key" ? { apiKey: credential.key } : {}),
+        ...(credential?.type === "oauth" ? { apiKey: credential.access } : {}),
+        ...credential?.metadata,
         headers: resolved.headers,
         body: resolved.body,
         limits: { context: resolved.limit.context, output: resolved.limit.output },
       }
       return yield* Effect.try({
         try: () => Model.update(module.model(resolved.modelID ?? resolved.id, settings), { provider: resolved.providerID }),
-        catch: () => unsupported(resolved, specifier),
+        catch: () =>
+          new UnsupportedPackageError({
+            providerID: resolved.providerID,
+            modelID: resolved.id,
+            package: specifier,
+          }),
       })
     })
   }
-  return Effect.fail(unsupported(resolved))
+  return Effect.fail(
+    new UnsupportedPackageError({
+      providerID: resolved.providerID,
+      modelID: resolved.id,
+      package: resolved.package ?? "unknown",
+    }),
+  )
 }
 
 export const resolve = (

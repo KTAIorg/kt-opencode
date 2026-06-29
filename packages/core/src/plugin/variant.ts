@@ -15,11 +15,12 @@ export const Plugin = define({
             const generated = generate(draft, record.provider)
             if (generated.length === 0) return
 
-            const explicit = new Map((draft.variants ?? []).map((variant) => [variant.id, variant]))
+            const variants = draft.variants ?? []
+            const explicit = new Map(variants.map((variant) => [variant.id, variant]))
             const generatedIDs = new Set<string>(generated.map((variant) => variant.id))
             draft.variants = [
               ...generated.map((variant) => explicit.get(variant.id) ?? variant),
-              ...(draft.variants ?? []).filter((variant) => !generatedIDs.has(variant.id)),
+              ...variants.filter((variant) => !generatedIDs.has(variant.id)),
             ]
           })
         }

@@ -11,10 +11,12 @@ export const ID = Provider.ID
 export type ID = typeof ID.Type
 
 export const AISDK_PREFIX = "aisdk:"
-export const isAISDK = (packageName: string | undefined) => packageName?.startsWith(AISDK_PREFIX) ?? false
-export const aisdk = (packageName: string) => (isAISDK(packageName) ? packageName : `${AISDK_PREFIX}${packageName}`)
-export const packageName = (packageName: string | undefined) =>
-  isAISDK(packageName) ? packageName!.slice(AISDK_PREFIX.length) : packageName
+export const isAISDK = (value: string | undefined) => value?.startsWith(AISDK_PREFIX) ?? false
+export const aisdk = (value: string) => (isAISDK(value) ? value : `${AISDK_PREFIX}${value}`)
+export const packageName = (value: string | undefined) => {
+  if (value === undefined || !isAISDK(value)) return value
+  return value.slice(AISDK_PREFIX.length)
+}
 
 export class LoadError extends Schema.TaggedErrorClass<LoadError>()("ProviderV2.LoadError", {
   package: Schema.String,
@@ -25,7 +27,14 @@ export type ProviderPackage = ProviderPackageDefinition
 const packages = new Map<string, Promise<unknown>>()
 
 export const loadPackage = Effect.fn("ProviderV2.loadPackage")(function* (specifier: string, npm?: Npm.Interface) {
-  const resolved = yield* resolvePackage(specifier)
+  const resolved = yield* Effect.sync(() => {
+    if (specifier.startsWith("file://") || specifier.startsWith("@opencode-ai/llm/")) return specifier
+    try {
+      return import.meta.resolve(specifier)
+    } catch {
+      return undefined
+    }
+  })
   if (resolved) return yield* importPackage(specifier, resolved)
   if (!npm) {
     return yield* new LoadError({
@@ -33,8 +42,10 @@ export const loadPackage = Effect.fn("ProviderV2.loadPackage")(function* (specif
       cause: new Error(`Provider package ${specifier} is not installed`),
     })
   }
+  const parts = specifier.split("/")
+  const root = specifier.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] ?? specifier)
   const installed = yield* npm
-    .add(rootPackage(specifier))
+    .add(root)
     .pipe(Effect.mapError((cause) => new LoadError({ package: specifier, cause })))
   const entrypoint = yield* Effect.try({
     try: () => import.meta.resolve(specifier, pathToFileURL(`${installed.directory}/`).href),
@@ -95,16 +106,6 @@ export type Info = Provider.Info
 
 export type MutableInfo = DeepMutable<Info>
 
-const resolvePackage = (specifier: string) =>
-  Effect.sync(() => {
-    if (specifier.startsWith("file://") || specifier.startsWith("@opencode-ai/llm/")) return specifier
-    try {
-      return import.meta.resolve(specifier)
-    } catch {
-      return undefined
-    }
-  })
-
 const importPackage = Effect.fn("ProviderV2.importPackage")(function* (specifier: string, entrypoint: string) {
   const module = yield* Effect.tryPromise({
     try: () => {
@@ -116,21 +117,11 @@ const importPackage = Effect.fn("ProviderV2.importPackage")(function* (specifier
     },
     catch: (cause) => new LoadError({ package: specifier, cause }),
   })
-  if (!isProviderPackage(module)) {
+  if (typeof module !== "object" || module === null || typeof (module as { model?: unknown }).model !== "function") {
     return yield* new LoadError({
       package: specifier,
       cause: new Error(`Provider package ${specifier} does not export model(modelID, settings)`),
     })
   }
-  return module
+  return module as ProviderPackageDefinition
 })
-
-function isProviderPackage(input: unknown): input is ProviderPackageDefinition {
-  return typeof input === "object" && input !== null && "model" in input && typeof input.model === "function"
-}
-
-function rootPackage(specifier: string) {
-  const parts = specifier.split("/")
-  if (specifier.startsWith("@")) return parts.slice(0, 2).join("/")
-  return parts[0]
-}
