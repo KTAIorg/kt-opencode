@@ -1223,7 +1223,7 @@ export const layer = Layer.effect(
             const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
             const promptOps = yield* ops()
 
-            const tools = yield* SessionTools.resolve({
+            const resolvedTools = yield* SessionTools.resolve({
               agent,
               session,
               model,
@@ -1240,6 +1240,7 @@ export const layer = Layer.effect(
               Effect.provideService(Truncate.Service, truncate),
               Effect.provideService(RuntimeFlags.Service, flags),
             )
+            const tools = resolvedTools.tools
 
             if (lastUser.format?.type === "json_schema") {
               tools["StructuredOutput"] = createStructuredOutputTool({
@@ -1260,12 +1261,7 @@ export const layer = Layer.effect(
               sys.environment(model),
               instruction.system().pipe(Effect.orDie),
               sys.mcp(agent, session.permission),
-              tools.search_deferred_tools && tools.call_deferred_tool
-                ? SessionTools.deferredSystemPrompt({ agent, session, messages: msgs }).pipe(
-                    Effect.provideService(MCP.Service, mcp),
-                    Effect.provideService(RuntimeFlags.Service, flags),
-                  )
-                : Effect.succeed(undefined),
+              Effect.succeed(resolvedTools.deferredSystemPrompt),
               MessageV2.toModelMessagesEffect(msgs, model),
             ])
             const system = [

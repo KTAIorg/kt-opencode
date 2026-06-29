@@ -17,9 +17,6 @@ import { SessionProcessor } from "./processor"
 import { Session } from "./session"
 import { PartID } from "./schema"
 
-export const DEFERRED_TOOL_SYSTEM_PROMPT = SessionMcpTools.DEFERRED_TOOL_SYSTEM_PROMPT
-export const deferredSystemPrompt = SessionMcpTools.systemPrompt
-
 export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   agent: Agent.Info
   model: Provider.Model
@@ -112,8 +109,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     })
   }
 
-  Object.assign(tools, yield* SessionMcpTools.resolve(input))
-  return tools
+  const mcp = yield* SessionMcpTools.resolve(input)
+  Object.assign(tools, mcp.tools)
+  return {
+    tools,
+    deferredSystemPrompt: mcp.deferredSystemPrompt,
+  }
 })
 
 export * as SessionTools from "./tools"

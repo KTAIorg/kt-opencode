@@ -132,7 +132,7 @@ const belowThresholdIt = makeIt({
   queryDescription: "Natural language analytics query",
 })
 
-function resolveTools(input: { messages?: SessionV1.WithParts[]; canDeferMcpTools?: boolean } = {}) {
+function resolveToolResult(input: { messages?: SessionV1.WithParts[]; canDeferMcpTools?: boolean } = {}) {
   return SessionTools.resolve({
     agent,
     model,
@@ -143,6 +143,10 @@ function resolveTools(input: { messages?: SessionV1.WithParts[]; canDeferMcpTool
     promptOps,
     canDeferMcpTools: input.canDeferMcpTools,
   })
+}
+
+function resolveTools(input: { messages?: SessionV1.WithParts[]; canDeferMcpTools?: boolean } = {}) {
+  return resolveToolResult(input).pipe(Effect.map((result) => result.tools))
 }
 
 describe("session.tools", () => {
@@ -181,7 +185,7 @@ describe("session.tools", () => {
 
   deferredIt.instance("lists deferred MCP servers in the system prompt", () =>
     Effect.gen(function* () {
-      const prompt = yield* SessionTools.deferredSystemPrompt({ agent, session, messages: [] })
+      const prompt = (yield* resolveToolResult()).deferredSystemPrompt
 
       expect(prompt).toContain("Deferred MCP servers available through `search_deferred_tools`:")
       expect(prompt).toContain("- posthog: 2 tools")

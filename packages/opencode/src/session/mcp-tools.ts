@@ -61,6 +61,11 @@ interface DeferredToolDescriptor {
   searchText: string
 }
 
+interface Output {
+  tools: Record<string, Tool>
+  deferredSystemPrompt?: string
+}
+
 const SearchDeferredToolsParameters = Schema.Struct({
   query: Schema.String.annotate({
     description:
@@ -229,9 +234,8 @@ export const resolve = Effect.fn("SessionMcpTools.resolve")(function* (input: In
     return output
   })
 
-  const hasMcpResourceServer = Object.values(yield* mcp.clients()).some(
-    (client) => !!client.getServerCapabilities()?.resources,
-  )
+  const clients = yield* mcp.clients()
+  const hasMcpResourceServer = Object.values(clients).some((client) => !!client.getServerCapabilities()?.resources)
   if (hasMcpResourceServer) addResourceTools(tools, { input, run, mcp, plugin, truncate, context })
 
   const mcpTools = yield* mcp.tools()
@@ -261,7 +265,10 @@ export const resolve = Effect.fn("SessionMcpTools.resolve")(function* (input: In
       allowedMcpTools,
       executeMcpTool,
     })
-    return tools
+    return {
+      tools,
+      deferredSystemPrompt: deferredSystemPrompt(allowedMcpTools, clients),
+    } satisfies Output
   }
 
   for (const [key, item] of Object.entries(mcpTools)) {
@@ -275,35 +282,11 @@ export const resolve = Effect.fn("SessionMcpTools.resolve")(function* (input: In
     tools[key] = item
   }
 
-  return tools
+  return { tools } satisfies Output
 })
 
-export const systemPrompt = Effect.fn("SessionMcpTools.systemPrompt")(function* (input: {
-  agent: Agent.Info
-  session: Session.Info
-  messages: SessionV1.WithParts[]
-}) {
-  const mcp = yield* MCP.Service
-  const flags = yield* RuntimeFlags.Service
-  if (!flags.experimentalToolSearch) return undefined
-
-  const mcpTools = yield* mcp.tools()
-  const mcpDisabled = Permission.disabled(
-    Object.keys(mcpTools),
-    Permission.merge(input.agent.permission, input.session.permission ?? []),
-  )
-  const userTools = currentUserToolOverrides(input.messages)
-  const allowedTools = Object.fromEntries(
-    Object.entries(mcpTools).filter(([key]) => userTools?.[key] !== false && !mcpDisabled.has(key)),
-  )
-  if (Object.keys(allowedTools).length === 0) return undefined
-
-  const deferredDescriptors = yield* deferredToolDescriptors(allowedTools)
-  if (deferredToolSchemaTokens(deferredDescriptors) < MIN_DEFERRED_MCP_SCHEMA_TOKENS) {
-    return undefined
-  }
-
-  const servers = deferredServerSummaries(Object.keys(allowedTools), Object.keys(yield* mcp.clients()))
+function deferredSystemPrompt(allowedMcpTools: Record<string, Tool>, clients: Record<string, unknown>) {
+  const servers = deferredServerSummaries(Object.keys(allowedMcpTools), Object.keys(clients))
   return [
     DEFERRED_TOOL_SYSTEM_PROMPT,
     servers.length === 0
@@ -315,7 +298,7 @@ export const systemPrompt = Effect.fn("SessionMcpTools.systemPrompt")(function* 
   ]
     .filter((part): part is string => part !== undefined)
     .join("\n\n")
-})
+}
 
 function addResourceTools(
   tools: Record<string, Tool>,
