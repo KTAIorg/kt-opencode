@@ -1,6 +1,6 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { base64Encode } from "@opencode-ai/core/util/encode"
-import { useParams } from "@solidjs/router"
+import { useParams, useSearchParams } from "@solidjs/router"
 import { batch, createEffect, createMemo, startTransition } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useModels } from "@/context/models"
@@ -18,10 +18,12 @@ type State = {
   agent?: string
   model?: ModelKey
   variant?: string | null
+  source?: "manual" | "message"
 }
 
 type Saved = {
   session: Record<string, State | undefined>
+  draft?: State
 }
 
 const WORKSPACE_KEY = "__workspace__"
@@ -37,11 +39,13 @@ const migrate = (value: unknown) => {
     pick?: Record<string, State | undefined>
   }
 
-  if (item.session && typeof item.session === "object") return { session: item.session }
+  const draft = "draft" in item && item.draft && typeof item.draft === "object" ? (item.draft as State) : undefined
+  if (item.session && typeof item.session === "object") return { session: item.session, draft }
   if (!item.pick || typeof item.pick !== "object") return { session: {} }
 
   return {
     session: Object.fromEntries(Object.entries(item.pick).filter(([key]) => key !== WORKSPACE_KEY)),
+    draft,
   }
 }
 
@@ -57,6 +61,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
   init: () => {
     const params = useParams()
+    const [search] = useSearchParams<{ draftId?: string }>()
     const sdk = useSDK()
     const sync = useSync()
     const serverSDK = useServerSDK()
@@ -64,12 +69,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const models = useModels()
 
     const id = createMemo(() => params.id || undefined)
+    const draftID = createMemo(() => search.draftId || undefined)
     const list = createMemo(() => sync().data.agent.filter((item) => item.mode !== "subagent" && !item.hidden))
     const connected = createMemo(() => new Set(providers.connected().map((item) => item.id)))
 
     const [saved, setSaved] = persisted(
       {
-        ...Persist.serverWorkspace(serverSDK().scope, sdk().directory, "model-selection", ["model-selection.v1"]),
+        ...(draftID()
+          ? Persist.draft(draftID()!, "model-selection")
+          : Persist.serverWorkspace(serverSDK().scope, sdk().directory, "model-selection", ["model-selection.v1"])),
         migrate,
       },
       createStore<Saved>({
@@ -124,7 +132,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const scope = createMemo<State | undefined>(() => {
       const session = id()
-      if (!session) return store.draft ?? store.promoting
+      if (!session) return saved.draft ?? store.draft ?? store.promoting
       return saved.session[session] ?? handoff.get(handoffKey(serverSDK().scope, sdk().directory, session))
     })
 
@@ -178,6 +186,19 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const fallback = createMemo<ModelKey | undefined>(() => configuredModel() ?? recentModel() ?? defaultModel())
 
+    const save = (state: State) => {
+      const session = id()
+      if (session) {
+        setSaved("session", session, state)
+        return
+      }
+      if (draftID()) {
+        setSaved("draft", state)
+        return
+      }
+      setStore("draft", state)
+    }
+
     const agent = {
       list,
       current() {
@@ -203,13 +224,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             agent: item.name,
             model: item.model ?? prev?.model,
             variant: item.variant ?? prev?.variant,
+            source: "manual",
           } satisfies State
-          const session = id()
-          if (session) {
-            setSaved("session", session, next)
-            return
-          }
-          setStore("draft", next)
+          save(next)
         })
       },
       move(direction: 1 | -1) {
@@ -263,14 +280,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const state = {
         ...(scope() ?? { agent: agent.current()?.name }),
         ...next,
+        source: "manual",
       } satisfies State
 
-      const session = id()
-      if (session) {
-        setSaved("session", session, state)
-        return
-      }
-      setStore("draft", state)
+      save(state)
     }
 
     const recent = createMemo(() => models.recent.list().map(models.find).filter(Boolean))
@@ -377,10 +390,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       session: {
         reset() {
           setStore({ draft: undefined, promoting: undefined })
+          if (draftID()) setSaved("draft", undefined)
         },
         promote(dir: string, session: string) {
           const next = clone(snapshot())
           if (!next) return
+          next.source = "manual"
           const key = handoffKey(serverSDK().scope, dir, session)
           handoff.set(key, next)
 
@@ -391,17 +406,19 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           setStore("promoting", next)
           setStore("draft", undefined)
         },
-        restore(msg: { sessionID: string; agent: string; model: ModelKey }) {
+        restore(msg: { id?: string; sessionID: string; agent: string; model: ModelKey }) {
           const session = id()
           if (!session) return
           if (msg.sessionID !== session) return
-          if (saved.session[session] !== undefined) return
+          const current = saved.session[session]
+          if (current?.source === "manual") return
           if (handoff.has(handoffKey(serverSDK().scope, sdk().directory, session))) return
 
           setSaved("session", session, {
             agent: msg.agent,
             model: msg.model,
             variant: msg.model?.variant ?? null,
+            source: "message",
           })
         },
       },
