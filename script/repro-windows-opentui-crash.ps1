@@ -3,8 +3,10 @@ param(
   [string]$Version,
   [int]$McpLoops = 0,
   [int]$McpServers = 20,
+  [int]$MarkdownLoops = 1,
   [int]$StartupSeconds = 20,
-  [int]$PtySeconds = 120
+  [int]$PtySeconds = 120,
+  [switch]$OnlyMarkdown
 )
 
 $ErrorActionPreference = "Stop"
@@ -117,11 +119,38 @@ function Invoke-PtyScenario {
   }
 }
 
+function Invoke-MarkdownScenarios {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Exe,
+    [Parameter(Mandatory = $true)]
+    [string]$Project,
+    [Parameter(Mandatory = $true)]
+    [string]$Version,
+    [Parameter(Mandatory = $true)]
+    [int]$Seconds,
+    [Parameter(Mandatory = $true)]
+    [int]$Loops
+  )
+
+  for ($i = 1; $i -le $Loops; $i++) {
+    $suffix = if ($Loops -gt 1) { "-$($i.ToString('00'))" } else { "" }
+    if ($Version -eq "1.17.10") {
+      Invoke-PtyScenario -Scenario "markdown-no-native-render$suffix" -Exe $Exe -Project $Project -Version $Version -Seconds $Seconds
+    }
+    Invoke-PtyScenario -Scenario "markdown$suffix" -Exe $Exe -Project $Project -Version $Version -Seconds $Seconds
+  }
+}
+
 Write-Section "Environment"
 node --version
 npm --version
 Write-Host "RUNNER_OS=$env:RUNNER_OS RUNNER_ARCH=$env:RUNNER_ARCH"
 Write-Host "PROCESSOR_ARCHITECTURE=$env:PROCESSOR_ARCHITECTURE"
+Write-Host "MarkdownLoops=$MarkdownLoops OnlyMarkdown=$OnlyMarkdown"
+if ($MarkdownLoops -lt 1) {
+  throw "MarkdownLoops must be >= 1"
+}
 
 Write-Section "Install opencode-ai@$Version"
 npm uninstall -g opencode-ai opencode-windows-x64 2>$null | Out-Host
@@ -202,16 +231,17 @@ try {
     throw "npm install @lydell/node-pty failed with exit code $LASTEXITCODE"
   }
   $script:PtyFailures = @()
-  Invoke-PtyScenario -Scenario "text" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
-  if ($Version -eq "1.17.10") {
-    Invoke-PtyScenario -Scenario "markdown-no-native-render" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
-  }
-  Invoke-PtyScenario -Scenario "markdown" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
-  Invoke-PtyScenario -Scenario "bash-permission" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
-  Invoke-PtyScenario -Scenario "task-permission" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
-  Invoke-PtyScenario -Scenario "mcp-npx" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
-  if ($Version -eq "1.17.10") {
-    Invoke-PtyScenario -Scenario "mcp-npx-no-native-render" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
+  if ($OnlyMarkdown) {
+    Invoke-MarkdownScenarios -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds -Loops $MarkdownLoops
+  } else {
+    Invoke-PtyScenario -Scenario "text" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
+    Invoke-MarkdownScenarios -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds -Loops $MarkdownLoops
+    Invoke-PtyScenario -Scenario "bash-permission" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
+    Invoke-PtyScenario -Scenario "task-permission" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
+    Invoke-PtyScenario -Scenario "mcp-npx" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
+    if ($Version -eq "1.17.10") {
+      Invoke-PtyScenario -Scenario "mcp-npx-no-native-render" -Exe $exe -Project $sessionProject -Version $Version -Seconds $PtySeconds
+    }
   }
   if ($script:PtyFailures.Count -gt 0) {
     Write-Section "PTY Failures"

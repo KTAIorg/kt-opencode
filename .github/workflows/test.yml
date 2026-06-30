@@ -160,19 +160,36 @@ jobs:
 
   windows-opentui-repro:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_opentui_repro == true }}
-    name: windows opentui repro (${{ matrix.version }}, ${{ matrix.host }})
+    name: windows opentui repro (${{ matrix.name }}, ${{ matrix.version }}, ${{ matrix.host }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - version: "1.17.9"
             host: windows-latest
+            name: baseline
+            markdownLoops: 1
+            onlyMarkdown: false
           - version: "1.17.10"
             host: windows-latest
+            name: baseline
+            markdownLoops: 1
+            onlyMarkdown: false
+          - version: "1.17.10"
+            host: windows-latest
+            name: markdown-stress
+            markdownLoops: 10
+            onlyMarkdown: true
           - version: "1.17.11"
             host: windows-latest
+            name: baseline
+            markdownLoops: 1
+            onlyMarkdown: false
           - version: "1.17.10"
             host: windows-2022
+            name: baseline
+            markdownLoops: 1
+            onlyMarkdown: false
     runs-on: ${{ matrix.host }}
     defaults:
       run:
@@ -189,14 +206,19 @@ jobs:
           node-version: "24.11.1"
 
       - name: Run Windows standalone repro
-        timeout-minutes: 15
-        run: ./script/repro-windows-opentui-crash.ps1 -Version "${{ matrix.version }}"
+        timeout-minutes: 30
+        run: |
+          $reproArgs = @("-Version", "${{ matrix.version }}", "-MarkdownLoops", "${{ matrix.markdownLoops }}")
+          if ("${{ matrix.onlyMarkdown }}" -eq "true") {
+            $reproArgs += "-OnlyMarkdown"
+          }
+          ./script/repro-windows-opentui-crash.ps1 @reproArgs
 
       - name: Upload Windows repro artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: windows-opentui-repro-${{ matrix.version }}-${{ matrix.host }}-${{ github.run_attempt }}
+          name: windows-opentui-repro-${{ matrix.name }}-${{ matrix.version }}-${{ matrix.host }}-${{ github.run_attempt }}
           if-no-files-found: ignore
           retention-days: 7
           path: |
