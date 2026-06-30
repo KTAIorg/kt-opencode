@@ -122,7 +122,7 @@ function responseText() {
     return "The subagent task completed and returned control to the parent session."
   }
 
-  if (scenario === "mcp-npx") {
+  if (scenario.startsWith("mcp-npx")) {
     return "The MCP npx spawn storm initialized and the session completed."
   }
 
@@ -298,7 +298,7 @@ const server = createServer(async (req, res) => {
 await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen))
 const { port } = server.address()
 const baseURL = `http://127.0.0.1:${port}/v1`
-const mcpPackageUrl = scenario === "mcp-npx" ? writeMcpStubPackage() : undefined
+const mcpPackageUrl = scenario.startsWith("mcp-npx") ? writeMcpStubPackage() : undefined
 const mcpServers = {}
 if (mcpPackageUrl) {
   for (let index = 1; index <= 12; index++) {
@@ -364,6 +364,7 @@ const env = {
   OPENCODE_PURE: "1",
   OTUI_DEBUG: "1",
   OTUI_DUMP_CAPTURES: "1",
+  ...(scenario.includes("no-native-render") ? { OTUI_NO_NATIVE_RENDER: "1" } : {}),
   OTUI_USE_CONSOLE: "1",
   OTUI_SHOW_STATS: "1",
 }

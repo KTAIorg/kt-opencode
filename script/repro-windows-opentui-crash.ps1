@@ -177,6 +177,9 @@ try {
   node (Join-Path $PSScriptRoot "repro-windows-opentui-pty-session.mjs") -- --exe $exe --project $sessionProject --version $Version --seconds $PtySeconds --scenario bash-permission
   node (Join-Path $PSScriptRoot "repro-windows-opentui-pty-session.mjs") -- --exe $exe --project $sessionProject --version $Version --seconds $PtySeconds --scenario task-permission
   node (Join-Path $PSScriptRoot "repro-windows-opentui-pty-session.mjs") -- --exe $exe --project $sessionProject --version $Version --seconds $PtySeconds --scenario mcp-npx
+  if ($Version -eq "1.17.10") {
+    node (Join-Path $PSScriptRoot "repro-windows-opentui-pty-session.mjs") -- --exe $exe --project $sessionProject --version $Version --seconds $PtySeconds --scenario mcp-npx-no-native-render
+  }
 } finally {
   Pop-Location
 }
