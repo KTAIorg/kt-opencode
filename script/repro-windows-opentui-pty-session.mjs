@@ -18,14 +18,15 @@ const exe = value("--exe")
 const project = value("--project")
 const version = value("--version")
 const seconds = Number(value("--seconds", "120"))
+const scenario = value("--scenario", "text")
 
 if (!exe || !project || !version) {
   throw new Error("Usage: repro-windows-opentui-pty-session.mjs -- --exe <path> --project <path> --version <version>")
 }
 
 const crashPattern = /Segmentation fault|Bun has crashed|ACCESS_VIOLATION|0xC0000005|322122|panic\(main thread\)/i
-const outputFile = join(project, `pty-output-${version}.log`)
-const requestsFile = join(project, `provider-requests-${version}.jsonl`)
+const outputFile = join(project, `pty-output-${version}-${scenario}.log`)
+const requestsFile = join(project, `provider-requests-${version}-${scenario}.jsonl`)
 let output = ""
 let providerRequests = 0
 let exited = false
@@ -49,12 +50,37 @@ function writeSse(res, event) {
   res.write(`data: ${JSON.stringify(event)}\n\n`)
 }
 
+function responseText() {
+  if (scenario === "markdown") {
+    const sections = []
+    for (let i = 0; i < 40; i++) {
+      sections.push(`## Section ${i + 1}`)
+      sections.push("")
+      sections.push("- This line intentionally exercises markdown wrapping in the OpenTUI renderer.")
+      sections.push("- It includes `inline code`, **bold text**, [a link](https://example.com), and CJK text 漢字かなカナ.")
+      sections.push("")
+      sections.push("```ts")
+      sections.push(`const value${i} = { index: ${i}, text: "OpenTUI Windows repro" }`)
+      sections.push("console.log(value" + i + ")")
+      sections.push("```")
+      sections.push("")
+    }
+    return sections.join("\n")
+  }
+
+  return "This is a deterministic CI response from the fake provider."
+}
+
 const server = createServer(async (req, res) => {
   const body = await readBody(req)
   providerRequests++
+  const parsedBody = body ? JSON.parse(body) : undefined
+  console.log(
+    `provider request ${providerRequests}: ${req.method} ${req.url} stream=${parsedBody?.stream ?? false} messages=${parsedBody?.messages?.length ?? "n/a"} tools=${parsedBody?.tools?.map?.((tool) => tool.function?.name ?? tool.name).join(",") ?? "none"}`,
+  )
   writeFileSync(
     requestsFile,
-    JSON.stringify({ method: req.method, url: req.url, body: body ? JSON.parse(body) : undefined }) + "\n",
+    JSON.stringify({ method: req.method, url: req.url, body: parsedBody }) + "\n",
     { flag: "a" },
   )
 
@@ -65,7 +91,8 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.url?.endsWith("/chat/completions")) {
-    const parsed = body ? JSON.parse(body) : {}
+    const parsed = parsedBody ?? {}
+    const text = responseText()
     if (parsed.stream) {
       res.writeHead(200, {
         "content-type": "text/event-stream",
@@ -85,7 +112,7 @@ const server = createServer(async (req, res) => {
         object: "chat.completion.chunk",
         created: Math.floor(Date.now() / 1000),
         model: "test-model",
-        choices: [{ index: 0, delta: { content: "This is a deterministic CI response from the fake provider." }, finish_reason: null }],
+        choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
       })
       await delay(50)
       writeSse(res, {
@@ -110,7 +137,7 @@ const server = createServer(async (req, res) => {
         choices: [
           {
             index: 0,
-            message: { role: "assistant", content: "This is a deterministic CI response from the fake provider." },
+            message: { role: "assistant", content: text },
             finish_reason: "stop",
           },
         ],
@@ -164,6 +191,7 @@ writeFileSync(
   )}\n`,
 )
 
+console.log(`scenario=${scenario}`)
 console.log(`fake provider baseURL=${baseURL}`)
 console.log(`pty output log=${outputFile}`)
 console.log(`provider requests log=${requestsFile}`)
@@ -222,7 +250,7 @@ if (!exited) {
   await delay(500)
 }
 
-server.close()
+await new Promise((resolveClose) => server.close(resolveClose))
 
 console.log(`\npty exitCode=${exitCode} signal=${exitSignal} providerRequests=${providerRequests}`)
 
@@ -237,3 +265,5 @@ if (exitCode === 3 || exitCode === -1073741819 || exitCode === -1073740791 || ex
 if (providerRequests === 0) {
   throw new Error("PTY session did not send a request to the fake provider")
 }
+
+process.exit(0)
