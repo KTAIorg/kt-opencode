@@ -713,13 +713,14 @@ function TitlebarUpdateIconButton(props: { state: TitlebarUpdatePillState }) {
 }
 
 function ChannelIndicator() {
+  const channel = import.meta.env.VITE_OPENCODE_CHANNEL
+  if (channel !== "beta" && channel !== "dev") return null
+
   return (
-    <>
-      {["beta", "dev"].includes(import.meta.env.VITE_OPENCODE_CHANNEL) && (
-        <div class="bg-icon-interactive-base text-[#FFF] font-medium px-2 rounded-sm uppercase font-mono">
-          {import.meta.env.VITE_OPENCODE_CHANNEL.toUpperCase()}
-        </div>
-      )}
-    </>
+    <div
+      class={`text-[#FFF] font-medium px-2 rounded-sm uppercase font-mono ${channel === "beta" ? "bg-[#0488D1]" : "bg-icon-interactive-base"}`}
+    >
+      {channel === "beta" ? "β" : channel.toUpperCase()}
+    </div>
   )
 }
