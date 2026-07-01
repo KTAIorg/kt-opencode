@@ -70,7 +70,6 @@ export const layer = Layer.effectDiscard(
               "Apply one patch containing add, update, and delete file operations. All targets are resolved and approved before target contents are read. Operations apply sequentially; if a later operation fails, earlier operations remain applied and the failure reports them explicitly. Moves and atomic rollback are not supported yet.",
             input: Input,
             output: Output,
-            toModelOutput: ({ output }) => [{ type: "text", text: toModelOutput(output) }],
             execute: (input, context) => {
               const applied: Array<typeof Applied.Type> = []
               const fail = (path: string) => {
@@ -183,7 +182,8 @@ export const layer = Layer.effectDiscard(
                     }).pipe(Effect.mapError(() => fail(change.path))),
                   { discard: true },
                 )
-                return { applied, files: patchFiles }
+                const output = { applied, files: patchFiles }
+                return Tool.result({ output, content: [{ type: "text", text: toModelOutput(output) }] })
               }).pipe(Effect.mapError((error) => (error instanceof ToolFailure ? error : fail("patch"))))
             },
           }),

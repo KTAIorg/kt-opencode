@@ -54,9 +54,6 @@ export const layer = Layer.effectDiscard(
           description,
           input: Input,
           output: Output,
-          toModelOutput: ({ input, output }) => [
-            { type: "text", text: toModelOutput(input.questions, output.answers) },
-          ],
           execute: (input, context) =>
             permission
               .assert({
@@ -77,7 +74,12 @@ export const layer = Layer.effectDiscard(
                     })
                     .pipe(Effect.orDie),
                 ),
-                Effect.map((answers) => ({ answers })),
+                Effect.map((answers) =>
+                  Tool.result({
+                    output: { answers },
+                    content: [{ type: "text", text: toModelOutput(input.questions, answers) }],
+                  }),
+                ),
               ),
         }),
       })

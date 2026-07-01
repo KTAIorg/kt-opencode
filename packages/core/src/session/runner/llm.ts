@@ -254,6 +254,7 @@ export const layer = Layer.effect(
                   agent: agent.id,
                   assistantMessageID,
                   call: event,
+                  progress: (output) => publication.withPermit(publisher.progressTool(event.id, output)),
                 }),
               ).pipe(
                 Effect.flatMap((settlement) =>

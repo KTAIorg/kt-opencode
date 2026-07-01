@@ -19,7 +19,6 @@ export const Input = Schema.Struct({
 export const Output = Schema.Struct({
   name: Schema.String,
   directory: Schema.String,
-  output: Schema.String,
 })
 
 export const description = [
@@ -64,7 +63,6 @@ export const layer = Layer.effectDiscard(
           description,
           input: Input,
           output: Output,
-          toModelOutput: ({ output }) => [{ type: "text", text: output.output }],
           execute: (input, context) =>
             Effect.gen(function* () {
               const current = yield* skills.list()
@@ -87,11 +85,11 @@ export const layer = Layer.effectDiscard(
                         .toSorted()
                         .slice(0, FILE_LIMIT)
                     : []
-                return {
-                  name: skill.name,
-                  directory,
-                  output: toModelOutput(skill, files),
-                }
+                const output = toModelOutput(skill, files)
+                return Tool.result({
+                  output: { name: skill.name, directory },
+                  content: [{ type: "text", text: output }],
+                })
               }).pipe(Effect.mapError((error) => unableToLoad(input.name, error)))
             }),
         }),

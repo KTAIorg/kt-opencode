@@ -11,7 +11,7 @@ import { PluginRuntime } from "../plugin/runtime"
 import { PositiveInt } from "../schema"
 import { SessionSchema } from "../session/schema"
 import { Shell } from "../shell"
-import { Tool, type Content } from "./tool"
+import { Tool } from "./tool"
 
 export const name = "shell"
 export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000
@@ -42,24 +42,23 @@ const StructuredOutput = Schema.Struct({
   shellID: Schema.String.pipe(Schema.optional),
   truncated: Schema.Boolean,
   timeout: Schema.Boolean.pipe(Schema.optional),
+  status: Schema.Literals(["completed", "running"]),
 })
 
-const Output = Schema.Struct({
-  ...StructuredOutput.fields,
-  output: Schema.String,
-  status: Schema.Literals(["completed", "running"]).pipe(Schema.optional),
-  warnings: Schema.Array(Schema.String).pipe(Schema.optional),
-})
-
+const Output = StructuredOutput
 type Output = typeof Output.Type
 
-const modelOutput = (output: Output): string | undefined => {
+const modelOutput = (output: Output, warnings: ReadonlyArray<string> = []): string | undefined => {
   if (output.status === "running") return undefined
-  const warnings = output.warnings?.length
-    ? `\n\nWarnings:\n${output.warnings.map((warning) => `- ${warning}`).join("\n")}`
-    : ""
-  if (output.timeout) return `${warnings.trimStart()}${warnings ? "\n\n" : ""}Command timed out before completion.`
-  return `${warnings.trimStart()}${warnings ? "\n\n" : ""}Command exited with code ${output.exit}.`
+  const warningText = warnings.length ? `\n\nWarnings:\n${warnings.map((warning) => `- ${warning}`).join("\n")}` : ""
+  if (output.timeout)
+    return `${warningText.trimStart()}${warningText ? "\n\n" : ""}Command timed out before completion.`
+  return `${warningText.trimStart()}${warningText ? "\n\n" : ""}Command exited with code ${output.exit}.`
+}
+
+const content = (body: string, output: Output, warnings: ReadonlyArray<string> = []) => {
+  const status = modelOutput(output, warnings)
+  return [{ type: "text" as const, text: body }, ...(status ? [{ type: "text" as const, text: status }] : [])]
 }
 
 /**
@@ -71,7 +70,7 @@ const modelOutput = (output: Output): string | undefined => {
 // TODO: Replace token-based command-argument external-directory advisories with parser-based detection.
 // TODO: Restore PowerShell and cmd-specific invocation/path handling on Windows.
 // TODO: Add plugin shell.env environment augmentation once V2 plugin hooks exist.
-// TODO: Add durable/live progress metadata streaming for long-running commands once V2 tool invocation progress context is wired.
+// TODO: Stream shell progress checkpoints without persisting every stdout/stderr chunk.
 // TODO: Persist job status and define restart recovery before exposing remote observation.
 // TODO: Add HTTP job observation only after durable status, restart recovery, and authorization are defined.
 // TODO: Revisit process-group cleanup and platform coverage with shell-specific tests if current AppProcess semantics do not fully cover it.
@@ -139,19 +138,6 @@ export const Plugin = {
           description: `Execute one shell command string with the host user's filesystem, process, and network authority. The active Location is the default working directory. Relative workdir values resolve from that Location. External workdir values require external_directory approval; best-effort command-argument path warnings are advisory only. Timeout values are milliseconds (default: ${DEFAULT_TIMEOUT_MS}; maximum: ${MAX_TIMEOUT_MS}). Uses the configured shell when set; otherwise uses /bin/sh on POSIX and COMSPEC or cmd.exe on Windows. Background mode (background=true) launches the command asynchronously and returns immediately; you are notified when it finishes.`,
           input: Input,
           output: Output,
-          structured: StructuredOutput,
-          toStructuredOutput: ({ output }) => ({
-            truncated: output.truncated,
-            ...(output.exit === undefined ? {} : { exit: output.exit }),
-            ...(output.shellID === undefined ? {} : { shellID: output.shellID }),
-            ...(output.timeout === undefined ? {} : { timeout: output.timeout }),
-          }),
-          toModelOutput: ({ output }) => {
-            const parts: Content[] = [{ type: "text", text: output.output }]
-            const model = modelOutput(output)
-            if (model) parts.push({ type: "text", text: model })
-            return parts
-          },
           execute: (input, context) =>
             Effect.gen(function* () {
               const source = {
@@ -217,13 +203,12 @@ export const Plugin = {
                 })
                 yield* runtime.job.background(info.id)
                 yield* notifyWhenDone(context.sessionID, context.toolCallID, input.command)
-                return {
-                  output: BACKGROUND_STARTED,
+                const output = {
                   shellID: background.id,
                   truncated: false,
                   status: "running" as const,
-                  ...(warnings.length ? { warnings } : {}),
                 }
+                return Tool.result({ output, content: content(BACKGROUND_STARTED, output, warnings) })
               }
 
               const info = yield* shell.create({
@@ -236,26 +221,25 @@ export const Plugin = {
               const page = yield* shell.output(info.id, { limit: MAX_CAPTURE_BYTES })
 
               if (final.status === "timeout") {
-                return {
+                const body = `Command exceeded timeout of ${timeout} ms. Retry with a larger timeout if the command is expected to take longer.`
+                const output = {
                   exit: final.exit,
-                  output: `Command exceeded timeout of ${timeout} ms. Retry with a larger timeout if the command is expected to take longer.`,
                   truncated: false,
                   timeout: true,
                   status: "completed" as const,
-                  ...(warnings.length ? { warnings } : {}),
                 }
+                return Tool.result({ output, content: content(body, output, warnings) })
               }
 
               const truncated = page.size > page.cursor
               const body = page.output || "(no output)"
               const notice = truncated ? `\n\n[output truncated; full output saved to: ${final.file}]` : ""
-              return {
+              const output = {
                 exit: final.exit,
-                output: `${body}${notice}`,
                 truncated,
                 status: "completed" as const,
-                ...(warnings.length ? { warnings } : {}),
               }
+              return Tool.result({ output, content: content(`${body}${notice}`, output, warnings) })
             }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to execute command: ${input.command}` }))),
         }),
       })

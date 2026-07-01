@@ -181,7 +181,6 @@ const callMcp = <F extends Schema.Struct.Fields>(
 
 const Output = Schema.Struct({
   provider: Provider,
-  text: Schema.String,
 })
 
 export const layer = Layer.effectDiscard(
@@ -197,7 +196,6 @@ export const layer = Layer.effectDiscard(
           description,
           input: Input,
           output: Output,
-          toModelOutput: ({ output }) => [{ type: "text", text: output.text }],
           execute: (input, context) => {
             const provider = selectProvider(context.sessionID, config, config.provider)
             return Effect.gen(function* () {
@@ -236,10 +234,7 @@ export const layer = Layer.effectDiscard(
                         ...(config.parallelApiKey ? { Authorization: `Bearer ${config.parallelApiKey}` } : {}),
                       },
                     )
-              return {
-                provider,
-                text: text ?? NO_RESULTS,
-              }
+              return Tool.result({ output: { provider }, content: [{ type: "text", text: text ?? NO_RESULTS }] })
             }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to search the web for ${input.query}` })))
           },
         }),

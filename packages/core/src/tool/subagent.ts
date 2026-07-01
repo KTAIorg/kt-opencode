@@ -27,7 +27,6 @@ export const Input = Schema.Struct({
 export const Output = Schema.Struct({
   sessionID: SessionSchema.ID,
   status: Schema.Literals(["completed", "running"]),
-  output: Schema.String,
 })
 
 export const description = [
@@ -98,7 +97,6 @@ export const Plugin = {
           description,
           input: Input,
           output: Output,
-          toModelOutput: ({ output }) => [{ type: "text", text: output.output }],
           execute: (input, context) =>
             Effect.gen(function* () {
               const parent = yield* runtime.session
@@ -146,7 +144,10 @@ export const Plugin = {
               if (background) {
                 yield* runtime.job.background(info.id)
                 yield* notifyWhenDone(context.sessionID, child.id, input.description)
-                return { sessionID: child.id, status: "running" as const, output: BACKGROUND_STARTED }
+                return Tool.result({
+                  output: { sessionID: child.id, status: "running" as const },
+                  content: [{ type: "text", text: BACKGROUND_STARTED }],
+                })
               }
 
               const result = yield* runtime.job.block({ id: child.id, sessionID: context.sessionID }).pipe(
@@ -158,12 +159,18 @@ export const Plugin = {
               )
               if (result?.type === "backgrounded") {
                 yield* notifyWhenDone(context.sessionID, child.id, input.description)
-                return { sessionID: child.id, status: "running" as const, output: BACKGROUND_STARTED }
+                return Tool.result({
+                  output: { sessionID: child.id, status: "running" as const },
+                  content: [{ type: "text", text: BACKGROUND_STARTED }],
+                })
               }
               if (result?.info.status === "error")
                 return yield* new ToolFailure({ message: result.info.error ?? "Subagent failed" })
               if (result?.info.status === "cancelled") return yield* new ToolFailure({ message: "Subagent cancelled" })
-              return { sessionID: child.id, status: "completed" as const, output: result?.info.output ?? NO_TEXT }
+              return Tool.result({
+                output: { sessionID: child.id, status: "completed" as const },
+                content: [{ type: "text", text: result?.info.output ?? NO_TEXT }],
+              })
             }),
         }),
       })

@@ -45,8 +45,7 @@ const make = (permission?: string) => {
     description: "Echo text",
     input: Schema.Struct({ text: Schema.String }),
     output: Schema.Struct({ text: Schema.String }),
-    execute: ({ text }) => Effect.succeed({ text }),
-    toModelOutput: ({ output }) => [{ type: "text", text: output.text }],
+    execute: ({ text }) => Effect.succeed(Tool.result({ output: { text }, content: [{ type: "text", text }] })),
   })
   return permission ? Tool.withPermission(tool, permission) : tool
 }
@@ -237,13 +236,21 @@ describe("ToolRegistry", () => {
   it.effect("passes complete invocation identity to the canonical handler", () =>
     Effect.gen(function* () {
       const service = yield* ToolRegistry.Service
-      const contexts: Tool.Context[] = []
+      const contexts: Array<Omit<Tool.Context, "progress">> = []
       yield* service.register({
         context: Tool.make({
           description: "Context",
           input: Schema.Struct({}),
           output: Schema.Struct({ ok: Schema.Boolean }),
-          execute: (_, context) => Effect.sync(() => contexts.push(context)).pipe(Effect.as({ ok: true })),
+          execute: (_, context) =>
+            Effect.sync(() => {
+              contexts.push({
+                sessionID: context.sessionID,
+                agent: context.agent,
+                assistantMessageID: context.assistantMessageID,
+                toolCallID: context.toolCallID,
+              })
+            }).pipe(Effect.as({ ok: true })),
         }),
       })
       yield* executeTool(service, {
@@ -252,6 +259,62 @@ describe("ToolRegistry", () => {
         call: { type: "tool-call", id: "call-context", name: "context", input: {} },
       })
       expect(contexts).toEqual([{ sessionID, ...identity, toolCallID: "call-context" }])
+    }),
+  )
+
+  it.effect("emits bounded progress snapshots from the tool context", () =>
+    Effect.gen(function* () {
+      bounds.length = 0
+      const service = yield* ToolRegistry.Service
+      const progress: unknown[] = []
+      yield* service.register({
+        progress: Tool.make({
+          description: "Progress",
+          input: Schema.Struct({}),
+          output: Schema.Struct({ text: Schema.String }),
+          execute: (_, context) =>
+            context
+              .progress({ output: { text: "loading" }, content: [{ type: "text", text: "loading" }] })
+              .pipe(Effect.as(Tool.result({ output: { text: "done" }, content: [{ type: "text", text: "done" }] }))),
+        }),
+      })
+      const settled = yield* settleTool(service, {
+        sessionID,
+        ...identity,
+        call: { type: "tool-call", id: "call-progress", name: "progress", input: {} },
+        progress: (output) => Effect.sync(() => progress.push(output)),
+      })
+
+      expect(progress).toEqual([{ structured: { text: "loading" }, content: [{ type: "text", text: "loading" }] }])
+      expect(bounds.map((input) => input.toolCallID)).toEqual(["call-progress", "call-progress"])
+      expect(settled).toMatchObject({
+        result: { type: "text", value: "done" },
+        output: { structured: { text: "done" } },
+      })
+    }),
+  )
+
+  it.effect("does not treat plain output-content objects as result envelopes", () =>
+    Effect.gen(function* () {
+      const service = yield* ToolRegistry.Service
+      yield* service.register({
+        literal: Tool.make({
+          description: "Literal output object",
+          input: Schema.Struct({}),
+          output: Schema.Struct({ output: Schema.String, content: Schema.Array(Schema.String) }),
+          execute: () => Effect.succeed({ output: "value", content: ["not model content"] }),
+        }),
+      })
+      expect(
+        yield* settleTool(service, {
+          sessionID,
+          ...identity,
+          call: { type: "tool-call", id: "call-literal", name: "literal", input: {} },
+        }),
+      ).toMatchObject({
+        result: { type: "json", value: { output: "value", content: ["not model content"] } },
+        output: { structured: { output: "value", content: ["not model content"] }, content: [] },
+      })
     }),
   )
 
@@ -290,8 +353,10 @@ describe("ToolRegistry", () => {
           description: "Transform values",
           input: Schema.Struct({ value: Transformed }),
           output: Schema.Struct({ value: Transformed }),
-          execute: ({ value }) => Effect.sync(() => executed.push(value)).pipe(Effect.as({ value })),
-          toModelOutput: ({ output }) => [{ type: "text", text: String(output.value) }],
+          execute: ({ value }) =>
+            Effect.sync(() => executed.push(value)).pipe(
+              Effect.as(Tool.result({ output: { value }, content: [{ type: "text", text: String(value === "yes") }] })),
+            ),
         }),
       })
 
@@ -410,8 +475,10 @@ describe("ToolRegistry", () => {
             input: Schema.Struct({ text: Schema.String }),
             output: Schema.Struct({ text: Schema.String }),
             execute: ({ text }) =>
-              Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release)), Effect.as({ text })),
-            toModelOutput: ({ output }) => [{ type: "text", text: output.text }],
+              Deferred.succeed(started, undefined).pipe(
+                Effect.andThen(Deferred.await(release)),
+                Effect.as(Tool.result({ output: { text }, content: [{ type: "text", text }] })),
+              ),
           }),
         })
         .pipe(Scope.provide(scope))

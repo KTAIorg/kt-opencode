@@ -435,7 +435,7 @@ test("keeps locked deferred parity TODOs visible", async () => {
     "Replace token-based command-argument external-directory advisories with parser-based detection.",
     "Restore PowerShell and cmd-specific invocation/path handling on Windows.",
     "Add plugin shell.env environment augmentation once V2 plugin hooks exist.",
-    "Add durable/live progress metadata streaming for long-running commands once V2 tool invocation progress context is wired.",
+    "Stream shell progress checkpoints without persisting every stdout/stderr chunk.",
     "Persist job status and define restart recovery before exposing remote observation.",
     "Revisit process-group cleanup and platform coverage with shell-specific tests if current AppProcess semantics do not fully cover it.",
     "Revisit binary output handling if stdout/stderr decoding is text-only.",

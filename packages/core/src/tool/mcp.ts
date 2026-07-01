@@ -56,15 +56,18 @@ export const layer = Layer.effectDiscard(
         jsonSchema: (tool.inputSchema as JsonSchema.JsonSchema | undefined) ?? { type: "object", properties: {} },
         execute: (input) =>
           Effect.gen(function* () {
-            const result = yield* mcp.callTool({ server, name: tool.name, args: (input ?? {}) as Record<string, unknown> }).pipe(
-              Effect.catchTags({
-                "MCP.NotFoundError": (error) => new ToolFailure({ message: `MCP server "${error.server}" is not available` }),
-                "MCP.ToolCallError": (error) => new ToolFailure({ message: error.message }),
-              }),
-            )
+            const result = yield* mcp
+              .callTool({ server, name: tool.name, args: (input ?? {}) as Record<string, unknown> })
+              .pipe(
+                Effect.catchTags({
+                  "MCP.NotFoundError": (error) =>
+                    new ToolFailure({ message: `MCP server "${error.server}" is not available` }),
+                  "MCP.ToolCallError": (error) => new ToolFailure({ message: error.message }),
+                }),
+              )
             if (result.isError)
               return yield* new ToolFailure({ message: errorText(result.content) || "MCP tool returned an error" })
-            return { structured: result.structured ?? {}, content: result.content.map(toContent) }
+            return Tool.result({ output: result.structured ?? {}, content: result.content.map(toContent) })
           }),
       })
 
@@ -88,9 +91,10 @@ export const layer = Layer.effectDiscard(
     )
 
     yield* reconcile.pipe(Effect.forkScoped)
-    yield* events
-      .subscribe(McpEvent.ToolsChanged)
-      .pipe(Stream.runForEach(() => reconcile), Effect.forkScoped({ startImmediately: true }))
+    yield* events.subscribe(McpEvent.ToolsChanged).pipe(
+      Stream.runForEach(() => reconcile),
+      Effect.forkScoped({ startImmediately: true }),
+    )
   }),
 )
 

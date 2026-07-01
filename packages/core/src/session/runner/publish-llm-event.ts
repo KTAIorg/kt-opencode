@@ -43,11 +43,13 @@ type SettledOutput =
   | { readonly structured: Record<string, unknown>; readonly content: ToolOutput["content"] }
   | { readonly error: { readonly type: "unknown"; readonly message: string } }
 
+const outputState = (value: ToolOutput) => ({ structured: record(value.structured), content: value.content })
+
 const settledOutput = (value: ToolOutput | undefined, result: ToolResultValue): SettledOutput => {
   if (result.type === "error") return { error: { type: "unknown", message: message(result.value) } }
   const settled = value ?? ToolOutput.fromResultValue(result)
   if (!settled) throw new Error(`Unsupported tool result: ${message(result)}`)
-  return { structured: record(settled.structured), content: settled.content }
+  return outputState(settled)
 }
 
 /** Persist one provider turn without executing tools or starting a continuation turn. */
@@ -236,6 +238,19 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
     return tool ? Effect.succeed(tool.assistantMessageID) : Effect.die(`Unknown tool call: ${callID}`)
   }
 
+  const progressTool = Effect.fn("SessionRunner.progressTool")(function* (callID: string, output: ToolOutput) {
+    const tool = tools.get(callID)
+    if (!tool?.called) return yield* Effect.die(`Tool progress before call: ${callID}`)
+    if (tool.settled) return yield* Effect.void
+    yield* events.publish(SessionEvent.Tool.Progress, {
+      sessionID: input.sessionID,
+      timestamp: yield* timestamp,
+      assistantMessageID: tool.assistantMessageID,
+      callID,
+      ...outputState(output),
+    })
+  })
+
   const publish = Effect.fn("SessionRunner.publishLLMEvent")(function* (
     event: LLMEvent,
     outputPaths: ReadonlyArray<string> = [],
@@ -419,5 +434,6 @@ export const createLLMEventPublisher = (events: EventV2.Interface, input: Input)
     stepSettlement: () => stepSettlement,
     startAssistant,
     assistantMessageID: assistantMessageIDForTool,
+    progressTool,
   }
 }

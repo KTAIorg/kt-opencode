@@ -47,14 +47,6 @@ export const layer = Layer.effectDiscard(
             "Find files by glob pattern within the active Location. Returns concise relative file resources. Use a relative path to narrow the search and limit to bound the result count.",
           input: Input,
           output: Output,
-          toModelOutput: ({ output }) => [
-            {
-              type: "text",
-              text: toModelOutput(
-                output.map((entry) => ({ ...entry, path: path.resolve(location.directory, entry.path) })),
-              ),
-            },
-          ],
           execute: (input, context) =>
             Effect.gen(function* () {
               yield* permission.assert({
@@ -85,6 +77,19 @@ export const layer = Layer.effectDiscard(
                         path: RelativePath.make(path.relative(location.directory, path.resolve(cwd, entry.path))),
                       }),
                     ),
+                  ),
+                  Effect.map((output) =>
+                    Tool.result({
+                      output,
+                      content: [
+                        {
+                          type: "text",
+                          text: toModelOutput(
+                            output.map((entry) => ({ ...entry, path: path.resolve(location.directory, entry.path) })),
+                          ),
+                        },
+                      ],
+                    }),
                   ),
                 )
             }).pipe(

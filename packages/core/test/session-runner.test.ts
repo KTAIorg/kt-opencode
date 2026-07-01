@@ -110,7 +110,7 @@ const recoveryModel = Model.make({
   provider: "fake",
   route: OpenAIChat.route.with({ limits: { context: 20_000, output: 1_000 } }),
 })
-const authorizations: Tool.Context[] = []
+const authorizations: Array<Omit<Tool.Context, "progress">> = []
 const executions: string[] = []
 const permission = Layer.succeed(
   PermissionV2.Service,
@@ -132,10 +132,14 @@ const echo = Layer.effectDiscard(
         description: "Echo text",
         input: Schema.Struct({ text: Schema.String }),
         output: Schema.Struct({ text: Schema.String }),
-        toModelOutput: ({ output }) => [{ type: "text", text: output.text }],
         execute: ({ text }, context) =>
           Effect.gen(function* () {
-            authorizations.push(context)
+            authorizations.push({
+              sessionID: context.sessionID,
+              agent: context.agent,
+              assistantMessageID: context.assistantMessageID,
+              toolCallID: context.toolCallID,
+            })
             executions.push(text)
             activeToolExecutions++
             maxActiveToolExecutions = Math.max(maxActiveToolExecutions, activeToolExecutions)
@@ -143,7 +147,7 @@ const echo = Layer.effectDiscard(
               yield* Deferred.succeed(toolExecutionsStarted, undefined)
             }
             if (toolExecutionGate) yield* Deferred.await(toolExecutionGate)
-            return { text }
+            return Tool.result({ output: { text }, content: [{ type: "text", text }] })
           }).pipe(Effect.ensuring(Effect.sync(() => activeToolExecutions--))),
       }),
       defect: Tool.make({
@@ -580,7 +584,7 @@ describe("SessionRunnerLLM", () => {
       yield* setup
       const registry = yield* ToolRegistry.Service
       const session = yield* SessionV2.Service
-      const contexts: Tool.Context[] = []
+      const contexts: Array<Omit<Tool.Context, "progress">> = []
       yield* registry.register({
         location_context: Tool.make({
           description: "Read application context",
@@ -588,7 +592,12 @@ describe("SessionRunnerLLM", () => {
           output: Schema.Struct({ answer: Schema.String }),
           execute: ({ query }, context) =>
             Effect.sync(() => {
-              contexts.push(context)
+              contexts.push({
+                sessionID: context.sessionID,
+                agent: context.agent,
+                assistantMessageID: context.assistantMessageID,
+                toolCallID: context.toolCallID,
+              })
               return { answer: query.toUpperCase() }
             }),
         }),

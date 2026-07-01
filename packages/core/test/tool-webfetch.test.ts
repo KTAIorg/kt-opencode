@@ -83,7 +83,7 @@ describe("WebFetchTool registration", () => {
       expect(yield* settleTool(registry, call({ url, format: "text", timeout: 4 }))).toEqual({
         result: { type: "text", value: "hello" },
         output: {
-          structured: { url, contentType: "text/plain", format: "text", output: "hello" },
+          structured: { url, contentType: "text/plain", format: "text" },
           content: [{ type: "text", text: "hello" }],
         },
       })

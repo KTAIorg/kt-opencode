@@ -35,7 +35,6 @@ const Output = Schema.Struct({
   url: Schema.String,
   contentType: Schema.String,
   format: Input.fields.format,
-  output: Schema.String,
 })
 
 type Format = (typeof Input.Type)["format"]
@@ -124,7 +123,6 @@ export const layer = Layer.effectDiscard(
           description,
           input: Input,
           output: Output,
-          toModelOutput: ({ output }) => [{ type: "text", text: output.output }],
           execute: (input, context) =>
             Effect.gen(function* () {
               yield* Effect.try({
@@ -164,12 +162,12 @@ export const layer = Layer.effectDiscard(
                 try: () => convert(content, contentType, input.format),
                 catch: (error) => error,
               })
-              return {
+              const result = {
                 url: input.url,
                 contentType,
                 format: input.format,
-                output,
               }
+              return Tool.result({ output: result, content: [{ type: "text", text: output }] })
             }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to fetch ${input.url}` }))),
         }),
       })

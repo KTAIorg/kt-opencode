@@ -190,7 +190,8 @@ describe("SubagentTool", () => {
             },
           })
 
-          expect(settled.output?.structured).toMatchObject({ status: "completed", output: childText })
+          expect(settled.output?.structured).toMatchObject({ status: "completed" })
+          expect(settled.output?.content).toEqual([{ type: "text", text: childText }])
           const child = yield* sessions.get(outputSessionID(settled.output?.structured))
           expect(child).toMatchObject({
             parentID: parent.id,
