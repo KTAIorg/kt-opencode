@@ -1022,7 +1022,7 @@ export const Model = Schema.Struct({
   name: Schema.String,
   family: optional(Schema.String),
   capabilities: ProviderCapabilities,
-  reasoning_options: optional(Schema.Array(ModelsDev.ReasoningOption)),
+  reasoning_options: optional(Schema.Array(ModelsDev.KnownReasoningOption)),
   cost: ProviderCost,
   limit: ProviderLimit,
   status: ModelStatus,

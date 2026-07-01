@@ -46,7 +46,7 @@ const Cost = Schema.Struct({
 
 const ReasoningEffortValue = Schema.Union([Schema.Null, Schema.String])
 
-export const ReasoningOption = Schema.Union([
+export const KnownReasoningOption = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("effort"),
     values: Schema.Array(ReasoningEffortValue),
@@ -60,6 +60,14 @@ export const ReasoningOption = Schema.Union([
     max: Schema.optional(Schema.Finite),
   }),
 ])
+export type KnownReasoningOption = typeof KnownReasoningOption.Type
+
+export const ReasoningOption = Schema.Union([
+  KnownReasoningOption,
+  Schema.Struct({
+    type: Schema.String,
+  }),
+])
 export type ReasoningOption = typeof ReasoningOption.Type
 
 export const Model = Schema.Struct({
@@ -69,9 +77,7 @@ export const Model = Schema.Struct({
   release_date: Schema.String,
   attachment: Schema.Boolean,
   reasoning: Schema.Boolean,
-  // models.dev is external metadata and reasoning controls are expected to evolve.
-  // Keep the fetched value opaque here; provider normalization extracts the known subset.
-  reasoning_options: Schema.optional(Schema.Unknown),
+  reasoning_options: Schema.optional(Schema.Array(ReasoningOption)),
   temperature: Schema.Boolean,
   tool_call: Schema.Boolean,
   interleaved: Schema.optional(

@@ -59,7 +59,7 @@ describe("provider model status schemas", () => {
     ).toBe("active")
   })
 
-  test("keeps models.dev reasoning options opaque for forward compatibility", () => {
+  test("accepts future models.dev reasoning options without rejecting known structure", () => {
     expect(() =>
       Schema.decodeUnknownSync(ModelsDev.Model)({
         id: "test-model",
@@ -67,10 +67,11 @@ describe("provider model status schemas", () => {
         release_date: "2026-01-01",
         attachment: false,
         reasoning: true,
-        reasoning_options: {
-          future: "shape",
-          values: [{ type: "new_control", values: ["turbo"] }],
-        },
+        reasoning_options: [
+          { type: "effort", values: ["turbo"] },
+          { type: "toggle", modes: ["auto", "off"] },
+          { type: "new_control", values: ["turbo"] },
+        ],
         temperature: true,
         tool_call: true,
         limit: { context: 128000, output: 8192 },
