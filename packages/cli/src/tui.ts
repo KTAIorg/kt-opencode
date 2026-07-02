@@ -15,22 +15,32 @@ export function runTui(transport: Transport, args: Args, reload?: () => Promise<
   let disposeSlots: (() => void) | undefined
   return Effect.gen(function* () {
     const options = { baseUrl: transport.url, headers: transport.headers }
-    const api = OpenCode.make(options)
-    const directory = yield* Effect.tryPromise(() => api.file.list({ location: { directory: process.cwd() } })).pipe(
+    const bootstrap = OpenCode.make(options)
+    const directory = yield* Effect.tryPromise(() =>
+      bootstrap.file.list({ location: { directory: process.cwd() } }),
+    ).pipe(
       Effect.map((response) => response.location.directory),
       Effect.catch(() =>
-        Effect.tryPromise(() => api.location.get()).pipe(Effect.map((response) => response.directory)),
+        Effect.tryPromise(() => bootstrap.location.get()).pipe(Effect.map((response) => response.directory)),
       ),
     )
+    // Scope api requests to the resolved directory so calls without an explicit
+    // location (e.g. home screen file autocomplete) don't fall back to the
+    // daemon's cwd. Explicit location query params still take precedence.
+    const withDirectory = (headers: RequestInit["headers"]) => {
+      const next = new Headers(headers)
+      next.set("x-opencode-directory", encodeURIComponent(directory))
+      return next
+    }
     return yield* run({
       client: createOpencodeClient({ ...options, directory }),
-      api,
+      api: OpenCode.make({ baseUrl: transport.url, headers: withDirectory(transport.headers) }),
       reload: reload
         ? async () => {
             const next = await reload()
             return {
               client: createOpencodeClient({ baseUrl: next.url, headers: next.headers, directory }),
-              api: OpenCode.make({ baseUrl: next.url, headers: next.headers }),
+              api: OpenCode.make({ baseUrl: next.url, headers: withDirectory(next.headers) }),
             }
           }
         : undefined,
