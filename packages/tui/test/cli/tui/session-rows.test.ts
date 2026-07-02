@@ -95,9 +95,7 @@ test("completes exploration groups when another row follows", () => {
   ])
   finished.finish = "stop"
   const messages: SessionMessage[] = [
-    assistant("assistant-1", [
-      { type: "tool", id: "read-1", name: "read", state: pending(), time: { created: 1 } },
-    ]),
+    assistant("assistant-1", [{ type: "tool", id: "read-1", name: "read", state: pending(), time: { created: 1 } }]),
     { type: "user", id: "user-1", text: "Continue", time: { created: 2 } },
     finished,
   ]
@@ -120,6 +118,13 @@ test("completes exploration groups when another row follows", () => {
     },
     { type: "assistant-footer", messageID: "assistant-2" },
   ])
+})
+
+test("adds a footer for content-filter assistant finishes without parts", () => {
+  const filtered = assistant("assistant-filtered", [])
+  filtered.finish = "content-filter"
+
+  expect(reduceSessionRows([filtered])).toEqual([{ type: "assistant-footer", messageID: "assistant-filtered" }])
 })
 
 test("hides synthetic messages without descriptions", () => {

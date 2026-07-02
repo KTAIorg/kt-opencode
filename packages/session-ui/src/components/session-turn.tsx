@@ -297,6 +297,7 @@ export function SessionTurn(
   const error = createMemo(
     () => assistantMessages().find((m) => m.error && m.error.name !== "MessageAbortedError")?.error,
   )
+  const contentFiltered = createMemo(() => assistantMessages().some((m) => m.finish === "content-filter"))
   const showAssistantCopyPartID = createMemo(() => {
     const messages = assistantMessages()
 
@@ -315,6 +316,7 @@ export function SessionTurn(
     return undefined
   })
   const errorText = createMemo(() => {
+    if (contentFiltered()) return "The response was blocked by the provider's content filter"
     const msg = error()?.data?.message
     if (typeof msg === "string") return unwrap(msg)
     if (msg === undefined || msg === null) return ""
@@ -525,7 +527,7 @@ export function SessionTurn(
                   </div>
                 </div>
               </Show>
-              <Show when={error()}>
+              <Show when={error() || contentFiltered()}>
                 <Card variant="error" class="error-card">
                   {errorText()}
                 </Card>

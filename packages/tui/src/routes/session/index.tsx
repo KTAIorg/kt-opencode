@@ -1197,9 +1197,13 @@ function AssistantFooter(props: { message: SessionMessageAssistant }) {
   const duration = createMemo(() =>
     props.message.time.completed ? props.message.time.completed - props.message.time.created : 0,
   )
+  const contentFiltered = createMemo(() => props.message.finish === "content-filter")
+  const errorText = createMemo(() =>
+    contentFiltered() ? "The response was blocked by the provider's content filter" : errorMessage(props.message.error),
+  )
   return (
     <>
-      <Show when={props.message.error}>
+      <Show when={props.message.error || contentFiltered()}>
         <box
           border={["left"]}
           paddingTop={1}
@@ -1209,12 +1213,16 @@ function AssistantFooter(props: { message: SessionMessageAssistant }) {
           customBorderChars={SplitBorder.customBorderChars}
           borderColor={theme.error}
         >
-          <text fg={theme.textMuted}>{errorMessage(props.message.error)}</text>
+          <text fg={theme.textMuted}>{errorText()}</text>
         </box>
       </Show>
-      <box paddingLeft={3} marginTop={props.message.error ? 1 : 0}>
+      <box paddingLeft={3} marginTop={props.message.error || contentFiltered() ? 1 : 0}>
         <text>
-          <span style={{ fg: props.message.error ? theme.textMuted : local.agent.color(props.message.agent) }}>
+          <span
+            style={{
+              fg: props.message.error || contentFiltered() ? theme.textMuted : local.agent.color(props.message.agent),
+            }}
+          >
             {Locale.titlecase(props.message.agent)}
           </span>
           <span style={{ fg: theme.textMuted }}> · {model()}</span>
@@ -1386,13 +1394,7 @@ function UserMessage(props: { message: SessionMessageUser }) {
         >
           <text fg={theme.text}>{props.message.text}</text>
           <Show when={files().length}>
-            <box
-              flexDirection="row"
-              paddingBottom={metadataVisible() ? 1 : 0}
-              paddingTop={1}
-              gap={1}
-              flexWrap="wrap"
-            >
+            <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={1} gap={1} flexWrap="wrap">
               <For each={files()}>
                 {(file) => {
                   const directory = file.mime === "application/x-directory"
@@ -1452,6 +1454,10 @@ function AssistantMessage(props: { message: SessionMessageAssistant; last: boole
     if (!props.message.time.completed) return 0
     return props.message.time.completed - props.message.time.created
   })
+  const contentFiltered = createMemo(() => props.message.finish === "content-filter")
+  const errorText = createMemo(() =>
+    contentFiltered() ? "The response was blocked by the provider's content filter" : errorMessage(props.message.error),
+  )
 
   const exploration = createMemo(() => {
     const grouped = new Map<string, { first: boolean; parts: SessionMessageAssistantTool[]; active: boolean }>()
@@ -1514,7 +1520,7 @@ function AssistantMessage(props: { message: SessionMessageAssistant; last: boole
           </Switch>
         )}
       </For>
-      <Show when={props.message.error}>
+      <Show when={props.message.error || contentFiltered()}>
         <box
           border={["left"]}
           paddingTop={1}
@@ -1524,14 +1530,19 @@ function AssistantMessage(props: { message: SessionMessageAssistant; last: boole
           customBorderChars={SplitBorder.customBorderChars}
           borderColor={theme.error}
         >
-          <text fg={theme.textMuted}>{errorMessage(props.message.error)}</text>
+          <text fg={theme.textMuted}>{errorText()}</text>
         </box>
       </Show>
       <Switch>
-        <Match when={props.last || final() || props.message.error}>
+        <Match when={props.last || final() || props.message.error || contentFiltered()}>
           <box paddingLeft={3}>
             <text>
-              <span style={{ fg: props.message.error ? theme.textMuted : local.agent.color(props.message.agent) }}>
+              <span
+                style={{
+                  fg:
+                    props.message.error || contentFiltered() ? theme.textMuted : local.agent.color(props.message.agent),
+                }}
+              >
                 {Locale.titlecase(props.message.agent)}
               </span>
               <span style={{ fg: theme.textMuted }}> · {model()}</span>
@@ -1722,7 +1733,8 @@ function ToolPart(props: { part: SessionMessageAssistantTool }) {
       return Boolean(shellID && data.shell.get(shellID))
     }
     if (display() === "subagent") {
-      const sessionID = stringValue(props.part.state.structured.sessionID) ?? stringValue(props.part.state.structured.sessionId)
+      const sessionID =
+        stringValue(props.part.state.structured.sessionID) ?? stringValue(props.part.state.structured.sessionId)
       return Boolean(sessionID && data.session.status(sessionID) === "running")
     }
     return false
