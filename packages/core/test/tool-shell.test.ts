@@ -455,6 +455,37 @@ describe("ShellTool", () => {
     ),
   )
 
+  it.live("notifies with a visible description when a background command completes", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        return withSession(tmp.path, (registry) =>
+          Effect.gen(function* () {
+            const sessions = yield* SessionV2.Service
+            yield* settleTool(registry, call({ command: helloCommand, background: true }))
+            const awaitNotice = (remaining = 1000): Effect.Effect<SessionMessage.Message, Error> =>
+              Effect.gen(function* () {
+                const notice = (yield* sessions.context(sessionID)).find((message) => message.type === "synthetic")
+                if (notice) return notice
+                if (remaining <= 0)
+                  return yield* Effect.fail(new Error("Timed out waiting for background completion notice"))
+                yield* Effect.promise(() => Bun.sleep(1))
+                return yield* awaitNotice(remaining - 1)
+              })
+            const notice = yield* awaitNotice()
+            expect(notice).toMatchObject({
+              type: "synthetic",
+              description: `Background command completed: ${helloCommand}`,
+              text: expect.stringContaining('state="completed"'),
+            })
+          }),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
+  )
+
   it.live("backgrounds a foreground command when the session is signaled", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
@@ -484,7 +515,7 @@ describe("ShellTool", () => {
             expect(settled.output?.structured).toMatchObject({ truncated: false })
             expect(settled.output?.content[0]).toMatchObject({
               type: "text",
-              text: expect.stringContaining("running in the background"),
+              text: expect.stringContaining("moved to the background"),
             })
             expect(shellID).toStartWith("sh_")
 

@@ -279,6 +279,7 @@ describe("SubagentTool", () => {
           expect(synthetic).toHaveLength(1)
           expect(synthetic[0]?.text).toContain(`<subagent id="${childID}" state="completed"`)
           expect(synthetic[0]?.text).toContain(childText)
+          expect(synthetic[0]?.description).toBe("Subagent completed: background review")
         }),
       ),
     ),

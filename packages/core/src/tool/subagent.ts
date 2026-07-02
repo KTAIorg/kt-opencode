@@ -67,8 +67,11 @@ export const Plugin = {
       state: "completed" | "error" | "cancelled",
       text: string,
     ) {
+      // The description makes the completion visible in clients; synthetic
+      // messages without one are model-facing context only.
       yield* runtime.session.synthetic({
         sessionID: parentID,
+        description: `Subagent ${state}: ${description}`,
         text: `<subagent id="${childID}" state="${state}" description="${description}">\n${text}\n</subagent>`,
       })
     })

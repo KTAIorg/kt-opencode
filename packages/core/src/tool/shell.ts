@@ -18,8 +18,10 @@ export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000
 export const MAX_TIMEOUT_MS = 10 * 60 * 1_000
 export const MAX_CAPTURE_BYTES = 1024 * 1024
 
+// Persisted in the transcript, so it must stay accurate after the command later
+// finishes; do not claim the command is currently running.
 const BACKGROUND_STARTED =
-  "The command has not completed; it is now running in the background."
+  "The command was moved to the background. You will be notified automatically when it finishes. DO NOT sleep, poll, or proactively check on its progress."
 
 export const Input = Schema.Struct({
   command: Schema.String.annotate({ description: "Shell command string to execute" }),
@@ -124,8 +126,11 @@ export const Plugin = {
               : state === "error"
                 ? (result.info!.error ?? "Command failed")
                 : "Command cancelled"
+          // The description makes the completion visible in clients; synthetic
+          // messages without one are model-facing context only.
           return runtime.session.synthetic({
             sessionID,
+            description: `Background command ${state}: ${command.split("\n")[0]}`,
             text: `<shell id="${callID}" state="${state}" command="${command}">\n${text}\n</shell>`,
           })
         }),
