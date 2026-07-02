@@ -185,25 +185,24 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       const renderer = yield* Effect.acquireRelease(
         Effect.tryPromise({
           try: async () => {
-            const createVisibleRenderer = () =>
-              createCliRenderer({
-                externalOutputMode: "passthrough",
-                targetFps: 60,
-                gatherStats: false,
-                exitOnCtrlC: false,
-                useKittyKeyboard: {},
-                autoFocus: false,
-                openConsoleOnError: false,
-                useMouse: !Flag.OPENCODE_DISABLE_MOUSE && input.config.mouse,
-                consoleOptions: {
-                  keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
-                },
-              })
             if (process.env.OPENCODE_SIMULATION === "1" || process.env.OPENCODE_SIMULATION === "true") {
               const { Simulation } = await import("./simulation/simulation")
-              return Simulation.createSimulation(createVisibleRenderer)
+              return Simulation.createSimulation()
             }
-            return createVisibleRenderer()
+
+            return createCliRenderer({
+              externalOutputMode: "passthrough",
+              targetFps: 60,
+              gatherStats: false,
+              exitOnCtrlC: false,
+              useKittyKeyboard: {},
+              autoFocus: false,
+              openConsoleOnError: false,
+              useMouse: !Flag.OPENCODE_DISABLE_MOUSE && input.config.mouse,
+              consoleOptions: {
+                keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
+              },
+            })
           },
           catch: (error) => (error instanceof Error ? error : new Error(String(error))),
         }),
