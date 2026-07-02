@@ -1,4 +1,8 @@
 import { describe, expect } from "bun:test"
+import fs from "fs/promises"
+import os from "os"
+import path from "path"
+import { pathToFileURL } from "url"
 import {
   LLMClient,
   LLMError,
@@ -677,6 +681,40 @@ describe("SessionRunnerLLM", () => {
         { role: "user", content: [{ type: "text", text: "Second" }] },
       ])
       expect(yield* session.messages({ sessionID })).toHaveLength(2)
+    }),
+  )
+
+  it.effect("materializes a directory attachment as text instead of provider media", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const directory = yield* Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "opencode-attach-")))
+      yield* Effect.addFinalizer(() => Effect.promise(() => fs.rm(directory, { recursive: true, force: true })))
+      yield* Effect.promise(() => fs.writeFile(path.join(directory, "nested.txt"), "hello"))
+      requests.length = 0
+
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({
+          text: "Inspect the attachment",
+          files: [
+            { uri: pathToFileURL(directory + path.sep).href, mime: "application/x-directory", name: "fixtures/" },
+          ],
+        }),
+        resume: false,
+      })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(1)
+      const message = requests[0].messages.find((item) => item.role === "user")
+      expect(message?.content.some((part) => part.type === "media")).toBe(false)
+      const text = userTexts(requests[0]).join("\n")
+      expect(text).toContain('<attached-directory path="fixtures/">')
+      expect(text).toContain("nested.txt")
+      // Durable projection keeps the original attachment URI; only the request is expanded.
+      expect(yield* session.messages({ sessionID })).toMatchObject([
+        { type: "user", files: [{ mime: "application/x-directory" }] },
+      ])
     }),
   )
 
