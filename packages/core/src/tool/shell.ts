@@ -18,10 +18,12 @@ export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000
 export const MAX_TIMEOUT_MS = 10 * 60 * 1_000
 export const MAX_CAPTURE_BYTES = 1024 * 1024
 
-// Persisted in the transcript, so it must stay accurate after the command later
-// finishes; do not claim the command is currently running.
-const BACKGROUND_STARTED =
-  "The command was moved to the background. You will be notified automatically when it finishes. DO NOT sleep, poll, or proactively check on its progress."
+// Rendered in clients and persisted in the transcript, so it must stay accurate
+// after the command later finishes; do not claim the command is currently running.
+// The model-facing behavioral instruction lives in modelOutput instead.
+const BACKGROUND_STARTED = "The command was moved to the background."
+const BACKGROUND_INSTRUCTION =
+  "You will be notified automatically when the command finishes. DO NOT sleep, poll, or proactively check on its progress."
 
 export const Input = Schema.Struct({
   command: Schema.String.annotate({ description: "Shell command string to execute" }),
@@ -56,10 +58,11 @@ const Output = Schema.Struct({
 type Output = typeof Output.Type
 
 const modelOutput = (output: Output): string | undefined => {
-  if (output.status === "running") return undefined
   const warnings = output.warnings?.length
     ? `\n\nWarnings:\n${output.warnings.map((warning) => `- ${warning}`).join("\n")}`
     : ""
+  if (output.status === "running")
+    return `${warnings.trimStart()}${warnings ? "\n\n" : ""}${BACKGROUND_INSTRUCTION}`
   if (output.timeout) return `${warnings.trimStart()}${warnings ? "\n\n" : ""}Command timed out before completion.`
   return `${warnings.trimStart()}${warnings ? "\n\n" : ""}Command exited with code ${output.exit}.`
 }

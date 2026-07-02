@@ -513,9 +513,14 @@ describe("ShellTool", () => {
             const structured = settled.output?.structured as Record<string, unknown> | undefined
             const shellID = typeof structured?.shellID === "string" ? structured.shellID : undefined
             expect(settled.output?.structured).toMatchObject({ truncated: false })
-            expect(settled.output?.content[0]).toMatchObject({
+            // content[0] is rendered by clients; the model-facing instruction stays in content[1].
+            expect(settled.output?.content[0]).toEqual({
               type: "text",
-              text: expect.stringContaining("moved to the background"),
+              text: "The command was moved to the background.",
+            })
+            expect(settled.output?.content[1]).toMatchObject({
+              type: "text",
+              text: expect.stringContaining("DO NOT sleep, poll"),
             })
             expect(shellID).toStartWith("sh_")
 
