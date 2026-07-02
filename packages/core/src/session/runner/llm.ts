@@ -18,7 +18,8 @@ import { ModelV2 } from "../../model"
 import { ProviderV2 } from "../../provider"
 import { QuestionV2 } from "../../question"
 import { SystemContext } from "../../system-context/index"
-import { SystemContextRegistry } from "../../system-context/registry"
+import { SystemContextBuiltIns } from "../../system-context/builtins"
+import { InstructionContext } from "../../instruction-context"
 import { SkillGuidance } from "../../skill/guidance"
 import { ReferenceGuidance } from "../../reference/guidance"
 import { McpGuidance } from "../../mcp/guidance"
@@ -102,7 +103,8 @@ const layer = Layer.effect(
     const models = yield* SessionRunnerModel.Service
     const store = yield* SessionStore.Service
     const location = yield* Location.Service
-    const systemContext = yield* SystemContextRegistry.Service
+    const builtins = yield* SystemContextBuiltIns.Service
+    const instructions = yield* InstructionContext.Service
     const skillGuidance = yield* SkillGuidance.Service
     const referenceGuidance = yield* ReferenceGuidance.Service
     const mcpGuidance = yield* McpGuidance.Service
@@ -154,9 +156,16 @@ const layer = Layer.effect(
       cause.reasons.some((reason) => Cause.isDieReason(reason) && reason.defect instanceof QuestionV2.RejectedError)
 
     const loadSystemContext = (agent: AgentV2.Selection) =>
-      Effect.all([systemContext.load(), skillGuidance.load(agent), referenceGuidance.load(), mcpGuidance.load(agent)], {
-        concurrency: "unbounded",
-      }).pipe(Effect.map(SystemContext.combine))
+      Effect.all(
+        [
+          builtins.load(),
+          instructions.load(),
+          skillGuidance.load(agent),
+          referenceGuidance.load(),
+          mcpGuidance.load(agent),
+        ],
+        { concurrency: "unbounded" },
+      ).pipe(Effect.map(SystemContext.combine))
 
     const runTurnAttempt = Effect.fn("SessionRunner.runTurn")(function* (
       sessionID: SessionSchema.ID,
@@ -467,7 +476,8 @@ export const node = makeLocationNode({
     SessionRunnerModel.node,
     SessionStore.node,
     Location.node,
-    SystemContextRegistry.node,
+    SystemContextBuiltIns.node,
+    InstructionContext.node,
     SkillGuidance.node,
     ReferenceGuidance.node,
     McpGuidance.node,
