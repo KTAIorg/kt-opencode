@@ -248,6 +248,41 @@ test("tracks session status from active sessions and execution events", async ()
       },
     })
     await wait(() => data.session.status("session-failed") === "idle")
+
+    emitEvent(events, {
+      id: "evt_compaction_started",
+      type: "session.next.compaction.started",
+      data: { sessionID: "session-compacting", messageID: "message-compaction", timestamp: 5, reason: "manual" },
+    })
+    await wait(() => data.session.status("session-compacting") === "running")
+
+    emitEvent(events, {
+      id: "evt_compaction_ended",
+      type: "session.next.compaction.ended",
+      data: {
+        sessionID: "session-compacting",
+        messageID: "message-compaction",
+        timestamp: 6,
+        reason: "manual",
+        text: "summary",
+        recent: "",
+      },
+    })
+    await wait(() => data.session.status("session-compacting") === "idle")
+
+    emitEvent(events, {
+      id: "evt_compaction_started_again",
+      type: "session.next.compaction.started",
+      data: { sessionID: "session-compacting", messageID: "message-compaction-2", timestamp: 7, reason: "manual" },
+    })
+    await wait(() => data.session.status("session-compacting") === "running")
+
+    emitEvent(events, {
+      id: "evt_compaction_failed",
+      type: "session.next.compaction.failed",
+      data: { sessionID: "session-compacting", messageID: "message-compaction-2", timestamp: 8, reason: "manual" },
+    })
+    await wait(() => data.session.status("session-compacting") === "idle")
   } finally {
     app.renderer.destroy()
   }

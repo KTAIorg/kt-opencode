@@ -237,7 +237,17 @@ const make = (dependencies: Dependencies) => {
         Effect.catchTag("LLM.Error", () => Effect.succeed(false)),
       )
     const summary = chunks.join("")
-    if (!summarized || failed || !summary.trim()) return false
+    if (!summarized || failed || !summary.trim()) {
+      // Clients react to Started (for example by marking the session as running),
+      // so a failed summarization still needs a terminal event.
+      yield* dependencies.events.publish(SessionEvent.Compaction.Failed, {
+        sessionID: input.sessionID,
+        messageID,
+        timestamp: yield* DateTime.now,
+        reason: input.reason,
+      })
+      return false
+    }
     yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
       sessionID: input.sessionID,
       messageID,

@@ -49,6 +49,7 @@ export type Event =
   | EventSessionNextCompactionStarted
   | EventSessionNextCompactionDelta
   | EventSessionNextCompactionEnded
+  | EventSessionNextCompactionFailed
   | EventSessionNextRevertStaged
   | EventSessionNextRevertCleared
   | EventSessionNextRevertCommitted
@@ -942,6 +943,9 @@ export type GlobalEvent = {
           messageID: string
           text: string
           description?: string
+          metadata?: {
+            [key: string]: unknown
+          }
         }
       }
     | {
@@ -1227,6 +1231,16 @@ export type GlobalEvent = {
           reason: "auto" | "manual"
           text: string
           recent: string
+        }
+      }
+    | {
+        id: string
+        type: "session.next.compaction.failed"
+        properties: {
+          timestamp: number
+          sessionID: string
+          messageID: string
+          reason: "auto" | "manual"
         }
       }
     | {
@@ -3032,6 +3046,7 @@ export type V2Event =
   | SessionNextCompactionStarted
   | SessionNextCompactionDelta
   | SessionNextCompactionEnded
+  | SessionNextCompactionFailed
   | SessionNextRevertStaged
   | SessionNextRevertCleared
   | SessionNextRevertCommitted
@@ -3618,6 +3633,9 @@ export type SyncEventSessionNextSynthetic = {
       messageID: string
       text: string
       description?: string
+      metadata?: {
+        [key: string]: unknown
+      }
     }
   }
 }
@@ -4583,6 +4601,9 @@ export type SessionNextSynthetic = {
     messageID: string
     text: string
     description?: string
+    metadata?: {
+      [key: string]: unknown
+    }
   }
 }
 
@@ -5661,6 +5682,26 @@ export type SessionNextCompactionDelta = {
     sessionID: string
     messageID: string
     text: string
+  }
+}
+
+export type SessionNextCompactionFailed = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.next.compaction.failed"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    timestamp: number
+    sessionID: string
+    messageID: string
+    reason: "auto" | "manual"
   }
 }
 
@@ -6806,6 +6847,9 @@ export type EventSessionNextSynthetic = {
     messageID: string
     text: string
     description?: string
+    metadata?: {
+      [key: string]: unknown
+    }
   }
 }
 
@@ -7114,6 +7158,17 @@ export type EventSessionNextCompactionEnded = {
     reason: "auto" | "manual"
     text: string
     recent: string
+  }
+}
+
+export type EventSessionNextCompactionFailed = {
+  id: string
+  type: "session.next.compaction.failed"
+  properties: {
+    timestamp: number
+    sessionID: string
+    messageID: string
+    reason: "auto" | "manual"
   }
 }
 
@@ -12283,6 +12338,47 @@ export type V2SessionSkillResponses = {
 }
 
 export type V2SessionSkillResponse = V2SessionSkillResponses[keyof V2SessionSkillResponses]
+
+export type V2SessionSyntheticData = {
+  body: {
+    text: string
+    description?: string
+    metadata?: {
+      [key: string]: unknown
+    }
+  }
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/synthetic"
+}
+
+export type V2SessionSyntheticErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+}
+
+export type V2SessionSyntheticError = V2SessionSyntheticErrors[keyof V2SessionSyntheticErrors]
+
+export type V2SessionSyntheticResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2SessionSyntheticResponse = V2SessionSyntheticResponses[keyof V2SessionSyntheticResponses]
 
 export type V2SessionCompactData = {
   body?: never

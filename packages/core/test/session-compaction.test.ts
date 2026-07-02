@@ -19,11 +19,12 @@ import { SessionV2 } from "@opencode-ai/core/session"
 import { Project } from "@opencode-ai/core/project"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
 import { AbsolutePath } from "@opencode-ai/core/schema"
-import { DateTime, Effect, Layer, Stream } from "effect"
+import { DateTime, Effect, Fiber, Layer, Stream } from "effect"
 import { asc, eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
 
 let requests: LLMRequest[] = []
+let summaryText = "manual summary"
 const model = Model.make({
   id: "summary-model",
   provider: "test",
@@ -33,7 +34,7 @@ const client = Layer.mock(LLMClient.Service)({
   prepare: () => Effect.die("unused"),
   stream: (request: LLMRequest) => {
     requests.push(request)
-    return Stream.make(LLMEvent.textDelta({ id: "summary", text: "manual summary" }))
+    return Stream.make(LLMEvent.textDelta({ id: "summary", text: summaryText }))
   },
   generate: () => Effect.die("unused"),
 })
@@ -66,9 +67,81 @@ test("compaction describes tool media without embedding base64", () => {
   expect(serialized).not.toContain(base64)
 })
 
+it.effect("manual compaction failure publishes a terminal failed event", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      requests = []
+      summaryText = ""
+      const db = (yield* Database.Service).db
+      const compaction = yield* SessionCompaction.Service
+      const store = yield* SessionStore.Service
+      const events = yield* EventV2.Service
+      const sessionID = SessionV2.ID.make("ses_failed_compaction")
+      yield* db
+        .insert(ProjectTable)
+        .values({ id: Project.ID.global, worktree: AbsolutePath.make("/project"), sandboxes: [] })
+        .onConflictDoNothing()
+        .run()
+        .pipe(Effect.orDie)
+      yield* db
+        .insert(SessionTable)
+        .values({
+          id: sessionID,
+          project_id: Project.ID.global,
+          slug: "failed-compaction",
+          directory: "/project",
+          title: "Failed compaction",
+          version: "test",
+        })
+        .run()
+        .pipe(Effect.orDie)
+      const failed = yield* events
+        .subscribe(SessionEvent.Compaction.Failed)
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped)
+      yield* Effect.yieldNow
+
+      const session = yield* store
+        .get(sessionID)
+        .pipe(
+          Effect.flatMap((session) =>
+            session ? Effect.succeed(session) : Effect.die("failed compaction test session missing"),
+          ),
+        )
+      expect(
+        yield* compaction.compactManual({
+          session,
+          messages: [
+            {
+              id: SessionMessage.ID.create(),
+              type: "user" as const,
+              text: "Summarization for this conversation will fail.",
+              time: { created: DateTime.makeUnsafe(0) },
+            },
+          ],
+        }),
+      ).toBe(false)
+
+      expect(Array.from(yield* Fiber.join(failed))[0]?.data).toMatchObject({ sessionID, reason: "manual" })
+      expect(yield* store.context(sessionID)).toEqual([])
+      // The failed event is live-only; only Started is durably recorded.
+      expect(
+        yield* db
+          .select({ type: EventTable.type })
+          .from(EventTable)
+          .where(eq(EventTable.aggregate_id, sessionID))
+          .orderBy(asc(EventTable.seq))
+          .all()
+          .pipe(Effect.orDie),
+      ).toEqual([{ type: EventV2.versionedType(SessionEvent.Compaction.Started.type, 1) }])
+      summaryText = "manual summary"
+    }),
+  ),
+)
+
 it.effect("manual compaction summarizes short context instead of no-op", () =>
   Effect.gen(function* () {
     requests = []
+    summaryText = "manual summary"
     const db = (yield* Database.Service).db
     const compaction = yield* SessionCompaction.Service
     const store = yield* SessionStore.Service

@@ -466,6 +466,18 @@ export namespace Compaction {
     },
   })
   export type Ended = typeof Ended.Type
+
+  // Live-only: a failed compaction produces no durable message, but clients that
+  // reacted to Started need a terminal signal.
+  export const Failed = Event.define({
+    type: "session.next.compaction.failed",
+    schema: {
+      ...Base,
+      messageID: SessionMessage.ID,
+      reason: Started.data.fields.reason,
+    },
+  })
+  export type Failed = typeof Failed.Type
 }
 
 export namespace RevertEvent {
@@ -549,6 +561,7 @@ export const Definitions = Event.inventory(
   Compaction.Started,
   Compaction.Delta,
   Compaction.Ended,
+  Compaction.Failed,
   RevertEvent.Staged,
   RevertEvent.Cleared,
   RevertEvent.Committed,

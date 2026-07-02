@@ -535,7 +535,14 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           break
         case "session.next.compaction.delta":
           break
+        case "session.next.compaction.failed":
+          // Started marked the session running; without this a failed compaction
+          // leaves the session spinning forever. Mid-run auto compaction is
+          // followed by step events that set the status again.
+          setStore("session", "status", event.data.sessionID, "idle")
+          break
         case "session.next.compaction.ended":
+          setStore("session", "status", event.data.sessionID, "idle")
           message.update(event.data.sessionID, (draft, index) => {
             message.append(draft, index, {
               id: event.data.messageID,
