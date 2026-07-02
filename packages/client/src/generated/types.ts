@@ -672,6 +672,7 @@ export type SessionContextOutput = {
           readonly name?: string
           readonly description?: string
           readonly source?: { readonly start: number; readonly end: number; readonly text: string }
+          readonly resolved?: string
         }>
         readonly agents?: ReadonlyArray<{
           readonly name: string
@@ -901,6 +902,7 @@ export type SessionHistoryOutput = {
             }>
           }
           readonly delivery: "steer" | "queue"
+          readonly resolutions?: ReadonlyArray<{ readonly uri: string; readonly resolved: string }>
         }
       }
     | {
@@ -1396,6 +1398,7 @@ export type SessionEventsOutput =
           }>
         }
         readonly delivery: "steer" | "queue"
+        readonly resolutions?: ReadonlyArray<{ readonly uri: string; readonly resolved: string }>
       }
     }
   | {
@@ -1837,6 +1840,7 @@ export type SessionMessageOutput = {
           readonly name?: string
           readonly description?: string
           readonly source?: { readonly start: number; readonly end: number; readonly text: string }
+          readonly resolved?: string
         }>
         readonly agents?: ReadonlyArray<{
           readonly name: string
@@ -2018,6 +2022,7 @@ export type MessageListOutput = {
           readonly name?: string
           readonly description?: string
           readonly source?: { readonly start: number; readonly end: number; readonly text: string }
+          readonly resolved?: string
         }>
         readonly agents?: ReadonlyArray<{
           readonly name: string
@@ -3499,6 +3504,7 @@ export type EventSubscribeOutput =
           }>
         }
         readonly delivery: "steer" | "queue"
+        readonly resolutions?: ReadonlyArray<{ readonly uri: string; readonly resolved: string }>
       }
     }
   | {

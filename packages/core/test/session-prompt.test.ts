@@ -197,7 +197,7 @@ describe("SessionV2.prompt", () => {
         prompt: Prompt.make({ text: "boundary" }),
         resume: false,
       })
-      yield* SessionInput.promoteSteers(db, events, sessionID, Number.MAX_SAFE_INTEGER)
+      yield* SessionInput.promoteSteers(db, events, sessionID, Number.MAX_SAFE_INTEGER, SessionInput.unresolved)
       const stale = SessionMessage.ID.make("msg_stale_assistant")
       yield* db.insert(SessionMessageTable).values(assistantRow(stale, 100)).run().pipe(Effect.orDie)
       yield* events.publish(SessionEvent.RevertEvent.Staged, {
@@ -250,7 +250,7 @@ describe("SessionV2.prompt", () => {
 
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "First" }), resume: false })
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Second" }), resume: false })
-      yield* SessionInput.promoteSteers(db, events, sessionID, Number.MAX_SAFE_INTEGER)
+      yield* SessionInput.promoteSteers(db, events, sessionID, Number.MAX_SAFE_INTEGER, SessionInput.unresolved)
       const streamed = Array.from(yield* Fiber.join(fiber))
 
       expect(streamed.map((event) => [event.durable?.seq, event.type])).toEqual([
@@ -425,8 +425,8 @@ describe("SessionV2.prompt", () => {
 
       yield* Effect.all(
         [
-          SessionInput.promoteSteers(db, events, sessionID, Number.MAX_SAFE_INTEGER),
-          SessionInput.promoteSteers(db, events, sessionID, Number.MAX_SAFE_INTEGER),
+          SessionInput.promoteSteers(db, events, sessionID, Number.MAX_SAFE_INTEGER, SessionInput.unresolved),
+          SessionInput.promoteSteers(db, events, sessionID, Number.MAX_SAFE_INTEGER, SessionInput.unresolved),
         ],
         { concurrency: "unbounded" },
       )
@@ -449,7 +449,7 @@ describe("SessionV2.prompt", () => {
       const cutoff = first.admittedSeq
       const second = yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "After cutoff" }), resume: false })
 
-      yield* SessionInput.promoteSteers(db, events, sessionID, cutoff)
+      yield* SessionInput.promoteSteers(db, events, sessionID, cutoff, SessionInput.unresolved)
 
       expect(yield* admitted(first.id)).toHaveProperty("promotedSeq")
       expect(yield* admitted(second.id)).not.toHaveProperty("promotedSeq")

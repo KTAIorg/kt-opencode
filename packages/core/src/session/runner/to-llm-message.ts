@@ -8,15 +8,27 @@ import {
   type ProviderMetadata,
 } from "@opencode-ai/llm"
 import { SessionMessage } from "../message"
-import type { FileAttachment } from "../prompt"
 
-const media = (file: FileAttachment): ContentPart => ({
-  type: "media",
-  mediaType: file.mime,
-  data: file.uri,
-  filename: file.name,
-  metadata: file.description === undefined ? undefined : { description: file.description },
-})
+// Attachments carry promotion-time `resolved` content: a data URL for media,
+// model-visible text otherwise. Unresolved `file:` URIs cannot be lowered as
+// media (providers reject the mime or the non-data payload), so they degrade
+// to a model-visible note instead of failing the provider turn.
+const attachment = (file: SessionMessage.UserFile): ContentPart => {
+  if (file.resolved !== undefined && !file.resolved.startsWith("data:")) return { type: "text", text: file.resolved }
+  const uri = file.resolved ?? file.uri
+  if (uri.startsWith("file:"))
+    return {
+      type: "text",
+      text: `<attachment-unavailable path=${JSON.stringify(file.name ?? file.uri)}>\nAttachment was not captured; read it with tools if needed.\n</attachment-unavailable>`,
+    }
+  return {
+    type: "media",
+    mediaType: uri.match(/^data:([^;,]+)[;,]/i)?.[1] ?? file.mime,
+    data: uri,
+    filename: file.name,
+    metadata: file.description === undefined ? undefined : { description: file.description },
+  }
+}
 
 const toolInput = (tool: SessionMessage.AssistantTool) => {
   if (tool.state.status !== "pending") return tool.state.input
@@ -122,7 +134,7 @@ function toLLMMessage(message: SessionMessage.Message, model: Model): Message[] 
         Message.make({
           id: message.id,
           role: "user",
-          content: [{ type: "text", text: message.text }, ...(message.files ?? []).map(media)],
+          content: [{ type: "text", text: message.text }, ...(message.files ?? []).map(attachment)],
           metadata: {
             ...message.metadata,
             ...(message.agents?.length ? { agents: message.agents } : {}),

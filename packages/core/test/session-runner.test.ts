@@ -711,10 +711,13 @@ describe("SessionRunnerLLM", () => {
       const text = userTexts(requests[0]).join("\n")
       expect(text).toContain('<attached-directory path="fixtures/">')
       expect(text).toContain("nested.txt")
-      // Durable projection keeps the original attachment URI; only the request is expanded.
-      expect(yield* session.messages({ sessionID })).toMatchObject([
-        { type: "user", files: [{ mime: "application/x-directory" }] },
-      ])
+      // The durable projection keeps the original URI and snapshots the resolved listing.
+      const messages = yield* session.messages({ sessionID })
+      expect(messages).toMatchObject([{ type: "user", files: [{ mime: "application/x-directory" }] }])
+      const stored = messages[0]
+      if (stored?.type !== "user") throw new Error("Expected a user message")
+      expect(stored.files?.[0]?.uri.startsWith("file:")).toBe(true)
+      expect(stored.files?.[0]?.resolved).toContain("nested.txt")
     }),
   )
 
@@ -2330,7 +2333,13 @@ describe("SessionRunnerLLM", () => {
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Recover interrupted tool" }), resume: false })
-      yield* SessionInput.promoteSteers((yield* Database.Service).db, events, sessionID, Number.MAX_SAFE_INTEGER)
+      yield* SessionInput.promoteSteers(
+        (yield* Database.Service).db,
+        events,
+        sessionID,
+        Number.MAX_SAFE_INTEGER,
+        SessionInput.unresolved,
+      )
       const assistantMessageID = SessionMessage.ID.create()
       yield* events.publish(SessionEvent.Step.Started, {
         sessionID,
@@ -2394,7 +2403,13 @@ describe("SessionRunnerLLM", () => {
         prompt: Prompt.make({ text: "Recover interrupted hosted tool" }),
         resume: false,
       })
-      yield* SessionInput.promoteSteers((yield* Database.Service).db, events, sessionID, Number.MAX_SAFE_INTEGER)
+      yield* SessionInput.promoteSteers(
+        (yield* Database.Service).db,
+        events,
+        sessionID,
+        Number.MAX_SAFE_INTEGER,
+        SessionInput.unresolved,
+      )
       const assistantMessageID = SessionMessage.ID.create()
       yield* events.publish(SessionEvent.Step.Started, {
         sessionID,
@@ -2454,7 +2469,13 @@ describe("SessionRunnerLLM", () => {
         prompt: Prompt.make({ text: "Recover interrupted tool input" }),
         resume: false,
       })
-      yield* SessionInput.promoteSteers((yield* Database.Service).db, events, sessionID, Number.MAX_SAFE_INTEGER)
+      yield* SessionInput.promoteSteers(
+        (yield* Database.Service).db,
+        events,
+        sessionID,
+        Number.MAX_SAFE_INTEGER,
+        SessionInput.unresolved,
+      )
       const assistantMessageID = SessionMessage.ID.create()
       yield* events.publish(SessionEvent.Step.Started, {
         sessionID,

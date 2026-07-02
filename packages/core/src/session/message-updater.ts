@@ -126,13 +126,17 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
       "session.next.renamed": () => Effect.void,
       "session.next.forked": () => Effect.void,
       "session.next.prompted": (event) => {
+        const resolved = new Map(event.data.resolutions?.map((item) => [item.uri, item.resolved]))
         return adapter.appendMessage(
           SessionMessage.User.make({
             id: event.data.messageID,
             type: "user",
             metadata: event.metadata,
             text: event.data.prompt.text,
-            files: event.data.prompt.files,
+            files: event.data.prompt.files?.map((file) => {
+              const content = resolved.get(file.uri)
+              return content === undefined ? file : { ...file, resolved: content }
+            }),
             agents: event.data.prompt.agents,
             time: { created: event.data.timestamp },
           }),

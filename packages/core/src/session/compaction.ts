@@ -108,7 +108,13 @@ export const serializeToolContent = (content: SessionMessage.ToolStateCompleted[
 
 const serialize = (message: SessionMessage.Message) => {
   if (message.type === "user") {
-    const files = message.files?.map((file) => `[Attached ${file.mime}: ${file.name ?? file.uri}]`) ?? []
+    // Resolved text attachments carry the content the model actually saw; media stays a placeholder.
+    const files =
+      message.files?.map((file) =>
+        file.resolved !== undefined && !file.resolved.startsWith("data:")
+          ? truncate(file.resolved)
+          : `[Attached ${file.mime}: ${file.name ?? file.uri}]`,
+      ) ?? []
     return [`[User]: ${message.text}`, ...files].join("\n")
   }
   if (message.type === "assistant") {

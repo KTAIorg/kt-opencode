@@ -105,10 +105,24 @@ export const Forked = Event.define({
 })
 export type Forked = typeof Forked.Type
 
+/**
+ * Model-visible content captured for one attachment URI at promotion time:
+ * a data URL for media, otherwise text. Recorded on the event so projection
+ * replay stays deterministic without filesystem access.
+ */
+export const AttachmentResolution = Schema.Struct({
+  uri: Schema.String,
+  resolved: Schema.String,
+}).annotate({ identifier: "session.next.event.attachment-resolution" })
+export interface AttachmentResolution extends Schema.Schema.Type<typeof AttachmentResolution> {}
+
 export const Prompted = Event.define({
   type: "session.next.prompted",
   ...options,
-  schema: PromptFields,
+  schema: {
+    ...PromptFields,
+    resolutions: Schema.Array(AttachmentResolution).pipe(optional),
+  },
 })
 export type Prompted = typeof Prompted.Type
 

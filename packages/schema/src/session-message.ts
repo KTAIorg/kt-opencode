@@ -41,11 +41,22 @@ export const ModelSwitched = Schema.Struct({
   model: Model.Ref,
 }).annotate({ identifier: "Session.Message.ModelSwitched" })
 
+/**
+ * A prompt attachment plus the model-visible content captured for it at
+ * promotion time: a data URL for media, otherwise text. The original `uri`
+ * and `mime` are preserved for provenance; only `resolved` is server-produced.
+ */
+export interface UserFile extends Schema.Schema.Type<typeof UserFile> {}
+export const UserFile = Schema.Struct({
+  ...FileAttachment.fields,
+  resolved: Schema.String.pipe(optional),
+}).annotate({ identifier: "Session.Message.UserFile" })
+
 export interface User extends Schema.Schema.Type<typeof User> {}
 export const User = Schema.Struct({
   ...Base,
   text: Prompt.fields.text,
-  files: Prompt.fields.files,
+  files: Schema.Array(UserFile).pipe(optional),
   agents: Prompt.fields.agents,
   type: Schema.Literal("user"),
 }).annotate({ identifier: "Session.Message.User" })

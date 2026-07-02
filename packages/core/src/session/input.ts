@@ -213,21 +213,35 @@ const matchesProjection = (
   equivalent(input, expected) &&
   DateTime.toEpochMillis(input.timeCreated) === DateTime.toEpochMillis(expected.timeCreated)
 
+/**
+ * Captures model-visible attachment content while an input is promoted, so
+ * projection replay stays deterministic without filesystem access. Resolution
+ * must not fail; unreadable attachments resolve to a model-visible note.
+ */
+export type Resolver = (prompt: Prompt) => Effect.Effect<ReadonlyArray<SessionEvent.AttachmentResolution>>
+
+/** Promote without capturing attachment content, e.g. in tests without a Location filesystem. */
+export const unresolved: Resolver = () => Effect.succeed([])
+
 const publish = Effect.fn("SessionInput.publish")(function* (
   db: DatabaseService,
   events: EventV2.Interface,
   sessionID: SessionSchema.ID,
+  resolve: Resolver,
   rows: ReadonlyArray<typeof SessionInputTable.$inferSelect>,
 ) {
   for (const row of rows) {
     const id = SessionMessage.ID.make(row.id)
+    const prompt = decodePrompt(row.prompt)
+    const resolutions = yield* resolve(prompt)
     yield* events
       .publish(SessionEvent.Prompted, {
         sessionID,
         timestamp: DateTime.makeUnsafe(row.time_created),
         messageID: id,
-        prompt: decodePrompt(row.prompt),
+        prompt,
         delivery: row.delivery,
+        ...(resolutions.length === 0 ? {} : { resolutions }),
       })
       .pipe(
         Effect.catchDefect((defect) =>
@@ -247,6 +261,7 @@ export const promoteSteers = Effect.fn("SessionInput.promoteSteers")(function* (
   events: EventV2.Interface,
   sessionID: SessionSchema.ID,
   cutoff: number,
+  resolve: Resolver,
 ) {
   const rows = yield* db
     .select()
@@ -262,13 +277,14 @@ export const promoteSteers = Effect.fn("SessionInput.promoteSteers")(function* (
     .orderBy(asc(SessionInputTable.admitted_seq))
     .all()
     .pipe(Effect.orDie)
-  return yield* publish(db, events, sessionID, rows)
+  return yield* publish(db, events, sessionID, resolve, rows)
 })
 
 export const promoteNextQueued = Effect.fn("SessionInput.promoteNextQueued")(function* (
   db: DatabaseService,
   events: EventV2.Interface,
   sessionID: SessionSchema.ID,
+  resolve: Resolver,
 ) {
   const row = yield* db
     .select()
@@ -284,5 +300,5 @@ export const promoteNextQueued = Effect.fn("SessionInput.promoteNextQueued")(fun
     .limit(1)
     .get()
     .pipe(Effect.orDie)
-  return row === undefined ? false : yield* publish(db, events, sessionID, [row]).pipe(Effect.as(true))
+  return row === undefined ? false : yield* publish(db, events, sessionID, resolve, [row]).pipe(Effect.as(true))
 })
