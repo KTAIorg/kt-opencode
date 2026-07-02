@@ -6,16 +6,15 @@ import { Global } from "@opencode-ai/core/global"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { tmpdir } from "./fixture/tmpdir"
 
+const resolve = (env: Record<string, string>) =>
+  Effect.runPromise(Effect.provide(Database.configuredPath, ConfigProvider.layer(ConfigProvider.fromUnknown(env))))
+
 describe("Database placement", () => {
-  test("resolves explicit files, relative names, and the channel default", () => {
-    expect(Database.resolvePath({ file: ":memory:", disableChannelDb: false })).toBe(":memory:")
-    expect(Database.resolvePath({ file: "/tmp/explicit.db", disableChannelDb: false })).toBe("/tmp/explicit.db")
-    expect(Database.resolvePath({ file: "relative.db", disableChannelDb: false })).toBe(
-      path.join(Global.Path.data, "relative.db"),
-    )
-    expect(Database.resolvePath({ file: undefined, disableChannelDb: true })).toBe(
-      path.join(Global.Path.data, "opencode.db"),
-    )
+  test("resolves explicit files, relative names, and the channel default", async () => {
+    expect(await resolve({ OPENCODE_DB: ":memory:" })).toBe(":memory:")
+    expect(await resolve({ OPENCODE_DB: "/tmp/explicit.db" })).toBe("/tmp/explicit.db")
+    expect(await resolve({ OPENCODE_DB: "relative.db" })).toBe(path.join(Global.Path.data, "relative.db"))
+    expect(await resolve({ OPENCODE_DISABLE_CHANNEL_DB: "true" })).toBe(path.join(Global.Path.data, "opencode.db"))
   })
 
   test("reads placement from the active ConfigProvider when the layer is built", async () => {

@@ -4,7 +4,7 @@ import { EffectDrizzleSqlite } from "@opencode-ai/effect-drizzle-sqlite"
 import { layer as sqliteLayer } from "#sqlite"
 import { Config, Context, Effect, Layer } from "effect"
 import { Global } from "../global"
-import { truthy, truthyConfig } from "../flag/flag"
+import { truthyConfig } from "../flag/flag"
 import { isAbsolute, join } from "path"
 import { DatabaseMigration } from "./migration"
 import { InstallationChannel } from "../installation/version"
@@ -40,8 +40,7 @@ export function layerFromPath(filename: string) {
   return layer.pipe(Layer.provide(sqliteLayer({ filename })))
 }
 
-/** One placement rule shared by the config-backed layer and the V1 `path()` helper. */
-export function resolvePath(input: { readonly file: string | undefined; readonly disableChannelDb: boolean }) {
+function resolvePath(input: { readonly file: string | undefined; readonly disableChannelDb: boolean }) {
   if (input.file) {
     if (input.file === ":memory:" || isAbsolute(input.file)) return input.file
     return join(Global.Path.data, input.file)
@@ -51,24 +50,18 @@ export function resolvePath(input: { readonly file: string | undefined; readonly
   return join(Global.Path.data, `opencode-${InstallationChannel.replace(/[^a-zA-Z0-9._-]/g, "-")}.db`)
 }
 
-/** V1 compatibility helper; reads the process environment at call time. */
-export function path() {
-  return resolvePath({
-    file: process.env.OPENCODE_DB,
-    disableChannelDb: truthy("OPENCODE_DISABLE_CHANNEL_DB"),
-  })
-}
+/**
+ * The database placement every consumer shares, resolved through Effect
+ * Config so tests and tooling can override it with a ConfigProvider. Used by
+ * the layer below and by external tooling such as `opencode db`.
+ */
+export const configuredPath = Effect.gen(function* () {
+  const file = yield* Config.string("OPENCODE_DB").pipe(Config.withDefault(undefined))
+  const disableChannelDb = yield* truthyConfig("OPENCODE_DISABLE_CHANNEL_DB")
+  return resolvePath({ file, disableChannelDb })
+}).pipe(Effect.orDie)
 
-// Placement is resolved through Effect Config when the layer is built, not at
-// module import, so tests and tooling can override it with a ConfigProvider.
-// truthyConfig shares the `truthy` grammar so this layer and the V1 `path()`
-// helper always agree on the same environment.
-const configuredLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const file = yield* Config.string("OPENCODE_DB").pipe(Config.withDefault(undefined))
-    const disableChannelDb = yield* truthyConfig("OPENCODE_DISABLE_CHANNEL_DB")
-    return layerFromPath(resolvePath({ file, disableChannelDb }))
-  }),
-).pipe(Layer.orDie)
+// Placement is resolved when the layer is built, not at module import.
+const configuredLayer = Layer.unwrap(Effect.map(configuredPath, layerFromPath))
 
 export const node = makeGlobalNode({ service: Service, layer: configuredLayer, deps: [] })
