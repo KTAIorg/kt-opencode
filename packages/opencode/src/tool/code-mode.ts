@@ -50,8 +50,6 @@ type CatalogEntry = {
   tool: MCP.McpTool
 }
 
-const toJsonSchema = (schema: unknown): JsonSchema => schema as JsonSchema
-
 function groupByServer(mcpTools: Record<string, MCP.McpTool>, servers: readonly string[]): Map<string, CatalogEntry[]> {
   const byLongest = [...servers].sort((a, b) => b.length - a.length)
   const groups = new Map<string, CatalogEntry[]>()
@@ -143,8 +141,8 @@ function toolTree(catalog: readonly CatalogEntry[], run: (entry: CatalogEntry) =
     const namespace = (tree[entry.server] ??= {})
     namespace[entry.local] = SandboxTool.make({
       description: entry.tool.def.description ?? "",
-      input: toJsonSchema(entry.tool.def.inputSchema),
-      output: entry.tool.def.outputSchema ? toJsonSchema(entry.tool.def.outputSchema) : undefined,
+      input: entry.tool.def.inputSchema as JsonSchema,
+      output: entry.tool.def.outputSchema as JsonSchema | undefined,
       run: run(entry),
     })
   }
@@ -233,7 +231,6 @@ export const CodeModeTool = Tool.define(
 
         const calls: CallEntry[] = []
         const attachments: Attachment[] = []
-        const collect = (attachment: Attachment) => void attachments.push(attachment)
         const publish = () =>
           ctx.metadata({ title: CODE_MODE_TOOL, metadata: { toolCalls: calls.map((c) => ({ ...c })) } })
 
@@ -248,7 +245,7 @@ export const CodeModeTool = Tool.define(
               callID: `${ctx.callID ?? entry.key}/${childCalls}`,
               ctx,
             })
-            return projectMcpResult(result, collect)
+            return projectMcpResult(result, (attachment: Attachment) => void attachments.push(attachment))
           }).pipe(
             Effect.catchCause((cause) => {
               if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt
@@ -292,10 +289,7 @@ export const CodeModeTool = Tool.define(
           toolCalls: calls.map((call) => ({ name: call.tool })),
         })
 
-        const result = yield* Effect.raceFirst(
-          runtime.execute(params.code),
-          abort.pipe(Effect.map(cancelled)),
-        )
+        const result = yield* Effect.raceFirst(runtime.execute(params.code), abort.pipe(Effect.map(cancelled)))
         const logs = result.logs ?? []
         const attached = attachments.length > 0 ? { attachments } : {}
         const hints = result.ok
