@@ -62,7 +62,7 @@ describe("SystemContext", () => {
         text: "Today's date is 2026-06-03.\n\nDirectory: /repo",
         applied: {
           "core/date": { value: "2026-06-03", description: "Current date", removed: "The date was removed." },
-          "core/location": { value: "/repo", description: "Description for core/location" },
+          "core/location": { value: "/repo" },
         },
       })
       expect(loads).toBe(1)
@@ -123,7 +123,7 @@ describe("SystemContext", () => {
         _tag: "Updated",
         text: "Available skill: effect",
         updates: [{ key: key("core/skills"), description: "Description for core/skills", action: "added" }],
-        applied: { "core/skills": { value: "effect", description: "Description for core/skills" } },
+        applied: { "core/skills": { value: "effect" } },
       })
     }),
   )
@@ -182,7 +182,7 @@ describe("SystemContext", () => {
         text: "effect",
         updates: [{ key: key("core/skills"), description: "Description for core/skills", action: "added" }],
         applied: {
-          "core/skills": { value: "effect", description: "Description for core/skills" },
+          "core/skills": { value: "effect" },
           "core/date": { value: "2026-06-04" },
         },
       })
@@ -221,7 +221,7 @@ describe("SystemContext", () => {
         _tag: "Updated",
         text: "2026-06-04",
         updates: [{ key: key("core/date"), description: "Description for core/date", action: "updated" }],
-        applied: { "core/date": { value: "2026-06-04", description: "Description for core/date" } },
+        applied: { "core/date": { value: "2026-06-04" } },
       })
     }),
   )
@@ -250,8 +250,8 @@ describe("SystemContext", () => {
           { key: key("core/location"), description: "Description for core/location", action: "updated" },
         ],
         applied: {
-          "core/date": { value: "2026-06-04", description: "Description for core/date" },
-          "core/location": { value: "/repo", description: "Description for core/location" },
+          "core/date": { value: "2026-06-04" },
+          "core/location": { value: "/repo" },
         },
       })
     }),
@@ -274,7 +274,7 @@ describe("SystemContext", () => {
 
       expect(yield* SystemContext.rebaseline(context, { "core/date": { value: "2026-06-03" } })).toEqual({
         text: "2026-06-04",
-        applied: { "core/date": { value: "2026-06-04", description: "Current date" } },
+        applied: { "core/date": { value: "2026-06-04" } },
       })
       expect(loads).toBe(1)
     }),
@@ -298,7 +298,7 @@ describe("SystemContext", () => {
       ).toEqual({
         text: "2026-06-04\n\nInstructions: contents",
         applied: {
-          "core/date": { value: "2026-06-04", description: "Description for core/date" },
+          "core/date": { value: "2026-06-04" },
           "core/remote": { value: "contents", removed: "Instructions removed" },
         },
       })
@@ -349,6 +349,21 @@ describe("SystemContext", () => {
           },
         ],
       })
+      expect(
+        SystemContext.diffItems(
+          SystemContext.diffByKey(
+            previous,
+            current,
+            (value) => value.name,
+            (before, after) => before.description !== after.description,
+          ),
+          (value) => ({ key: value.name, description: value.description }),
+        ),
+      ).toEqual([
+        { key: "writing", description: "Write prose", action: "added" },
+        { key: "retired", description: "Old", action: "removed" },
+        { key: "effect", description: "Build with Effect v4", action: "updated" },
+      ])
     }),
   )
 
@@ -375,7 +390,7 @@ describe("SystemContext", () => {
             items: [{ key: "effect", description: "Build with Effect", action: "updated" }],
           },
         ],
-        applied: { "core/skills": { value: "new", description: "Available skills" } },
+        applied: { "core/skills": { value: "new" } },
       })
     }),
   )

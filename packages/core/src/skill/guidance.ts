@@ -37,15 +37,7 @@ const update = (previous: ReadonlyArray<Summary>, current: ReadonlyArray<Summary
     (skill) => skill.name,
     (before, after) => before.description !== after.description,
   )
-  const items = [
-    ...diff.added.map((skill) => ({ key: skill.name, description: skill.description, action: "added" as const })),
-    ...diff.removed.map((skill) => ({ key: skill.name, description: skill.description, action: "removed" as const })),
-    ...diff.changed.map((skill) => ({
-      key: skill.current.name,
-      description: skill.current.description,
-      action: "updated" as const,
-    })),
-  ]
+  const items = SystemContext.diffItems(diff, (skill) => ({ key: skill.name, description: skill.description }))
   // Additions and removals render as small deltas; anything else restates the full list.
   if (diff.changed.length > 0 || (diff.added.length === 0 && diff.removed.length === 0))
     return {

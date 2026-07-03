@@ -31,23 +31,10 @@ const update = (previous: ReadonlyArray<Summary>, current: ReadonlyArray<Summary
     (server) => server.server,
     (before, after) => before.instructions !== after.instructions,
   )
-  const items = [
-    ...diff.added.map((server) => ({
-      key: server.server,
-      description: "MCP server instructions",
-      action: "added" as const,
-    })),
-    ...diff.removed.map((server) => ({
-      key: server.server,
-      description: "MCP server instructions",
-      action: "removed" as const,
-    })),
-    ...diff.changed.map((server) => ({
-      key: server.current.server,
-      description: "MCP server instructions",
-      action: "updated" as const,
-    })),
-  ]
+  const items = SystemContext.diffItems(diff, (server) => ({
+    key: server.server,
+    description: "MCP server instructions",
+  }))
   // Additions and removals render as small deltas; anything else restates the full list.
   if (diff.changed.length > 0 || (diff.added.length === 0 && diff.removed.length === 0))
     return {

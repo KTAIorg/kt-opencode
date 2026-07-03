@@ -117,7 +117,6 @@ export class DuplicateKeyError extends Schema.TaggedErrorClass<DuplicateKeyError
 
 interface PackedSource {
   readonly key: Key
-  readonly description: string
   readonly load: Effect.Effect<Observed | Unavailable>
   /** Restates the model's belief from a last-applied value when the source cannot be observed. */
   readonly recall: (stored: AppliedSource) => string | undefined
@@ -150,7 +149,6 @@ export function make<A>(source: Source<A>): SystemContext {
   return context([
     {
       key: source.key,
-      description,
       recall: (stored) =>
         Option.match(decode(stored.value), {
           onNone: () => undefined,
@@ -163,8 +161,9 @@ export function make<A>(source: Source<A>): SystemContext {
             description,
             applied: {
               value: encode(value),
-              description,
-              ...(source.removed ? { removed: requireText(source.key, "removal", source.removed(value)) } : {}),
+              ...(source.removed
+                ? { description, removed: requireText(source.key, "removal", source.removed(value)) }
+                : {}),
             },
             baseline: () => baseline(value),
             update: (previous) =>
@@ -204,6 +203,17 @@ export function diffByKey<A>(
       return before === undefined || !changed(before, value) ? [] : [{ previous: before, current: value }]
     }),
   }
+}
+
+export function diffItems<A>(
+  diff: ReturnType<typeof diffByKey<A>>,
+  item: (value: A) => { readonly key: string; readonly description: string },
+): ReadonlyArray<ReconcileItemUpdate> {
+  return [
+    ...diff.added.map((value) => ({ ...item(value), action: "added" as const })),
+    ...diff.removed.map((value) => ({ ...item(value), action: "removed" as const })),
+    ...diff.changed.map((value) => ({ ...item(value.current), action: "updated" as const })),
+  ]
 }
 
 /** Combines contexts in order and rejects duplicate source keys immediately. */

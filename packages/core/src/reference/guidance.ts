@@ -35,23 +35,10 @@ const update = (previous: ReadonlyArray<typeof Summary.Type>, current: ReadonlyA
     (reference) => reference.name,
     (before, after) => before.path !== after.path || before.description !== after.description,
   )
-  const items = [
-    ...diff.added.map((reference) => ({
-      key: reference.name,
-      description: reference.description ?? reference.path,
-      action: "added" as const,
-    })),
-    ...diff.removed.map((reference) => ({
-      key: reference.name,
-      description: reference.description ?? reference.path,
-      action: "removed" as const,
-    })),
-    ...diff.changed.map((reference) => ({
-      key: reference.current.name,
-      description: reference.current.description ?? reference.current.path,
-      action: "updated" as const,
-    })),
-  ]
+  const items = SystemContext.diffItems(diff, (reference) => ({
+    key: reference.name,
+    description: reference.description ?? reference.path,
+  }))
   // Additions and removals render as small deltas; anything else restates the full list.
   if (diff.changed.length > 0 || (diff.added.length === 0 && diff.removed.length === 0))
     return {
