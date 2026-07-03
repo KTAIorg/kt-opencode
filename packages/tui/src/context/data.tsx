@@ -726,17 +726,19 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           async refresh(sessionID: string) {
             if (sessionID === "global") {
               const result = await sdk.api.form.listRequests({ location: locationQuery(defaultLocation()) })
+              const location = { directory: result.location.directory, workspaceID: result.location.workspaceID }
               setStore(
                 "session",
                 "form",
                 sessionID,
                 mutable(
-                  result.data
-                    .filter((form) => form.sessionID === "global")
-                    .map((form) => ({
-                      ...form,
-                      location: { directory: result.location.directory, workspaceID: result.location.workspaceID },
-                    })),
+                  [
+                    ...(store.session.form[sessionID] ?? []).filter(
+                      (form) =>
+                        form.location?.directory !== location.directory || form.location.workspaceID !== location.workspaceID,
+                    ),
+                    ...result.data.filter((form) => form.sessionID === "global").map((form) => ({ ...form, location })),
+                  ],
                 ),
               )
               return
