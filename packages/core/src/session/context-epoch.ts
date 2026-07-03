@@ -8,7 +8,6 @@ import { SystemContext } from "../system-context/index"
 import { ContextSnapshotDecodeError } from "./error"
 import { SessionEvent } from "./event"
 import { SessionHistory } from "./history"
-import { SessionInput } from "./input"
 import { SessionMessage } from "./message"
 import { SessionSchema } from "./schema"
 import { SessionContextEpochTable } from "./sql"
@@ -47,11 +46,7 @@ const prepareOnce = Effect.fnUntraced(function* (
     [context, find(db, sessionID), SessionHistory.latestCompaction(db, sessionID)],
     { concurrency: "unbounded" },
   )
-  if (!stored) {
-    const generation = yield* SystemContext.initialize(value)
-    const baselineSeq = yield* insert(db, sessionID, generation)
-    return { baseline: generation.baseline, baselineSeq }
-  }
+  if (!stored) return yield* insertInitial(db, sessionID, value)
 
   const snapshot = yield* Schema.decodeUnknownEffect(SystemContext.Snapshot)(stored.snapshot).pipe(
     Effect.mapError((error) => new ContextSnapshotDecodeError({ sessionID, details: String(error) })),
@@ -82,8 +77,16 @@ const initializeOnce = Effect.fnUntraced(function* (
   context: Effect.Effect<SystemContext.SystemContext>,
   sessionID: SessionSchema.ID,
 ) {
-  if (yield* exists(db, sessionID)) return
-  const generation = yield* context.pipe(Effect.flatMap(SystemContext.initialize))
+  if (yield* exists(db, sessionID)) return undefined
+  return yield* insertInitial(db, sessionID, yield* context)
+})
+
+const insertInitial = Effect.fnUntraced(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+  value: SystemContext.SystemContext,
+) {
+  const generation = yield* SystemContext.initialize(value)
   const baselineSeq = yield* insert(db, sessionID, generation)
   return { baseline: generation.baseline, baselineSeq }
 })

@@ -168,6 +168,10 @@ const layer = Layer.effect(
       if (session.location.directory !== location.directory || session.location.workspaceID !== location.workspaceID)
         return yield* Effect.interrupt
       const agent = yield* agents.select(session.agent)
+      // Epoch initialization runs before promotion so a blocked System Context fails the
+      // turn while prompts are still pending in the durable inbox; a retry re-drains them.
+      // Reconciliation (`prepare` below) runs after promotion so ContextUpdated messages
+      // sequence after the promoted user input.
       const initialized = yield* SessionContextEpoch.initialize(db, loadSystemContext(agent), session.id)
       const toolFibers = yield* FiberSet.make<void, ToolOutputStore.Error>()
       let needsContinuation = false
