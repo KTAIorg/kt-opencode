@@ -350,6 +350,7 @@ export const dict = {
 
   "zen.api.error.rateLimitExceeded": "Rate limit exceeded. Please try again later.",
   "zen.api.error.modelNotSupported": "Model {{model}} is not supported",
+  "zen.api.error.requestBodyTooLarge": "Request body too large. Maximum allowed size is {{maxMB}}MB.",
   "zen.api.error.modelFormatNotSupported": "Model {{model}} is not supported for format {{format}}",
   "zen.api.error.noProviderAvailable": "No provider available",
   "zen.api.error.providerNotSupported": "Provider {{provider}} not supported",

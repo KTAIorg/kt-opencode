@@ -17,6 +17,7 @@ import { ProviderTable } from "@opencode-ai/console-core/schema/provider.sql.js"
 import { logger } from "./logger"
 import {
   AuthError,
+  BodyLimitError,
   CreditsError,
   MonthlyLimitError,
   UserLimitError,
@@ -38,6 +39,7 @@ import { anthropicHelper } from "./provider/anthropic"
 import { googleHelper } from "./provider/google"
 import { openaiHelper } from "./provider/openai"
 import { oaCompatHelper } from "./provider/openai-compatible"
+import { MAX_BODY_BYTES, readJsonBody } from "./body"
 import { createRateLimiter as createIpRateLimiter } from "./ipRateLimiter"
 import { createRateLimiter as createKeyRateLimiter } from "./keyRateLimiter"
 import { createTrialLimiter } from "./trialLimiter"
@@ -97,7 +99,7 @@ export async function handler(
 
   try {
     const url = input.request.url
-    const body = await input.request.json()
+    const body = await readJsonBody(input.request)
     const model = opts.parseModel(url, body)
     const variant = opts.parseVariant(url, body)
     const isStream = opts.parseIsStream(url, body)
@@ -465,6 +467,18 @@ export async function handler(
         })
       } catch {}
     }
+
+    if (error instanceof BodyLimitError)
+      return new Response(
+        JSON.stringify({
+          type: "error",
+          error: {
+            type: error.constructor.name,
+            message: t("zen.api.error.requestBodyTooLarge", { maxMB: MAX_BODY_BYTES / 1024 / 1024 }),
+          },
+        }),
+        { status: 413 },
+      )
 
     if (error instanceof RegionError)
       return new Response(
