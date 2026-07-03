@@ -21,7 +21,6 @@ import { PermissionV2 } from "@opencode-ai/core/permission"
 import { EventTable } from "@opencode-ai/core/event/sql"
 import { Project } from "@opencode-ai/core/project"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
-import { QuestionV2 } from "@opencode-ai/core/question"
 import { AbsolutePath } from "@opencode-ai/core/schema"
 import { SessionV2 } from "@opencode-ai/core/session"
 import { Snapshot } from "@opencode-ai/core/snapshot"
@@ -276,7 +275,6 @@ const it = testEffect(
     LayerNode.group([
       Database.node,
       EventV2.node,
-      QuestionV2.node,
       SessionProjector.node,
       SessionStore.node,
       AgentV2.node,
@@ -2815,62 +2813,6 @@ describe("SessionRunnerLLM", () => {
                   message: expect.stringContaining("Tool execution failed: Failed to encode tool output"),
                 },
               },
-            },
-          ],
-        },
-      ])
-    }),
-  )
-
-  it.effect("interrupts runner continuation when a question is dismissed", () =>
-    Effect.gen(function* () {
-      yield* setup
-      const session = yield* SessionV2.Service
-      const registry = yield* ToolRegistry.Service
-      const questions = yield* QuestionV2.Service
-      yield* registry.register({
-        question: Tool.make({
-          description: "Ask the user",
-          input: Schema.Struct({}),
-          output: Schema.Struct({}),
-          execute: (_, context) =>
-            questions.ask({ sessionID: context.sessionID, questions: [] }).pipe(Effect.as({}), Effect.orDie),
-        }),
-      })
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Ask then stop" }), resume: false })
-
-      requests.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-question", name: "question", input: {} }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [],
-      ]
-
-      const run = yield* session.resume(sessionID).pipe(Effect.exit, Effect.forkChild)
-      let pending = yield* questions.list()
-      while (pending.length === 0) {
-        yield* Effect.yieldNow
-        pending = yield* questions.list()
-      }
-      yield* questions.reject(pending[0]!.id)
-      const exit = yield* Fiber.join(run)
-
-      expect(exit._tag).toBe("Failure")
-      if (exit._tag === "Failure") expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
-      expect(requests).toHaveLength(1)
-      expect(yield* session.context(sessionID)).toMatchObject([
-        { type: "user", text: "Ask then stop" },
-        {
-          type: "assistant",
-          content: [
-            {
-              type: "tool",
-              id: "call-question",
-              state: { status: "error", error: { type: "unknown", message: "Tool execution interrupted" } },
             },
           ],
         },
