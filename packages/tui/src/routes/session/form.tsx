@@ -1,10 +1,10 @@
 import { createStore } from "solid-js/store"
-import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core"
 import open from "open"
 import { selectedForeground, tint, useTheme } from "../../context/theme"
-import type { FormFormInfo, FormValue, FormWhen } from "@opencode-ai/sdk/v2"
+import type { FormFormInfo, FormValue } from "@opencode-ai/sdk/v2"
 import type { FormInfo } from "../../context/data"
 import { useSDK } from "../../context/sdk"
 import { SplitBorder } from "../../ui/border"
@@ -15,17 +15,6 @@ const FORM_MODE = "form"
 
 type Field = FormFormInfo["fields"][number]
 
-// Mirrors core when-evaluation in packages/core/src/form.ts.
-function matches(when: FormWhen, value: FormValue | undefined) {
-  if (value === undefined) return false
-  const hit = Array.isArray(value) ? value.some((item) => item === when.value) : value === when.value
-  return when.op === "eq" ? hit : !hit
-}
-
-function isActive(field: Field, answers: Record<string, FormValue | undefined>) {
-  return (field.when ?? []).every((when) => matches(when, answers[when.key]))
-}
-
 function fieldLabel(field: Field) {
   return field.title ?? field.key
 }
@@ -34,7 +23,6 @@ function truncate(label: string, max: number) {
   return label.length > max ? label.slice(0, max - 1).trimEnd() + "…" : label
 }
 
-// Mirrors core validateField in packages/core/src/form.ts.
 function validateText(field: Field, text: string): string | undefined {
   if (field.type !== "string") return
   if (field.minLength !== undefined && text.length < field.minLength)
@@ -49,24 +37,19 @@ function validateText(field: Field, text: string): string | undefined {
     }
   }
   if (field.format === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) return "Expected an email address"
-  if (field.format === "uri" && !isUri(text)) return "Expected a URL"
-  if (field.format === "date" && !isDate(text)) return "Expected a date (YYYY-MM-DD)"
-  if (field.format === "date-time" && Number.isNaN(new Date(text).getTime())) return "Expected a date and time"
-}
-
-function isUri(value: string) {
-  try {
-    new URL(value)
-    return true
-  } catch {
-    return false
+  if (field.format === "uri") {
+    try {
+      new URL(text)
+    } catch {
+      return "Expected a URL"
+    }
   }
-}
-
-function isDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-  const date = new Date(`${value}T00:00:00.000Z`)
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  if (field.format === "date") {
+    const date = new Date(`${text}T00:00:00.000Z`)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== text)
+      return "Expected a date (YYYY-MM-DD)"
+  }
+  if (field.format === "date-time" && Number.isNaN(new Date(text).getTime())) return "Expected a date and time"
 }
 
 function fieldRows(field: Field): { value: FormValue; label: string; description?: string }[] {
@@ -93,12 +76,7 @@ function display(field: Field, value: FormValue | undefined) {
 }
 
 export function FormPrompt(props: { form: FormInfo }) {
-  return (
-    <Switch>
-      <Match when={props.form.mode === "url" && props.form}>{(form) => <UrlPrompt form={form()} />}</Match>
-      <Match when={props.form.mode === "form" && props.form}>{(form) => <FieldsPrompt form={form()} />}</Match>
-    </Switch>
-  )
+  return props.form.mode === "url" ? <UrlPrompt form={props.form} /> : <FieldsPrompt form={props.form} />
 }
 
 function UrlPrompt(props: { form: FormInfo & { mode: "url" } }) {
@@ -110,10 +88,7 @@ function UrlPrompt(props: { form: FormInfo & { mode: "url" } }) {
     return typeof value === "string" ? value : undefined
   })
 
-  onMount(() => {
-    const popMode = modeStack.push(FORM_MODE)
-    onCleanup(popMode)
-  })
+  onMount(() => onCleanup(modeStack.push(FORM_MODE)))
 
   useBindings(() => ({
     mode: FORM_MODE,
@@ -182,14 +157,12 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
   const tuiConfig = useTuiConfig()
   const modeStack = useOpencodeModeStack()
 
-  const defaults = Object.fromEntries(
-    props.form.fields.flatMap((field) => (field.default === undefined ? [] : [[field.key, field.default]])),
-  ) as Record<string, FormValue | undefined>
-
   const [tabHover, setTabHover] = createSignal<number | "confirm" | null>(null)
   const [store, setStore] = createStore({
     tab: 0,
-    answers: defaults,
+    answers: Object.fromEntries(
+      props.form.fields.flatMap((field) => (field.default === undefined ? [] : [[field.key, field.default]])),
+    ) as Record<string, FormValue | undefined>,
     custom: {} as Record<string, string>,
     selected: 0,
     editing: false,
@@ -199,7 +172,16 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
   let textarea: TextareaRenderable | undefined
   let review: ScrollBoxRenderable | undefined
 
-  const fields = createMemo(() => props.form.fields.filter((field) => isActive(field, store.answers)))
+  const fields = createMemo(() =>
+    props.form.fields.filter((field) =>
+      (field.when ?? []).every((when) => {
+        const value = store.answers[when.key]
+        if (value === undefined) return false
+        const hit = Array.isArray(value) ? value.some((item) => item === when.value) : value === when.value
+        return when.op === "eq" ? hit : !hit
+      }),
+    ),
+  )
   const single = createMemo(() => {
     const list = fields()
     if (list.length !== 1) return false
@@ -266,30 +248,6 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
     setStore("error", "")
   }
 
-  function submit() {
-    const entries = fields().flatMap((field) => {
-      const value = store.answers[field.key]
-      return value === undefined ? [] : [[field.key, value] as const]
-    })
-    sdk.api.form
-      .reply({
-        sessionID: props.form.sessionID,
-        formID: props.form.id,
-        answer: Object.fromEntries(entries),
-      })
-      .catch((error: unknown) => {
-        const message =
-          typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
-            ? error.message
-            : "Invalid answer"
-        setStore("error", message)
-      })
-  }
-
-  function cancel() {
-    void sdk.api.form.cancel({ sessionID: props.form.sessionID, formID: props.form.id })
-  }
-
   function pick(value: FormValue, customValue?: string) {
     const current = field()
     if (!current) return
@@ -316,10 +274,6 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
     if (index === -1) list.push(value)
     if (index !== -1) list.splice(index, 1)
     answer(current.key, list)
-  }
-
-  function moveTo(index: number) {
-    setStore("selected", index)
   }
 
   function selectTab(index: number) {
@@ -391,10 +345,7 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
     move()
   }
 
-  onMount(() => {
-    const popMode = modeStack.push(FORM_MODE)
-    onCleanup(popMode)
-  })
+  onMount(() => onCleanup(modeStack.push(FORM_MODE)))
 
   useBindings(() => ({
     mode: FORM_MODE,
@@ -421,7 +372,7 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
         group: "Form",
         cmd: () => {
           if (textual()) {
-            cancel()
+            void sdk.api.form.cancel({ sessionID: props.form.sessionID, formID: props.form.id })
             return
           }
           setStore("editing", false)
@@ -515,7 +466,7 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
           title: "Dismiss form",
           category: "Form",
           run() {
-            cancel()
+            void sdk.api.form.cancel({ sessionID: props.form.sessionID, formID: props.form.id })
           },
         },
       ],
@@ -548,8 +499,43 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
         },
         ...(confirm()
           ? [
-              { key: "return", desc: "Submit form", group: "Form", cmd: () => submit() },
-              { key: "escape", desc: "Dismiss form", group: "Form", cmd: () => cancel() },
+              {
+                key: "return",
+                desc: "Submit form",
+                group: "Form",
+                cmd: () => {
+                  sdk.api.form
+                    .reply({
+                      sessionID: props.form.sessionID,
+                      formID: props.form.id,
+                      answer: Object.fromEntries(
+                        fields().flatMap((field) => {
+                          const value = store.answers[field.key]
+                          return value === undefined ? [] : [[field.key, value] as const]
+                        }),
+                      ),
+                    })
+                    .catch((error: unknown) => {
+                      setStore(
+                        "error",
+                        typeof error === "object" &&
+                          error !== null &&
+                          "message" in error &&
+                          typeof error.message === "string"
+                          ? error.message
+                          : "Invalid answer",
+                      )
+                    })
+                },
+              },
+              {
+                key: "escape",
+                desc: "Dismiss form",
+                group: "Form",
+                cmd: () => {
+                  void sdk.api.form.cancel({ sessionID: props.form.sessionID, formID: props.form.id })
+                },
+              },
               { key: "up", desc: "Scroll review", group: "Form", cmd: () => review?.scrollBy(-1) },
               { key: "k", desc: "Scroll review", group: "Form", cmd: () => review?.scrollBy(-1) },
               { key: "down", desc: "Scroll review", group: "Form", cmd: () => review?.scrollBy(1) },
@@ -562,7 +548,7 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
                 desc: `Select answer ${index + 1}`,
                 group: "Form",
                 cmd: () => {
-                  moveTo(index)
+                  setStore("selected", index)
                   selectOption()
                 },
               })),
@@ -570,18 +556,25 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
                 key: "up",
                 desc: "Previous answer",
                 group: "Form",
-                cmd: () => moveTo((store.selected - 1 + total) % total),
+                cmd: () => setStore("selected", (store.selected - 1 + total) % total),
               },
               {
                 key: "k",
                 desc: "Previous answer",
                 group: "Form",
-                cmd: () => moveTo((store.selected - 1 + total) % total),
+                cmd: () => setStore("selected", (store.selected - 1 + total) % total),
               },
-              { key: "down", desc: "Next answer", group: "Form", cmd: () => moveTo((store.selected + 1) % total) },
-              { key: "j", desc: "Next answer", group: "Form", cmd: () => moveTo((store.selected + 1) % total) },
+              { key: "down", desc: "Next answer", group: "Form", cmd: () => setStore("selected", (store.selected + 1) % total) },
+              { key: "j", desc: "Next answer", group: "Form", cmd: () => setStore("selected", (store.selected + 1) % total) },
               { key: "return", desc: "Select answer", group: "Form", cmd: () => selectOption() },
-              { key: "escape", desc: "Dismiss form", group: "Form", cmd: () => cancel() },
+              {
+                key: "escape",
+                desc: "Dismiss form",
+                group: "Form",
+                cmd: () => {
+                  void sdk.api.form.cancel({ sessionID: props.form.sessionID, formID: props.form.id })
+                },
+              },
               ...tuiConfig.keybinds.get("app.exit"),
             ]),
       ],
@@ -711,8 +704,8 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
                     }
                     return (
                       <box
-                        onMouseOver={() => moveTo(i())}
-                        onMouseDown={() => moveTo(i())}
+                        onMouseOver={() => setStore("selected", i())}
+                        onMouseDown={() => setStore("selected", i())}
                         onMouseUp={() => {
                           if (renderer.getSelection()?.getSelectedText()) return
                           selectOption()
@@ -744,8 +737,8 @@ function FieldsPrompt(props: { form: FormInfo & { mode: "form" } }) {
                 </For>
                 <Show when={custom()}>
                   <box
-                    onMouseOver={() => moveTo(rows().length)}
-                    onMouseDown={() => moveTo(rows().length)}
+                    onMouseOver={() => setStore("selected", rows().length)}
+                    onMouseDown={() => setStore("selected", rows().length)}
                     onMouseUp={() => {
                       if (renderer.getSelection()?.getSelectedText()) return
                       selectOption()

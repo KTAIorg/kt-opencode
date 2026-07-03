@@ -20,7 +20,7 @@ export function QuestionPrompt(props: { request: QuestionV2Request; directory?: 
 
   const questions = createMemo(() => props.request.questions)
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
-  const tabs = createMemo(() => (single() ? 1 : questions().length + 1)) // questions + confirm tab (no confirm for single select)
+  const tabs = createMemo(() => (single() ? 1 : questions().length + 1))
   const [tabHover, setTabHover] = createSignal<number | "confirm" | null>(null)
   const [store, setStore] = createStore({
     tab: 0,
@@ -44,22 +44,6 @@ export function QuestionPrompt(props: { request: QuestionV2Request; directory?: 
     if (!value) return false
     return store.answers[store.tab]?.includes(value) ?? false
   })
-
-  function submit() {
-    const answers = questions().map((_, i) => store.answers[i] ?? [])
-    void sdk.api.question.reply({
-      sessionID: props.request.sessionID,
-      requestID: props.request.id,
-      answers,
-    })
-  }
-
-  function reject() {
-    void sdk.api.question.reject({
-      sessionID: props.request.sessionID,
-      requestID: props.request.id,
-    })
-  }
 
   function pick(answer: string, custom: boolean = false) {
     const answers = [...store.answers]
@@ -93,10 +77,6 @@ export function QuestionPrompt(props: { request: QuestionV2Request; directory?: 
     setStore("answers", answers)
   }
 
-  function moveTo(index: number) {
-    setStore("selected", index)
-  }
-
   function selectTab(index: number) {
     setStore("tab", index)
     setStore("selected", 0)
@@ -125,10 +105,7 @@ export function QuestionPrompt(props: { request: QuestionV2Request; directory?: 
     pick(opt.label)
   }
 
-  onMount(() => {
-    const popMode = modeStack.push(QUESTION_MODE)
-    onCleanup(popMode)
-  })
+  onMount(() => onCleanup(modeStack.push(QUESTION_MODE)))
 
   useBindings(() => ({
     mode: QUESTION_MODE,
@@ -220,7 +197,7 @@ export function QuestionPrompt(props: { request: QuestionV2Request; directory?: 
           title: "Reject question",
           category: "Question",
           run() {
-            reject()
+            void sdk.api.question.reject({ sessionID: props.request.sessionID, requestID: props.request.id })
           },
         },
       ],
@@ -249,8 +226,26 @@ export function QuestionPrompt(props: { request: QuestionV2Request; directory?: 
         },
         ...(confirm()
           ? [
-              { key: "return", desc: "Submit answer", group: "Question", cmd: () => submit() },
-              { key: "escape", desc: "Reject question", group: "Question", cmd: () => reject() },
+              {
+                key: "return",
+                desc: "Submit answer",
+                group: "Question",
+                cmd: () => {
+                  void sdk.api.question.reply({
+                    sessionID: props.request.sessionID,
+                    requestID: props.request.id,
+                    answers: questions().map((_, i) => store.answers[i] ?? []),
+                  })
+                },
+              },
+              {
+                key: "escape",
+                desc: "Reject question",
+                group: "Question",
+                cmd: () => {
+                  void sdk.api.question.reject({ sessionID: props.request.sessionID, requestID: props.request.id })
+                },
+              },
               ...tuiConfig.keybinds.get("app.exit"),
             ]
           : [
@@ -259,7 +254,7 @@ export function QuestionPrompt(props: { request: QuestionV2Request; directory?: 
                 desc: `Select answer ${index + 1}`,
                 group: "Question",
                 cmd: () => {
-                  moveTo(index)
+                  setStore("selected", index)
                   selectOption()
                 },
               })),
@@ -267,18 +262,25 @@ export function QuestionPrompt(props: { request: QuestionV2Request; directory?: 
                 key: "up",
                 desc: "Previous answer",
                 group: "Question",
-                cmd: () => moveTo((store.selected - 1 + total) % total),
+                cmd: () => setStore("selected", (store.selected - 1 + total) % total),
               },
               {
                 key: "k",
                 desc: "Previous answer",
                 group: "Question",
-                cmd: () => moveTo((store.selected - 1 + total) % total),
+                cmd: () => setStore("selected", (store.selected - 1 + total) % total),
               },
-              { key: "down", desc: "Next answer", group: "Question", cmd: () => moveTo((store.selected + 1) % total) },
-              { key: "j", desc: "Next answer", group: "Question", cmd: () => moveTo((store.selected + 1) % total) },
+              { key: "down", desc: "Next answer", group: "Question", cmd: () => setStore("selected", (store.selected + 1) % total) },
+              { key: "j", desc: "Next answer", group: "Question", cmd: () => setStore("selected", (store.selected + 1) % total) },
               { key: "return", desc: "Select answer", group: "Question", cmd: () => selectOption() },
-              { key: "escape", desc: "Reject question", group: "Question", cmd: () => reject() },
+              {
+                key: "escape",
+                desc: "Reject question",
+                group: "Question",
+                cmd: () => {
+                  void sdk.api.question.reject({ sessionID: props.request.sessionID, requestID: props.request.id })
+                },
+              },
               ...tuiConfig.keybinds.get("app.exit"),
             ]),
       ],
@@ -367,8 +369,8 @@ export function QuestionPrompt(props: { request: QuestionV2Request; directory?: 
                   const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
                   return (
                     <box
-                      onMouseOver={() => moveTo(i())}
-                      onMouseDown={() => moveTo(i())}
+                      onMouseOver={() => setStore("selected", i())}
+                      onMouseDown={() => setStore("selected", i())}
                       onMouseUp={() => {
                         if (renderer.getSelection()?.getSelectedText()) return
                         selectOption()
@@ -399,8 +401,8 @@ export function QuestionPrompt(props: { request: QuestionV2Request; directory?: 
               </For>
               <Show when={custom()}>
                 <box
-                  onMouseOver={() => moveTo(options().length)}
-                  onMouseDown={() => moveTo(options().length)}
+                  onMouseOver={() => setStore("selected", options().length)}
+                  onMouseDown={() => setStore("selected", options().length)}
                   onMouseUp={() => {
                     if (renderer.getSelection()?.getSelectedText()) return
                     selectOption()
