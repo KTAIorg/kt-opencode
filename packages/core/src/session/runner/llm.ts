@@ -332,14 +332,6 @@ const layer = Layer.effect(
           const settled = yield* restore(awaitToolFibers(toolFibers)).pipe(Effect.exit)
           const toolsInterrupted = settled._tag === "Failure" && Cause.hasInterrupts(settled.cause)
           const questionDismissed = settled._tag === "Failure" && isQuestionRejected(settled.cause)
-
-          if (questionDismissed || streamInterrupted || toolsInterrupted) {
-            yield* FiberSet.clear(toolFibers)
-            yield* serialized(ledger.failUnsettledTools("Tool execution interrupted"))
-            yield* serialized(ledger.failAssistant("Step interrupted"))
-            // Match V1: dismissing a question halts the loop like an interruption.
-            if (questionDismissed) return yield* Effect.interrupt
-          }
           // A settled tool fiber failure is one of two things. A defect from a tool
           // implementation becomes a failed tool call the model can read, and the step still
           // settles so the model may recover. A typed infrastructure failure (tool output
@@ -347,21 +339,53 @@ const layer = Layer.effect(
           const settledFailure = settled._tag === "Failure" && !toolsInterrupted ? settled.cause : undefined
           const infraError =
             settledFailure === undefined ? undefined : Option.getOrUndefined(Cause.findErrorOption(settledFailure))
-          if (settledFailure !== undefined) {
-            const failure = infraError ?? Cause.squash(settledFailure)
-            const message = failure instanceof Error ? failure.message : String(failure)
-            yield* serialized(ledger.failUnsettledTools(`Tool execution failed: ${message}`))
-            if (infraError !== undefined) yield* serialized(ledger.failAssistant(`Tool execution failed: ${message}`))
+
+          const settlement =
+            questionDismissed || streamInterrupted || toolsInterrupted
+              ? { _tag: "Interrupted" as const, questionDismissed }
+              : providerFailed
+                ? { _tag: "ProviderFailed" as const }
+                : infraError !== undefined
+                  ? { _tag: "ToolInfraFailed" as const, cause: infraError }
+                  : { _tag: "Clean" as const }
+
+          if (settlement._tag === "Interrupted") {
+            yield* FiberSet.clear(toolFibers)
+            yield* serialized(ledger.failUnsettledTools("Tool execution interrupted"))
+            yield* serialized(ledger.failAssistant("Step interrupted"))
+            // Match V1: dismissing a question halts the loop like an interruption.
+            if (settlement.questionDismissed) return yield* Effect.interrupt
           }
 
-          const stepSettlement = ledger.stepSettlement()
-          const stepEndedCleanly =
-            !streamInterrupted && !toolsInterrupted && infraError === undefined && !providerFailed
-          if (stepSettlement && stepEndedCleanly) yield* publishStepEnd(stepSettlement)
-          // A provider error orphans recorded local calls; a clean stream can still leave
-          // hosted calls without results.
-          if (providerFailed) yield* serialized(ledger.failUnsettledTools("Tool execution interrupted"))
-          if (stream._tag === "Success" && !providerFailed)
+          if (settlement._tag === "ToolInfraFailed") {
+            const message = settlement.cause instanceof Error ? settlement.cause.message : String(settlement.cause)
+            yield* serialized(ledger.failUnsettledTools(`Tool execution failed: ${message}`))
+            yield* serialized(ledger.failAssistant(`Tool execution failed: ${message}`))
+          }
+
+          if (settlement._tag === "Clean") {
+            if (settledFailure !== undefined) {
+              const failure = Cause.squash(settledFailure)
+              const message = failure instanceof Error ? failure.message : String(failure)
+              yield* serialized(ledger.failUnsettledTools(`Tool execution failed: ${message}`))
+            }
+            const stepSettlement = ledger.stepSettlement()
+            if (stepSettlement) yield* publishStepEnd(stepSettlement)
+          }
+
+          // A provider error orphans recorded local calls. A tool fiber that failed
+          // alongside the provider error still settles with its own failure message first.
+          if (settlement._tag === "ProviderFailed") {
+            if (settledFailure !== undefined) {
+              const failure = infraError ?? Cause.squash(settledFailure)
+              const message = failure instanceof Error ? failure.message : String(failure)
+              yield* serialized(ledger.failUnsettledTools(`Tool execution failed: ${message}`))
+            }
+            yield* serialized(ledger.failUnsettledTools("Tool execution interrupted"))
+          }
+
+          // A clean stream can still leave hosted calls without results.
+          if (stream._tag === "Success" && settlement._tag !== "ProviderFailed")
             yield* serialized(ledger.failUnsettledTools("Provider did not return a tool result", true))
 
           if (stream._tag === "Failure") return yield* Effect.failCause(stream.cause)
