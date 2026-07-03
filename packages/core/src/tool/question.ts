@@ -3,6 +3,7 @@ export * as QuestionTool from "./question"
 import type { PluginContext } from "@opencode-ai/plugin/v2/effect"
 import { ToolFailure } from "@opencode-ai/llm"
 import { Effect, Schema } from "effect"
+import { Form } from "../form"
 import { PermissionV2 } from "../permission"
 import { QuestionV2 } from "../question"
 import { Tool } from "./tool"
@@ -42,10 +43,35 @@ export const toModelOutput = (
   return `User has answered your questions: ${formatted}. You can now continue with the user's answers in mind.`
 }
 
+// Each question becomes one field keyed by position; answers translate back positionally.
+export const toField = (question: QuestionV2.Prompt, index: number): Form.Field => {
+  const shared = {
+    key: `q${index}`,
+    title: question.header,
+    description: question.question,
+    options: question.options.map((option) => ({
+      value: option.label,
+      label: option.label,
+      description: option.description,
+    })),
+    custom: true,
+  }
+  if (question.multiple === true) return { ...shared, type: "multiselect" }
+  return { ...shared, type: "string" }
+}
+
+export const toAnswers = (questions: ReadonlyArray<QuestionV2.Prompt>, answer: Form.Answer) =>
+  questions.map((_, index): QuestionV2.Answer => {
+    const value = answer[`q${index}`]
+    if (value === undefined) return []
+    if (typeof value === "object") return Array.from(value)
+    return [String(value)]
+  })
+
 export const Plugin = {
   id: "core-question-tool",
   effect: Effect.fn("QuestionTool.Plugin")(function* (ctx: PluginContext) {
-    const question = yield* QuestionV2.Service
+    const forms = yield* Form.Service
     const permission = yield* PermissionV2.Service
 
     yield* ctx.tool
@@ -69,15 +95,23 @@ export const Plugin = {
               .pipe(
                 Effect.mapError(() => new ToolFailure({ message: "Permission denied: question" })),
                 Effect.andThen(
-                  question
+                  forms
                     .ask({
                       sessionID: context.sessionID,
-                      questions: input.questions,
-                      tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
+                      metadata: {
+                        kind: "question",
+                        tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
+                      },
+                      mode: "form",
+                      fields: input.questions.map(toField),
                     })
                     .pipe(Effect.orDie),
                 ),
-                Effect.map((answers) => ({ answers })),
+                Effect.flatMap((state) => {
+                  // The runner halts the loop on this exact defect (session/runner/llm.ts).
+                  if (state.status !== "answered") return Effect.die(new QuestionV2.RejectedError())
+                  return Effect.succeed({ answers: toAnswers(input.questions, state.answer) })
+                }),
               ),
         }),
       })
