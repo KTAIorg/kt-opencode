@@ -17,4 +17,6 @@ if (process.versions.bun !== expectedBunVersion) {
   console.warn(`Warning: Bun version ${process.versions.bun} differs from expected ${expectedBunVersion}`);
 }
 '
-bun typecheck
+# Only typecheck packages affected since the merge base with origin/dev,
+# plus their dependents. Override the base with TURBO_SCM_BASE if needed.
+TURBO_SCM_BASE="${TURBO_SCM_BASE:-origin/dev}" bun turbo typecheck --affected
