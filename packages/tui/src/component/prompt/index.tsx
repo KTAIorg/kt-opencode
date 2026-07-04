@@ -160,6 +160,7 @@ export function Prompt(props: PromptProps) {
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => data.session.status(props.sessionID ?? ""))
+  const compaction = createMemo(() => data.session.compaction.get(props.sessionID ?? ""))
   const activeSubagents = createMemo(() => {
     if (!props.sessionID) return 0
     return data.session.family(props.sessionID).filter(
@@ -1637,6 +1638,18 @@ export function Prompt(props: PromptProps) {
         </box>
         <box width="100%" flexDirection="row" justifyContent="space-between">
           <Switch>
+            <Match when={compaction()}>
+              <box flexDirection="row" gap={1} flexGrow={1} justifyContent="flex-start">
+                <box marginLeft={1}>
+                  <Spinner>Compacting conversation...</Spinner>
+                </box>
+                <Show when={compaction() === "auto"}>
+                  <text fg={theme.text}>
+                    esc <span style={{ fg: theme.textMuted }}>interrupt</span>
+                  </text>
+                </Show>
+              </box>
+            </Match>
             <Match when={status() === "running"}>
               <box flexDirection="row" gap={1} flexGrow={1} justifyContent="flex-start">
                 <box marginLeft={1}>

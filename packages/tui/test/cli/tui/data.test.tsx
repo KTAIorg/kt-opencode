@@ -311,6 +311,61 @@ test("tracks session status from active sessions and execution events", async ()
     await wait(() => data.session.status("session-live") === "idle")
 
     emitEvent(events, {
+      id: "evt_compaction_started",
+      created: 0,
+      type: "session.compaction.started",
+      durable: durable("session-compact"),
+      data: {
+        sessionID: "session-compact",
+        reason: "manual",
+      },
+    })
+    await wait(() => data.session.compaction.get("session-compact") === "manual")
+    expect(data.session.status("session-compact")).toBe("running")
+
+    emitEvent(events, {
+      id: "evt_compaction_ended",
+      created: 0,
+      type: "session.compaction.ended",
+      durable: durable("session-compact", 1, 2),
+      data: {
+        sessionID: "session-compact",
+        reason: "manual",
+        text: "Summary",
+        recent: "",
+      },
+    })
+    await wait(() => data.session.compaction.get("session-compact") === undefined)
+    expect(data.session.status("session-compact")).toBe("idle")
+
+    emitEvent(events, {
+      id: "evt_auto_compaction_started",
+      created: 0,
+      type: "session.compaction.started",
+      durable: durable("session-auto-compact"),
+      data: {
+        sessionID: "session-auto-compact",
+        reason: "auto",
+      },
+    })
+    await wait(() => data.session.compaction.get("session-auto-compact") === "auto")
+
+    emitEvent(events, {
+      id: "evt_post_compaction_step",
+      created: 0,
+      type: "session.step.started",
+      durable: durable("session-auto-compact", 1, 2),
+      data: {
+        sessionID: "session-auto-compact",
+        assistantMessageID: "message-after-compaction",
+        agent: "build",
+        model: { id: "model", providerID: "provider" },
+      },
+    })
+    await wait(() => data.session.compaction.get("session-auto-compact") === undefined)
+    expect(data.session.status("session-auto-compact")).toBe("running")
+
+    emitEvent(events, {
       id: "evt_failed_step_started",
       created: 0,
       type: "session.step.started",

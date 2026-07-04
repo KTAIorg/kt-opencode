@@ -382,7 +382,25 @@ export function Session() {
         aliases: ["summarize"],
       },
       run: () => {
-        void sdk.api.session.compact({ sessionID: route.sessionID })
+        const sessionID = route.sessionID
+        if (data.session.status(sessionID) === "running") {
+          toast.show({
+            variant: "warning",
+            title: "Compaction unavailable",
+            message: "Wait for the current session activity to finish.",
+          })
+          dialog.clear()
+          return
+        }
+        data.session.compaction.startManual(sessionID)
+        void sdk.api.session.compact({ sessionID }).catch((error) => {
+          data.session.compaction.clearManual(sessionID)
+          toast.show({
+            variant: "error",
+            title: "Compaction failed",
+            message: errorMessage(error),
+          })
+        })
         dialog.clear()
       },
     },

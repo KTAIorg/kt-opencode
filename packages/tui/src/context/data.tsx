@@ -20,12 +20,13 @@ import type {
   SkillV2Info,
   V2Event,
 } from "@opencode-ai/sdk/v2"
-import { createStore, produce } from "solid-js/store"
+import { createStore, produce, reconcile } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import { useSDK } from "./sdk"
 import { createSignal, onCleanup } from "solid-js"
 
 export type DataSessionStatus = "idle" | "running"
+type CompactionReason = Extract<V2Event, { type: "session.compaction.started" }>["data"]["reason"]
 
 const messageIDFromEvent = (eventID: string) => eventID.replace(/^evt_/, "msg_")
 
@@ -51,6 +52,7 @@ type Data = {
     // session ID in that family, including the key itself once its info arrives.
     family: Record<string, string[]>
     status: Record<string, DataSessionStatus>
+    compaction: Record<string, CompactionReason>
     message: Record<string, SessionMessage[]>
     permission: Record<string, PermissionV2Request[]>
     question: Record<string, QuestionV2Request[]>
@@ -85,6 +87,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         info: {},
         family: {},
         status: {},
+        compaction: {},
         message: {},
         permission: {},
         question: {},
@@ -198,6 +201,25 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           if (!family.includes(sessionID)) family.push(sessionID)
         }),
       )
+    }
+
+    const startCompaction = (sessionID: string, reason: CompactionReason) => {
+      if (store.session.status[sessionID] !== "running") setStore("session", "status", sessionID, "running")
+      if (store.session.compaction[sessionID] !== reason)
+        setStore("session", "compaction", sessionID, reason)
+    }
+
+    const clearCompaction = (sessionID: string, settleManual = true) => {
+      const reason = store.session.compaction[sessionID]
+      if (!reason) return
+      setStore(
+        "session",
+        "compaction",
+        produce((draft) => {
+          delete draft[sessionID]
+        }),
+      )
+      if (settleManual && reason === "manual") setStore("session", "status", sessionID, "idle")
     }
 
     function handleEvent(event: V2Event) {
@@ -321,6 +343,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           })
           break
         case "session.step.started":
+          clearCompaction(event.data.sessionID, false)
           setStore("session", "status", event.data.sessionID, "running")
           message.update(event.data.sessionID, (draft, index) => {
             if (index.has(event.data.assistantMessageID)) return
@@ -517,11 +540,14 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           })
           break
         case "session.retried":
-        case "session.compaction.started":
           setStore("session", "status", event.data.sessionID, "running")
+          break
+        case "session.compaction.started":
+          startCompaction(event.data.sessionID, event.data.reason)
           break
         case "session.execution.settled":
           setStore("session", "status", event.data.sessionID, "idle")
+          clearCompaction(event.data.sessionID, false)
           break
         case "session.revert.staged":
           if (store.session.info[event.data.sessionID])
@@ -535,6 +561,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         case "session.compaction.delta":
           break
         case "session.compaction.ended":
+          clearCompaction(event.data.sessionID)
           message.update(event.data.sessionID, (draft, index) => {
             message.append(draft, index, {
               id: messageIDFromEvent(event.id),
@@ -654,6 +681,17 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         },
         status(sessionID: string) {
           return store.session.status[sessionID] ?? "idle"
+        },
+        compaction: {
+          get(sessionID: string) {
+            return store.session.compaction[sessionID]
+          },
+          startManual(sessionID: string) {
+            startCompaction(sessionID, "manual")
+          },
+          clearManual(sessionID: string) {
+            if (store.session.compaction[sessionID] === "manual") clearCompaction(sessionID)
+          },
         },
         async refresh(sessionID: string) {
           setStore("session", "info", sessionID, mutable(await sdk.api.session.get({ sessionID })))
@@ -840,6 +878,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
 
     async function bootstrap() {
       if (bootstrapping) return bootstrapping
+      setStore("session", "compaction", reconcile({}))
       bootstrapping = Promise.allSettled([
         sdk.api.session
           .list({
