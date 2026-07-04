@@ -185,7 +185,8 @@ const layer = Layer.effect(
 
       const failToolCall = Effect.fn("SessionProcessor.failToolCall")(function* (toolCallID: string, error: unknown) {
         const match = yield* readToolCall(toolCallID)
-        if (!match || match.part.state.status !== "running") return false
+        if (!match || (match.part.state.status !== "pending" && match.part.state.status !== "running")) return false
+        const start = match.part.state.status === "running" ? match.part.state.time.start : Date.now()
         yield* session.updatePart({
           ...match.part,
           state: {
@@ -193,8 +194,8 @@ const layer = Layer.effect(
             input: match.part.state.input,
             error: errorMessage(error),
             // Keep metadata streamed while running so failures retain progress detail (e.g. execute's child calls).
-            metadata: match.part.state.metadata,
-            time: { start: match.part.state.time.start, end: Date.now() },
+            metadata: match.part.state.status === "running" ? match.part.state.metadata : undefined,
+            time: { start, end: Date.now() },
           },
         })
         if (error instanceof PermissionV1.RejectedError || error instanceof Question.RejectedError) {

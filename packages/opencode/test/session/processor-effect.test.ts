@@ -226,6 +226,22 @@ const fragmentFailureLLM = Layer.succeed(
 const fragmentFailureEnv = LayerNode.compile(root, [...replacements, [LLM.node, fragmentFailureLLM]])
 const itFragmentFailure = testEffect(fragmentFailureEnv)
 
+const pendingToolErrorLLM = Layer.succeed(
+  LLM.Service,
+  LLM.Service.of({
+    stream: () =>
+      Stream.make(
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.toolInputStart({ id: "call-pending-error", name: "lookup" }),
+        LLMEvent.toolError({ id: "call-pending-error", name: "lookup", message: "lookup failed" }),
+        LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+        LLMEvent.finish({ reason: "tool-calls" }),
+      ),
+  }),
+)
+const pendingToolErrorEnv = LayerNode.compile(root, [...replacements, [LLM.node, pendingToolErrorLLM]])
+const itPendingToolError = testEffect(pendingToolErrorEnv)
+
 const boot = Effect.fn("test.boot")(function* () {
   const processors = yield* SessionProcessor.Service
   const session = yield* Session.Service
@@ -831,6 +847,47 @@ it.live("session.processor effect tests mark pending tools as aborted on cleanup
         }
       }),
     { config: (url) => providerCfg(url) },
+  ),
+)
+
+itPendingToolError.live("session.processor settles tool errors received while input is pending", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "pending tool error")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({ assistantMessage: msg, sessionID: chat.id, model: mdl })
+
+        expect(
+          yield* handle.process({
+            user: {
+              id: parent.id,
+              sessionID: chat.id,
+              role: "user",
+              time: parent.time,
+              agent: parent.agent,
+              model: { providerID: ref.providerID, modelID: ref.modelID },
+            } satisfies SessionV1.User,
+            sessionID: chat.id,
+            model: mdl,
+            agent: agent(),
+            system: [],
+            messages: [{ role: "user", content: "pending tool error" }],
+            tools: {},
+          }),
+        ).toBe("continue")
+
+        const parts = yield* MessageV2.parts(msg.id)
+        const call = parts.find((part): part is SessionV1.ToolPart => part.type === "tool")
+        expect(call?.state.status).toBe("error")
+        if (call?.state.status !== "error") return
+        expect(call.state.error).toBe("lookup failed")
+        expect(call.state.metadata?.interrupted).toBeUndefined()
+      }),
+    { config: cfg },
   ),
 )
 
