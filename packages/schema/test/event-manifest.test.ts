@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   Agent,
+  Config,
   FileSystem,
   Form,
   Integration,
@@ -11,7 +12,9 @@ import {
   Workspace,
 } from "../src/index.js"
 import { EventManifest } from "../src/event-manifest.js"
+import { FileSystemV1 } from "../src/filesystem-v1.js"
 import { IdeEvent } from "../src/ide-event.js"
+import { McpEvent } from "../src/mcp-event.js"
 import { SessionEvent } from "../src/session-event.js"
 import { SessionTodo } from "../src/session-todo.js"
 import { SessionV1 } from "../src/session-v1.js"
@@ -52,17 +55,21 @@ describe("public event manifest", () => {
     expect(Session.Event.Definitions).toBe(SessionEvent.Definitions)
     expect(Workspace.Event).toBe(WorkspaceEvent)
     expect(Workspace.Event.Definitions).toBe(WorkspaceEvent.Definitions)
-    expect(EventManifest.Latest.get("step.ended")).toBe(SessionEvent.Step.Ended)
+    expect(EventManifest.Latest.get("session.step.ended")).toBe(SessionEvent.Step.Ended)
     expect(EventManifest.Latest.get("todo.updated")).toBe(SessionTodo.Event.Updated)
     expect(EventManifest.Latest.get("agent.updated")).toBe(Agent.Event.Updated)
     expect(EventManifest.Latest.get("project.updated")).toBe(Project.Event.Updated)
     expect(Agent.Event.Definitions).toEqual([Agent.Event.Updated])
     expect(Project.Event.Definitions).toEqual([Project.Event.Updated])
-    expect(FileSystem.Event.Definitions).toEqual([FileSystem.Event.Edited])
+    expect(Config.Event.Definitions).toEqual([Config.Event.Updated])
+    expect(FileSystem.Event.Definitions).toEqual([FileSystem.Event.Changed])
+    expect(FileSystemV1.Event.Definitions).toEqual([FileSystemV1.Event.Edited])
     expect(Integration.Event.Definitions).toEqual([Integration.Event.Updated, Integration.Event.ConnectionUpdated])
     expect(Permission.Event.Definitions).toEqual([Permission.Event.Asked, Permission.Event.Replied])
     expect(Form.Event.Definitions).toEqual([Form.Event.Created, Form.Event.Replied, Form.Event.Cancelled])
     expect(Reference.Event.Definitions).toEqual([Reference.Event.Updated])
+    expect(McpEvent.Definitions).toEqual([McpEvent.ToolsChanged, McpEvent.StatusChanged])
+    expect(EventManifest.Latest.has("mcp.browser.open.failed")).toBe(false)
     expect(EventManifest.Latest.has("ide.installed")).toBe(false)
     expect(IdeEvent.Definitions).toEqual([IdeEvent.Installed])
     const sessionV1TailStart = EventManifest.Definitions.indexOf(SessionV1.Event.PartDelta)
@@ -71,8 +78,8 @@ describe("public event manifest", () => {
       SessionV1.Event.Diff,
       SessionV1.Event.Error,
     ])
-    expect(EventManifest.Durable.get("step.ended.1")).toBe(SessionEvent.Step.Ended)
-    expect(EventManifest.Durable.has("step.ended.2")).toBe(false)
+    expect(EventManifest.Durable.get("session.step.ended.1")).toBe(SessionEvent.Step.Ended)
+    expect(EventManifest.Durable.has("session.step.ended.2")).toBe(false)
   })
 
   test("derives durable definitions from explicit definition durability", () => {
@@ -85,37 +92,37 @@ describe("public event manifest", () => {
         "message.removed.1",
         "message.part.updated.1",
         "message.part.removed.1",
-        "agent.selected.1",
-        "model.selected.1",
+        "session.agent.selected.1",
+        "session.model.selected.1",
         "session.moved.1",
-        "renamed.1",
-        "forked.1",
-        "prompt.promoted.1",
-        "prompt.admitted.1",
+        "session.renamed.1",
+        "session.forked.1",
+        "session.prompt.promoted.1",
+        "session.prompt.admitted.1",
         "session.context.updated.1",
-        "synthetic.1",
-        "skill.activated.1",
-        "shell.started.1",
-        "shell.ended.1",
-        "step.started.1",
-        "step.ended.1",
-        "step.failed.1",
-        "text.started.1",
-        "text.ended.1",
-        "tool.input.started.1",
-        "tool.input.ended.1",
-        "tool.called.1",
-        "tool.progress.1",
-        "tool.success.1",
-        "tool.failed.1",
-        "reasoning.started.1",
-        "reasoning.ended.1",
-        "retried.1",
-        "compaction.started.1",
-        "compaction.ended.1",
-        "revert.staged.1",
-        "revert.cleared.1",
-        "revert.committed.1",
+        "session.synthetic.1",
+        "session.skill.activated.1",
+        "session.shell.started.1",
+        "session.shell.ended.1",
+        "session.step.started.1",
+        "session.step.ended.1",
+        "session.step.failed.1",
+        "session.text.started.1",
+        "session.text.ended.1",
+        "session.tool.input.started.1",
+        "session.tool.input.ended.1",
+        "session.tool.called.1",
+        "session.tool.progress.1",
+        "session.tool.success.1",
+        "session.tool.failed.1",
+        "session.reasoning.started.1",
+        "session.reasoning.ended.1",
+        "session.retried.1",
+        "session.compaction.started.1",
+        "session.compaction.ended.1",
+        "session.revert.staged.1",
+        "session.revert.cleared.1",
+        "session.revert.committed.1",
       ].toSorted(),
     )
     expect(SessionEvent.DurableDefinitions).toEqual(

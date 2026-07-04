@@ -11,7 +11,7 @@ import { FileSystem } from "./filesystem"
 import { FileSystemSearch } from "./filesystem/search"
 import { Generate } from "./generate"
 import { Form } from "./form"
-import { Watcher } from "./filesystem/watcher"
+import { LocationWatcher } from "./filesystem/location-watcher"
 import { Image } from "./image"
 import { Integration } from "./integration"
 import { Location } from "./location"
@@ -21,8 +21,6 @@ import { MCP } from "./mcp/index"
 import { PermissionV2 } from "./permission"
 import { PluginV2 } from "./plugin"
 import { PluginInternal } from "./plugin/internal"
-import { Policy } from "./policy"
-import { Project } from "./project"
 import { ProjectCopy } from "./project/copy"
 import { Pty } from "./pty"
 import { QuestionV2 } from "./question"
@@ -49,10 +47,8 @@ import { Vcs } from "./vcs"
 
 export { LocationServiceMap } from "./location-service-map"
 
-export const locationServices = LayerNode.group([
-  Project.node,
+const locationServiceNodes = [
   Location.node,
-  Policy.node,
   Config.node,
   AgentV2.node,
   CommandV2.node,
@@ -66,7 +62,7 @@ export const locationServices = LayerNode.group([
   ProjectCopy.refreshNode,
   FileSystemSearch.node,
   FileSystem.node,
-  Watcher.node,
+  LocationWatcher.node,
   Pty.node,
   Shell.node,
   SkillV2.node,
@@ -96,7 +92,9 @@ export const locationServices = LayerNode.group([
   Snapshot.node,
   SessionRunnerLLM.node,
   Vcs.node,
-])
+] as const satisfies readonly Node.LocationNode<unknown, unknown>[]
+
+export const locationServices = LayerNode.group<typeof locationServiceNodes>(locationServiceNodes)
 
 export type LocationServices = LayerNode.Output<typeof locationServices>
 export type LocationError = LayerNode.Error<typeof locationServices>

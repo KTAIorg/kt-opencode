@@ -6,7 +6,7 @@ import { Integration } from "@opencode-ai/core/integration"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import type { IntegrationEnvMethod, IntegrationKeyMethod, IntegrationOAuthMethod } from "@opencode-ai/sdk/v2/types"
-import { Effect } from "effect"
+import { Effect, Stream } from "effect"
 
 type Overrides = Partial<Omit<PluginContext, "options">>
 
@@ -23,14 +23,33 @@ export function host(overrides: Overrides = {}): PluginContext {
       language: () => Effect.die("unused aisdk.language"),
     },
     catalog: overrides.catalog ?? {
+      provider: {
+        list: () => Effect.die("unused catalog.provider.list"),
+        get: () => Effect.die("unused catalog.provider.get"),
+      },
+      model: {
+        list: () => Effect.die("unused catalog.model.list"),
+        default: () => Effect.die("unused catalog.model.default"),
+      },
       transform: () => Effect.die("unused catalog.transform"),
       reload: () => Effect.die("unused catalog.reload"),
     },
     command: overrides.command ?? {
+      list: () => Effect.die("unused command.list"),
       transform: () => Effect.die("unused command.transform"),
       reload: () => Effect.die("unused command.reload"),
     },
+    event: overrides.event ?? {
+      subscribe: () => Stream.empty,
+    },
     integration: overrides.integration ?? {
+      list: () => Effect.die("unused integration.list"),
+      get: () => Effect.die("unused integration.get"),
+      connectKey: () => Effect.die("unused integration.connectKey"),
+      connectOauth: () => Effect.die("unused integration.connectOauth"),
+      attemptStatus: () => Effect.die("unused integration.attemptStatus"),
+      attemptComplete: () => Effect.die("unused integration.attemptComplete"),
+      attemptCancel: () => Effect.die("unused integration.attemptCancel"),
       transform: () => Effect.die("unused integration.transform"),
       reload: () => Effect.die("unused integration.reload"),
       connection: {
@@ -39,14 +58,17 @@ export function host(overrides: Overrides = {}): PluginContext {
       },
     },
     plugin: overrides.plugin ?? {
+      list: () => Effect.die("unused plugin.list"),
       add: () => Effect.die("unused plugin.add"),
       remove: () => Effect.die("unused plugin.remove"),
     },
     reference: overrides.reference ?? {
+      list: () => Effect.die("unused reference.list"),
       transform: () => Effect.die("unused reference.transform"),
       reload: () => Effect.die("unused reference.reload"),
     },
     skill: overrides.skill ?? {
+      list: () => Effect.die("unused skill.list"),
       transform: () => Effect.die("unused skill.transform"),
       reload: () => Effect.die("unused skill.reload"),
     },
@@ -94,6 +116,14 @@ export function agentHost(agent: AgentV2.Interface): PluginContext["agent"] {
 
 export function catalogHost(catalog: Catalog.Interface): PluginContext["catalog"] {
   return {
+    provider: {
+      list: () => Effect.die("unused catalog.provider.list"),
+      get: () => Effect.die("unused catalog.provider.get"),
+    },
+    model: {
+      list: () => Effect.die("unused catalog.model.list"),
+      default: () => Effect.die("unused catalog.model.default"),
+    },
     reload: catalog.reload,
     transform: (callback) =>
       catalog.transform((draft) =>
@@ -158,6 +188,13 @@ export function catalogHost(catalog: Catalog.Interface): PluginContext["catalog"
 
 export function integrationHost(integration: Integration.Interface): PluginContext["integration"] {
   return {
+    list: () => Effect.die("unused integration.list"),
+    get: () => Effect.die("unused integration.get"),
+    connectKey: () => Effect.die("unused integration.connectKey"),
+    connectOauth: () => Effect.die("unused integration.connectOauth"),
+    attemptStatus: () => Effect.die("unused integration.attemptStatus"),
+    attemptComplete: () => Effect.die("unused integration.attemptComplete"),
+    attemptCancel: () => Effect.die("unused integration.attemptCancel"),
     reload: integration.reload,
     connection: {
       active: (id) => integration.connection.active(Integration.ID.make(id)),

@@ -3,6 +3,7 @@ import { Credential } from "@opencode-ai/core/credential"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionSaved } from "@opencode-ai/core/permission/saved"
+import { Project } from "@opencode-ai/core/project"
 import { Global } from "@opencode-ai/core/global"
 import { Context, Effect, FileSystem, Layer, Option, Redacted, Schedule, Schema } from "effect"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
@@ -142,9 +143,9 @@ function listen(hostname: string, port: Option.Option<number>, password: string)
 function bind(hostname: string, port: number, password: string) {
   const server = createServer()
   return Layer.build(
-    HttpRouter.serve(createRoutes(password), { disableListenLog: true, disableLogger: true }).pipe(
+    HttpRouter.serve(createRoutes(password), { disableListenLog: true }).pipe(
       Layer.provideMerge(NodeHttpServer.layer(() => server, { port, host: hostname })),
-      Layer.provide(AppNodeBuilder.build(LayerNode.group([Credential.node, PermissionSaved.node]))),
+      Layer.provide(AppNodeBuilder.build(LayerNode.group([Credential.node, PermissionSaved.node, Project.node]))),
     ),
   ).pipe(
     Effect.tap(() => Effect.addFinalizer(() => Effect.sync(() => server.closeAllConnections()))),

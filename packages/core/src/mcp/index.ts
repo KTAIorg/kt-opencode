@@ -127,7 +127,11 @@ export class ResourceContent extends Schema.Class<ResourceContent>("MCP.Resource
 
 export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("MCP.NotFoundError", {
   server: ServerName,
-}) {}
+}) {
+  override get message() {
+    return `MCP server not found: ${this.server}`
+  }
+}
 
 export class ToolCallError extends Schema.TaggedErrorClass<ToolCallError>()("MCP.ToolCallError", {
   server: ServerName,
@@ -201,7 +205,7 @@ export const layer = Layer.effect(
       for (const [name, server] of Object.entries(entry.info.mcp?.servers ?? {})) {
         runtime.set(ServerName.make(name), {
           config: { ...server, timeout: { ...timeout, ...server.timeout } },
-          status: { status: "disconnected" },
+          status: { status: "pending" },
           startup: Deferred.makeUnsafe<void>(),
         })
       }

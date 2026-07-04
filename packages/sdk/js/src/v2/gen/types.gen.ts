@@ -17,56 +17,56 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventAgentSelected
-  | EventModelSelected
+  | EventSessionAgentSelected
+  | EventSessionModelSelected
   | EventSessionMoved
-  | EventRenamed
-  | EventForked
-  | EventPromptPromoted
-  | EventPromptAdmitted
-  | EventExecutionSettled
+  | EventSessionRenamed
+  | EventSessionForked
+  | EventSessionPromptPromoted
+  | EventSessionPromptAdmitted
+  | EventSessionExecutionSettled
   | EventSessionContextUpdated
-  | EventSynthetic
-  | EventSkillActivated
-  | EventShellStarted
-  | EventShellEnded
-  | EventStepStarted
-  | EventStepEnded
-  | EventStepFailed
-  | EventTextStarted
-  | EventTextDelta
-  | EventTextEnded
-  | EventReasoningStarted
-  | EventReasoningDelta
-  | EventReasoningEnded
-  | EventToolInputStarted
-  | EventToolInputDelta
-  | EventToolInputEnded
-  | EventToolCalled
-  | EventToolProgress
-  | EventToolSuccess
-  | EventToolFailed
-  | EventRetried
-  | EventCompactionStarted
-  | EventCompactionDelta
-  | EventCompactionEnded
-  | EventRevertStaged
-  | EventRevertCleared
-  | EventRevertCommitted
+  | EventSessionSynthetic
+  | EventSessionSkillActivated
+  | EventSessionShellStarted
+  | EventSessionShellEnded
+  | EventSessionStepStarted
+  | EventSessionStepEnded
+  | EventSessionStepFailed
+  | EventSessionTextStarted
+  | EventSessionTextDelta
+  | EventSessionTextEnded
+  | EventSessionReasoningStarted
+  | EventSessionReasoningDelta
+  | EventSessionReasoningEnded
+  | EventSessionToolInputStarted
+  | EventSessionToolInputDelta
+  | EventSessionToolInputEnded
+  | EventSessionToolCalled
+  | EventSessionToolProgress
+  | EventSessionToolSuccess
+  | EventSessionToolFailed
+  | EventSessionRetried
+  | EventSessionCompactionStarted
+  | EventSessionCompactionDelta
+  | EventSessionCompactionEnded
+  | EventSessionRevertStaged
+  | EventSessionRevertCleared
+  | EventSessionRevertCommitted
   | EventMessagePartDelta
   | EventSessionDiff
   | EventSessionError
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
-  | EventFileEdited
+  | EventFilesystemChanged
   | EventReferenceUpdated
   | EventPermissionV2Asked
   | EventPermissionV2Replied
   | EventPluginAdded
   | EventProjectDirectoriesUpdated
   | EventCommandUpdated
+  | EventConfigUpdated
   | EventSkillUpdated
-  | EventFileWatcherUpdated
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited
@@ -89,9 +89,9 @@ export type Event =
   | EventTuiToastShow2
   | EventTuiSessionSelect2
   | EventMcpToolsChanged
-  | EventMcpBrowserOpenFailed
   | EventMcpStatusChanged
   | EventCommandExecuted
+  | EventFileEdited
   | EventProjectUpdated
   | EventSessionStatus
   | EventSessionIdle
@@ -658,17 +658,6 @@ export type Prompt = {
   agents?: Array<PromptAgentAttachment>
 }
 
-export type Pty = {
-  id: string
-  title: string
-  command: string
-  args: Array<string>
-  cwd: string
-  status: "running" | "exited"
-  pid: number
-  exitCode?: number
-}
-
 export type Shell = {
   id: string
   status: "running" | "exited" | "timeout" | "killed"
@@ -685,6 +674,17 @@ export type Shell = {
     started: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
     completed?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   }
+}
+
+export type Pty = {
+  id: string
+  title: string
+  command: string
+  args: Array<string>
+  cwd: string
+  status: "running" | "exited"
+  pid: number
+  exitCode?: number
 }
 
 export type Todo = {
@@ -859,7 +859,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "agent.selected"
+        type: "session.agent.selected"
         properties: {
           sessionID: string
           agent: string
@@ -867,7 +867,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "model.selected"
+        type: "session.model.selected"
         properties: {
           sessionID: string
           model: ModelRef
@@ -884,7 +884,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "renamed"
+        type: "session.renamed"
         properties: {
           sessionID: string
           title: string
@@ -892,7 +892,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "forked"
+        type: "session.forked"
         properties: {
           sessionID: string
           parentID: string
@@ -901,7 +901,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "prompt.promoted"
+        type: "session.prompt.promoted"
         properties: {
           sessionID: string
           inputID: string
@@ -909,7 +909,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "prompt.admitted"
+        type: "session.prompt.admitted"
         properties: {
           sessionID: string
           inputID: string
@@ -919,7 +919,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "execution.settled"
+        type: "session.execution.settled"
         properties: {
           sessionID: string
           outcome: "success" | "failure" | "interrupted"
@@ -936,7 +936,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "synthetic"
+        type: "session.synthetic"
         properties: {
           sessionID: string
           text: string
@@ -948,7 +948,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "skill.activated"
+        type: "session.skill.activated"
         properties: {
           sessionID: string
           name: string
@@ -957,25 +957,29 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "shell.started"
+        type: "session.shell.started"
         properties: {
           sessionID: string
-          callID: string
-          command: string
+          shell: Shell
         }
       }
     | {
         id: string
-        type: "shell.ended"
+        type: "session.shell.ended"
         properties: {
           sessionID: string
-          callID: string
-          output: string
+          shell: Shell
+          output: {
+            output: string
+            cursor: number
+            size: number
+            truncated: boolean
+          }
         }
       }
     | {
         id: string
-        type: "step.started"
+        type: "session.step.started"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -986,7 +990,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "step.ended"
+        type: "session.step.ended"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1007,7 +1011,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "step.failed"
+        type: "session.step.failed"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1016,7 +1020,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "text.started"
+        type: "session.text.started"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1025,7 +1029,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "text.delta"
+        type: "session.text.delta"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1035,7 +1039,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "text.ended"
+        type: "session.text.ended"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1045,7 +1049,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "reasoning.started"
+        type: "session.reasoning.started"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1055,7 +1059,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "reasoning.delta"
+        type: "session.reasoning.delta"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1065,7 +1069,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "reasoning.ended"
+        type: "session.reasoning.ended"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1076,7 +1080,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "tool.input.started"
+        type: "session.tool.input.started"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1086,7 +1090,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "tool.input.delta"
+        type: "session.tool.input.delta"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1096,7 +1100,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "tool.input.ended"
+        type: "session.tool.input.ended"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1106,7 +1110,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "tool.called"
+        type: "session.tool.called"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1123,7 +1127,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "tool.progress"
+        type: "session.tool.progress"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1136,7 +1140,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "tool.success"
+        type: "session.tool.success"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1155,7 +1159,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "tool.failed"
+        type: "session.tool.failed"
         properties: {
           sessionID: string
           assistantMessageID: string
@@ -1170,7 +1174,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "retried"
+        type: "session.retried"
         properties: {
           sessionID: string
           attempt: number
@@ -1179,7 +1183,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "compaction.started"
+        type: "session.compaction.started"
         properties: {
           sessionID: string
           reason: "auto" | "manual"
@@ -1187,7 +1191,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "compaction.delta"
+        type: "session.compaction.delta"
         properties: {
           sessionID: string
           text: string
@@ -1195,7 +1199,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "compaction.ended"
+        type: "session.compaction.ended"
         properties: {
           sessionID: string
           reason: "auto" | "manual"
@@ -1205,7 +1209,7 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "revert.staged"
+        type: "session.revert.staged"
         properties: {
           sessionID: string
           revert: RevertState
@@ -1213,14 +1217,14 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "revert.cleared"
+        type: "session.revert.cleared"
         properties: {
           sessionID: string
         }
       }
     | {
         id: string
-        type: "revert.committed"
+        type: "session.revert.committed"
         properties: {
           sessionID: string
           messageID: string
@@ -1277,9 +1281,10 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "file.edited"
+        type: "filesystem.changed"
         properties: {
           file: string
+          event: "add" | "change" | "unlink"
         }
       }
     | {
@@ -1336,17 +1341,16 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "skill.updated"
+        type: "config.updated"
         properties: {
           [key: string]: unknown
         }
       }
     | {
         id: string
-        type: "file.watcher.updated"
+        type: "skill.updated"
         properties: {
-          file: string
-          event: "add" | "change" | "unlink"
+          [key: string]: unknown
         }
       }
     | {
@@ -1558,14 +1562,6 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "mcp.browser.open.failed"
-        properties: {
-          mcpName: string
-          url: string
-        }
-      }
-    | {
-        id: string
         type: "mcp.status.changed"
         properties: {
           server: string
@@ -1579,6 +1575,13 @@ export type GlobalEvent = {
           sessionID: string
           arguments: string
           messageID: string
+        }
+      }
+    | {
+        id: string
+        type: "file.edited"
+        properties: {
+          file: string
         }
       }
     | {
@@ -1713,37 +1716,37 @@ export type GlobalEvent = {
     | SyncEventMessageRemoved
     | SyncEventMessagePartUpdated
     | SyncEventMessagePartRemoved
-    | SyncEventAgentSelected
-    | SyncEventModelSelected
+    | SyncEventSessionAgentSelected
+    | SyncEventSessionModelSelected
     | SyncEventSessionMoved
-    | SyncEventRenamed
-    | SyncEventForked
-    | SyncEventPromptPromoted
-    | SyncEventPromptAdmitted
+    | SyncEventSessionRenamed
+    | SyncEventSessionForked
+    | SyncEventSessionPromptPromoted
+    | SyncEventSessionPromptAdmitted
     | SyncEventSessionContextUpdated
-    | SyncEventSynthetic
-    | SyncEventSkillActivated
-    | SyncEventShellStarted
-    | SyncEventShellEnded
-    | SyncEventStepStarted
-    | SyncEventStepEnded
-    | SyncEventStepFailed
-    | SyncEventTextStarted
-    | SyncEventTextEnded
-    | SyncEventReasoningStarted
-    | SyncEventReasoningEnded
-    | SyncEventToolInputStarted
-    | SyncEventToolInputEnded
-    | SyncEventToolCalled
-    | SyncEventToolProgress
-    | SyncEventToolSuccess
-    | SyncEventToolFailed
-    | SyncEventRetried
-    | SyncEventCompactionStarted
-    | SyncEventCompactionEnded
-    | SyncEventRevertStaged
-    | SyncEventRevertCleared
-    | SyncEventRevertCommitted
+    | SyncEventSessionSynthetic
+    | SyncEventSessionSkillActivated
+    | SyncEventSessionShellStarted
+    | SyncEventSessionShellEnded
+    | SyncEventSessionStepStarted
+    | SyncEventSessionStepEnded
+    | SyncEventSessionStepFailed
+    | SyncEventSessionTextStarted
+    | SyncEventSessionTextEnded
+    | SyncEventSessionReasoningStarted
+    | SyncEventSessionReasoningEnded
+    | SyncEventSessionToolInputStarted
+    | SyncEventSessionToolInputEnded
+    | SyncEventSessionToolCalled
+    | SyncEventSessionToolProgress
+    | SyncEventSessionToolSuccess
+    | SyncEventSessionToolFailed
+    | SyncEventSessionRetried
+    | SyncEventSessionCompactionStarted
+    | SyncEventSessionCompactionEnded
+    | SyncEventSessionRevertStaged
+    | SyncEventSessionRevertCleared
+    | SyncEventSessionRevertCommitted
 }
 
 /**
@@ -2128,7 +2131,6 @@ export type Config = {
     primary_tools?: Array<string>
     continue_loop_on_deny?: boolean
     mcp_timeout?: number
-    policies?: Array<ConfigV2ExperimentalPolicy>
   }
 }
 
@@ -2863,120 +2865,56 @@ export type UnknownError1 = {
   ref?: string
 }
 
-export type Renamed = {
+export type Shell1 = {
   id: string
-  created: number
-  metadata?: {
+  status: "running" | "exited" | "timeout" | "killed"
+  command: string
+  cwd: string
+  shell: string
+  file: string
+  pid?: number
+  exit?: number | "NaN" | "Infinity" | "-Infinity"
+  metadata: {
     [key: string]: unknown
   }
-  type: "renamed"
-  durable: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
-  location?: LocationRef
-  data: {
-    sessionID: string
-    title: string
-  }
-}
-
-export type Forked = {
-  id: string
-  created: number
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "forked"
-  durable: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
-  location?: LocationRef
-  data: {
-    sessionID: string
-    parentID: string
-    from?: string
-  }
-}
-
-export type Synthetic = {
-  id: string
-  created: number
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "synthetic"
-  durable: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
-  location?: LocationRef
-  data: {
-    sessionID: string
-    text: string
-    description?: string
-    metadata?: {
-      [key: string]: unknown
-    }
-  }
-}
-
-export type Retried = {
-  id: string
-  created: number
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "retried"
-  durable: {
-    aggregateID: string
-    seq: number
-    version: number
-  }
-  location?: LocationRef
-  data: {
-    sessionID: string
-    attempt: number
-    error: SessionRetryError
+  time: {
+    started: number | "NaN" | "Infinity" | "-Infinity"
+    completed?: number | "NaN" | "Infinity" | "-Infinity"
   }
 }
 
 export type SessionDurableEvent =
-  | AgentSelected
-  | ModelSelected
+  | SessionAgentSelected
+  | SessionModelSelected
   | SessionMoved
-  | Renamed
-  | Forked
-  | PromptPromoted
-  | PromptAdmitted
+  | SessionRenamed
+  | SessionForked
+  | SessionPromptPromoted
+  | SessionPromptAdmitted
   | SessionContextUpdated
-  | Synthetic
-  | SkillActivated
-  | ShellStarted
-  | ShellEnded
-  | StepStarted
-  | StepEnded
-  | StepFailed
-  | TextStarted
-  | TextEnded
-  | ReasoningStarted
-  | ReasoningEnded
-  | ToolInputStarted
-  | ToolInputEnded
-  | ToolCalled
-  | ToolProgress
-  | ToolSuccess
-  | ToolFailed
-  | Retried
-  | CompactionStarted
-  | CompactionEnded
-  | RevertStaged
-  | RevertCleared
-  | RevertCommitted
+  | SessionSynthetic
+  | SessionSkillActivated
+  | SessionShellStarted
+  | SessionShellEnded
+  | SessionStepStarted
+  | SessionStepEnded
+  | SessionStepFailed
+  | SessionTextStarted
+  | SessionTextEnded
+  | SessionReasoningStarted
+  | SessionReasoningEnded
+  | SessionToolInputStarted
+  | SessionToolInputEnded
+  | SessionToolCalled
+  | SessionToolProgress
+  | SessionToolSuccess
+  | SessionToolFailed
+  | SessionRetried
+  | SessionCompactionStarted
+  | SessionCompactionEnded
+  | SessionRevertStaged
+  | SessionRevertCleared
+  | SessionRevertCommitted
 
 export type SessionLogItem = SessionDurableEvent | EventLogSynced
 
@@ -3030,24 +2968,6 @@ export type OutputFormat1 =
       schema: JsonSchema
       retryCount?: number
     }
-
-export type Shell1 = {
-  id: string
-  status: "running" | "exited" | "timeout" | "killed"
-  command: string
-  cwd: string
-  shell: string
-  file: string
-  pid?: number
-  exit?: number | "NaN" | "Infinity" | "-Infinity"
-  metadata: {
-    [key: string]: unknown
-  }
-  time: {
-    started: number | "NaN" | "Infinity" | "-Infinity"
-    completed?: number | "NaN" | "Infinity" | "-Infinity"
-  }
-}
 
 export type SessionStatus2 = {
   id: string
@@ -3105,56 +3025,56 @@ export type V2Event =
   | MessageRemoved
   | MessagePartUpdated
   | MessagePartRemoved
-  | AgentSelected
-  | ModelSelected
+  | SessionAgentSelected
+  | SessionModelSelected
   | SessionMoved
-  | Renamed
-  | Forked
-  | PromptPromoted
-  | PromptAdmitted
-  | ExecutionSettled
+  | SessionRenamed
+  | SessionForked
+  | SessionPromptPromoted
+  | SessionPromptAdmitted
+  | SessionExecutionSettled
   | SessionContextUpdated
-  | Synthetic
-  | SkillActivated
-  | ShellStarted
-  | ShellEnded
-  | StepStarted
-  | StepEnded
-  | StepFailed
-  | TextStarted
-  | TextDelta
-  | TextEnded
-  | ReasoningStarted
-  | ReasoningDelta
-  | ReasoningEnded
-  | ToolInputStarted
-  | ToolInputDelta
-  | ToolInputEnded
-  | ToolCalled
-  | ToolProgress
-  | ToolSuccess
-  | ToolFailed
-  | Retried
-  | CompactionStarted
-  | CompactionDelta
-  | CompactionEnded
-  | RevertStaged
-  | RevertCleared
-  | RevertCommitted
+  | SessionSynthetic
+  | SessionSkillActivated
+  | SessionShellStarted
+  | SessionShellEnded
+  | SessionStepStarted
+  | SessionStepEnded
+  | SessionStepFailed
+  | SessionTextStarted
+  | SessionTextDelta
+  | SessionTextEnded
+  | SessionReasoningStarted
+  | SessionReasoningDelta
+  | SessionReasoningEnded
+  | SessionToolInputStarted
+  | SessionToolInputDelta
+  | SessionToolInputEnded
+  | SessionToolCalled
+  | SessionToolProgress
+  | SessionToolSuccess
+  | SessionToolFailed
+  | SessionRetried
+  | SessionCompactionStarted
+  | SessionCompactionDelta
+  | SessionCompactionEnded
+  | SessionRevertStaged
+  | SessionRevertCleared
+  | SessionRevertCommitted
   | MessagePartDelta
   | SessionDiff
   | SessionError
   | InstallationUpdated
   | InstallationUpdateAvailable
-  | FileEdited
+  | FilesystemChanged
   | ReferenceUpdated
   | PermissionV2Asked
   | PermissionV2Replied
   | PluginAdded
   | ProjectDirectoriesUpdated
   | CommandUpdated
+  | ConfigUpdated
   | SkillUpdated
-  | FileWatcherUpdated
   | PtyCreated
   | PtyUpdated
   | PtyExited
@@ -3177,9 +3097,9 @@ export type V2Event =
   | TuiToastShow
   | TuiSessionSelect
   | McpToolsChanged
-  | McpBrowserOpenFailed
   | McpStatusChanged
   | CommandExecuted
+  | FileEdited
   | ProjectUpdated
   | SessionStatus2
   | SessionIdle
@@ -3699,11 +3619,11 @@ export type SyncEventMessagePartRemoved = {
   }
 }
 
-export type SyncEventAgentSelected = {
+export type SyncEventSessionAgentSelected = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "agent.selected.1"
+    type: "session.agent.selected.1"
     id: string
     seq: number
     aggregateID: string
@@ -3714,11 +3634,11 @@ export type SyncEventAgentSelected = {
   }
 }
 
-export type SyncEventModelSelected = {
+export type SyncEventSessionModelSelected = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "model.selected.1"
+    type: "session.model.selected.1"
     id: string
     seq: number
     aggregateID: string
@@ -3745,11 +3665,11 @@ export type SyncEventSessionMoved = {
   }
 }
 
-export type SyncEventRenamed = {
+export type SyncEventSessionRenamed = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "renamed.1"
+    type: "session.renamed.1"
     id: string
     seq: number
     aggregateID: string
@@ -3760,11 +3680,11 @@ export type SyncEventRenamed = {
   }
 }
 
-export type SyncEventForked = {
+export type SyncEventSessionForked = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "forked.1"
+    type: "session.forked.1"
     id: string
     seq: number
     aggregateID: string
@@ -3776,11 +3696,11 @@ export type SyncEventForked = {
   }
 }
 
-export type SyncEventPromptPromoted = {
+export type SyncEventSessionPromptPromoted = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "prompt.promoted.1"
+    type: "session.prompt.promoted.1"
     id: string
     seq: number
     aggregateID: string
@@ -3791,11 +3711,11 @@ export type SyncEventPromptPromoted = {
   }
 }
 
-export type SyncEventPromptAdmitted = {
+export type SyncEventSessionPromptAdmitted = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "prompt.admitted.1"
+    type: "session.prompt.admitted.1"
     id: string
     seq: number
     aggregateID: string
@@ -3823,11 +3743,11 @@ export type SyncEventSessionContextUpdated = {
   }
 }
 
-export type SyncEventSynthetic = {
+export type SyncEventSessionSynthetic = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "synthetic.1"
+    type: "session.synthetic.1"
     id: string
     seq: number
     aggregateID: string
@@ -3842,11 +3762,11 @@ export type SyncEventSynthetic = {
   }
 }
 
-export type SyncEventSkillActivated = {
+export type SyncEventSessionSkillActivated = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "skill.activated.1"
+    type: "session.skill.activated.1"
     id: string
     seq: number
     aggregateID: string
@@ -3858,43 +3778,47 @@ export type SyncEventSkillActivated = {
   }
 }
 
-export type SyncEventShellStarted = {
+export type SyncEventSessionShellStarted = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "shell.started.1"
+    type: "session.shell.started.1"
     id: string
     seq: number
     aggregateID: string
     data: {
       sessionID: string
-      callID: string
-      command: string
+      shell: Shell
     }
   }
 }
 
-export type SyncEventShellEnded = {
+export type SyncEventSessionShellEnded = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "shell.ended.1"
+    type: "session.shell.ended.1"
     id: string
     seq: number
     aggregateID: string
     data: {
       sessionID: string
-      callID: string
-      output: string
+      shell: Shell
+      output: {
+        output: string
+        cursor: number
+        size: number
+        truncated: boolean
+      }
     }
   }
 }
 
-export type SyncEventStepStarted = {
+export type SyncEventSessionStepStarted = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "step.started.1"
+    type: "session.step.started.1"
     id: string
     seq: number
     aggregateID: string
@@ -3908,11 +3832,11 @@ export type SyncEventStepStarted = {
   }
 }
 
-export type SyncEventStepEnded = {
+export type SyncEventSessionStepEnded = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "step.ended.1"
+    type: "session.step.ended.1"
     id: string
     seq: number
     aggregateID: string
@@ -3936,11 +3860,11 @@ export type SyncEventStepEnded = {
   }
 }
 
-export type SyncEventStepFailed = {
+export type SyncEventSessionStepFailed = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "step.failed.1"
+    type: "session.step.failed.1"
     id: string
     seq: number
     aggregateID: string
@@ -3952,11 +3876,11 @@ export type SyncEventStepFailed = {
   }
 }
 
-export type SyncEventTextStarted = {
+export type SyncEventSessionTextStarted = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "text.started.1"
+    type: "session.text.started.1"
     id: string
     seq: number
     aggregateID: string
@@ -3968,11 +3892,11 @@ export type SyncEventTextStarted = {
   }
 }
 
-export type SyncEventTextEnded = {
+export type SyncEventSessionTextEnded = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "text.ended.1"
+    type: "session.text.ended.1"
     id: string
     seq: number
     aggregateID: string
@@ -3985,11 +3909,11 @@ export type SyncEventTextEnded = {
   }
 }
 
-export type SyncEventReasoningStarted = {
+export type SyncEventSessionReasoningStarted = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "reasoning.started.1"
+    type: "session.reasoning.started.1"
     id: string
     seq: number
     aggregateID: string
@@ -4002,11 +3926,11 @@ export type SyncEventReasoningStarted = {
   }
 }
 
-export type SyncEventReasoningEnded = {
+export type SyncEventSessionReasoningEnded = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "reasoning.ended.1"
+    type: "session.reasoning.ended.1"
     id: string
     seq: number
     aggregateID: string
@@ -4020,11 +3944,11 @@ export type SyncEventReasoningEnded = {
   }
 }
 
-export type SyncEventToolInputStarted = {
+export type SyncEventSessionToolInputStarted = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "tool.input.started.1"
+    type: "session.tool.input.started.1"
     id: string
     seq: number
     aggregateID: string
@@ -4037,11 +3961,11 @@ export type SyncEventToolInputStarted = {
   }
 }
 
-export type SyncEventToolInputEnded = {
+export type SyncEventSessionToolInputEnded = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "tool.input.ended.1"
+    type: "session.tool.input.ended.1"
     id: string
     seq: number
     aggregateID: string
@@ -4054,11 +3978,11 @@ export type SyncEventToolInputEnded = {
   }
 }
 
-export type SyncEventToolCalled = {
+export type SyncEventSessionToolCalled = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "tool.called.1"
+    type: "session.tool.called.1"
     id: string
     seq: number
     aggregateID: string
@@ -4078,11 +4002,11 @@ export type SyncEventToolCalled = {
   }
 }
 
-export type SyncEventToolProgress = {
+export type SyncEventSessionToolProgress = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "tool.progress.1"
+    type: "session.tool.progress.1"
     id: string
     seq: number
     aggregateID: string
@@ -4098,11 +4022,11 @@ export type SyncEventToolProgress = {
   }
 }
 
-export type SyncEventToolSuccess = {
+export type SyncEventSessionToolSuccess = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "tool.success.1"
+    type: "session.tool.success.1"
     id: string
     seq: number
     aggregateID: string
@@ -4124,11 +4048,11 @@ export type SyncEventToolSuccess = {
   }
 }
 
-export type SyncEventToolFailed = {
+export type SyncEventSessionToolFailed = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "tool.failed.1"
+    type: "session.tool.failed.1"
     id: string
     seq: number
     aggregateID: string
@@ -4146,11 +4070,11 @@ export type SyncEventToolFailed = {
   }
 }
 
-export type SyncEventRetried = {
+export type SyncEventSessionRetried = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "retried.1"
+    type: "session.retried.1"
     id: string
     seq: number
     aggregateID: string
@@ -4162,11 +4086,11 @@ export type SyncEventRetried = {
   }
 }
 
-export type SyncEventCompactionStarted = {
+export type SyncEventSessionCompactionStarted = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "compaction.started.1"
+    type: "session.compaction.started.1"
     id: string
     seq: number
     aggregateID: string
@@ -4177,11 +4101,11 @@ export type SyncEventCompactionStarted = {
   }
 }
 
-export type SyncEventCompactionEnded = {
+export type SyncEventSessionCompactionEnded = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "compaction.ended.1"
+    type: "session.compaction.ended.1"
     id: string
     seq: number
     aggregateID: string
@@ -4194,11 +4118,11 @@ export type SyncEventCompactionEnded = {
   }
 }
 
-export type SyncEventRevertStaged = {
+export type SyncEventSessionRevertStaged = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "revert.staged.1"
+    type: "session.revert.staged.1"
     id: string
     seq: number
     aggregateID: string
@@ -4209,11 +4133,11 @@ export type SyncEventRevertStaged = {
   }
 }
 
-export type SyncEventRevertCleared = {
+export type SyncEventSessionRevertCleared = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "revert.cleared.1"
+    type: "session.revert.cleared.1"
     id: string
     seq: number
     aggregateID: string
@@ -4223,11 +4147,11 @@ export type SyncEventRevertCleared = {
   }
 }
 
-export type SyncEventRevertCommitted = {
+export type SyncEventSessionRevertCommitted = {
   type: "sync"
   id: string
   syncEvent: {
-    type: "revert.committed.1"
+    type: "session.revert.committed.1"
     id: string
     seq: number
     aggregateID: string
@@ -4249,14 +4173,6 @@ export type ConfigV2ReferenceLocal = {
   path: string
   description?: string
   hidden?: boolean
-}
-
-export type PolicyEffect = "allow" | "deny"
-
-export type ConfigV2ExperimentalPolicy = {
-  action: "provider.use"
-  effect: PolicyEffect
-  resource: string
 }
 
 export type ProjectDirectory = {
@@ -4459,9 +4375,13 @@ export type SessionMessageShell = {
     completed?: number
   }
   type: "shell"
-  callID: string
-  command: string
-  output: string
+  shell: Shell
+  output?: {
+    output: string
+    cursor: number
+    size: number
+    truncated: boolean
+  }
 }
 
 export type SessionMessageAssistantText = {
@@ -4610,13 +4530,13 @@ export type SessionContextEntryInfo = {
   value: unknown
 }
 
-export type AgentSelected = {
+export type SessionAgentSelected = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "agent.selected"
+  type: "session.agent.selected"
   durable: {
     aggregateID: string
     seq: number
@@ -4629,13 +4549,13 @@ export type AgentSelected = {
   }
 }
 
-export type ModelSelected = {
+export type SessionModelSelected = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "model.selected"
+  type: "session.model.selected"
   durable: {
     aggregateID: string
     seq: number
@@ -4668,13 +4588,52 @@ export type SessionMoved = {
   }
 }
 
-export type PromptPromoted = {
+export type SessionRenamed = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "prompt.promoted"
+  type: "session.renamed"
+  durable: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    title: string
+  }
+}
+
+export type SessionForked = {
+  id: string
+  created: number
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.forked"
+  durable: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    parentID: string
+    from?: string
+  }
+}
+
+export type SessionPromptPromoted = {
+  id: string
+  created: number
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.prompt.promoted"
   durable: {
     aggregateID: string
     seq: number
@@ -4687,13 +4646,13 @@ export type PromptPromoted = {
   }
 }
 
-export type PromptAdmitted = {
+export type SessionPromptAdmitted = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "prompt.admitted"
+  type: "session.prompt.admitted"
   durable: {
     aggregateID: string
     seq: number
@@ -4727,13 +4686,36 @@ export type SessionContextUpdated = {
   }
 }
 
-export type SkillActivated = {
+export type SessionSynthetic = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "skill.activated"
+  type: "session.synthetic"
+  durable: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    text: string
+    description?: string
+    metadata?: {
+      [key: string]: unknown
+    }
+  }
+}
+
+export type SessionSkillActivated = {
+  id: string
+  created: number
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.skill.activated"
   durable: {
     aggregateID: string
     seq: number
@@ -4747,13 +4729,13 @@ export type SkillActivated = {
   }
 }
 
-export type ShellStarted = {
+export type SessionShellStarted = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "shell.started"
+  type: "session.shell.started"
   durable: {
     aggregateID: string
     seq: number
@@ -4762,18 +4744,17 @@ export type ShellStarted = {
   location?: LocationRef
   data: {
     sessionID: string
-    callID: string
-    command: string
+    shell: Shell1
   }
 }
 
-export type ShellEnded = {
+export type SessionShellEnded = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "shell.ended"
+  type: "session.shell.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -4782,18 +4763,23 @@ export type ShellEnded = {
   location?: LocationRef
   data: {
     sessionID: string
-    callID: string
-    output: string
+    shell: Shell1
+    output: {
+      output: string
+      cursor: number
+      size: number
+      truncated: boolean
+    }
   }
 }
 
-export type StepStarted = {
+export type SessionStepStarted = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "step.started"
+  type: "session.step.started"
   durable: {
     aggregateID: string
     seq: number
@@ -4809,13 +4795,13 @@ export type StepStarted = {
   }
 }
 
-export type StepEnded = {
+export type SessionStepEnded = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "step.ended"
+  type: "session.step.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -4841,13 +4827,13 @@ export type StepEnded = {
   }
 }
 
-export type StepFailed = {
+export type SessionStepFailed = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "step.failed"
+  type: "session.step.failed"
   durable: {
     aggregateID: string
     seq: number
@@ -4861,13 +4847,13 @@ export type StepFailed = {
   }
 }
 
-export type TextStarted = {
+export type SessionTextStarted = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "text.started"
+  type: "session.text.started"
   durable: {
     aggregateID: string
     seq: number
@@ -4881,13 +4867,13 @@ export type TextStarted = {
   }
 }
 
-export type TextEnded = {
+export type SessionTextEnded = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "text.ended"
+  type: "session.text.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -4902,13 +4888,13 @@ export type TextEnded = {
   }
 }
 
-export type ReasoningStarted = {
+export type SessionReasoningStarted = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "reasoning.started"
+  type: "session.reasoning.started"
   durable: {
     aggregateID: string
     seq: number
@@ -4923,13 +4909,13 @@ export type ReasoningStarted = {
   }
 }
 
-export type ReasoningEnded = {
+export type SessionReasoningEnded = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "reasoning.ended"
+  type: "session.reasoning.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -4945,13 +4931,13 @@ export type ReasoningEnded = {
   }
 }
 
-export type ToolInputStarted = {
+export type SessionToolInputStarted = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.input.started"
+  type: "session.tool.input.started"
   durable: {
     aggregateID: string
     seq: number
@@ -4966,13 +4952,13 @@ export type ToolInputStarted = {
   }
 }
 
-export type ToolInputEnded = {
+export type SessionToolInputEnded = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.input.ended"
+  type: "session.tool.input.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -4987,13 +4973,13 @@ export type ToolInputEnded = {
   }
 }
 
-export type ToolCalled = {
+export type SessionToolCalled = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.called"
+  type: "session.tool.called"
   durable: {
     aggregateID: string
     seq: number
@@ -5015,13 +5001,13 @@ export type ToolCalled = {
   }
 }
 
-export type ToolProgress = {
+export type SessionToolProgress = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.progress"
+  type: "session.tool.progress"
   durable: {
     aggregateID: string
     seq: number
@@ -5039,13 +5025,13 @@ export type ToolProgress = {
   }
 }
 
-export type ToolSuccess = {
+export type SessionToolSuccess = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.success"
+  type: "session.tool.success"
   durable: {
     aggregateID: string
     seq: number
@@ -5069,13 +5055,13 @@ export type ToolSuccess = {
   }
 }
 
-export type ToolFailed = {
+export type SessionToolFailed = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.failed"
+  type: "session.tool.failed"
   durable: {
     aggregateID: string
     seq: number
@@ -5095,13 +5081,33 @@ export type ToolFailed = {
   }
 }
 
-export type CompactionStarted = {
+export type SessionRetried = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "compaction.started"
+  type: "session.retried"
+  durable: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    attempt: number
+    error: SessionRetryError
+  }
+}
+
+export type SessionCompactionStarted = {
+  id: string
+  created: number
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.compaction.started"
   durable: {
     aggregateID: string
     seq: number
@@ -5114,13 +5120,13 @@ export type CompactionStarted = {
   }
 }
 
-export type CompactionEnded = {
+export type SessionCompactionEnded = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "compaction.ended"
+  type: "session.compaction.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -5135,13 +5141,13 @@ export type CompactionEnded = {
   }
 }
 
-export type RevertStaged = {
+export type SessionRevertStaged = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "revert.staged"
+  type: "session.revert.staged"
   durable: {
     aggregateID: string
     seq: number
@@ -5154,13 +5160,13 @@ export type RevertStaged = {
   }
 }
 
-export type RevertCleared = {
+export type SessionRevertCleared = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "revert.cleared"
+  type: "session.revert.cleared"
   durable: {
     aggregateID: string
     seq: number
@@ -5172,13 +5178,13 @@ export type RevertCleared = {
   }
 }
 
-export type RevertCommitted = {
+export type SessionRevertCommitted = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "revert.committed"
+  type: "session.revert.committed"
   durable: {
     aggregateID: string
     seq: number
@@ -5412,8 +5418,8 @@ export type McpStatusConnected2 = {
   status: "connected"
 }
 
-export type McpStatusDisconnected = {
-  status: "disconnected"
+export type McpStatusPending = {
+  status: "pending"
 }
 
 export type McpStatusDisabled2 = {
@@ -5438,7 +5444,7 @@ export type McpServer = {
   name: string
   status:
     | McpStatusConnected2
-    | McpStatusDisconnected
+    | McpStatusPending
     | McpStatusDisabled2
     | McpStatusFailed2
     | McpStatusNeedsAuth2
@@ -5718,13 +5724,13 @@ export type MessagePartRemoved = {
   }
 }
 
-export type ExecutionSettled = {
+export type SessionExecutionSettled = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "execution.settled"
+  type: "session.execution.settled"
   location?: LocationRef
   data: {
     sessionID: string
@@ -5733,13 +5739,13 @@ export type ExecutionSettled = {
   }
 }
 
-export type TextDelta = {
+export type SessionTextDelta = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "text.delta"
+  type: "session.text.delta"
   location?: LocationRef
   data: {
     sessionID: string
@@ -5749,13 +5755,13 @@ export type TextDelta = {
   }
 }
 
-export type ReasoningDelta = {
+export type SessionReasoningDelta = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "reasoning.delta"
+  type: "session.reasoning.delta"
   location?: LocationRef
   data: {
     sessionID: string
@@ -5765,13 +5771,13 @@ export type ReasoningDelta = {
   }
 }
 
-export type ToolInputDelta = {
+export type SessionToolInputDelta = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.input.delta"
+  type: "session.tool.input.delta"
   location?: LocationRef
   data: {
     sessionID: string
@@ -5781,13 +5787,13 @@ export type ToolInputDelta = {
   }
 }
 
-export type CompactionDelta = {
+export type SessionCompactionDelta = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "compaction.delta"
+  type: "session.compaction.delta"
   location?: LocationRef
   data: {
     sessionID: string
@@ -5874,16 +5880,17 @@ export type InstallationUpdateAvailable = {
   }
 }
 
-export type FileEdited = {
+export type FilesystemChanged = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "file.edited"
+  type: "filesystem.changed"
   location?: LocationRef
   data: {
     file: string
+    event: "add" | "change" | "unlink"
   }
 }
 
@@ -5975,6 +5982,19 @@ export type CommandUpdated = {
   }
 }
 
+export type ConfigUpdated = {
+  id: string
+  created: number
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "config.updated"
+  location?: LocationRef
+  data: {
+    [key: string]: unknown
+  }
+}
+
 export type SkillUpdated = {
   id: string
   created: number
@@ -5985,20 +6005,6 @@ export type SkillUpdated = {
   location?: LocationRef
   data: {
     [key: string]: unknown
-  }
-}
-
-export type FileWatcherUpdated = {
-  id: string
-  created: number
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "file.watcher.updated"
-  location?: LocationRef
-  data: {
-    file: string
-    event: "add" | "change" | "unlink"
   }
 }
 
@@ -6373,20 +6379,6 @@ export type McpToolsChanged = {
   }
 }
 
-export type McpBrowserOpenFailed = {
-  id: string
-  created: number
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "mcp.browser.open.failed"
-  location?: LocationRef
-  data: {
-    mcpName: string
-    url: string
-  }
-}
-
 export type McpStatusChanged = {
   id: string
   created: number
@@ -6413,6 +6405,19 @@ export type CommandExecuted = {
     sessionID: string
     arguments: string
     messageID: string
+  }
+}
+
+export type FileEdited = {
+  id: string
+  created: number
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "file.edited"
+  location?: LocationRef
+  data: {
+    file: string
   }
 }
 
@@ -6754,18 +6759,18 @@ export type EventMessagePartRemoved = {
   }
 }
 
-export type EventAgentSelected = {
+export type EventSessionAgentSelected = {
   id: string
-  type: "agent.selected"
+  type: "session.agent.selected"
   properties: {
     sessionID: string
     agent: string
   }
 }
 
-export type EventModelSelected = {
+export type EventSessionModelSelected = {
   id: string
-  type: "model.selected"
+  type: "session.model.selected"
   properties: {
     sessionID: string
     model: ModelRef
@@ -6782,18 +6787,18 @@ export type EventSessionMoved = {
   }
 }
 
-export type EventRenamed = {
+export type EventSessionRenamed = {
   id: string
-  type: "renamed"
+  type: "session.renamed"
   properties: {
     sessionID: string
     title: string
   }
 }
 
-export type EventForked = {
+export type EventSessionForked = {
   id: string
-  type: "forked"
+  type: "session.forked"
   properties: {
     sessionID: string
     parentID: string
@@ -6801,18 +6806,18 @@ export type EventForked = {
   }
 }
 
-export type EventPromptPromoted = {
+export type EventSessionPromptPromoted = {
   id: string
-  type: "prompt.promoted"
+  type: "session.prompt.promoted"
   properties: {
     sessionID: string
     inputID: string
   }
 }
 
-export type EventPromptAdmitted = {
+export type EventSessionPromptAdmitted = {
   id: string
-  type: "prompt.admitted"
+  type: "session.prompt.admitted"
   properties: {
     sessionID: string
     inputID: string
@@ -6821,9 +6826,9 @@ export type EventPromptAdmitted = {
   }
 }
 
-export type EventExecutionSettled = {
+export type EventSessionExecutionSettled = {
   id: string
-  type: "execution.settled"
+  type: "session.execution.settled"
   properties: {
     sessionID: string
     outcome: "success" | "failure" | "interrupted"
@@ -6840,9 +6845,9 @@ export type EventSessionContextUpdated = {
   }
 }
 
-export type EventSynthetic = {
+export type EventSessionSynthetic = {
   id: string
-  type: "synthetic"
+  type: "session.synthetic"
   properties: {
     sessionID: string
     text: string
@@ -6853,9 +6858,9 @@ export type EventSynthetic = {
   }
 }
 
-export type EventSkillActivated = {
+export type EventSessionSkillActivated = {
   id: string
-  type: "skill.activated"
+  type: "session.skill.activated"
   properties: {
     sessionID: string
     name: string
@@ -6863,29 +6868,33 @@ export type EventSkillActivated = {
   }
 }
 
-export type EventShellStarted = {
+export type EventSessionShellStarted = {
   id: string
-  type: "shell.started"
+  type: "session.shell.started"
   properties: {
     sessionID: string
-    callID: string
-    command: string
+    shell: Shell2
   }
 }
 
-export type EventShellEnded = {
+export type EventSessionShellEnded = {
   id: string
-  type: "shell.ended"
+  type: "session.shell.ended"
   properties: {
     sessionID: string
-    callID: string
-    output: string
+    shell: Shell2
+    output: {
+      output: string
+      cursor: number
+      size: number
+      truncated: boolean
+    }
   }
 }
 
-export type EventStepStarted = {
+export type EventSessionStepStarted = {
   id: string
-  type: "step.started"
+  type: "session.step.started"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -6895,9 +6904,9 @@ export type EventStepStarted = {
   }
 }
 
-export type EventStepEnded = {
+export type EventSessionStepEnded = {
   id: string
-  type: "step.ended"
+  type: "session.step.ended"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -6917,9 +6926,9 @@ export type EventStepEnded = {
   }
 }
 
-export type EventStepFailed = {
+export type EventSessionStepFailed = {
   id: string
-  type: "step.failed"
+  type: "session.step.failed"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -6927,9 +6936,9 @@ export type EventStepFailed = {
   }
 }
 
-export type EventTextStarted = {
+export type EventSessionTextStarted = {
   id: string
-  type: "text.started"
+  type: "session.text.started"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -6937,9 +6946,9 @@ export type EventTextStarted = {
   }
 }
 
-export type EventTextDelta = {
+export type EventSessionTextDelta = {
   id: string
-  type: "text.delta"
+  type: "session.text.delta"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -6948,9 +6957,9 @@ export type EventTextDelta = {
   }
 }
 
-export type EventTextEnded = {
+export type EventSessionTextEnded = {
   id: string
-  type: "text.ended"
+  type: "session.text.ended"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -6959,9 +6968,9 @@ export type EventTextEnded = {
   }
 }
 
-export type EventReasoningStarted = {
+export type EventSessionReasoningStarted = {
   id: string
-  type: "reasoning.started"
+  type: "session.reasoning.started"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -6970,9 +6979,9 @@ export type EventReasoningStarted = {
   }
 }
 
-export type EventReasoningDelta = {
+export type EventSessionReasoningDelta = {
   id: string
-  type: "reasoning.delta"
+  type: "session.reasoning.delta"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -6981,9 +6990,9 @@ export type EventReasoningDelta = {
   }
 }
 
-export type EventReasoningEnded = {
+export type EventSessionReasoningEnded = {
   id: string
-  type: "reasoning.ended"
+  type: "session.reasoning.ended"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -6993,9 +7002,9 @@ export type EventReasoningEnded = {
   }
 }
 
-export type EventToolInputStarted = {
+export type EventSessionToolInputStarted = {
   id: string
-  type: "tool.input.started"
+  type: "session.tool.input.started"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -7004,9 +7013,9 @@ export type EventToolInputStarted = {
   }
 }
 
-export type EventToolInputDelta = {
+export type EventSessionToolInputDelta = {
   id: string
-  type: "tool.input.delta"
+  type: "session.tool.input.delta"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -7015,9 +7024,9 @@ export type EventToolInputDelta = {
   }
 }
 
-export type EventToolInputEnded = {
+export type EventSessionToolInputEnded = {
   id: string
-  type: "tool.input.ended"
+  type: "session.tool.input.ended"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -7026,9 +7035,9 @@ export type EventToolInputEnded = {
   }
 }
 
-export type EventToolCalled = {
+export type EventSessionToolCalled = {
   id: string
-  type: "tool.called"
+  type: "session.tool.called"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -7044,9 +7053,9 @@ export type EventToolCalled = {
   }
 }
 
-export type EventToolProgress = {
+export type EventSessionToolProgress = {
   id: string
-  type: "tool.progress"
+  type: "session.tool.progress"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -7058,9 +7067,9 @@ export type EventToolProgress = {
   }
 }
 
-export type EventToolSuccess = {
+export type EventSessionToolSuccess = {
   id: string
-  type: "tool.success"
+  type: "session.tool.success"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -7078,9 +7087,9 @@ export type EventToolSuccess = {
   }
 }
 
-export type EventToolFailed = {
+export type EventSessionToolFailed = {
   id: string
-  type: "tool.failed"
+  type: "session.tool.failed"
   properties: {
     sessionID: string
     assistantMessageID: string
@@ -7094,9 +7103,9 @@ export type EventToolFailed = {
   }
 }
 
-export type EventRetried = {
+export type EventSessionRetried = {
   id: string
-  type: "retried"
+  type: "session.retried"
   properties: {
     sessionID: string
     attempt: number
@@ -7104,27 +7113,27 @@ export type EventRetried = {
   }
 }
 
-export type EventCompactionStarted = {
+export type EventSessionCompactionStarted = {
   id: string
-  type: "compaction.started"
+  type: "session.compaction.started"
   properties: {
     sessionID: string
     reason: "auto" | "manual"
   }
 }
 
-export type EventCompactionDelta = {
+export type EventSessionCompactionDelta = {
   id: string
-  type: "compaction.delta"
+  type: "session.compaction.delta"
   properties: {
     sessionID: string
     text: string
   }
 }
 
-export type EventCompactionEnded = {
+export type EventSessionCompactionEnded = {
   id: string
-  type: "compaction.ended"
+  type: "session.compaction.ended"
   properties: {
     sessionID: string
     reason: "auto" | "manual"
@@ -7133,26 +7142,26 @@ export type EventCompactionEnded = {
   }
 }
 
-export type EventRevertStaged = {
+export type EventSessionRevertStaged = {
   id: string
-  type: "revert.staged"
+  type: "session.revert.staged"
   properties: {
     sessionID: string
     revert: RevertState
   }
 }
 
-export type EventRevertCleared = {
+export type EventSessionRevertCleared = {
   id: string
-  type: "revert.cleared"
+  type: "session.revert.cleared"
   properties: {
     sessionID: string
   }
 }
 
-export type EventRevertCommitted = {
+export type EventSessionRevertCommitted = {
   id: string
-  type: "revert.committed"
+  type: "session.revert.committed"
   properties: {
     sessionID: string
     messageID: string
@@ -7213,11 +7222,12 @@ export type EventInstallationUpdateAvailable = {
   }
 }
 
-export type EventFileEdited = {
+export type EventFilesystemChanged = {
   id: string
-  type: "file.edited"
+  type: "filesystem.changed"
   properties: {
     file: string
+    event: "add" | "change" | "unlink"
   }
 }
 
@@ -7279,20 +7289,19 @@ export type EventCommandUpdated = {
   }
 }
 
-export type EventSkillUpdated = {
+export type EventConfigUpdated = {
   id: string
-  type: "skill.updated"
+  type: "config.updated"
   properties: {
     [key: string]: unknown
   }
 }
 
-export type EventFileWatcherUpdated = {
+export type EventSkillUpdated = {
   id: string
-  type: "file.watcher.updated"
+  type: "skill.updated"
   properties: {
-    file: string
-    event: "add" | "change" | "unlink"
+    [key: string]: unknown
   }
 }
 
@@ -7493,15 +7502,6 @@ export type EventMcpToolsChanged = {
   }
 }
 
-export type EventMcpBrowserOpenFailed = {
-  id: string
-  type: "mcp.browser.open.failed"
-  properties: {
-    mcpName: string
-    url: string
-  }
-}
-
 export type EventMcpStatusChanged = {
   id: string
   type: "mcp.status.changed"
@@ -7518,6 +7518,14 @@ export type EventCommandExecuted = {
     sessionID: string
     arguments: string
     messageID: string
+  }
+}
+
+export type EventFileEdited = {
+  id: string
+  type: "file.edited"
+  properties: {
+    file: string
   }
 }
 
@@ -8032,6 +8040,24 @@ export type SessionMessageSkill2 = {
   text: string
 }
 
+export type ShellV2 = {
+  id: string
+  status: "running" | "exited" | "timeout" | "killed"
+  command: string
+  cwd: string
+  shell: string
+  file: string
+  pid?: number
+  exit?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  metadata: {
+    [key: string]: unknown
+  }
+  time: {
+    started: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    completed?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
 export type SessionMessageShell2 = {
   id: string
   metadata?: {
@@ -8042,9 +8068,13 @@ export type SessionMessageShell2 = {
     completed?: number
   }
   type: "shell"
-  callID: string
-  command: string
-  output: string
+  shell: ShellV2
+  output?: {
+    output: string
+    cursor: number
+    size: number
+    truncated: boolean
+  }
 }
 
 export type SessionMessageAssistantText2 = {
@@ -8221,13 +8251,13 @@ export type SessionContextEntryInfo2 = {
   value: unknown
 }
 
-export type AgentSelected2 = {
+export type SessionAgentSelected2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "agent.selected"
+  type: "session.agent.selected"
   durable: {
     aggregateID: string
     seq: number
@@ -8240,13 +8270,13 @@ export type AgentSelected2 = {
   }
 }
 
-export type ModelSelected2 = {
+export type SessionModelSelected2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "model.selected"
+  type: "session.model.selected"
   durable: {
     aggregateID: string
     seq: number
@@ -8279,13 +8309,13 @@ export type SessionMoved2 = {
   }
 }
 
-export type RenamedV2 = {
+export type SessionRenamed2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "renamed"
+  type: "session.renamed"
   durable: {
     aggregateID: string
     seq: number
@@ -8298,13 +8328,13 @@ export type RenamedV2 = {
   }
 }
 
-export type ForkedV2 = {
+export type SessionForked2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "forked"
+  type: "session.forked"
   durable: {
     aggregateID: string
     seq: number
@@ -8318,13 +8348,13 @@ export type ForkedV2 = {
   }
 }
 
-export type PromptPromoted2 = {
+export type SessionPromptPromoted2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "prompt.promoted"
+  type: "session.prompt.promoted"
   durable: {
     aggregateID: string
     seq: number
@@ -8337,13 +8367,13 @@ export type PromptPromoted2 = {
   }
 }
 
-export type PromptAdmitted2 = {
+export type SessionPromptAdmitted2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "prompt.admitted"
+  type: "session.prompt.admitted"
   durable: {
     aggregateID: string
     seq: number
@@ -8377,13 +8407,13 @@ export type SessionContextUpdated2 = {
   }
 }
 
-export type SyntheticV2 = {
+export type SessionSynthetic2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "synthetic"
+  type: "session.synthetic"
   durable: {
     aggregateID: string
     seq: number
@@ -8400,13 +8430,13 @@ export type SyntheticV2 = {
   }
 }
 
-export type SkillActivated2 = {
+export type SessionSkillActivated2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "skill.activated"
+  type: "session.skill.activated"
   durable: {
     aggregateID: string
     seq: number
@@ -8420,13 +8450,31 @@ export type SkillActivated2 = {
   }
 }
 
-export type ShellStarted2 = {
+export type Shell1V2 = {
+  id: string
+  status: "running" | "exited" | "timeout" | "killed"
+  command: string
+  cwd: string
+  shell: string
+  file: string
+  pid?: number
+  exit?: number | "NaN" | "Infinity" | "-Infinity"
+  metadata: {
+    [key: string]: unknown
+  }
+  time: {
+    started: number | "NaN" | "Infinity" | "-Infinity"
+    completed?: number | "NaN" | "Infinity" | "-Infinity"
+  }
+}
+
+export type SessionShellStarted2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "shell.started"
+  type: "session.shell.started"
   durable: {
     aggregateID: string
     seq: number
@@ -8435,18 +8483,17 @@ export type ShellStarted2 = {
   location?: LocationRef2
   data: {
     sessionID: string
-    callID: string
-    command: string
+    shell: Shell1V2
   }
 }
 
-export type ShellEnded2 = {
+export type SessionShellEnded2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "shell.ended"
+  type: "session.shell.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -8455,18 +8502,23 @@ export type ShellEnded2 = {
   location?: LocationRef2
   data: {
     sessionID: string
-    callID: string
-    output: string
+    shell: Shell1V2
+    output: {
+      output: string
+      cursor: number
+      size: number
+      truncated: boolean
+    }
   }
 }
 
-export type StepStarted2 = {
+export type SessionStepStarted2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "step.started"
+  type: "session.step.started"
   durable: {
     aggregateID: string
     seq: number
@@ -8482,13 +8534,13 @@ export type StepStarted2 = {
   }
 }
 
-export type StepEnded2 = {
+export type SessionStepEnded2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "step.ended"
+  type: "session.step.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -8514,13 +8566,13 @@ export type StepEnded2 = {
   }
 }
 
-export type StepFailed2 = {
+export type SessionStepFailed2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "step.failed"
+  type: "session.step.failed"
   durable: {
     aggregateID: string
     seq: number
@@ -8534,13 +8586,13 @@ export type StepFailed2 = {
   }
 }
 
-export type TextStarted2 = {
+export type SessionTextStarted2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "text.started"
+  type: "session.text.started"
   durable: {
     aggregateID: string
     seq: number
@@ -8554,13 +8606,13 @@ export type TextStarted2 = {
   }
 }
 
-export type TextEnded2 = {
+export type SessionTextEnded2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "text.ended"
+  type: "session.text.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -8581,13 +8633,13 @@ export type LlmProviderMetadata3 = {
   }
 }
 
-export type ReasoningStarted2 = {
+export type SessionReasoningStarted2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "reasoning.started"
+  type: "session.reasoning.started"
   durable: {
     aggregateID: string
     seq: number
@@ -8608,13 +8660,13 @@ export type LlmProviderMetadata4 = {
   }
 }
 
-export type ReasoningEnded2 = {
+export type SessionReasoningEnded2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "reasoning.ended"
+  type: "session.reasoning.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -8630,13 +8682,13 @@ export type ReasoningEnded2 = {
   }
 }
 
-export type ToolInputStarted2 = {
+export type SessionToolInputStarted2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.input.started"
+  type: "session.tool.input.started"
   durable: {
     aggregateID: string
     seq: number
@@ -8651,13 +8703,13 @@ export type ToolInputStarted2 = {
   }
 }
 
-export type ToolInputEnded2 = {
+export type SessionToolInputEnded2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.input.ended"
+  type: "session.tool.input.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -8678,13 +8730,13 @@ export type LlmProviderMetadata5 = {
   }
 }
 
-export type ToolCalled2 = {
+export type SessionToolCalled2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.called"
+  type: "session.tool.called"
   durable: {
     aggregateID: string
     seq: number
@@ -8706,13 +8758,13 @@ export type ToolCalled2 = {
   }
 }
 
-export type ToolProgress2 = {
+export type SessionToolProgress2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.progress"
+  type: "session.tool.progress"
   durable: {
     aggregateID: string
     seq: number
@@ -8736,13 +8788,13 @@ export type LlmProviderMetadata6 = {
   }
 }
 
-export type ToolSuccess2 = {
+export type SessionToolSuccess2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.success"
+  type: "session.tool.success"
   durable: {
     aggregateID: string
     seq: number
@@ -8772,13 +8824,13 @@ export type LlmProviderMetadata7 = {
   }
 }
 
-export type ToolFailed2 = {
+export type SessionToolFailed2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.failed"
+  type: "session.tool.failed"
   durable: {
     aggregateID: string
     seq: number
@@ -8811,13 +8863,13 @@ export type SessionRetryError2 = {
   }
 }
 
-export type RetriedV2 = {
+export type SessionRetried2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "retried"
+  type: "session.retried"
   durable: {
     aggregateID: string
     seq: number
@@ -8831,13 +8883,13 @@ export type RetriedV2 = {
   }
 }
 
-export type CompactionStarted2 = {
+export type SessionCompactionStarted2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "compaction.started"
+  type: "session.compaction.started"
   durable: {
     aggregateID: string
     seq: number
@@ -8850,13 +8902,13 @@ export type CompactionStarted2 = {
   }
 }
 
-export type CompactionEnded2 = {
+export type SessionCompactionEnded2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "compaction.ended"
+  type: "session.compaction.ended"
   durable: {
     aggregateID: string
     seq: number
@@ -8871,13 +8923,13 @@ export type CompactionEnded2 = {
   }
 }
 
-export type RevertStaged2 = {
+export type SessionRevertStaged2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "revert.staged"
+  type: "session.revert.staged"
   durable: {
     aggregateID: string
     seq: number
@@ -8890,13 +8942,13 @@ export type RevertStaged2 = {
   }
 }
 
-export type RevertCleared2 = {
+export type SessionRevertCleared2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "revert.cleared"
+  type: "session.revert.cleared"
   durable: {
     aggregateID: string
     seq: number
@@ -8908,13 +8960,13 @@ export type RevertCleared2 = {
   }
 }
 
-export type RevertCommitted2 = {
+export type SessionRevertCommitted2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "revert.committed"
+  type: "session.revert.committed"
   durable: {
     aggregateID: string
     seq: number
@@ -8928,37 +8980,37 @@ export type RevertCommitted2 = {
 }
 
 export type SessionDurableEventV2 =
-  | AgentSelected2
-  | ModelSelected2
+  | SessionAgentSelected2
+  | SessionModelSelected2
   | SessionMoved2
-  | RenamedV2
-  | ForkedV2
-  | PromptPromoted2
-  | PromptAdmitted2
+  | SessionRenamed2
+  | SessionForked2
+  | SessionPromptPromoted2
+  | SessionPromptAdmitted2
   | SessionContextUpdated2
-  | SyntheticV2
-  | SkillActivated2
-  | ShellStarted2
-  | ShellEnded2
-  | StepStarted2
-  | StepEnded2
-  | StepFailed2
-  | TextStarted2
-  | TextEnded2
-  | ReasoningStarted2
-  | ReasoningEnded2
-  | ToolInputStarted2
-  | ToolInputEnded2
-  | ToolCalled2
-  | ToolProgress2
-  | ToolSuccess2
-  | ToolFailed2
-  | RetriedV2
-  | CompactionStarted2
-  | CompactionEnded2
-  | RevertStaged2
-  | RevertCleared2
-  | RevertCommitted2
+  | SessionSynthetic2
+  | SessionSkillActivated2
+  | SessionShellStarted2
+  | SessionShellEnded2
+  | SessionStepStarted2
+  | SessionStepEnded2
+  | SessionStepFailed2
+  | SessionTextStarted2
+  | SessionTextEnded2
+  | SessionReasoningStarted2
+  | SessionReasoningEnded2
+  | SessionToolInputStarted2
+  | SessionToolInputEnded2
+  | SessionToolCalled2
+  | SessionToolProgress2
+  | SessionToolSuccess2
+  | SessionToolFailed2
+  | SessionRetried2
+  | SessionCompactionStarted2
+  | SessionCompactionEnded2
+  | SessionRevertStaged2
+  | SessionRevertCleared2
+  | SessionRevertCommitted2
 
 /**
  * Marker emitted once when a log read reaches its captured watermark. The reader holds every event committed at or below seq.
@@ -9211,8 +9263,8 @@ export type McpStatusConnected3 = {
   status: "connected"
 }
 
-export type McpStatusDisconnected2 = {
-  status: "disconnected"
+export type McpStatusPending2 = {
+  status: "pending"
 }
 
 export type McpStatusDisabled3 = {
@@ -9237,7 +9289,7 @@ export type McpServer2 = {
   name: string
   status:
     | McpStatusConnected3
-    | McpStatusDisconnected2
+    | McpStatusPending2
     | McpStatusDisabled3
     | McpStatusFailed3
     | McpStatusNeedsAuth3
@@ -10171,13 +10223,13 @@ export type MessagePartRemoved2 = {
   }
 }
 
-export type ExecutionSettled2 = {
+export type SessionExecutionSettled2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "execution.settled"
+  type: "session.execution.settled"
   location?: LocationRef2
   data: {
     sessionID: string
@@ -10186,13 +10238,13 @@ export type ExecutionSettled2 = {
   }
 }
 
-export type TextDelta2 = {
+export type SessionTextDelta2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "text.delta"
+  type: "session.text.delta"
   location?: LocationRef2
   data: {
     sessionID: string
@@ -10202,13 +10254,13 @@ export type TextDelta2 = {
   }
 }
 
-export type ReasoningDelta2 = {
+export type SessionReasoningDelta2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "reasoning.delta"
+  type: "session.reasoning.delta"
   location?: LocationRef2
   data: {
     sessionID: string
@@ -10218,13 +10270,13 @@ export type ReasoningDelta2 = {
   }
 }
 
-export type ToolInputDelta2 = {
+export type SessionToolInputDelta2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "tool.input.delta"
+  type: "session.tool.input.delta"
   location?: LocationRef2
   data: {
     sessionID: string
@@ -10234,13 +10286,13 @@ export type ToolInputDelta2 = {
   }
 }
 
-export type CompactionDelta2 = {
+export type SessionCompactionDelta2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "compaction.delta"
+  type: "session.compaction.delta"
   location?: LocationRef2
   data: {
     sessionID: string
@@ -10248,16 +10300,17 @@ export type CompactionDelta2 = {
   }
 }
 
-export type FileEdited2 = {
+export type FilesystemChanged2 = {
   id: string
   created: number
   metadata?: {
     [key: string]: unknown
   }
-  type: "file.edited"
+  type: "filesystem.changed"
   location?: LocationRef2
   data: {
     file: string
+    event: "add" | "change" | "unlink"
   }
 }
 
@@ -10353,6 +10406,21 @@ export type CommandUpdated2 = {
     | Array<unknown>
 }
 
+export type ConfigUpdated2 = {
+  id: string
+  created: number
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "config.updated"
+  location?: LocationRef2
+  data:
+    | {
+        [key: string]: unknown
+      }
+    | Array<unknown>
+}
+
 export type SkillUpdated2 = {
   id: string
   created: number
@@ -10366,20 +10434,6 @@ export type SkillUpdated2 = {
         [key: string]: unknown
       }
     | Array<unknown>
-}
-
-export type FileWatcherUpdated2 = {
-  id: string
-  created: number
-  metadata?: {
-    [key: string]: unknown
-  }
-  type: "file.watcher.updated"
-  location?: LocationRef2
-  data: {
-    file: string
-    event: "add" | "change" | "unlink"
-  }
 }
 
 export type PtyV2 = {
@@ -10446,24 +10500,6 @@ export type PtyDeleted2 = {
   }
 }
 
-export type ShellV2 = {
-  id: string
-  status: "running" | "exited" | "timeout" | "killed"
-  command: string
-  cwd: string
-  shell: string
-  file: string
-  pid?: number
-  exit?: number | "NaN" | "Infinity" | "-Infinity"
-  metadata: {
-    [key: string]: unknown
-  }
-  time: {
-    started: number | "NaN" | "Infinity" | "-Infinity"
-    completed?: number | "NaN" | "Infinity" | "-Infinity"
-  }
-}
-
 export type ShellCreated2 = {
   id: string
   created: number
@@ -10473,7 +10509,7 @@ export type ShellCreated2 = {
   type: "shell.created"
   location?: LocationRef2
   data: {
-    info: ShellV2
+    info: Shell1V2
   }
 }
 
@@ -11113,51 +11149,51 @@ export type V2EventV2 =
   | MessageRemoved2
   | MessagePartUpdated2
   | MessagePartRemoved2
-  | AgentSelected2
-  | ModelSelected2
+  | SessionAgentSelected2
+  | SessionModelSelected2
   | SessionMoved2
-  | RenamedV2
-  | ForkedV2
-  | PromptPromoted2
-  | PromptAdmitted2
-  | ExecutionSettled2
+  | SessionRenamed2
+  | SessionForked2
+  | SessionPromptPromoted2
+  | SessionPromptAdmitted2
+  | SessionExecutionSettled2
   | SessionContextUpdated2
-  | SyntheticV2
-  | SkillActivated2
-  | ShellStarted2
-  | ShellEnded2
-  | StepStarted2
-  | StepEnded2
-  | StepFailed2
-  | TextStarted2
-  | TextDelta2
-  | TextEnded2
-  | ReasoningStarted2
-  | ReasoningDelta2
-  | ReasoningEnded2
-  | ToolInputStarted2
-  | ToolInputDelta2
-  | ToolInputEnded2
-  | ToolCalled2
-  | ToolProgress2
-  | ToolSuccess2
-  | ToolFailed2
-  | RetriedV2
-  | CompactionStarted2
-  | CompactionDelta2
-  | CompactionEnded2
-  | RevertStaged2
-  | RevertCleared2
-  | RevertCommitted2
-  | FileEdited2
+  | SessionSynthetic2
+  | SessionSkillActivated2
+  | SessionShellStarted2
+  | SessionShellEnded2
+  | SessionStepStarted2
+  | SessionStepEnded2
+  | SessionStepFailed2
+  | SessionTextStarted2
+  | SessionTextDelta2
+  | SessionTextEnded2
+  | SessionReasoningStarted2
+  | SessionReasoningDelta2
+  | SessionReasoningEnded2
+  | SessionToolInputStarted2
+  | SessionToolInputDelta2
+  | SessionToolInputEnded2
+  | SessionToolCalled2
+  | SessionToolProgress2
+  | SessionToolSuccess2
+  | SessionToolFailed2
+  | SessionRetried2
+  | SessionCompactionStarted2
+  | SessionCompactionDelta2
+  | SessionCompactionEnded2
+  | SessionRevertStaged2
+  | SessionRevertCleared2
+  | SessionRevertCommitted2
+  | FilesystemChanged2
   | ReferenceUpdated2
   | PermissionV2Asked2
   | PermissionV2Replied2
   | PluginAdded2
   | ProjectDirectoriesUpdated2
   | CommandUpdated2
+  | ConfigUpdated2
   | SkillUpdated2
-  | FileWatcherUpdated2
   | PtyCreated2
   | PtyUpdated2
   | PtyExited2
@@ -11226,24 +11262,6 @@ export type PtyTicketConnectToken2 = {
 export type ForbiddenErrorV2 = {
   _tag: "ForbiddenError"
   message: string
-}
-
-export type Shell1V2 = {
-  id: string
-  status: "running" | "exited" | "timeout" | "killed"
-  command: string
-  cwd: string
-  shell: string
-  file: string
-  pid?: number
-  exit?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-  metadata: {
-    [key: string]: unknown
-  }
-  time: {
-    started: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-    completed?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-  }
 }
 
 export type ShellNotFoundErrorV2 = {
@@ -18477,7 +18495,7 @@ export type V2ShellListResponses = {
    */
   200: {
     location: LocationInfo2
-    data: Array<Shell1V2>
+    data: Array<ShellV2>
   }
 }
 
@@ -18521,7 +18539,7 @@ export type V2ShellCreateResponses = {
    */
   200: {
     location: LocationInfo2
-    data: Shell1V2
+    data: ShellV2
   }
 }
 
@@ -18604,7 +18622,7 @@ export type V2ShellGetResponses = {
    */
   200: {
     location: LocationInfo2
-    data: Shell1V2
+    data: ShellV2
   }
 }
 

@@ -77,6 +77,15 @@ type Wait = {
   onVisibleOutput?: (anchor: LocalReplayAnchor) => void
 }
 
+// One active session.shell call. The HTTP response is the completion signal;
+// callID correlates the live shell events once shell.started is observed, and
+// abort cancels the blocking request when the user interrupts the turn.
+type ShellWait = {
+  callID?: string
+  resolve: () => void
+  abort: () => void
+}
+
 type RunV2Event = V2Event
 type PromptFilePart = Extract<RunPromptPart, { type: "file" }>
 
@@ -99,6 +108,11 @@ type State = {
   projectedReasoning: Map<string, string>
   tools: Map<string, ToolState>
   finishedTools: Set<string>
+  skillMessages: Set<string>
+  shellCommands: Map<string, string>
+  shellStarted: Set<string>
+  shellEnded: Set<string>
+  shellWait?: ShellWait
   wait?: Wait
   connected: boolean
   closed: boolean
@@ -179,8 +193,71 @@ function promptFileSource(part: PromptFilePart) {
   }
 }
 
+function promptFiles(next: SessionTurnInput) {
+  return next.prompt.parts.flatMap((part) =>
+    part.type === "file"
+      ? [
+          {
+            uri: part.url,
+            name: part.filename,
+            source: promptFileSource(part),
+          },
+        ]
+      : [],
+  )
+}
+
+function promptAgents(next: SessionTurnInput) {
+  return next.prompt.parts.flatMap((part) =>
+    part.type === "agent"
+      ? [
+          {
+            name: part.name,
+            source: part.source
+              ? { start: part.source.start, end: part.source.end, text: part.source.value }
+              : undefined,
+          },
+        ]
+      : [],
+  )
+}
+
 function streamPartKey(messageID: string, partID: string) {
   return `${messageID}\u0000${partID}`
+}
+
+// Matches the commit shapes the legacy session-data reducer produced for direct
+// shell calls: one "start" commit rendering `$ command` and one "progress"
+// commit rendering the merged output (see toolEntryBody in tool.ts).
+function shellCommit(
+  callID: string,
+  command: string,
+  next: { text: string; phase: "start" | "progress"; toolState: "running" | "completed" },
+): StreamCommit {
+  return {
+    kind: "tool",
+    source: "tool",
+    partID: `shell:${callID}`,
+    tool: "bash",
+    shell: { callID, command },
+    ...next,
+  }
+}
+
+// session.shell resolves after the command settled server-side; the matching
+// live shell.ended event usually lands within the same tick, but hold the turn
+// briefly so the output commit renders inside it.
+const SHELL_OUTPUT_GRACE_MS = 1500
+
+function skillCommit(messageID: string, name: string): StreamCommit {
+  return {
+    kind: "system",
+    source: "system",
+    messageID,
+    partID: `skill:${messageID}`,
+    text: `→ Skill "${name}"`,
+    phase: "start",
+  }
 }
 
 async function resolveSelectedModel(input: StreamInput, next: Pick<SessionTurnInput, "model" | "variant" | "signal">) {
@@ -213,6 +290,10 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
     projectedReasoning: new Map(),
     tools: new Map(),
     finishedTools: new Set(),
+    skillMessages: new Set(),
+    shellCommands: new Map(),
+    shellStarted: new Set(),
+    shellEnded: new Set(),
     connected: false,
     closed: false,
     initial: true,
@@ -314,6 +395,52 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       write([{ kind: "user", source: "system", text: message.text, phase: "start", messageID: message.id }])
       return
     }
+    if (message.type === "skill") {
+      if (state.wait?.messageID === message.id) state.wait.promoted = true
+      if (!render || state.skillMessages.has(message.id)) {
+        state.skillMessages.add(message.id)
+        return
+      }
+      state.skillMessages.add(message.id)
+      write([skillCommit(message.id, message.name)])
+      return
+    }
+    if (message.type === "shell") {
+      state.shellCommands.set(message.shell.id, message.shell.command)
+      const completed = message.time.completed !== undefined
+      if (!render) {
+        // Suppressed history: mark settled shells rendered so live redelivery
+        // stays silent. A still-running shell stays unmarked and renders in
+        // full when its live shell.ended event arrives.
+        if (completed) {
+          state.shellStarted.add(message.shell.id)
+          state.shellEnded.add(message.shell.id)
+        }
+        return
+      }
+      if (!state.shellStarted.has(message.shell.id)) {
+        state.shellStarted.add(message.shell.id)
+        write([
+          shellCommit(message.shell.id, message.shell.command, {
+            text: "running shell",
+            phase: "start",
+            toolState: "running",
+          }),
+        ])
+      }
+      if (completed && message.output && !state.shellEnded.has(message.shell.id)) {
+        state.shellEnded.add(message.shell.id)
+        write([
+          shellCommit(message.shell.id, message.shell.command, {
+            text: message.output.output,
+            phase: "progress",
+            toolState: "completed",
+          }),
+        ])
+      }
+      if (completed && state.shellWait?.callID === message.shell.id) state.shellWait.resolve()
+      return
+    }
     if (message.type !== "assistant") return
     state.messageIDs.add(message.id)
     for (const item of message.content) {
@@ -402,17 +529,74 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
     }
     input.trace?.write("recv.event", event)
     subagents.main(event)
-    if (event.type === "prompt.promoted") {
+    if (event.type === "session.prompt.promoted") {
       if (state.wait?.messageID === event.data.inputID) state.wait.promoted = true
       state.messageIDs.add(event.data.inputID)
       write([], { phase: "running", status: "waiting for assistant" })
       return
     }
-    if (event.type === "step.started") {
+    if (event.type === "session.step.started") {
       write([], { phase: "running", status: "assistant responding" })
       return
     }
-    if (event.type === "text.delta") {
+    if (event.type === "session.skill.activated") {
+      const messageID = event.id.replace(/^evt_/, "msg_")
+      if (state.wait) state.wait.promoted = true
+      if (state.skillMessages.has(messageID)) return
+      state.skillMessages.add(messageID)
+      write([skillCommit(messageID, event.data.name)])
+      return
+    }
+    if (event.type === "session.shell.started") {
+      state.shellCommands.set(event.data.shell.id, event.data.shell.command)
+      const wait = state.shellWait
+      if (wait && wait.callID === undefined) wait.callID = event.data.shell.id
+      if (state.shellStarted.has(event.data.shell.id)) return
+      state.shellStarted.add(event.data.shell.id)
+      write(
+        [
+          shellCommit(event.data.shell.id, event.data.shell.command, {
+            text: "running shell",
+            phase: "start",
+            toolState: "running",
+          }),
+        ],
+        {
+          phase: "running",
+          status: "running shell",
+        },
+      )
+      return
+    }
+    if (event.type === "session.shell.ended") {
+      const command = state.shellCommands.get(event.data.shell.id) ?? event.data.shell.command
+      const commits: StreamCommit[] = []
+      if (!state.shellStarted.has(event.data.shell.id)) {
+        state.shellStarted.add(event.data.shell.id)
+        if (command)
+          commits.push(
+            shellCommit(event.data.shell.id, command, { text: "running shell", phase: "start", toolState: "running" }),
+          )
+      }
+      if (!state.shellEnded.has(event.data.shell.id)) {
+        state.shellEnded.add(event.data.shell.id)
+        commits.push(
+          shellCommit(event.data.shell.id, command, {
+            text: event.data.output.output,
+            phase: "progress",
+            toolState: "completed",
+          }),
+        )
+      }
+      const wait = state.shellWait
+      // An unset callID means shell.started has not been observed yet (event
+      // delivery lag); mini serializes its own shells, so adopt this ended.
+      const owned = wait !== undefined && (wait.callID === undefined || wait.callID === event.data.shell.id)
+      write(commits, owned || state.wait ? undefined : { phase: "idle", status: "" })
+      if (owned) wait.resolve()
+      return
+    }
+    if (event.type === "session.text.delta") {
       const key = streamPartKey(event.data.assistantMessageID, event.data.textID)
       const projected = state.projectedText.get(key)
       const covered = projected?.indexOf(event.data.delta) ?? -1
@@ -434,7 +618,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       ])
       return
     }
-    if (event.type === "text.ended") {
+    if (event.type === "session.text.ended") {
       const key = streamPartKey(event.data.assistantMessageID, event.data.textID)
       const previous = state.text.get(key) ?? ""
       if (event.data.text.length > previous.length)
@@ -452,7 +636,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       state.projectedText.delete(key)
       return
     }
-    if (event.type === "reasoning.delta") {
+    if (event.type === "session.reasoning.delta") {
       const key = streamPartKey(event.data.assistantMessageID, event.data.reasoningID)
       const projected = state.projectedReasoning.get(key)
       const covered = projected?.indexOf(event.data.delta) ?? -1
@@ -475,7 +659,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
         ])
       return
     }
-    if (event.type === "reasoning.ended") {
+    if (event.type === "session.reasoning.ended") {
       const key = streamPartKey(event.data.assistantMessageID, event.data.reasoningID)
       const previous = state.reasoning.get(key) ?? ""
       if (input.thinking && event.data.text.length > previous.length)
@@ -493,7 +677,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       state.projectedReasoning.delete(key)
       return
     }
-    if (event.type === "tool.input.started") {
+    if (event.type === "session.tool.input.started") {
       state.tools.set(event.data.callID, {
         messageID: event.data.assistantMessageID,
         name: event.data.name,
@@ -503,7 +687,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       })
       return
     }
-    if (event.type === "tool.called") {
+    if (event.type === "session.tool.called") {
       if (state.finishedTools.has(event.data.callID)) return
       const current = state.tools.get(event.data.callID)
       const item: SessionMessageAssistantTool = {
@@ -517,10 +701,10 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       renderTool(event.data.assistantMessageID, item)
       return
     }
-    if (event.type === "tool.progress") return
-    if (event.type === "tool.success" || event.type === "tool.failed") {
+    if (event.type === "session.tool.progress") return
+    if (event.type === "session.tool.success" || event.type === "session.tool.failed") {
       const current = state.tools.get(event.data.callID)
-      const failed = event.type === "tool.failed"
+      const failed = event.type === "session.tool.failed"
       const item: SessionMessageAssistantTool = {
         type: "tool",
         id: event.data.callID,
@@ -568,7 +752,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       syncBlockers()
       return
     }
-    if (event.type === "step.ended") {
+    if (event.type === "session.step.ended") {
       const total =
         event.data.tokens.input +
         event.data.tokens.output +
@@ -582,13 +766,13 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       })
       return
     }
-    if (event.type === "step.failed") {
+    if (event.type === "session.step.failed") {
       state.errors.add(event.data.assistantMessageID)
       if (state.wait) state.wait.failureRendered = true
       write([{ kind: "error", source: "system", text: errorMessage(event.data.error), phase: "start" }])
       return
     }
-    if (event.type === "execution.settled") {
+    if (event.type === "session.execution.settled") {
       write([], { phase: "idle", status: "" })
       const current = state.wait
       if (!current || (!current.promoted && !current.interrupted)) return
@@ -673,12 +857,129 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
     controller.signal.removeEventListener("abort", abortReady)
   }
 
+  const runShellTurn = async (next: SessionTurnInput) => {
+    if (state.wait || state.shellWait) throw new Error("prompt already running")
+    if (!state.connected) throw new Error("Event stream is reconnecting")
+    const abort = new AbortController()
+    const onAbort = () => abort.abort()
+    next.signal?.addEventListener("abort", onAbort, { once: true })
+    let rendered!: () => void
+    const output = new Promise<void>((resolve) => {
+      rendered = resolve
+    })
+    const active: ShellWait = { resolve: rendered, abort: () => abort.abort() }
+    state.shellWait = active
+    input.trace?.write("send.shell", { sessionID: input.sessionID, command: next.prompt.text })
+    write([], { phase: "running", status: "running shell" })
+    try {
+      await input.sdk.v2.session.shell(
+        { sessionID: input.sessionID, command: next.prompt.text },
+        { throwOnError: true, signal: abort.signal },
+      )
+      await Promise.race([output, wait(SHELL_OUTPUT_GRACE_MS, abort.signal)])
+    } catch (error) {
+      if (abort.signal.aborted) return
+      throw error
+    } finally {
+      next.signal?.removeEventListener("abort", onAbort)
+      if (state.shellWait === active) state.shellWait = undefined
+    }
+  }
+
+  // Shared settlement scaffolding for prompt-shaped turns: registers the wait,
+  // wires interruption, sends, then blocks until the live settled event (or a
+  // hydration pass over an idle session) resolves it.
+  const runTurnWait = async (
+    next: SessionTurnInput,
+    messageID: string,
+    turn: { promoted?: boolean; send: () => Promise<unknown> },
+  ) => {
+    let resolve!: () => void
+    let reject!: (error: unknown) => void
+    const done = new Promise<void>((ok, fail) => {
+      resolve = ok
+      reject = fail
+    })
+    const active: Wait = {
+      messageID,
+      promoted: turn.promoted === true,
+      interrupted: false,
+      failureRendered: false,
+      resolve,
+      reject,
+      onVisibleOutput: next.onVisibleOutput,
+    }
+    state.wait = active
+    const interrupt = () => {
+      active.interrupted = true
+      void input.sdk.v2.session.interrupt({ sessionID: input.sessionID }).catch(() => {})
+    }
+    next.signal?.addEventListener("abort", interrupt, { once: true })
+    try {
+      await turn.send()
+      await done
+    } catch (error) {
+      if (state.wait === active) state.wait = undefined
+      if (next.signal?.aborted) return
+      throw error
+    } finally {
+      next.signal?.removeEventListener("abort", interrupt)
+    }
+  }
+
   return {
     async runPromptTurn(next) {
-      if (next.prompt.mode === "shell") throw new Error("Shell is not yet available for current Session transcripts")
-      if (next.prompt.command) throw new Error("Commands are not yet available for current Session transcripts")
-      if (state.wait) throw new Error("prompt already running")
+      if (next.prompt.mode === "shell") {
+        await runShellTurn(next)
+        return
+      }
+      if (state.wait || state.shellWait) throw new Error("prompt already running")
       if (!state.connected) throw new Error("Event stream is reconnecting")
+      const messageID = next.prompt.messageID
+      if (!messageID) throw new Error("Prompt message ID is required")
+
+      const command = next.prompt.command
+      if (command?.source === "skill") {
+        input.trace?.write("send.skill", { sessionID: input.sessionID, messageID, skill: command.name })
+        await runTurnWait(next, messageID, {
+          send: () =>
+            input.sdk.v2.session.skill(
+              { sessionID: input.sessionID, id: messageID, skill: command.name },
+              { throwOnError: true, signal: next.signal },
+            ),
+        })
+        return
+      }
+      if (command) {
+        const selected = await resolveSelectedModel(input, next)
+        if (next.variant && !selected) throw new Error("Cannot select a variant before selecting a model")
+        // Agent and model ride the command payload; the server switches only
+        // when the command itself does not pin them.
+        const files = [
+          ...(next.includeFiles ? next.files : []).map((file) => ({ uri: file.url, name: file.filename })),
+          ...promptFiles(next),
+        ]
+        const agents = promptAgents(next)
+        input.trace?.write("send.command", { sessionID: input.sessionID, messageID, command: command.name })
+        await runTurnWait(next, messageID, {
+          send: () =>
+            input.sdk.v2.session.command(
+              {
+                sessionID: input.sessionID,
+                id: messageID,
+                command: command.name,
+                arguments: command.arguments,
+                agent: next.agent,
+                model: selected,
+                files: files.length ? files : undefined,
+                agents: agents.length ? agents : undefined,
+                delivery: "steer",
+              },
+              { throwOnError: true, signal: next.signal },
+            ),
+        })
+        return
+      }
 
       if (next.agent) {
         await input.sdk.v2.session.switchAgent(
@@ -695,78 +996,38 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
         )
 
       const prepared = await Promise.all((next.includeFiles ? next.files : []).map(prepareFile))
-      const promptFiles = next.prompt.parts.flatMap((part) =>
-        part.type === "file"
-          ? [
-              {
-                uri: part.url,
-                name: part.filename,
-                source: promptFileSource(part),
+      const attachments = [
+        ...prepared.flatMap((file) => (file.attachment ? [file.attachment] : [])),
+        ...promptFiles(next),
+      ]
+      const agents = promptAgents(next)
+      input.trace?.write("send.prompt", { sessionID: input.sessionID, messageID })
+      await runTurnWait(next, messageID, {
+        send: () =>
+          input.sdk.v2.session.prompt(
+            {
+              sessionID: input.sessionID,
+              id: messageID,
+              prompt: {
+                text: [next.prompt.text, ...prepared.flatMap((file) => (file.text ? [file.text] : []))].join("\n\n"),
+                files: attachments.length ? attachments : undefined,
+                agents: agents.length ? agents : undefined,
               },
-            ]
-          : [],
-      )
-      const attachments = [...prepared.flatMap((file) => (file.attachment ? [file.attachment] : [])), ...promptFiles]
-      const agents = next.prompt.parts.flatMap((part) =>
-        part.type === "agent"
-          ? [
-              {
-                name: part.name,
-                source: part.source
-                  ? { start: part.source.start, end: part.source.end, text: part.source.value }
-                  : undefined,
-              },
-            ]
-          : [],
-      )
-      const messageID = next.prompt.messageID
-      if (!messageID) throw new Error("Prompt message ID is required")
-      let resolve!: () => void
-      let reject!: (error: unknown) => void
-      const done = new Promise<void>((done, fail) => {
-        resolve = done
-        reject = fail
-      })
-      const active: Wait = {
-        messageID,
-        promoted: false,
-        interrupted: false,
-        failureRendered: false,
-        resolve,
-        reject,
-        onVisibleOutput: next.onVisibleOutput,
-      }
-      state.wait = active
-      const interrupt = () => {
-        active.interrupted = true
-        void input.sdk.v2.session.interrupt({ sessionID: input.sessionID }).catch(() => {})
-      }
-      next.signal?.addEventListener("abort", interrupt, { once: true })
-      try {
-        input.trace?.write("send.prompt", { sessionID: input.sessionID, messageID })
-        await input.sdk.v2.session.prompt(
-          {
-            sessionID: input.sessionID,
-            id: messageID,
-            prompt: {
-              text: [next.prompt.text, ...prepared.flatMap((file) => (file.text ? [file.text] : []))].join("\n\n"),
-              files: attachments.length ? attachments : undefined,
-              agents: agents.length ? agents : undefined,
+              delivery: "steer",
             },
-            delivery: "steer",
-          },
-          { throwOnError: true, signal: next.signal },
-        )
-        await done
-      } catch (error) {
-        if (state.wait === active) state.wait = undefined
-        if (next.signal?.aborted) return
-        throw error
-      } finally {
-        next.signal?.removeEventListener("abort", interrupt)
-      }
+            { throwOnError: true, signal: next.signal },
+          ),
+      })
     },
     async interruptActiveTurn() {
+      // A running shell holds no drain, so session.interrupt cannot reach it;
+      // abort the blocking request instead. The server-side command keeps its
+      // own lifecycle and simply loses its waiter.
+      const shell = state.shellWait
+      if (shell) {
+        shell.abort()
+        return
+      }
       if (state.wait) state.wait.interrupted = true
       await input.sdk.v2.session.interrupt({ sessionID: input.sessionID }).catch(() => {})
     },
@@ -787,6 +1048,10 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
         state.projectedReasoning.clear()
         state.tools.clear()
         state.finishedTools.clear()
+        state.skillMessages.clear()
+        state.shellCommands.clear()
+        state.shellStarted.clear()
+        state.shellEnded.clear()
         state.errors.clear()
         await hydrate({ render: true, reuseVisibleWait: false })
       } finally {

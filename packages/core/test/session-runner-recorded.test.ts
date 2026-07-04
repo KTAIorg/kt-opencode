@@ -98,7 +98,7 @@ const execution = Layer.effect(
   Effect.gen(function* () {
     const sessionRunner = yield* SessionRunner.Service
     const coordinator = yield* SessionRunCoordinator.make<SessionV2.ID, SessionRunner.RunError>({
-      drain: (sessionID, force) => sessionRunner.run({ sessionID, force }),
+      drain: (sessionID, force) => sessionRunner.drain({ sessionID, force }),
     })
     return SessionExecution.Service.of({
       active: coordinator.active,
@@ -193,12 +193,12 @@ describe("SessionRunnerLLM recorded", () => {
           .orderBy(EventTable.seq)
           .all()).map((event) => event.type),
       ).toEqual([
-        "prompt.admitted.1",
-        "prompt.promoted.1",
-        "step.started.1",
-        "text.started.1",
-        "text.ended.1",
-        "step.ended.1",
+        "session.prompt.admitted.1",
+        "session.prompt.promoted.1",
+        "session.step.started.1",
+        "session.text.started.1",
+        "session.text.ended.1",
+        "session.step.ended.1",
       ])
     }),
   )
