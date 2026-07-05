@@ -7,6 +7,7 @@ import { useClient } from "../../context/client"
 import { errorMessage } from "../../util/error"
 import { DialogFork } from "./dialog-fork"
 import type { PromptInfo } from "../../prompt/history"
+import { formatClipboardWriteNotification } from "../../clipboard"
 
 export function DialogMessage(props: {
   messageID: string
@@ -69,8 +70,19 @@ export function DialogMessage(props: {
                   : "text" in value
                     ? value.text
                     : ""
-            await clipboard.write?.(text)
-            dialog.clear()
+            if (!text) {
+              toast.show({ message: "No text content found in message", variant: "error" })
+              return
+            }
+            try {
+              const outcome = await clipboard.write(text)
+              toast.show(
+                formatClipboardWriteNotification(outcome, { message: "Copied to clipboard", variant: "info" }),
+              )
+              dialog.clear()
+            } catch (error) {
+              toast.error(error)
+            }
           },
         },
         {
