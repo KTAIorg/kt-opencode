@@ -15,12 +15,14 @@ export interface AdapterScope {
   readonly store: string
 }
 
+export interface DiffOptions {
+  readonly context: number
+  readonly maxOutputBytes: number
+}
+
 export interface Adapter {
   readonly status: () => Effect.Effect<readonly FileStatus[]>
-  readonly diff: (
-    mode: Mode,
-    options?: { readonly context?: number },
-  ) => Effect.Effect<readonly FileDiff.Info[]>
+  readonly diff: (mode: Mode, options: DiffOptions) => Effect.Effect<readonly FileDiff.Info[]>
 }
 
 export interface Backend {

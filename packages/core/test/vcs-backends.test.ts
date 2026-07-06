@@ -53,6 +53,23 @@ describe("VcsBackends", () => {
     }).pipe(Effect.scoped, provide),
   )
 
+  it.live("passes normalized options and bounds plugin diffs", () =>
+    Effect.gen(function* () {
+      let received: Parameters<PluginVcs.Adapter["diff"]>[1] | undefined
+      yield* register(
+        backend({
+          diff: (_mode, options) => {
+            received = options
+            return Effect.succeed([{ ...diff[0], patch: "x".repeat(options.maxOutputBytes + 1) }])
+          },
+        }),
+      )
+      const vcs = yield* Vcs.Service
+      expect(yield* vcs.diff("working", { context: 3 })).toEqual([{ ...diff[0], patch: undefined }])
+      expect(received).toEqual({ context: 3, maxOutputBytes: 10_000_000 })
+    }).pipe(Effect.scoped, provide),
+  )
+
   it.live("passes the location scope to the adapter factory", () =>
     Effect.gen(function* () {
       let scope: PluginVcs.AdapterScope | undefined

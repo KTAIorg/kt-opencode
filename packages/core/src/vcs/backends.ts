@@ -81,8 +81,20 @@ function guard(type: string, make: () => Vcs.Adapter): Vcs.Adapter {
       adapter.pipe(
         Effect.flatMap((impl) => impl.diff(mode, options)),
         sanitize(type, "diff", decodeDiff),
+        Effect.map((rows) => boundDiff(rows, options.maxOutputBytes)),
       ),
   }
+}
+
+function boundDiff(rows: readonly FileDiff.Info[], maxOutputBytes: number) {
+  let total = 0
+  return rows.map((row) => {
+    if (row.patch === undefined) return row
+    const bytes = Buffer.byteLength(row.patch)
+    if (total + bytes > maxOutputBytes) return { ...row, patch: undefined }
+    total += bytes
+    return row
+  })
 }
 
 function sanitize<A>(type: string, operation: string, decode: (input: unknown) => Option.Option<readonly A[]>) {

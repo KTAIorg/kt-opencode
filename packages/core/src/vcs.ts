@@ -10,6 +10,7 @@ import { AppProcess } from "./process"
 import { VcsBackends } from "./vcs/backends"
 import { VcsGit } from "./vcs/git"
 import { VcsHg } from "./vcs/hg"
+import { MAX_TOTAL_PATCH_BYTES, PATCH_CONTEXT_LINES } from "./vcs/patch"
 
 export { FileStatus, Mode }
 
@@ -60,7 +61,10 @@ const layer = Layer.effect(
       diff: Effect.fn("Vcs.diff")(function* (mode: Mode, options?: DiffOptions) {
         const impl = yield* adapter()
         if (!impl) return []
-        return yield* impl.diff(mode, options)
+        return yield* impl.diff(mode, {
+          context: options?.context ?? PATCH_CONTEXT_LINES,
+          maxOutputBytes: MAX_TOTAL_PATCH_BYTES,
+        })
       }),
     })
   }),
