@@ -498,6 +498,26 @@ describe("Promise.resolve / Promise.reject", () => {
   })
 })
 
+describe("Promise combinator values", () => {
+  test("all, allSettled, and race return chainable promises", async () => {
+    expect(
+      await value(`
+        const all = Promise.all([Promise.resolve(1), 2])
+        const settled = Promise.allSettled([Promise.resolve(3)])
+        const race = Promise.race([Promise.resolve(4)])
+        return [
+          all instanceof Promise,
+          settled instanceof Promise,
+          race instanceof Promise,
+          await all.then((values) => values.join(",")),
+          await settled.then((values) => values[0].value),
+          await race.then((value) => value + 1),
+        ]
+      `),
+    ).toEqual([true, true, true, "1,2", 3, 5])
+  })
+})
+
 describe("timeout interruption of forked calls", () => {
   test("the execution timeout interrupts in-flight forked fibers", async () => {
     const trace = makeTrace()

@@ -711,7 +711,7 @@ class Interpreter<R> {
         const promise = self.pendingSettlements.values().next().value
         if (promise === undefined) break
         const exit = yield* self.observePromise(promise)
-        if (Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)) continue
+        if (Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause) || promise.handled) continue
         const failure = normalizeError(Cause.squash(exit.cause))
         throw new InterpreterRuntimeError(
           `Unhandled rejection from an un-awaited promise: ${failure.message}`,
@@ -2221,59 +2221,59 @@ class Interpreter<R> {
             ? Effect.map(this.observePromise(item), (exit) => ({ index, item, exit }))
             : Effect.succeed({ index, item: undefined, exit: Exit.succeed(item) }),
         )
-        return Effect.gen(function* () {
-          const remaining = [...observations]
-          const values: Array<unknown> = []
-          values.length = items.length
-          while (remaining.length > 0) {
-            const winner = yield* Effect.raceAll(remaining)
-            const position = remaining.indexOf(observations[winner.index])
-            if (position >= 0) remaining.splice(position, 1)
-            if (Exit.isSuccess(winner.exit)) {
-              values[winner.index] = winner.exit.value
-              continue
+        return this.createPromise(
+          Effect.gen(function* () {
+            const remaining = [...observations]
+            const values: Array<unknown> = []
+            values.length = items.length
+            while (remaining.length > 0) {
+              const winner = yield* Effect.raceAll(remaining)
+              const position = remaining.indexOf(observations[winner.index])
+              if (position >= 0) remaining.splice(position, 1)
+              if (Exit.isSuccess(winner.exit)) {
+                values[winner.index] = winner.exit.value
+                continue
+              }
+              for (const item of items) {
+                if (!(item instanceof SandboxPromise) || item === winner.item) continue
+                item.handled = true
+                self.pendingSettlements.add(item)
+              }
+              return yield* self.unwrapPromiseExit(winner.exit)
             }
-            yield* self.createPromise(
-              Effect.asVoid(
-                Effect.forEach(
-                  items,
-                  (item) => (item instanceof SandboxPromise ? self.observePromise(item) : Effect.void),
-                  { concurrency: "unbounded" },
-                ),
-              ),
-            )
-            return yield* self.unwrapPromiseExit(winner.exit)
-          }
-          return values
-        })
+            return values
+          }),
+        )
       }
       case "allSettled": {
         const observations = items.map((item) =>
           item instanceof SandboxPromise ? this.observePromise(item) : Effect.succeed(Exit.succeed(item as unknown)),
         )
-        return Effect.gen(function* () {
-          const outcomes: Array<unknown> = []
-          for (const observation of observations) {
-            const exit = yield* observation
-            if (Exit.isSuccess(exit)) {
+        return this.createPromise(
+          Effect.gen(function* () {
+            const outcomes: Array<unknown> = []
+            for (const observation of observations) {
+              const exit = yield* observation
+              if (Exit.isSuccess(exit)) {
+                outcomes.push(
+                  Object.assign(Object.create(null) as SafeObject, { status: "fulfilled", value: exit.value }),
+                )
+                continue
+              }
+              if (Cause.hasInterruptsOnly(exit.cause)) {
+                // Execution teardown (timeout/host interruption), not a program-level rejection.
+                return yield* Effect.failCause(exit.cause)
+              }
               outcomes.push(
-                Object.assign(Object.create(null) as SafeObject, { status: "fulfilled", value: exit.value }),
+                Object.assign(Object.create(null) as SafeObject, {
+                  status: "rejected",
+                  reason: caughtErrorValue(Cause.squash(exit.cause)),
+                }),
               )
-              continue
             }
-            if (Cause.hasInterruptsOnly(exit.cause)) {
-              // Execution teardown (timeout/host interruption), not a program-level rejection.
-              return yield* Effect.failCause(exit.cause)
-            }
-            outcomes.push(
-              Object.assign(Object.create(null) as SafeObject, {
-                status: "rejected",
-                reason: caughtErrorValue(Cause.squash(exit.cause)),
-              }),
-            )
-          }
-          return outcomes
-        })
+            return outcomes
+          }),
+        )
       }
       case "race": {
         if (items.length === 0) {
@@ -2287,23 +2287,20 @@ class Interpreter<R> {
             ? Effect.map(this.observePromise(item), (exit) => ({ index, exit }))
             : Effect.succeed({ index, exit: Exit.succeed(item as unknown) }),
         )
-        return Effect.gen(function* () {
-          // First settlement (fulfilled OR rejected) wins. Losers continue like native
-          // promises, while a supervised drain keeps their failures handled and their work
-          // inside the execution lifetime.
-          const winner = yield* Effect.raceAll(observations)
-          yield* self.createPromise(
-            Effect.asVoid(
-              Effect.forEach(
-                items,
-                (item, index) =>
-                  index !== winner.index && item instanceof SandboxPromise ? self.observePromise(item) : Effect.void,
-                { concurrency: "unbounded" },
-              ),
-            ),
-          )
-          return yield* self.unwrapPromiseExit(winner.exit)
-        })
+        return this.createPromise(
+          Effect.gen(function* () {
+            // First settlement (fulfilled OR rejected) wins. Losers continue like native
+            // promises, while a supervised drain keeps their failures handled and their work
+            // inside the execution lifetime.
+            const winner = yield* Effect.raceAll(observations)
+            for (const [index, item] of items.entries()) {
+              if (index === winner.index || !(item instanceof SandboxPromise)) continue
+              item.handled = true
+              self.pendingSettlements.add(item)
+            }
+            return yield* self.unwrapPromiseExit(winner.exit)
+          }),
+        )
       }
     }
   }

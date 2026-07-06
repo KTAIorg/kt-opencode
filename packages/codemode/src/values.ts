@@ -1,6 +1,7 @@
 import type { Effect, Fiber } from "effect"
 
 export class SandboxPromise {
+  handled = false
   constructor(
     readonly fiber: Fiber.Fiber<unknown, unknown> | undefined,
     readonly immediate?: Effect.Effect<unknown, unknown>,
