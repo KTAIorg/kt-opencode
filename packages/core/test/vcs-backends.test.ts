@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Effect, Exit, Layer, Scope } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, Scope } from "effect"
 import { Vcs as PluginVcs } from "@opencode-ai/plugin/v2/effect"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Location } from "@opencode-ai/core/location"
@@ -113,6 +113,18 @@ describe("VcsBackends", () => {
       const vcs = yield* Vcs.Service
       expect(yield* vcs.status()).toEqual([])
       expect(yield* vcs.diff("working")).toEqual([])
+    }).pipe(Effect.scoped, provide),
+  )
+
+  it.live("preserves adapter interruption", () =>
+    Effect.gen(function* () {
+      yield* register(backend({ status: () => Effect.never }))
+      const vcs = yield* Vcs.Service
+      const fiber = yield* Effect.forkChild(vcs.status())
+      yield* Fiber.interrupt(fiber)
+      const exit = yield* Fiber.await(fiber)
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true)
     }).pipe(Effect.scoped, provide),
   )
 

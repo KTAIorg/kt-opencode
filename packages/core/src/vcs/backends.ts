@@ -3,7 +3,7 @@ export * as VcsBackends from "./backends"
 import { Vcs } from "@opencode-ai/plugin/v2/effect"
 import { FileDiff } from "@opencode-ai/schema/file-diff"
 import { FileStatus } from "@opencode-ai/schema/vcs"
-import { Context, Effect, Exit, Layer, Option, Schema } from "effect"
+import { Cause, Context, Effect, Exit, Layer, Option, Schema } from "effect"
 import type { Scope } from "effect"
 import { ConfigVcs } from "../config/vcs"
 import { makeLocationNode } from "../effect/app-node"
@@ -46,8 +46,12 @@ const layer = Layer.effect(
               message: `Vcs backend '${backend.type}' is already registered`,
             })
           }
-          registry.set(backend.type, { backend })
-          yield* Effect.addFinalizer(() => Effect.sync(() => registry.delete(backend.type)))
+          yield* Effect.uninterruptible(
+            Effect.gen(function* () {
+              registry.set(backend.type, { backend })
+              yield* Effect.addFinalizer(() => Effect.sync(() => registry.delete(backend.type)))
+            }),
+          )
         }),
       get: (type) => {
         const vcs = location.vcsBackend
@@ -87,6 +91,7 @@ function sanitize<A>(type: string, operation: string, decode: (input: unknown) =
       Effect.exit,
       Effect.flatMap((exit) => {
         if (Exit.isFailure(exit)) {
+          if (Cause.hasInterrupts(exit.cause)) return Effect.failCause(exit.cause)
           return Effect.logWarning("vcs backend failed", { type, operation, cause: exit.cause }).pipe(
             Effect.as([] as readonly A[]),
           )
