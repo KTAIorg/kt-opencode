@@ -79,12 +79,42 @@ export function fromPromise(plugin: Plugin) {
           integration: {
             list: (input) => run(host.integration.list(input)),
             get: (input) => run(host.integration.get(input)),
+            selectCapability: (input) => run(host.integration.selectCapability(input)),
             connectKey: (input) => run(host.integration.connectKey(input)),
             connectOauth: (input) => run(host.integration.connectOauth(input)),
             attemptStatus: (input) => run(host.integration.attemptStatus(input)),
             attemptComplete: (input) => run(host.integration.attemptComplete(input)),
             attemptCancel: (input) => run(host.integration.attemptCancel(input)),
-            transform: transform(host.integration),
+            transform: (callback) =>
+              register(
+                host.integration.transform((draft) => {
+                  callback({
+                    ...draft,
+                    capability: {
+                      search: {
+                        list: () =>
+                          draft.capability.search.list().map((provider) => ({
+                            integrationID: provider.integrationID,
+                            capability: provider.capability,
+                            execute: (input, execution) =>
+                              Effect.runPromiseWith(context)(provider.execute(input, execution)),
+                          })),
+                        update: (input) =>
+                          draft.capability.search.update({
+                            integrationID: input.integrationID,
+                            capability: input.capability,
+                            execute: (query, execution) =>
+                              Effect.tryPromise({
+                                try: (signal) => input.execute(query, { ...execution, signal }),
+                                catch: (cause) => cause,
+                              }),
+                          }),
+                        remove: draft.capability.search.remove,
+                      },
+                    },
+                  })
+                }),
+              ),
             reload: () => run(host.integration.reload()),
             connection: {
               active: (id) => Effect.runPromiseWith(context)(host.integration.connection.active(id)),

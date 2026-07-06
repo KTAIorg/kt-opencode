@@ -34,6 +34,7 @@ import { Pty } from "./pty"
 import { QuestionV2 } from "./question"
 import { Shell } from "./shell"
 import { Reference } from "./reference"
+import { Search } from "./search"
 import { ReferenceGuidance } from "./reference/guidance"
 import { Ripgrep } from "./ripgrep"
 import { SessionRunnerLLM } from "./session/runner/llm"
@@ -51,7 +52,6 @@ import { SessionInstructions } from "./session/instructions"
 import { McpTool } from "./tool/mcp"
 import { ReadToolFileSystem } from "./tool/read-filesystem"
 import { ToolRegistry } from "./tool/registry"
-import { WebSearchTool } from "./tool/websearch"
 import { ToolOutputStore } from "./tool-output-store"
 import { Vcs } from "./vcs"
 
@@ -84,13 +84,13 @@ const pluginSupervisorNode = makeLocationNode({
     Form.node,
     ReadToolFileSystem.node,
     Reference.node,
+    Search.node,
     Ripgrep.node,
     SessionInstructions.node,
     SessionTodo.node,
     Shell.node,
     SkillV2.node,
     ToolRegistry.toolsNode,
-    WebSearchTool.configNode,
   ],
 })
 
@@ -100,6 +100,7 @@ const locationServiceNodes = [
   AgentV2.node,
   CommandV2.node,
   Reference.node,
+  Search.node,
   Integration.node,
   Catalog.node,
   AISDK.node,

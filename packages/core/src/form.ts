@@ -67,6 +67,7 @@ export class InvalidFormError extends Schema.TaggedErrorClass<InvalidFormError>(
 export type CreateInput =
   | (Omit<Form.FormInfo, "id"> & { readonly id?: ID })
   | (Omit<Form.UrlInfo, "id"> & { readonly id?: ID })
+  | (Omit<Form.IntegrationInfo, "id"> & { readonly id?: ID })
 
 export interface ReplyInput {
   readonly id: ID
@@ -138,7 +139,9 @@ export const layer = Layer.effect(
           const form: Info =
             input.mode === "form"
               ? { ...base, mode: "form", fields: input.fields }
-              : { ...base, mode: "url", url: input.url }
+              : input.mode === "url"
+                ? { ...base, mode: "url", url: input.url }
+                : { ...base, mode: "integration", integrationID: input.integrationID }
           const entry: Entry = {
             form,
             state: { status: "pending" },
@@ -228,9 +231,9 @@ export const locationLayer = layer
 export const node = makeLocationNode({ service: Service, layer, deps: [EventV2.node] })
 
 function validateAnswer(form: Info, answer: Answer) {
-  if (form.mode === "url") {
+  if (form.mode !== "form") {
     if (Object.keys(answer).length === 0) return
-    return "URL forms must be answered with an empty answer"
+    return `${form.mode === "url" ? "URL" : "Integration"} forms must be answered with an empty answer`
   }
   const fields = new Map(form.fields.map((field) => [field.key, field]))
   for (const key of Object.keys(answer)) {

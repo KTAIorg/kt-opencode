@@ -9,6 +9,7 @@ import {
 
 const integration = (value: Partial<IntegrationInfo> & Pick<IntegrationInfo, "id" | "name">): IntegrationInfo => ({
   methods: [],
+  capabilities: [],
   connections: [],
   ...value,
 })

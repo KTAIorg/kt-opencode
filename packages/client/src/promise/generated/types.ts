@@ -2240,6 +2240,11 @@ export type IntegrationListOutput = {
       | { readonly type: "key"; readonly label?: string }
       | { readonly type: "env"; readonly names: ReadonlyArray<string> }
     >
+    readonly capabilities: ReadonlyArray<{
+      readonly type: "search"
+      readonly connection: "optional" | "required"
+      readonly selected: boolean
+    }>
     readonly connections: ReadonlyArray<
       | { readonly type: "credential"; readonly id: string; readonly label: string }
       | { readonly type: "env"; readonly name: string }
@@ -2292,12 +2297,27 @@ export type IntegrationGetOutput = {
       | { readonly type: "key"; readonly label?: string }
       | { readonly type: "env"; readonly names: ReadonlyArray<string> }
     >
+    readonly capabilities: ReadonlyArray<{
+      readonly type: "search"
+      readonly connection: "optional" | "required"
+      readonly selected: boolean
+    }>
     readonly connections: ReadonlyArray<
       | { readonly type: "credential"; readonly id: string; readonly label: string }
       | { readonly type: "env"; readonly name: string }
     >
   } | null
 }
+
+export type IntegrationSelectCapabilityInput = {
+  readonly integrationID: { readonly integrationID: string }["integrationID"]
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+  readonly capability: { readonly capability: "search" }["capability"]
+}
+
+export type IntegrationSelectCapabilityOutput = void
 
 export type IntegrationConnectKeyInput = {
   readonly integrationID: { readonly integrationID: string }["integrationID"]
@@ -2604,6 +2624,14 @@ export type FormListRequestsOutput = {
         readonly mode: "url"
         readonly url: string
       }
+    | {
+        readonly id: string
+        readonly sessionID: string
+        readonly title?: string
+        readonly metadata?: { readonly [x: string]: JsonValue }
+        readonly mode: "integration"
+        readonly integrationID: string
+      }
   >
 }
 
@@ -2715,6 +2743,14 @@ export type FormListOutput = {
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly mode: "url"
         readonly url: string
+      }
+    | {
+        readonly id: string
+        readonly sessionID: string
+        readonly title?: string
+        readonly metadata?: { readonly [x: string]: JsonValue }
+        readonly mode: "integration"
+        readonly integrationID: string
       }
   >
 }["data"]
@@ -3412,6 +3448,14 @@ export type FormCreateOutput = {
         readonly mode: "url"
         readonly url: string
       }
+    | {
+        readonly id: string
+        readonly sessionID: string
+        readonly title?: string
+        readonly metadata?: { readonly [x: string]: JsonValue }
+        readonly mode: "integration"
+        readonly integrationID: string
+      }
 }["data"]
 
 export type FormGetInput = {
@@ -3525,6 +3569,14 @@ export type FormGetOutput = {
         readonly metadata?: { readonly [x: string]: JsonValue }
         readonly mode: "url"
         readonly url: string
+      }
+    | {
+        readonly id: string
+        readonly sessionID: string
+        readonly title?: string
+        readonly metadata?: { readonly [x: string]: JsonValue }
+        readonly mode: "integration"
+        readonly integrationID: string
       }
 }["data"]
 
@@ -5271,6 +5323,14 @@ export type EventSubscribeOutput =
               readonly metadata?: { readonly [x: string]: unknown }
               readonly mode: "url"
               readonly url: string
+            }
+          | {
+              readonly id: string
+              readonly sessionID: string
+              readonly title?: string
+              readonly metadata?: { readonly [x: string]: unknown }
+              readonly mode: "integration"
+              readonly integrationID: string
             }
       }
     }

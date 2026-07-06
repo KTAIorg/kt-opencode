@@ -45,6 +45,7 @@ export function host(overrides: Overrides = {}): PluginContext {
     integration: overrides.integration ?? {
       list: () => Effect.die("unused integration.list"),
       get: () => Effect.die("unused integration.get"),
+      selectCapability: () => Effect.die("unused integration.selectCapability"),
       connectKey: () => Effect.die("unused integration.connectKey"),
       connectOauth: () => Effect.die("unused integration.connectOauth"),
       attemptStatus: () => Effect.die("unused integration.attemptStatus"),
@@ -188,6 +189,7 @@ export function integrationHost(integration: Integration.Interface): PluginConte
   return {
     list: () => Effect.die("unused integration.list"),
     get: () => Effect.die("unused integration.get"),
+    selectCapability: () => Effect.die("unused integration.selectCapability"),
     connectKey: () => Effect.die("unused integration.connectKey"),
     connectOauth: () => Effect.die("unused integration.connectOauth"),
     attemptStatus: () => Effect.die("unused integration.attemptStatus"),
@@ -280,6 +282,18 @@ export function integrationHost(integration: Integration.Interface): PluginConte
               })
             },
             remove: (id, item) => draft.method.remove(Integration.ID.make(id), internalMethod(item)),
+          },
+          capability: {
+            search: {
+              list: () => [],
+              update: (input) =>
+                draft.capability.search.update({
+                  integrationID: Integration.ID.make(input.integrationID),
+                  capability: input.capability,
+                  execute: input.execute,
+                }),
+              remove: (id) => draft.capability.search.remove(Integration.ID.make(id)),
+            },
           },
         }),
       ),

@@ -2,6 +2,7 @@ import type {
   AgentV2Info,
   CommandV2Info,
   FormFormInfo,
+  FormIntegrationInfo,
   FormUrlInfo,
   IntegrationInfo,
   LocationRef,
@@ -30,7 +31,7 @@ export type DataSessionStatus = "idle" | "running"
 
 const messageIDFromEvent = (eventID: string) => eventID.replace(/^evt_/, "msg_")
 
-export type FormInfo = FormFormInfo | FormUrlInfo
+export type FormInfo = FormFormInfo | FormUrlInfo | FormIntegrationInfo
 
 type LocationData = {
   agent?: AgentV2Info[]

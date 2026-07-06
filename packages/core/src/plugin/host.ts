@@ -163,6 +163,7 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
     integration: {
       list: () => response(integration.list()),
       get: (input) => response(integration.get(Integration.ID.make(input.integrationID))),
+      selectCapability: (input) => integration.capability.search.select(Integration.ID.make(input.integrationID)),
       connectKey: (input) =>
         integration.connection.key({
           integrationID: Integration.ID.make(input.integrationID),
@@ -267,6 +268,29 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
               },
               remove: (id, method) =>
                 draft.method.remove(Integration.ID.make(id), Schema.decodeUnknownSync(Integration.Method)(method)),
+            },
+            capability: {
+              search: {
+                list: () =>
+                  draft.capability.search.list().map((provider) => ({
+                    integrationID: provider.integrationID,
+                    capability: provider.capability,
+                    execute: (input, context) =>
+                      provider.execute(input, {
+                        ...context,
+                        credential: context.credential
+                          ? Schema.decodeUnknownSync(Credential.Value)(context.credential)
+                          : undefined,
+                      }),
+                  })),
+                update: (input) =>
+                  draft.capability.search.update({
+                    integrationID: Integration.ID.make(input.integrationID),
+                    capability: input.capability,
+                    execute: input.execute,
+                  }),
+                remove: (id) => draft.capability.search.remove(Integration.ID.make(id)),
+              },
             },
           })
         }),

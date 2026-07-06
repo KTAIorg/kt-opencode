@@ -300,6 +300,8 @@ import type {
   V2IntegrationAttemptCompleteResponses,
   V2IntegrationAttemptStatusErrors,
   V2IntegrationAttemptStatusResponses,
+  V2IntegrationCapabilitySelectErrors,
+  V2IntegrationCapabilitySelectResponses,
   V2IntegrationConnectKeyErrors,
   V2IntegrationConnectKeyResponses,
   V2IntegrationConnectOauthErrors,
@@ -334,6 +336,8 @@ import type {
   V2ProjectCurrentResponses,
   V2ProjectDirectoriesErrors,
   V2ProjectDirectoriesResponses,
+  V2ProjectListErrors,
+  V2ProjectListResponses,
   V2ProviderGetErrors,
   V2ProviderGetResponses,
   V2ProviderListErrors,
@@ -6645,6 +6649,52 @@ export class Provider2 extends HeyApiClient {
   }
 }
 
+export class Capability extends HeyApiClient {
+  /**
+   * Select integration capability
+   *
+   * Set the default integration for a capability.
+   */
+  public select<ThrowOnError extends boolean = false>(
+    parameters: {
+      integrationID: string
+      location?: {
+        directory?: string | null
+        workspace?: string | null
+      } | null
+      capability?: "search"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "integrationID" },
+            { in: "query", key: "location" },
+            { in: "body", key: "capability" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      V2IntegrationCapabilitySelectResponses,
+      V2IntegrationCapabilitySelectErrors,
+      ThrowOnError
+    >({
+      url: "/api/integration/{integrationID}/capability",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Connect extends HeyApiClient {
   /**
    * Connect with key
@@ -6919,6 +6969,11 @@ export class Integration extends HeyApiClient {
     })
   }
 
+  private _capability?: Capability
+  get capability(): Capability {
+    return (this._capability ??= new Capability({ client: this.client }))
+  }
+
   private _connect?: Connect
   get connect(): Connect {
     return (this._connect ??= new Connect({ client: this.client }))
@@ -7032,6 +7087,18 @@ export class Credential extends HeyApiClient {
 }
 
 export class Project2 extends HeyApiClient {
+  /**
+   * List projects
+   *
+   * List known projects.
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V2ProjectListResponses, V2ProjectListErrors, ThrowOnError>({
+      url: "/api/project",
+      ...options,
+    })
+  }
+
   /**
    * Get current project
    *

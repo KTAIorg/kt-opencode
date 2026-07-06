@@ -53,28 +53,46 @@ export function connectionSummary(integration: IntegrationInfo) {
     .join(", ")
 }
 
-export function DialogIntegration(props: { onConnected?: OnIntegrationConnected } = {}) {
+export function DialogIntegration(
+  props: { onConnected?: OnIntegrationConnected; integrationID?: string; connectionOnly?: boolean } = {},
+) {
   const data = useData()
   const dialog = useDialog()
+  const sdk = useSDK()
+  const toast = useToast()
   const { theme } = useTheme()
   const options = createMemo(() =>
-    integrationOptions(data.location.integration.list() ?? []).map((integration) => {
-      const methods = connectMethods(integration)
-      const connected = integration.connections.length > 0
-      return {
-        title: integration.name,
-        value: integration.id,
-        description: methods.length ? undefined : "Environment only",
-        footer: connectionSummary(integration) || undefined,
-        category: integration.id in INTEGRATION_PRIORITY ? "Popular" : "Services",
-        disabled: methods.length === 0,
-        gutter: connected ? () => <text fg={theme.success}>✓</text> : undefined,
-        onSelect: () =>
-          credentialConnections(integration).length
-            ? manageConnections(integration, methods, dialog, props.onConnected)
-            : selectMethod(integration, methods, dialog, props.onConnected),
-      }
-    }),
+    integrationOptions(data.location.integration.list() ?? [])
+      .filter((integration) => props.integrationID === undefined || integration.id === props.integrationID)
+      .map((integration) => {
+        const methods = connectMethods(integration)
+        const connected = integration.connections.length > 0
+        const search = integration.capabilities.find((capability) => capability.type === "search")
+        return {
+          title: integration.name,
+          value: integration.id,
+          description:
+            search?.connection === "optional" ? "API key optional" : methods.length ? undefined : "Environment only",
+          footer:
+            [connectionSummary(integration), search?.selected ? "Web search default" : undefined]
+              .filter((value) => value !== undefined && value.length > 0)
+              .join(" · ") || undefined,
+          category: search ? "Web search" : integration.id in INTEGRATION_PRIORITY ? "Popular" : "Services",
+          disabled: methods.length === 0 && !search,
+          gutter: connected ? () => <text fg={theme.success}>✓</text> : undefined,
+          onSelect: () => {
+            if (props.connectionOnly) {
+              return credentialConnections(integration).length
+                ? manageConnections(integration, methods, dialog, props.onConnected)
+                : selectMethod(integration, methods, dialog, props.onConnected)
+            }
+            if (search) return manageIntegration(integration, methods, search, data, sdk, dialog, toast)
+            return credentialConnections(integration).length
+              ? manageConnections(integration, methods, dialog, props.onConnected)
+              : selectMethod(integration, methods, dialog, props.onConnected)
+          },
+        }
+      }),
   )
 
   return (
@@ -88,6 +106,61 @@ export function DialogIntegration(props: { onConnected?: OnIntegrationConnected 
       }
     />
   )
+}
+
+function manageIntegration(
+  integration: IntegrationInfo,
+  methods: ConnectMethod[],
+  search: IntegrationInfo["capabilities"][number],
+  data: ReturnType<typeof useData>,
+  sdk: ReturnType<typeof useSDK>,
+  dialog: ReturnType<typeof useDialog>,
+  toast: ReturnType<typeof useToast>,
+) {
+  const connected = integration.connections.length > 0
+  const select = () => {
+    void sdk.api.integration
+      .selectCapability({
+        integrationID: integration.id,
+        capability: "search",
+        location: location(data),
+      })
+      .then(async () => {
+        await data.location.integration.refresh()
+        toast.show({ variant: "success", message: `${integration.name} is now the web search default` })
+        dialog.clear()
+      })
+      .catch(toast.error)
+  }
+
+  dialog.replace(() => (
+    <DialogSelect
+      title={integration.name}
+      options={[
+        {
+          title: search.selected ? "Web search default" : "Use for web search",
+          value: "search",
+          disabled: search.selected,
+          onSelect:
+            search.connection === "required" && !connected
+              ? () => selectMethod(integration, methods, dialog, select)
+              : select,
+        },
+        ...(methods.length
+          ? [
+              {
+                title: credentialConnections(integration).length ? "Manage connections" : "Connect",
+                value: "connect",
+                onSelect: () =>
+                  credentialConnections(integration).length
+                    ? manageConnections(integration, methods, dialog)
+                    : selectMethod(integration, methods, dialog),
+              },
+            ]
+          : []),
+      ]}
+    />
+  ))
 }
 
 function manageConnections(

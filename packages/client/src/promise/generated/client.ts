@@ -73,6 +73,8 @@ import type {
   IntegrationListOutput,
   IntegrationGetInput,
   IntegrationGetOutput,
+  IntegrationSelectCapabilityInput,
+  IntegrationSelectCapabilityOutput,
   IntegrationConnectKeyInput,
   IntegrationConnectKeyOutput,
   IntegrationConnectOauthInput,
@@ -791,6 +793,19 @@ export function make(options: ClientOptions) {
             successStatus: 200,
             declaredStatuses: [401, 400],
             empty: false,
+          },
+          requestOptions,
+        ),
+      selectCapability: (input: IntegrationSelectCapabilityInput, requestOptions?: RequestOptions) =>
+        request<IntegrationSelectCapabilityOutput>(
+          {
+            method: "POST",
+            path: `/api/integration/${encodeURIComponent(input.integrationID)}/capability`,
+            query: { location: input["location"] },
+            body: { capability: input["capability"] },
+            successStatus: 204,
+            declaredStatuses: [400, 401],
+            empty: true,
           },
           requestOptions,
         ),

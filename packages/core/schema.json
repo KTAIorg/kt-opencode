@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "96e9fe64-d810-4102-8f79-3317a88bb6d2",
+  "id": "cd519535-0763-4d60-aeee-21ee226ffd7f",
   "prevIds": [
-    "22e57fed-b9b8-4e94-a3b4-f94bece680a8"
+    "96e9fe64-d810-4102-8f79-3317a88bb6d2"
   ],
   "ddl": [
     {
@@ -36,6 +36,10 @@
     },
     {
       "name": "event",
+      "entityType": "tables"
+    },
+    {
+      "name": "integration_capability",
       "entityType": "tables"
     },
     {
@@ -555,6 +559,46 @@
       "name": "data",
       "entityType": "columns",
       "table": "event"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "capability",
+      "entityType": "columns",
+      "table": "integration_capability"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "integration_id",
+      "entityType": "columns",
+      "table": "integration_capability"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "integration_capability"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_updated",
+      "entityType": "columns",
+      "table": "integration_capability"
     },
     {
       "type": "text",
@@ -1857,6 +1901,15 @@
       "nameExplicit": false,
       "name": "event_pk",
       "table": "event",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "capability"
+      ],
+      "nameExplicit": false,
+      "name": "integration_capability_pk",
+      "table": "integration_capability",
       "entityType": "pks"
     },
     {

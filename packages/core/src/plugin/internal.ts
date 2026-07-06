@@ -26,6 +26,7 @@ import { ModelsDev } from "../models-dev"
 import { Npm } from "../npm"
 import { PermissionV2 } from "../permission"
 import { Reference } from "../reference"
+import { Search } from "../search"
 import { Ripgrep } from "../ripgrep"
 import { SessionInstructions } from "../session/instructions"
 import { SessionTodo } from "../session/todo"
@@ -50,6 +51,7 @@ import { AgentPlugin } from "./agent"
 import { CommandPlugin } from "./command"
 import { ModelsDevPlugin } from "./models-dev"
 import { ProviderPlugins } from "./provider"
+import { SearchPlugins } from "./search"
 import { PluginRuntime } from "./runtime"
 import { SkillPlugin } from "./skill"
 import { VariantPlugin } from "./variant"
@@ -76,13 +78,13 @@ const services = Effect.fn("PluginInternal.services")(function* () {
   const form = yield* Form.Service
   const read = yield* ReadToolFileSystem.Service
   const reference = yield* Reference.Service
+  const search = yield* Search.Service
   const ripgrep = yield* Ripgrep.Service
   const instructions = yield* SessionInstructions.Service
   const todo = yield* SessionTodo.Service
   const shell = yield* Shell.Service
   const skill = yield* SkillV2.Service
   const tools = yield* Tools.Service
-  const websearch = yield* WebSearchTool.ConfigService
   return Context.mergeAll(
     Context.make(AgentV2.Service, agent),
     Context.make(Catalog.Service, catalog),
@@ -105,13 +107,13 @@ const services = Effect.fn("PluginInternal.services")(function* () {
     Context.make(Form.Service, form),
     Context.make(ReadToolFileSystem.Service, read),
     Context.make(Reference.Service, reference),
+    Context.make(Search.Service, search),
     Context.make(Ripgrep.Service, ripgrep),
     Context.make(SessionInstructions.Service, instructions),
     Context.make(SessionTodo.Service, todo),
     Context.make(Shell.Service, shell),
     Context.make(SkillV2.Service, skill),
     Context.make(Tools.Service, tools),
-    Context.make(WebSearchTool.ConfigService, websearch),
   )
 })
 
@@ -127,6 +129,7 @@ const pre = [
   SkillPlugin.Plugin,
   ModelsDevPlugin,
   ...ProviderPlugins,
+  ...SearchPlugins,
   ApplyPatchTool.Plugin,
   EditTool.Plugin,
   GlobTool.Plugin,

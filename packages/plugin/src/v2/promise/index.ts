@@ -7,7 +7,12 @@ export type { AISDKHooks } from "./aisdk.js"
 export type { CatalogDraft, CatalogHooks, CatalogProviderRecord } from "./catalog.js"
 export type { CommandDraft, CommandHooks } from "./command.js"
 export type { EventHooks } from "./event.js"
-export type { IntegrationDraft, IntegrationHooks, IntegrationMethodRegistration } from "./integration.js"
+export type {
+  IntegrationDraft,
+  IntegrationHooks,
+  IntegrationMethodRegistration,
+  IntegrationSearchCapabilityRegistration,
+} from "./integration.js"
 export type { ReferenceDraft, ReferenceHooks } from "./reference.js"
 export type { SessionHooks } from "./runtime.js"
 export type { SkillDraft, SkillHooks } from "./skill.js"

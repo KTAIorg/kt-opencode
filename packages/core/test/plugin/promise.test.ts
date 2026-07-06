@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { AgentV2 } from "@opencode-ai/core/agent"
+import { Integration } from "@opencode-ai/core/integration"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { PluginHost } from "@opencode-ai/core/plugin/host"
 import { PluginPromise } from "@opencode-ai/core/plugin/promise"
@@ -91,6 +92,31 @@ describe("fromPromise", () => {
       yield* adapted.effect(host)
 
       expect(yield* agents.get(AgentV2.ID.make("temp"))).toBeUndefined()
+    }),
+  )
+
+  it.effect("adapts promise search capability execution", () =>
+    Effect.gen(function* () {
+      const integrations = yield* Integration.Service
+      const plugin = yield* PluginV2.Service
+      const host = yield* PluginHost.make(plugin)
+      const promisePlugin = define({
+        id: "promise-search",
+        setup: async (ctx) => {
+          await ctx.integration.transform((draft) => {
+            draft.capability.search.update({
+              integrationID: "promise-search",
+              capability: { type: "search", connection: "optional" },
+              execute: async (input) => ({ text: `promise: ${input.query}` }),
+            })
+          })
+        },
+      })
+
+      yield* PluginPromise.fromPromise(promisePlugin).effect(host)
+      const provider = yield* integrations.capability.search.get(Integration.ID.make("promise-search"))
+      if (!provider) return yield* Effect.die("Expected promise search provider")
+      expect(yield* provider.execute({ query: "effect" }, {})).toEqual({ text: "promise: effect" })
     }),
   )
 })

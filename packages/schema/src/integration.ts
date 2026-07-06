@@ -76,6 +76,16 @@ export type Method = typeof Method.Type
 export const Inputs = Schema.Record(Schema.String, Schema.String).annotate({ identifier: "Integration.Inputs" })
 export type Inputs = typeof Inputs.Type
 
+export interface SearchCapability extends Schema.Schema.Type<typeof SearchCapability> {}
+export const SearchCapability = Schema.Struct({
+  type: Schema.Literal("search"),
+  connection: Schema.Literals(["optional", "required"]),
+  selected: Schema.Boolean,
+}).annotate({ identifier: "Integration.SearchCapability" })
+
+export const Capability = SearchCapability
+export type Capability = SearchCapability
+
 const Updated = ephemeral({
   type: "integration.updated",
   schema: {},
@@ -96,6 +106,7 @@ export class Info extends Schema.Class<Info>("Integration.Info")({
   id: ID,
   name: Schema.String,
   methods: Schema.Array(Method),
+  capabilities: Schema.Array(Capability),
   connections: Schema.Array(Connection.Info),
 }) {}
 

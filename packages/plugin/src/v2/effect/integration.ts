@@ -10,6 +10,7 @@ import type {
   IntegrationRef,
 } from "@opencode-ai/sdk/v2/types"
 import type { IntegrationApi } from "@opencode-ai/client/effect/api"
+import type { Search } from "@opencode-ai/schema/search"
 import type { Effect, Scope } from "effect"
 import type { TransformHook } from "./registration.js"
 
@@ -44,6 +45,18 @@ export type IntegrationMethodRegistration =
       readonly method: IntegrationEnvMethod
     }
 
+export interface IntegrationSearchCapabilityRegistration {
+  readonly integrationID: string
+  readonly capability: {
+    readonly type: "search"
+    readonly connection: "optional" | "required"
+  }
+  readonly execute: (
+    input: Search.Input,
+    context: { readonly credential?: CredentialValue; readonly sessionID?: string },
+  ) => Effect.Effect<Search.ProviderOutput, unknown>
+}
+
 export interface IntegrationDraft {
   list(): readonly IntegrationRef[]
   get(id: string): IntegrationRef | undefined
@@ -53,6 +66,13 @@ export interface IntegrationDraft {
     list(integrationID: string): readonly IntegrationMethod[]
     update(input: IntegrationMethodRegistration): void
     remove(integrationID: string, method: IntegrationMethod): void
+  }
+  readonly capability: {
+    readonly search: {
+      list(): readonly IntegrationSearchCapabilityRegistration[]
+      update(input: IntegrationSearchCapabilityRegistration): void
+      remove(integrationID: string): void
+    }
   }
 }
 

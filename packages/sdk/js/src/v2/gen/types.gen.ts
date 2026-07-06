@@ -1447,7 +1447,7 @@ export type GlobalEvent = {
         id: string
         type: "form.created"
         properties: {
-          form: FormFormInfo | FormUrlInfo
+          form: FormFormInfo | FormUrlInfo | FormIntegrationInfo
         }
       }
     | {
@@ -3476,6 +3476,15 @@ export type FormUrlInfo = {
   url: string
 }
 
+export type FormIntegrationInfo = {
+  id: string
+  sessionID: string
+  title?: string
+  metadata?: FormMetadata
+  mode: "integration"
+  integrationID: string
+}
+
 export type FormValue =
   | string
   | number
@@ -5362,6 +5371,12 @@ export type IntegrationEnvMethod = {
   names: Array<string>
 }
 
+export type IntegrationSearchCapability = {
+  type: "search"
+  connection: "optional" | "required"
+  selected: boolean
+}
+
 export type ConnectionCredentialInfo = {
   type: "credential"
   id: string
@@ -5379,6 +5394,7 @@ export type IntegrationInfo = {
   id: string
   name: string
   methods: Array<IntegrationMethod>
+  capabilities: Array<IntegrationSearchCapability>
   connections: Array<ConnectionInfo>
 }
 
@@ -6212,7 +6228,7 @@ export type FormCreated = {
   type: "form.created"
   location?: LocationRef
   data: {
-    form: FormFormInfo | FormUrlInfo
+    form: FormFormInfo | FormUrlInfo | FormIntegrationInfo
   }
 }
 
@@ -7456,7 +7472,7 @@ export type EventFormCreated = {
   id: string
   type: "form.created"
   properties: {
-    form: FormFormInfo | FormUrlInfo
+    form: FormFormInfo | FormUrlInfo | FormIntegrationInfo
   }
 }
 
@@ -9229,6 +9245,12 @@ export type IntegrationEnvMethod2 = {
 
 export type IntegrationMethod2 = IntegrationOAuthMethod2 | IntegrationKeyMethod2 | IntegrationEnvMethod2
 
+export type IntegrationSearchCapability2 = {
+  type: "search"
+  connection: "optional" | "required"
+  selected: boolean
+}
+
 export type ConnectionCredentialInfo2 = {
   type: "credential"
   id: string
@@ -9246,6 +9268,7 @@ export type IntegrationInfo2 = {
   id: string
   name: string
   methods: Array<IntegrationMethod2>
+  capabilities: Array<IntegrationSearchCapability2>
   connections: Array<ConnectionInfo2>
 }
 
@@ -9327,6 +9350,38 @@ export type McpServer2 = {
     | McpStatusNeedsAuth3
     | McpStatusNeedsClientRegistration3
   integrationID?: string
+}
+
+export type ProjectVcs2 = "git" | "hg"
+
+export type ProjectIcon2 = {
+  url?: string
+  override?: string
+  color?: string
+}
+
+export type ProjectCommands2 = {
+  /**
+   * Startup script to run when creating a new workspace (worktree)
+   */
+  start?: string
+}
+
+export type ProjectTime2 = {
+  created: number
+  updated: number
+  initialized?: number
+}
+
+export type ProjectV2 = {
+  id: string
+  worktree: string
+  vcs?: ProjectVcs2
+  name?: string
+  icon?: ProjectIcon2
+  commands?: ProjectCommands2
+  time: ProjectTime2
+  sandboxes: Array<string>
 }
 
 export type ProjectCurrent2 = {
@@ -9438,6 +9493,15 @@ export type FormUrlInfo2 = {
   metadata?: FormMetadata2
   mode: "url"
   url: string
+}
+
+export type FormIntegrationInfo2 = {
+  id: string
+  sessionID: string
+  title?: string
+  metadata?: FormMetadata2
+  mode: "integration"
+  integrationID: string
 }
 
 export type FormCreatePayload2 = {
@@ -10764,6 +10828,15 @@ export type FormUrlInfo1 = {
   url: string
 }
 
+export type FormIntegrationInfo1 = {
+  id: string
+  sessionID: string
+  title?: string
+  metadata?: FormMetadata1
+  mode: "integration"
+  integrationID: string
+}
+
 export type FormCreated2 = {
   id: string
   created: number
@@ -10773,7 +10846,7 @@ export type FormCreated2 = {
   type: "form.created"
   location?: LocationRef2
   data: {
-    form: FormFormInfo1 | FormUrlInfo1
+    form: FormFormInfo1 | FormUrlInfo1 | FormIntegrationInfo1
   }
 }
 
@@ -17040,6 +17113,46 @@ export type V2IntegrationGetResponses = {
 
 export type V2IntegrationGetResponse = V2IntegrationGetResponses[keyof V2IntegrationGetResponses]
 
+export type V2IntegrationCapabilitySelectData = {
+  body: {
+    capability: "search"
+  }
+  path: {
+    integrationID: string
+  }
+  query?: {
+    location?: {
+      directory?: string | null
+      workspace?: string | null
+    } | null
+  }
+  url: "/api/integration/{integrationID}/capability"
+}
+
+export type V2IntegrationCapabilitySelectErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError1 | InvalidRequestErrorV2
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedErrorV2
+}
+
+export type V2IntegrationCapabilitySelectError =
+  V2IntegrationCapabilitySelectErrors[keyof V2IntegrationCapabilitySelectErrors]
+
+export type V2IntegrationCapabilitySelectResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type V2IntegrationCapabilitySelectResponse =
+  V2IntegrationCapabilitySelectResponses[keyof V2IntegrationCapabilitySelectResponses]
+
 export type V2IntegrationConnectKeyData = {
   body: {
     key: string
@@ -17353,6 +17466,35 @@ export type V2CredentialUpdateResponses = {
 
 export type V2CredentialUpdateResponse = V2CredentialUpdateResponses[keyof V2CredentialUpdateResponses]
 
+export type V2ProjectListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/project"
+}
+
+export type V2ProjectListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestErrorV2
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedErrorV2
+}
+
+export type V2ProjectListError = V2ProjectListErrors[keyof V2ProjectListErrors]
+
+export type V2ProjectListResponses = {
+  /**
+   * Success
+   */
+  200: Array<ProjectV2>
+}
+
+export type V2ProjectListResponse = V2ProjectListResponses[keyof V2ProjectListResponses]
+
 export type V2ProjectCurrentData = {
   body?: never
   path?: never
@@ -17454,7 +17596,7 @@ export type V2FormRequestListResponses = {
    */
   200: {
     location: LocationInfo2
-    data: Array<FormFormInfo2 | FormUrlInfo2>
+    data: Array<FormFormInfo2 | FormUrlInfo2 | FormIntegrationInfo2>
   }
 }
 
@@ -17491,7 +17633,7 @@ export type V2SessionFormListResponses = {
    * Success
    */
   200: {
-    data: Array<FormFormInfo2 | FormUrlInfo2>
+    data: Array<FormFormInfo2 | FormUrlInfo2 | FormIntegrationInfo2>
   }
 }
 
@@ -17532,7 +17674,7 @@ export type V2SessionFormCreateResponses = {
    * Success
    */
   200: {
-    data: FormFormInfo2 | FormUrlInfo2
+    data: FormFormInfo2 | FormUrlInfo2 | FormIntegrationInfo2
   }
 }
 
@@ -17570,7 +17712,7 @@ export type V2SessionFormGetResponses = {
    * Success
    */
   200: {
-    data: FormFormInfo2 | FormUrlInfo2
+    data: FormFormInfo2 | FormUrlInfo2 | FormIntegrationInfo2
   }
 }
 

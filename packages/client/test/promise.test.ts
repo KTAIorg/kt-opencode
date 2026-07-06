@@ -37,6 +37,7 @@ test("exposes every standard HTTP API group", () => {
   expect(Object.keys(client.integration)).toEqual([
     "list",
     "get",
+    "selectCapability",
     "connectKey",
     "connectOauth",
     "attemptStatus",
@@ -47,7 +48,7 @@ test("exposes every standard HTTP API group", () => {
   expect(Object.keys(client.vcs)).toEqual(["status", "diff"])
   expect(Object.keys(client.pty)).toEqual(["list", "create", "get", "update", "remove"])
   expect(Object.keys(client.shell)).toEqual(["list", "create", "get", "output", "remove"])
-  expect(Object.keys(client.project)).toEqual(["current", "directories"])
+  expect(Object.keys(client.project)).toEqual(["list", "current", "directories"])
 })
 
 test("file.read returns binary content from the public HTTP contract", async () => {
