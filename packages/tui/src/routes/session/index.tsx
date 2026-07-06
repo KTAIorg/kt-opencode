@@ -58,7 +58,7 @@ import { usePromptRef } from "../../context/prompt"
 import { useEpilogue } from "../../context/epilogue"
 import { normalizePath } from "../../util/path"
 import { PermissionPrompt } from "./permission"
-import { QuestionPrompt } from "./question"
+import { FormPrompt } from "./form"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { sessionEpilogue } from "../../util/presentation"
 import { useTuiConfig } from "../../config"
@@ -181,15 +181,15 @@ export function Session() {
       (sessionID) => data.session.permission.list(sessionID) ?? [],
     )
   })
-  const questions = createMemo(() => {
+  const forms = createMemo(() => {
     if (session()?.parentID) return []
-    return data.session.question.list(route.sessionID) ?? []
+    return data.session.form.list(route.sessionID) ?? []
   })
   const [composer, setComposer] = createStore({
     open: false,
     tab: undefined as string | undefined,
   })
-  const disabled = createMemo(() => permissions().length > 0 || questions().length > 0)
+  const disabled = createMemo(() => permissions().length > 0 || forms().length > 0)
 
   const pending = createMemo(() => {
     const completed = messages().findLast((x) => x.type === "assistant" && x.time.completed)?.id
@@ -246,7 +246,7 @@ export function Session() {
       await Promise.all([
         data.session.refresh(sessionID),
         data.session.permission.refresh(sessionID),
-        data.session.question.refresh(sessionID),
+        data.session.form.refresh(sessionID),
       ])
       const info = data.session.get(sessionID)
       if (!info) {
@@ -258,7 +258,6 @@ export function Session() {
         navigate({ type: "home" })
         return
       }
-
       project.workspace.set(info.location.workspaceID)
       editor.reconnect(info.location.directory)
       if (route.sessionID === sessionID && scroll) scroll.scrollBy(100_000)
@@ -939,8 +938,13 @@ export function Session() {
                   <Match when={permissions().length > 0}>
                     <PermissionPrompt request={permissions()[0]} directory={session()?.location.directory} />
                   </Match>
-                  <Match when={questions().length > 0}>
-                    <QuestionPrompt request={questions()[0]} directory={session()?.location.directory} />
+                  <Match when={forms().length > 0}>
+                    <Show when={forms()[0]?.id} keyed>
+                      {(_) => {
+                        const form = forms()[0]
+                        return form ? <FormPrompt form={form} /> : null
+                      }}
+                    </Show>
                   </Match>
                   <Match when={!disabled()}>
                     <pluginRuntime.Slot
@@ -1068,9 +1072,7 @@ function SessionMessageView(props: { message: SessionMessage }) {
         <UserMessage message={props.message as SessionMessageUser} />
       </Match>
       <Match when={props.message.type === "shell"}>
-        <box paddingLeft={3}>
-          <text>{props.message.type === "shell" ? `$ ${props.message.command}\n${props.message.output}` : ""}</text>
-        </box>
+        <ShellMessage message={props.message as Extract<SessionMessage, { type: "shell" }>} />
       </Match>
       <Match when={props.message.type === "agent-switched" || props.message.type === "model-switched"}>
         <SessionSwitchMessageV2 message={props.message} />
@@ -1233,7 +1235,8 @@ function SessionSwitchMessageV2(props: { message: SessionMessage }) {
   const { theme } = useTheme()
   const text = () => {
     if (props.message.type === "agent-switched") return `Switched agent to ${props.message.agent}`
-    if (props.message.type === "model-switched") return switchLabel(props.message.model, ctx.models())
+    if (props.message.type === "model-switched")
+      return switchLabel(props.message.model, ctx.models(), props.message.previous)
     return ""
   }
   return <text fg={theme.textMuted}>{text()}</text>
@@ -1346,6 +1349,29 @@ function RevertMessage(props: {
   )
 }
 
+function ShellMessage(props: { message: Extract<SessionMessage, { type: "shell" }> }) {
+  const { theme } = useTheme()
+  const output = createMemo(() => stripAnsi(props.message.output?.output.trim() ?? ""))
+
+  return (
+    <box
+      border={["left"]}
+      paddingTop={1}
+      paddingBottom={1}
+      paddingLeft={2}
+      gap={1}
+      backgroundColor={theme.backgroundPanel}
+      customBorderChars={SplitBorder.customBorderChars}
+      borderColor={theme.background}
+    >
+      <text fg={theme.text}>$ {props.message.shell.command}</text>
+      <Show when={output()}>
+        <text fg={theme.textMuted}>{output()}</text>
+      </Show>
+    </box>
+  )
+}
+
 function UserMessage(props: { message: SessionMessageUser }) {
   const ctx = use()
   const data = useData()
@@ -1387,13 +1413,7 @@ function UserMessage(props: { message: SessionMessageUser }) {
         >
           <text fg={theme.text}>{props.message.text}</text>
           <Show when={files().length}>
-            <box
-              flexDirection="row"
-              paddingBottom={metadataVisible() ? 1 : 0}
-              paddingTop={1}
-              gap={1}
-              flexWrap="wrap"
-            >
+            <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={1} gap={1} flexWrap="wrap">
               <For each={files()}>
                 {(file) => {
                   const directory = file.mime === "application/x-directory"
@@ -1723,7 +1743,8 @@ function ToolPart(props: { part: SessionMessageAssistantTool }) {
       return Boolean(shellID && data.shell.get(shellID))
     }
     if (display() === "subagent") {
-      const sessionID = stringValue(props.part.state.structured.sessionID) ?? stringValue(props.part.state.structured.sessionId)
+      const sessionID =
+        stringValue(props.part.state.structured.sessionID) ?? stringValue(props.part.state.structured.sessionId)
       return Boolean(sessionID && data.session.status(sessionID) === "running")
     }
     return false
@@ -1788,6 +1809,9 @@ function ToolPart(props: { part: SessionMessageAssistantTool }) {
         </Match>
         <Match when={display() === "subagent"}>
           <Subagent {...toolprops} />
+        </Match>
+        <Match when={display() === "execute"}>
+          <Execute {...toolprops} />
         </Match>
         <Match when={display() === "apply_patch"}>
           <ApplyPatch {...toolprops} />
@@ -2060,14 +2084,16 @@ function Shell(props: ToolProps) {
     return request?.source?.type === "tool" && request.source.callID === props.part.id
   })
   const color = createMemo(() => (permission() ? theme.warning : theme.text))
-  const isRunning = createMemo(() => {
-    if (props.part.state.status === "running") return true
-    const shellID = stringValue(props.metadata.shellID)
-    return Boolean(shellID && data.shell.get(shellID))
+  const shellID = createMemo(() => stringValue(props.metadata.shellID))
+  const backgroundRunning = createMemo(() => {
+    const id = shellID()
+    return Boolean(id && data.shell.get(id))
   })
+  const isRunning = createMemo(() => props.part.state.status === "running" || backgroundRunning())
   const command = createMemo(() => stringValue(props.input.command))
   const output = createMemo(() => {
     if (props.part.state.status === "pending") return ""
+    if (shellID()) return ""
     const content = props.part.state.content[0]
     return stripAnsi(content?.type === "text" ? content.text.trim() : "")
   })
@@ -2109,6 +2135,11 @@ function Shell(props: ToolProps) {
               <span style={{ fg: theme.textMuted }}>{limited().slice(input().length)}</span>
             </Spinner>
           </Show>
+        </Show>
+        <Show when={shellID()}>
+          <text>
+            <span style={{ bg: theme.backgroundElement, fg: theme.textMuted }}> Backgrounded </span>
+          </text>
         </Show>
         <Show when={collapsed().overflow}>
           <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
@@ -2273,6 +2304,65 @@ export function formatSubagentRetry(attempt: number, message: string) {
 export function formatCompletedSubagentDetail(toolcalls: number, duration: string) {
   if (toolcalls === 0) return duration
   return `${formatSubagentToolcalls(toolcalls)} · ${duration}`
+}
+
+type ExecuteCall = { tool: string; status: "running" | "completed" | "error"; input?: Record<string, unknown> }
+
+function executeCalls(value: unknown): ExecuteCall[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((call) => {
+    const item = recordValue(call)
+    const tool = stringValue(item?.tool)
+    const status = stringValue(item?.status)
+    if (!tool || !status || !["running", "completed", "error"].includes(status)) return []
+    return [{ tool, status: status as ExecuteCall["status"], input: recordValue(item?.input) }]
+  })
+}
+
+function Execute(props: ToolProps) {
+  const ctx = use()
+  const { theme } = useTheme()
+  const isLoading = createMemo(() => props.part.state.status === "pending" || props.part.state.status === "running")
+  const calls = createMemo(() => executeCalls(props.metadata.toolCalls))
+  const output = createMemo(() => stripAnsi(props.output?.trim() ?? ""))
+  const hasRuntimeError = createMemo(() => props.metadata.error === true)
+  const outputPreview = createMemo(() => collapseToolOutput(output(), 4, 4 * Math.max(20, ctx.width - 6)).output)
+  const showOutput = createMemo(() => output() && hasRuntimeError())
+  const content = createMemo(() => {
+    const lines = ["execute"]
+    for (const call of calls()) {
+      const args = input(call.input ?? {})
+      lines.push(`↳ ${call.tool}${args ? ` ${args}` : ""}${call.status === "error" ? " (failed)" : ""}`)
+    }
+    return lines.join("\n")
+  })
+
+  return (
+    <>
+      <InlineTool
+        icon={hasRuntimeError() ? "✗" : props.part.state.status === "completed" ? "✓" : "│"}
+        color={hasRuntimeError() ? theme.error : undefined}
+        spinner={isLoading()}
+        pending="execute"
+        complete={true}
+        part={props.part}
+      >
+        {content()}
+      </InlineTool>
+      <Show when={showOutput()}>
+        <box paddingLeft={3}>
+          <For each={outputPreview().split("\n")}>
+            {(line, index) => (
+              <text paddingLeft={3} fg={theme.error}>
+                {index() === 0 ? "↳ " : "  "}
+                {line}
+              </text>
+            )}
+          </For>
+        </box>
+      </Show>
+    </>
+  )
 }
 
 function Edit(props: ToolProps) {
@@ -2550,6 +2640,7 @@ const toolDisplays = new Set([
   "write",
   "edit",
   "subagent",
+  "execute",
   "apply_patch",
   "todowrite",
   "question",
@@ -2576,7 +2667,8 @@ function formatSessionTranscript(
 ) {
   const body = messages.flatMap((message) => {
     if (message.type === "user") return [`## User\n\n${message.text}`]
-    if (message.type === "shell") return [`## Shell\n\n\`\`\`\n$ ${message.command}\n${message.output}\n\`\`\``]
+    if (message.type === "shell")
+      return [`## Shell\n\n\`\`\`\n$ ${message.shell.command}\n${message.output?.output ?? ""}\n\`\`\``]
     if (message.type !== "assistant") return []
     const content = message.content.flatMap((item) => {
       if (item.type === "text") return [item.text]

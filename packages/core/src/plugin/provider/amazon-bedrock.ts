@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import type { LanguageModelV3 } from "@ai-sdk/provider"
-import { define } from "../internal"
+import { define } from "@opencode-ai/plugin/v2/effect/plugin"
 import { ProviderV2 } from "../../provider"
 
 type MantleSDK = {
@@ -60,24 +60,22 @@ function selectMantleModel(sdk: MantleSDK, modelID: string) {
 }
 
 export const AmazonBedrockPlugin = define({
-  id: "amazon-bedrock",
+  id: "opencode.provider.amazon-bedrock",
   effect: Effect.fn(function* (ctx) {
-    yield* ctx.catalog.transform(
-      Effect.fn(function* (evt) {
-        for (const item of evt.provider.list()) {
-          if (item.provider.api.type !== "aisdk") continue
-          if (item.provider.api.package !== "@ai-sdk/amazon-bedrock") continue
-          evt.provider.update(item.provider.id, (provider) => {
-            if (provider.api.type !== "aisdk") return
-            if (typeof provider.request.body.endpoint !== "string") return
-            // The AI SDK expects a base URL, but users configure Bedrock private/VPC
-            // endpoints as `endpoint`; move it into the catalog endpoint URL once.
-            provider.api.url = provider.request.body.endpoint
-            delete provider.request.body.endpoint
-          })
-        }
-      }),
-    )
+    yield* ctx.catalog.transform((evt) => {
+      for (const item of evt.provider.list()) {
+        if (item.provider.api.type !== "aisdk") continue
+        if (item.provider.api.package !== "@ai-sdk/amazon-bedrock") continue
+        evt.provider.update(item.provider.id, (provider) => {
+          if (provider.api.type !== "aisdk") return
+          if (typeof provider.request.body.endpoint !== "string") return
+          // The AI SDK expects a base URL, but users configure Bedrock private/VPC
+          // endpoints as `endpoint`; move it into the catalog endpoint URL once.
+          provider.api.url = provider.request.body.endpoint
+          delete provider.request.body.endpoint
+        })
+      }
+    })
     yield* ctx.aisdk.sdk(
       Effect.fn(function* (evt) {
         if (!["@ai-sdk/amazon-bedrock", "@ai-sdk/amazon-bedrock/mantle"].includes(evt.package)) return

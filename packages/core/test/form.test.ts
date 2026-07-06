@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Effect, Exit } from "effect"
+import { Deferred, Effect, Exit, Fiber } from "effect"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { EventV2 } from "@opencode-ai/core/event"
@@ -19,6 +19,27 @@ const input = {
 } satisfies Form.CreateInput
 
 describe("Form", () => {
+  it.effect("returns a terminal cancelled state from ask", () =>
+    Effect.gen(function* () {
+      const service = yield* Form.Service
+      const events = yield* EventV2.Service
+      const created = yield* Deferred.make<Form.Info>()
+      const unsubscribe = yield* events.listen((event) =>
+        event.type === Form.Event.Created.type
+          ? Deferred.succeed(created, (event.data as { readonly form: Form.Info }).form).pipe(Effect.asVoid)
+          : Effect.void,
+      )
+      yield* Effect.addFinalizer(() => unsubscribe)
+      const fiber = yield* service.ask(input).pipe(Effect.forkScoped)
+      const form = yield* Deferred.await(created)
+
+      yield* service.cancel(form.id)
+
+      expect(yield* Fiber.join(fiber)).toEqual({ status: "cancelled" })
+      expect(yield* service.state(form.id)).toEqual({ status: "cancelled" })
+    }),
+  )
+
   it.effect("supports the temporary global mcp elicitation owner", () =>
     Effect.gen(function* () {
       const service = yield* Form.Service
@@ -89,6 +110,79 @@ describe("Form", () => {
 
       yield* service.reply({ id: created.id, answer: { langs: ["ts"] } })
       expect(yield* service.state(created.id)).toEqual({ status: "answered", answer: { langs: ["ts"] } })
+    }),
+  )
+
+  it.effect("requires every when condition to match and treats empty when as active", () =>
+    Effect.gen(function* () {
+      const service = yield* Form.Service
+      const created = yield* service.create({
+        sessionID: "global",
+        mode: "form",
+        fields: [
+          { key: "a", type: "boolean" },
+          { key: "b", type: "boolean" },
+          {
+            key: "x",
+            type: "string",
+            required: true,
+            when: [
+              { key: "a", op: "eq", value: true },
+              { key: "b", op: "eq", value: true },
+            ],
+          },
+          { key: "z", type: "string", required: true, when: [] },
+        ],
+      })
+
+      const missingX = yield* service.reply({ id: created.id, answer: { a: true, b: true, z: "ok" } }).pipe(Effect.flip)
+      expect(missingX).toEqual(new Form.InvalidAnswerError({ id: created.id, message: "Missing required form field: x" }))
+
+      const inactiveX = yield* service
+        .reply({ id: created.id, answer: { a: true, b: false, x: "nope", z: "ok" } })
+        .pipe(Effect.flip)
+      expect(inactiveX).toEqual(new Form.InvalidAnswerError({ id: created.id, message: "Form field is not active: x" }))
+
+      const missingZ = yield* service.reply({ id: created.id, answer: { a: true, b: false } }).pipe(Effect.flip)
+      expect(missingZ).toEqual(new Form.InvalidAnswerError({ id: created.id, message: "Missing required form field: z" }))
+
+      yield* service.reply({ id: created.id, answer: { a: true, b: false, z: "ok" } })
+      expect(yield* service.state(created.id)).toEqual({ status: "answered", answer: { a: true, b: false, z: "ok" } })
+    }),
+  )
+
+  it.effect("evaluates neq against multiselect answers as non-inclusion", () =>
+    Effect.gen(function* () {
+      const service = yield* Form.Service
+      const options = [
+        { value: "go", label: "Go" },
+        { value: "ts", label: "TypeScript" },
+      ]
+      const created = yield* service.create({
+        sessionID: "global",
+        mode: "form",
+        fields: [
+          { key: "langs", type: "multiselect", options },
+          { key: "note", type: "string", required: true, when: [{ key: "langs", op: "neq", value: "go" }] },
+        ],
+      })
+
+      const missing = yield* service.reply({ id: created.id, answer: { langs: ["ts"] } }).pipe(Effect.flip)
+      expect(missing).toEqual(
+        new Form.InvalidAnswerError({ id: created.id, message: "Missing required form field: note" }),
+      )
+
+      // an answered-but-empty multiselect also satisfies neq
+      const missingEmpty = yield* service.reply({ id: created.id, answer: { langs: [] } }).pipe(Effect.flip)
+      expect(missingEmpty).toEqual(
+        new Form.InvalidAnswerError({ id: created.id, message: "Missing required form field: note" }),
+      )
+
+      const inactive = yield* service.reply({ id: created.id, answer: { langs: ["go"], note: "x" } }).pipe(Effect.flip)
+      expect(inactive).toEqual(new Form.InvalidAnswerError({ id: created.id, message: "Form field is not active: note" }))
+
+      yield* service.reply({ id: created.id, answer: { langs: ["go"] } })
+      expect(yield* service.state(created.id)).toEqual({ status: "answered", answer: { langs: ["go"] } })
     }),
   )
 

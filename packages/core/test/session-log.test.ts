@@ -18,6 +18,7 @@ import { testEffect } from "./lib/effect"
 const projects = Layer.succeed(
   ProjectV2.Service,
   ProjectV2.Service.of({
+    list: () => Effect.succeed([]),
     resolve: (directory) => Effect.succeed({ id: ProjectV2.ID.global, directory }),
     directories: () => Effect.succeed([]),
     commit: () => Effect.void,
@@ -40,14 +41,14 @@ describe("SessionV2.log", () => {
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
       const created = yield* session.create({ location })
-      yield* session.rename({ sessionID: created.id, title: "renamed" })
+      yield* session.rename({ sessionID: created.id, title: "session.renamed" })
 
       const items = Array.from(yield* Stream.runCollect(session.log({ sessionID: created.id })))
       const watermark = (yield* events.sequences([created.id])).get(created.id)
 
       // Session creation commits a non-public durable event, so the marker's
       // seq covers more of the aggregate than the public events emitted.
-      expect(items.map((item) => item.type)).toEqual(["session.next.renamed", "log.synced"])
+      expect(items.map((item) => item.type)).toEqual(["session.renamed", "log.synced"])
       expect(items.at(-1)).toEqual({ type: "log.synced", aggregateID: created.id, seq: watermark })
     }),
   )
@@ -64,7 +65,7 @@ describe("SessionV2.log", () => {
       yield* session.rename({ sessionID: created.id, title: "renamed live" })
 
       const items = Array.from(yield* Fiber.join(fiber))
-      expect(items.map((item) => item.type)).toEqual(["log.synced", "session.next.renamed"])
+      expect(items.map((item) => item.type)).toEqual(["log.synced", "session.renamed"])
     }),
   )
 
@@ -78,7 +79,7 @@ describe("SessionV2.log", () => {
 
   it.effect("reads across undecodable gaps in aggregate order and marks the true log position", () =>
     Effect.gen(function* () {
-      const GapEvent = EventV2.define({
+      const GapEvent = EventV2.durable({
         type: "test.session.log.gap",
         durable: { aggregate: "sessionID", version: 1 },
         schema: { sessionID: SessionV2.ID, value: Schema.String },
@@ -137,7 +138,7 @@ describe("SessionV2 watermarks", () => {
       const events = yield* EventV2.Service
       const first = yield* session.create({ location })
       const second = yield* session.create({ location })
-      yield* session.rename({ sessionID: first.id, title: "renamed" })
+      yield* session.rename({ sessionID: first.id, title: "session.renamed" })
 
       const page = yield* session.list()
       const sequences = yield* events.sequences([first.id, second.id])

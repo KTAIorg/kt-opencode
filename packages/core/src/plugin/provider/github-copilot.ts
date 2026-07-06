@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { ModelV2 } from "../../model"
-import { define } from "../internal"
+import { define } from "@opencode-ai/plugin/v2/effect/plugin"
 import { ProviderV2 } from "../../provider"
 
 function shouldUseResponses(modelID: string) {
@@ -12,19 +12,17 @@ function shouldUseResponses(modelID: string) {
 }
 
 export const GithubCopilotPlugin = define({
-  id: "github-copilot",
+  id: "opencode.provider.github-copilot",
   effect: Effect.fn(function* (ctx) {
-    yield* ctx.catalog.transform(
-      Effect.fn(function* (evt) {
-        const item = evt.provider.get(ProviderV2.ID.githubCopilot)
-        if (!item || !item.models.has(ModelV2.ID.make("gpt-5-chat-latest"))) return
-        evt.model.update(item.provider.id, ModelV2.ID.make("gpt-5-chat-latest"), (model) => {
-          // This chat-only alias conflicts with the Copilot GPT-5 Responses route,
-          // so hide it only for Copilot rather than for every provider catalog.
-          model.enabled = false
-        })
-      }),
-    )
+    yield* ctx.catalog.transform((evt) => {
+      const item = evt.provider.get(ProviderV2.ID.githubCopilot)
+      if (!item || !item.models.has(ModelV2.ID.make("gpt-5-chat-latest"))) return
+      evt.model.update(item.provider.id, ModelV2.ID.make("gpt-5-chat-latest"), (model) => {
+        // This chat-only alias conflicts with the Copilot GPT-5 Responses route,
+        // so hide it only for Copilot rather than for every provider catalog.
+        model.enabled = false
+      })
+    })
     yield* ctx.aisdk.sdk(
       Effect.fn(function* (evt) {
         if (evt.package !== "@ai-sdk/github-copilot") return

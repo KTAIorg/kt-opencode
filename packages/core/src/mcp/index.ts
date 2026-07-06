@@ -42,6 +42,7 @@ export class Tool extends Schema.Class<Tool>("MCP.Tool")({
   name: Schema.String,
   description: Schema.String.pipe(Schema.optional),
   inputSchema: Schema.Unknown.pipe(Schema.optional),
+  outputSchema: Schema.Unknown.pipe(Schema.optional),
 }) {}
 
 export const ToolResultContent = Schema.Union([
@@ -127,7 +128,11 @@ export class ResourceContent extends Schema.Class<ResourceContent>("MCP.Resource
 
 export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("MCP.NotFoundError", {
   server: ServerName,
-}) {}
+}) {
+  override get message() {
+    return `MCP server not found: ${this.server}`
+  }
+}
 
 export class ToolCallError extends Schema.TaggedErrorClass<ToolCallError>()("MCP.ToolCallError", {
   server: ServerName,
@@ -201,7 +206,7 @@ export const layer = Layer.effect(
       for (const [name, server] of Object.entries(entry.info.mcp?.servers ?? {})) {
         runtime.set(ServerName.make(name), {
           config: { ...server, timeout: { ...timeout, ...server.timeout } },
-          status: { status: "disconnected" },
+          status: { status: "pending" },
           startup: Deferred.makeUnsafe<void>(),
         })
       }
@@ -387,7 +392,13 @@ export const layer = Layer.effect(
     } satisfies MCPClient.ElicitationHandler
 
     const toTool = (server: ServerName, def: MCPClient.ToolDefinition) =>
-      new Tool({ server, name: def.name, description: def.description, inputSchema: def.inputSchema })
+      new Tool({
+        server,
+        name: def.name,
+        description: def.description,
+        inputSchema: def.inputSchema,
+        outputSchema: def.outputSchema,
+      })
 
     const toPrompt = (server: ServerName, def: MCPClient.PromptDefinition) =>
       new Prompt({

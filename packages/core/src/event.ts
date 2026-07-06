@@ -1,6 +1,6 @@
 export * as EventV2 from "./event"
 
-import { Cause, Context, Effect, Layer, Option, PubSub, Queue, Schema, Stream } from "effect"
+import { Cause, Context, DateTime, Effect, Layer, Option, PubSub, Queue, Schema, Stream } from "effect"
 import { Event } from "@opencode-ai/schema/event"
 import type { Data, Definition, Payload } from "@opencode-ai/schema/event"
 import type { EventLog } from "@opencode-ai/schema/event-log"
@@ -55,6 +55,7 @@ export const reserveSequence = Effect.fn("EventV2.reserveSequence")(function* (
 export type SerializedEvent = {
   readonly id: ID
   readonly type: string
+  readonly created?: DateTime.Utc
   readonly seq: number
   readonly aggregateID: string
   readonly data: Record<string, unknown>
@@ -81,6 +82,7 @@ const decodeSerializedEvent = (event: SerializedEvent): Payload => {
   }
   return {
     id: event.id,
+    created: event.created ?? DateTime.makeUnsafe(0),
     type: definition.type,
     durable: envelope(event.aggregateID, event.seq, definition.durable.version),
     data: Schema.decodeUnknownSync(definition.data)(event.data),
@@ -92,8 +94,9 @@ export class SubscriberOverflowError extends Schema.TaggedErrorClass<SubscriberO
   { capacity: Schema.Int },
 ) {}
 
-export const define = Event.define
 export const versionedType = Event.versionedType
+export const durable = Event.durable
+export const ephemeral = Event.ephemeral
 
 export interface PublishOptions {
   readonly id?: ID
@@ -157,15 +160,22 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Event") {}
 
-export const liveBounded = (events: Interface, capacity: number) =>
+export const liveBounded = (
+  events: Interface,
+  options: { readonly capacity: number; readonly accept?: (event: Payload) => boolean },
+) =>
   Effect.gen(function* () {
-    const queue = yield* Queue.dropping<Payload, SubscriberOverflowError>(capacity)
+    const queue = yield* Queue.dropping<Payload, SubscriberOverflowError>(options.capacity)
     const unsubscribe = yield* events.listen((event) =>
-      Queue.offer(queue, event).pipe(
-        Effect.flatMap((accepted) =>
-          accepted ? Effect.void : Queue.fail(queue, new SubscriberOverflowError({ capacity })).pipe(Effect.asVoid),
-        ),
-      ),
+      options.accept && !options.accept(event)
+        ? Effect.void
+        : Queue.offer(queue, event).pipe(
+            Effect.flatMap((accepted) =>
+              accepted
+                ? Effect.void
+                : Queue.fail(queue, new SubscriberOverflowError({ capacity: options.capacity })).pipe(Effect.asVoid),
+            ),
+          ),
     )
     yield* Effect.addFinalizer(() => unsubscribe.pipe(Effect.andThen(Queue.shutdown(queue)), Effect.asVoid))
     return Stream.fromQueue(queue)
@@ -294,6 +304,7 @@ export const layerWith = (options?: LayerOptions) =>
                             if (
                               stored?.id === event.id &&
                               stored.type === versionedType(definition.type, durable.version) &&
+                              stored.created === DateTime.toEpochMillis(event.created ?? DateTime.makeUnsafe(0)) &&
                               isDeepStrictEqual(stored.data, encoded)
                             ) {
                               if (input.ownerID && row?.ownerID == null) {
@@ -365,6 +376,7 @@ export const layerWith = (options?: LayerOptions) =>
                                 id: event.id,
                                 aggregate_id: aggregateID,
                                 seq,
+                                created: DateTime.toEpochMillis(event.created ?? DateTime.makeUnsafe(0)),
                                 type: versionedType(definition.type, durable.version),
                                 data: encoded,
                               },
@@ -470,6 +482,7 @@ export const layerWith = (options?: LayerOptions) =>
             definition,
             {
               id: options?.id ?? ID.create(),
+              created: yield* DateTime.now,
               ...(options?.metadata ? { metadata: options.metadata } : {}),
               type: definition.type,
               ...(location ? { location } : {}),
@@ -493,6 +506,7 @@ export const layerWith = (options?: LayerOptions) =>
           } else {
             const payload = {
               id: event.id,
+              created: event.created ?? DateTime.makeUnsafe(0),
               type: definition.type,
               data: Schema.decodeUnknownSync(definition.data)(event.data),
             } as Payload
@@ -569,12 +583,32 @@ export const layerWith = (options?: LayerOptions) =>
           .pipe(Effect.orDie)
       }
 
+      const local = <A extends Payload>(stream: Stream.Stream<A>) =>
+        Stream.unwrap(
+          Effect.serviceOption(Location.Service).pipe(
+            Effect.map((location) =>
+              Option.match(location, {
+                onNone: () => stream,
+                onSome: (location) =>
+                  stream.pipe(
+                    Stream.filter(
+                      (event) =>
+                        !event.location ||
+                        (event.location.directory === location.directory &&
+                          event.location.workspaceID === location.workspaceID),
+                    ),
+                  ),
+              }),
+            ),
+          ),
+        )
+
       const subscribe = <D extends Definition>(definition: D): Stream.Stream<Payload<D>> =>
-        Stream.unwrap(getOrCreate(definition).pipe(Effect.map((pubsub) => Stream.fromPubSub(pubsub)))).pipe(
+        local(Stream.unwrap(getOrCreate(definition).pipe(Effect.map((pubsub) => Stream.fromPubSub(pubsub))))).pipe(
           Stream.map((event) => event as Payload<D>),
         )
 
-      const streamLive = (): Stream.Stream<Payload> => Stream.fromPubSub(pubsub.live)
+      const streamLive = (): Stream.Stream<Payload> => local(Stream.fromPubSub(pubsub.live))
 
       const readAfter = (
         aggregateID: string,
@@ -609,6 +643,7 @@ export const layerWith = (options?: LayerOptions) =>
               return [
                 decodeSerializedEvent({
                   id: event.id,
+                  created: DateTime.makeUnsafe(event.created),
                   aggregateID: event.aggregate_id,
                   seq: event.seq,
                   type: event.type,

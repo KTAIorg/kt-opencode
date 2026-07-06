@@ -1,6 +1,8 @@
 import type {
   AgentV2Info,
   CommandV2Info,
+  FormFormInfo,
+  FormUrlInfo,
   IntegrationInfo,
   LocationRef,
   McpServer,
@@ -8,7 +10,6 @@ import type {
   PermissionSavedInfo,
   PermissionV2Request,
   ProviderV2Info,
-  QuestionV2Request,
   ReferenceInfo,
   SessionMessage,
   SessionMessageAssistant,
@@ -20,12 +21,16 @@ import type {
   SkillV2Info,
   V2Event,
 } from "@opencode-ai/sdk/v2"
-import { createStore, produce } from "solid-js/store"
+import { createStore, produce, reconcile } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import { useSDK } from "./sdk"
 import { createSignal, onCleanup } from "solid-js"
 
 export type DataSessionStatus = "idle" | "running"
+
+const messageIDFromEvent = (eventID: string) => eventID.replace(/^evt_/, "msg_")
+
+export type FormInfo = FormFormInfo | FormUrlInfo
 
 type LocationData = {
   agent?: AgentV2Info[]
@@ -51,7 +56,8 @@ type Data = {
     status: Record<string, DataSessionStatus>
     message: Record<string, SessionMessage[]>
     permission: Record<string, PermissionV2Request[]>
-    question: Record<string, QuestionV2Request[]>
+    // Pending forms keyed by session ID.
+    form: Record<string, FormInfo[]>
   }
   project: {
     permission: Record<string, PermissionSavedInfo[]>
@@ -85,7 +91,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         status: {},
         message: {},
         permission: {},
-        question: {},
+        form: {},
       },
       project: {
         permission: {},
@@ -98,7 +104,14 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       directory: process.cwd(),
     })
     const messageIndex = new Map<string, Map<string, number>>()
+    let connectionGeneration = 0
+    let statusChanges: Set<string> | undefined
     let bootstrapping: Promise<void> | undefined
+
+    function setSessionStatus(sessionID: string, status: DataSessionStatus) {
+      statusChanges?.add(sessionID)
+      setStore("session", "status", sessionID, status)
+    }
 
     const message = {
       update(sessionID: string, fn: (messages: SessionMessage[], index: Map<string, number>) => void) {
@@ -124,8 +137,8 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         const item = position === undefined ? undefined : messages[position]
         return item?.type === "assistant" ? item : undefined
       },
-      activeShell(messages: SessionMessage[], callID: string) {
-        const item = messages.findLast((item) => item.type === "shell" && item.callID === callID)
+      shell(messages: SessionMessage[], shellID: string) {
+        const item = messages.findLast((item) => item.type === "shell" && item.shell.id === shellID)
         return item?.type === "shell" ? item : undefined
       },
       latestTool(assistant: SessionMessageAssistant | undefined, callID?: string) {
@@ -181,17 +194,21 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       const info = store.session.info[sessionID]
       if (!info) return
       const rootID = resolveRoot(sessionID)
-      setStore("session", "family", produce((draft) => {
-        if (sessionID !== rootID && draft[sessionID]) {
-          const members = draft[rootID] ??= []
-          for (const id of draft[sessionID]) {
-            if (!members.includes(id)) members.push(id)
+      setStore(
+        "session",
+        "family",
+        produce((draft) => {
+          if (sessionID !== rootID && draft[sessionID]) {
+            const members = (draft[rootID] ??= [])
+            for (const id of draft[sessionID]) {
+              if (!members.includes(id)) members.push(id)
+            }
+            delete draft[sessionID]
           }
-          delete draft[sessionID]
-        }
-        const family = draft[rootID] ??= []
-        if (!family.includes(sessionID)) family.push(sessionID)
-      }))
+          const family = (draft[rootID] ??= [])
+          if (!family.includes(sessionID)) family.push(sessionID)
+        }),
+      )
     }
 
     function handleEvent(event: V2Event) {
@@ -214,124 +231,126 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         case "skill.updated":
           void result.location.skill.refresh(event.location)
           break
-        case "session.next.agent.switched":
+        case "session.agent.selected":
           if (store.session.info[event.data.sessionID])
             setStore("session", "info", event.data.sessionID, "agent", event.data.agent)
           message.update(event.data.sessionID, (draft, index) => {
             message.append(draft, index, {
-              id: event.data.messageID,
+              id: messageIDFromEvent(event.id),
               type: "agent-switched",
               agent: event.data.agent,
-              time: { created: event.data.timestamp },
+              time: { created: event.created },
             })
           })
           break
-        case "session.next.model.switched":
+        case "session.model.selected":
           if (store.session.info[event.data.sessionID])
             setStore("session", "info", event.data.sessionID, "model", event.data.model)
+          if (!store.session.message[event.data.sessionID]) break
           message.update(event.data.sessionID, (draft, index) => {
             message.append(draft, index, {
-              id: event.data.messageID,
+              id: messageIDFromEvent(event.id),
               type: "model-switched",
               model: event.data.model,
-              time: { created: event.data.timestamp },
+              time: { created: event.created },
             })
           })
+          void sdk.api.session
+            .message({ sessionID: event.data.sessionID, messageID: messageIDFromEvent(event.id) })
+            .then((item) => {
+              message.update(event.data.sessionID, (draft, index) => {
+                const position = index.get(item.id)
+                if (position === undefined) return message.append(draft, index, mutable(item))
+                draft[position] = mutable(item)
+              })
+            })
+            .catch((error) => console.error("Failed to load projected model switch message", error))
           break
-        case "session.next.renamed":
+        case "session.renamed":
           if (store.session.info[event.data.sessionID])
             setStore("session", "info", event.data.sessionID, "title", event.data.title)
           break
-        case "session.next.prompted": {
-          setStore("session", "status", event.data.sessionID, "running")
+        case "session.prompt.promoted": {
+          setSessionStatus(event.data.sessionID, "running")
           message.update(event.data.sessionID, (draft, index) => {
-            const position = index.get(event.data.messageID)
-            const existing = position === undefined ? undefined : draft[position]
-            if (existing?.type === "user") {
-              existing.text = event.data.prompt.text
-              existing.files = event.data.prompt.files
-              existing.agents = event.data.prompt.agents
-              existing.time.created = event.data.timestamp
-              if (existing.metadata?.queued === true) {
-                delete existing.metadata.queued
-                if (Object.keys(existing.metadata).length === 0) existing.metadata = undefined
-              }
+            const position = index.get(event.data.inputID)
+            if (position === undefined) return
+            const existing = draft[position]
+            if (existing?.type === "user" && existing.metadata?.queued === true) {
+              existing.time.created = event.created
+              delete existing.metadata.queued
+              if (Object.keys(existing.metadata).length === 0) existing.metadata = undefined
+              draft.splice(position, 1)
+              draft.push(existing)
+              index.clear()
+              draft.forEach((message, indexValue) => index.set(message.id, indexValue))
               return
             }
-            message.append(draft, index, {
-              id: event.data.messageID,
-              type: "user",
-              text: event.data.prompt.text,
-              files: event.data.prompt.files,
-              agents: event.data.prompt.agents,
-              time: { created: event.data.timestamp },
-            })
           })
           break
         }
-        case "session.next.prompt.admitted":
+        case "session.prompt.admitted":
           message.update(event.data.sessionID, (draft, index) => {
             message.append(draft, index, {
-              id: event.data.messageID,
+              id: event.data.inputID,
               type: "user",
               text: event.data.prompt.text,
               files: event.data.prompt.files,
               agents: event.data.prompt.agents,
               metadata: { queued: true },
-              time: { created: event.data.timestamp },
+              time: { created: event.created },
             })
           })
           break
-        case "session.next.context.updated":
+        case "session.context.updated":
           message.update(event.data.sessionID, (draft, index) => {
             message.append(draft, index, {
-              id: event.data.messageID,
+              id: messageIDFromEvent(event.id),
               type: "system",
               text: event.data.text,
-              time: { created: event.data.timestamp },
+              time: { created: event.created },
             })
           })
           break
-        case "session.next.synthetic":
+        case "session.synthetic":
           message.update(event.data.sessionID, (draft, index) => {
             message.append(draft, index, {
-              id: event.data.messageID,
+              id: messageIDFromEvent(event.id),
               type: "synthetic",
               sessionID: event.data.sessionID,
               text: event.data.text,
               description: event.data.description,
-              time: { created: event.data.timestamp },
+              time: { created: event.created },
             })
           })
           break
-        case "session.next.shell.started":
-          setStore("session", "status", event.data.sessionID, "running")
+        case "session.shell.started":
+          setSessionStatus(event.data.sessionID, "running")
           message.update(event.data.sessionID, (draft, index) => {
             message.append(draft, index, {
-              id: event.data.messageID,
+              id: messageIDFromEvent(event.id),
               type: "shell",
-              callID: event.data.callID,
-              command: event.data.command,
-              output: "",
-              time: { created: event.data.timestamp },
+              shell: event.data.shell,
+              time: { created: event.created },
             })
           })
           break
-        case "session.next.shell.ended":
-          setStore("session", "status", event.data.sessionID, "idle")
-          message.update(event.data.sessionID, (draft, index) => {
-            const match = message.activeShell(draft, event.data.callID)
+        case "session.shell.ended":
+          setSessionStatus(event.data.sessionID, "idle")
+          message.update(event.data.sessionID, (draft) => {
+            const match = message.shell(draft, event.data.shell.id)
             if (!match) return
+            match.shell = event.data.shell
             match.output = event.data.output
-            match.time.completed = event.data.timestamp
+            match.time.completed = event.created
           })
           break
-        case "session.next.step.started":
-          setStore("session", "status", event.data.sessionID, "running")
+        case "session.step.started":
+          setSessionStatus(event.data.sessionID, "running")
           message.update(event.data.sessionID, (draft, index) => {
             if (index.has(event.data.assistantMessageID)) return
             const currentAssistant = message.activeAssistant(draft)
-            if (currentAssistant) currentAssistant.time.completed = event.data.timestamp
+            if (currentAssistant) currentAssistant.time.completed = event.created
             message.append(draft, index, {
               id: event.data.assistantMessageID,
               type: "assistant",
@@ -339,16 +358,16 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
               model: event.data.model,
               content: [],
               snapshot: event.data.snapshot ? { start: event.data.snapshot } : undefined,
-              time: { created: event.data.timestamp },
+              time: { created: event.created },
             })
           })
           break
-        case "session.next.step.ended":
-          setStore("session", "status", event.data.sessionID, "running")
+        case "session.step.ended":
+          setSessionStatus(event.data.sessionID, "running")
           message.update(event.data.sessionID, (draft, index) => {
             const currentAssistant = message.assistant(draft, index, event.data.assistantMessageID)
             if (!currentAssistant) return
-            currentAssistant.time.completed = event.data.timestamp
+            currentAssistant.time.completed = event.created
             currentAssistant.finish = event.data.finish
             currentAssistant.cost = event.data.cost
             currentAssistant.tokens = event.data.tokens
@@ -356,16 +375,16 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
               currentAssistant.snapshot = { ...currentAssistant.snapshot, end: event.data.snapshot }
           })
           break
-        case "session.next.step.failed":
+        case "session.step.failed":
           message.update(event.data.sessionID, (draft, index) => {
             const currentAssistant = message.assistant(draft, index, event.data.assistantMessageID)
             if (!currentAssistant) return
-            currentAssistant.time.completed = event.data.timestamp
+            currentAssistant.time.completed = event.created
             currentAssistant.finish = "error"
             currentAssistant.error = event.data.error
           })
           break
-        case "session.next.text.started":
+        case "session.text.started":
           message.update(event.data.sessionID, (draft, index) => {
             message.assistant(draft, index, event.data.assistantMessageID)?.content.push({
               type: "text",
@@ -374,7 +393,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             })
           })
           break
-        case "session.next.text.delta":
+        case "session.text.delta":
           message.update(event.data.sessionID, (draft, index) => {
             const match = message.latestText(
               message.assistant(draft, index, event.data.assistantMessageID),
@@ -383,7 +402,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             if (match) match.text += event.data.delta
           })
           break
-        case "session.next.text.ended":
+        case "session.text.ended":
           message.update(event.data.sessionID, (draft, index) => {
             const match = message.latestText(
               message.assistant(draft, index, event.data.assistantMessageID),
@@ -392,18 +411,18 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             if (match) match.text = event.data.text
           })
           break
-        case "session.next.tool.input.started":
+        case "session.tool.input.started":
           message.update(event.data.sessionID, (draft, index) => {
             message.assistant(draft, index, event.data.assistantMessageID)?.content.push({
               type: "tool",
               id: event.data.callID,
               name: event.data.name,
-              time: { created: event.data.timestamp },
+              time: { created: event.created },
               state: { status: "pending", input: "" },
             })
           })
           break
-        case "session.next.tool.input.delta":
+        case "session.tool.input.delta":
           message.update(event.data.sessionID, (draft, index) => {
             const match = message.latestTool(
               message.assistant(draft, index, event.data.assistantMessageID),
@@ -412,7 +431,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             if (match?.state.status === "pending") match.state.input += event.data.delta
           })
           break
-        case "session.next.tool.input.ended":
+        case "session.tool.input.ended":
           message.update(event.data.sessionID, (draft, index) => {
             const match = message.latestTool(
               message.assistant(draft, index, event.data.assistantMessageID),
@@ -421,19 +440,19 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             if (match?.state.status === "pending") match.state.input = event.data.text
           })
           break
-        case "session.next.tool.called":
+        case "session.tool.called":
           message.update(event.data.sessionID, (draft, index) => {
             const match = message.latestTool(
               message.assistant(draft, index, event.data.assistantMessageID),
               event.data.callID,
             )
             if (!match) return
-            match.time.ran = event.data.timestamp
+            match.time.ran = event.created
             match.provider = event.data.provider
             match.state = { status: "running", input: event.data.input, structured: {}, content: [] }
           })
           break
-        case "session.next.tool.progress":
+        case "session.tool.progress":
           message.update(event.data.sessionID, (draft, index) => {
             const match = message.latestTool(
               message.assistant(draft, index, event.data.assistantMessageID),
@@ -444,7 +463,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             match.state.content = [...event.data.content]
           })
           break
-        case "session.next.tool.success":
+        case "session.tool.success":
           message.update(event.data.sessionID, (draft, index) => {
             const match = message.latestTool(
               message.assistant(draft, index, event.data.assistantMessageID),
@@ -463,10 +482,10 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
               metadata: match.provider?.metadata,
               resultMetadata: event.data.provider.metadata,
             }
-            match.time.completed = event.data.timestamp
+            match.time.completed = event.created
           })
           break
-        case "session.next.tool.failed":
+        case "session.tool.failed":
           message.update(event.data.sessionID, (draft, index) => {
             const match = message.latestTool(
               message.assistant(draft, index, event.data.assistantMessageID),
@@ -486,21 +505,21 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
               metadata: match.provider?.metadata,
               resultMetadata: event.data.provider.metadata,
             }
-            match.time.completed = event.data.timestamp
+            match.time.completed = event.created
           })
           break
-        case "session.next.reasoning.started":
+        case "session.reasoning.started":
           message.update(event.data.sessionID, (draft, index) => {
             message.assistant(draft, index, event.data.assistantMessageID)?.content.push({
               type: "reasoning",
               id: event.data.reasoningID,
               text: "",
               providerMetadata: event.data.providerMetadata,
-              time: { created: event.data.timestamp },
+              time: { created: event.created },
             })
           })
           break
-        case "session.next.reasoning.delta":
+        case "session.reasoning.delta":
           message.update(event.data.sessionID, (draft, index) => {
             const match = message.latestReasoning(
               message.assistant(draft, index, event.data.assistantMessageID),
@@ -509,7 +528,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             if (match) match.text += event.data.delta
           })
           break
-        case "session.next.reasoning.ended":
+        case "session.reasoning.ended":
           message.update(event.data.sessionID, (draft, index) => {
             const match = message.latestReasoning(
               message.assistant(draft, index, event.data.assistantMessageID),
@@ -517,38 +536,38 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             )
             if (match) {
               match.text = event.data.text
-              match.time = { created: match.time?.created ?? event.data.timestamp, completed: event.data.timestamp }
+              match.time = { created: match.time?.created ?? event.created, completed: event.created }
               if (event.data.providerMetadata !== undefined) match.providerMetadata = event.data.providerMetadata
             }
           })
           break
-        case "session.next.retried":
-        case "session.next.compaction.started":
-          setStore("session", "status", event.data.sessionID, "running")
+        case "session.retried":
+        case "session.compaction.started":
+          setSessionStatus(event.data.sessionID, "running")
           break
-        case "session.next.execution.settled":
-          setStore("session", "status", event.data.sessionID, "idle")
+        case "session.execution.settled":
+          setSessionStatus(event.data.sessionID, "idle")
           break
-        case "session.next.revert.staged":
+        case "session.revert.staged":
           if (store.session.info[event.data.sessionID])
             setStore("session", "info", event.data.sessionID, "revert", event.data.revert)
           break
-        case "session.next.revert.cleared":
-        case "session.next.revert.committed":
+        case "session.revert.cleared":
+        case "session.revert.committed":
           if (store.session.info[event.data.sessionID])
             setStore("session", "info", event.data.sessionID, "revert", undefined)
           break
-        case "session.next.compaction.delta":
+        case "session.compaction.delta":
           break
-        case "session.next.compaction.ended":
+        case "session.compaction.ended":
           message.update(event.data.sessionID, (draft, index) => {
             message.append(draft, index, {
-              id: event.data.messageID,
+              id: messageIDFromEvent(event.id),
               type: "compaction",
               reason: event.data.reason,
               summary: event.data.text,
               recent: event.data.recent,
-              time: { created: event.data.timestamp },
+              time: { created: event.created },
             })
           })
           break
@@ -569,22 +588,20 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             ),
           )
           break
-        case "question.v2.asked":
-          if (store.session.question[event.data.sessionID]?.some((request) => request.id === event.data.id)) break
-          setStore("session", "question", event.data.sessionID, [
-            ...(store.session.question[event.data.sessionID] ?? []),
-            event.data,
+        case "form.created":
+          if (store.session.form[event.data.form.sessionID]?.some((form) => form.id === event.data.form.id)) break
+          setStore("session", "form", event.data.form.sessionID, [
+            ...(store.session.form[event.data.form.sessionID] ?? []),
+            mutable(event.data.form),
           ])
           break
-        case "question.v2.replied":
-        case "question.v2.rejected":
+        case "form.replied":
+        case "form.cancelled":
           setStore(
             "session",
-            "question",
+            "form",
             event.data.sessionID,
-            (store.session.question[event.data.sessionID] ?? []).filter(
-              (request) => request.id !== event.data.requestID,
-            ),
+            (store.session.form[event.data.sessionID] ?? []).filter((form) => form.id !== event.data.id),
           )
           break
         case "shell.created":
@@ -692,8 +709,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
                 return liveByID.get(message.id) ?? message
               }),
               ...live.filter((message) => !loadedIDs.has(message.id)),
-            ]
-              .toSorted((a, b) => a.time.created - b.time.created)
+            ].toSorted((a, b) => a.time.created - b.time.created)
             messageIndex.set(sessionID, new Map(messages.map((message, index) => [message.id, index])))
             setStore("session", "message", sessionID, messages)
           },
@@ -706,12 +722,12 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             setStore("session", "permission", sessionID, mutable(await sdk.api.permission.list({ sessionID })))
           },
         },
-        question: {
+        form: {
           list(sessionID: string) {
-            return store.session.question[sessionID]
+            return store.session.form[sessionID]
           },
           async refresh(sessionID: string) {
-            setStore("session", "question", sessionID, mutable(await sdk.api.question.list({ sessionID })))
+            setStore("session", "form", sessionID, mutable(await sdk.api.form.list({ sessionID })))
           },
         },
       },
@@ -865,15 +881,6 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             )
             for (const session of response.data) registerSession(session.id)
           }),
-        sdk.api.session
-          .active()
-          .then((active) =>
-            setStore(
-              "session",
-              "status",
-              Object.fromEntries(Object.keys(active.data).map((sessionID) => [sessionID, "running" as const])),
-            ),
-          ),
         result.location.refresh(),
         result.location.agent.refresh(),
         result.location.integration.refresh(),
@@ -895,9 +902,30 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       return bootstrapping
     }
 
+    function refreshActive() {
+      const generation = ++connectionGeneration
+      const changed = new Set<string>()
+      statusChanges = changed
+      void sdk.api.session
+        .active()
+        .then((active) => {
+          if (generation !== connectionGeneration) return
+          const status: Record<string, DataSessionStatus> = Object.fromEntries(
+            Object.keys(active.data).map((sessionID) => [sessionID, "running" as const]),
+          )
+          for (const sessionID of changed) status[sessionID] = store.session.status[sessionID]
+          setStore("session", "status", reconcile(status))
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (statusChanges === changed) statusChanges = undefined
+        })
+    }
+
     onCleanup(
       sdk.event.listen(({ details }) => {
         if (details.type === "server.connected") {
+          refreshActive()
           void bootstrap()
           return
         }

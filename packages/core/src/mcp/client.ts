@@ -46,7 +46,11 @@ const TolerantListPromptsResult = ListPromptsResultSchema.extend({
 
 export class NeedsAuthError extends Schema.TaggedErrorClass<NeedsAuthError>()("MCP.NeedsAuthError", {
   server: Schema.String,
-}) {}
+}) {
+  override get message() {
+    return `MCP server requires authentication: ${this.server}`
+  }
+}
 
 export class ConnectError extends Schema.TaggedErrorClass<ConnectError>()("MCP.ConnectError", {
   server: Schema.String,
@@ -57,6 +61,7 @@ export interface ToolDefinition {
   readonly name: string
   readonly description: string | undefined
   readonly inputSchema: unknown
+  readonly outputSchema: unknown
 }
 
 export interface PromptDefinition {
@@ -231,6 +236,7 @@ export const connect = Effect.fnUntraced(function* (
             name: tool.name,
             description: tool.description,
             inputSchema: tool.inputSchema,
+            outputSchema: "outputSchema" in tool ? tool.outputSchema : undefined,
           }))
         }),
       prompts: () =>

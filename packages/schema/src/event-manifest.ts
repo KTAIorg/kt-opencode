@@ -1,12 +1,14 @@
 export * as EventManifest from "./event-manifest.js"
 
+import { Schema } from "effect"
 import { Agent } from "./agent.js"
 import { Catalog } from "./catalog.js"
 import { Command } from "./command.js"
+import { Config } from "./config.js"
 import { Durable } from "./durable-event-manifest.js"
 import { Event } from "./event.js"
 import { FileSystem } from "./filesystem.js"
-import { FileSystemWatcher } from "./filesystem-watcher.js"
+import { FileSystemV1 } from "./filesystem-v1.js"
 import { Form } from "./form.js"
 import { InstallationEvent } from "./installation-event.js"
 import { Integration } from "./integration.js"
@@ -36,8 +38,12 @@ import { VcsEvent } from "./vcs-event.js"
 import { WorkspaceEvent } from "./workspace-event.js"
 import { WorktreeEvent } from "./worktree-event.js"
 
-const sessionV1DurableDefinitions = SessionV1.Event.Definitions.filter((definition) => definition.durable !== undefined)
-const sessionV1LiveDefinitions = SessionV1.Event.Definitions.filter((definition) => definition.durable === undefined)
+const sessionV1DurableDefinitions = SessionV1.Event.Definitions.filter(
+  (definition) => definition.durability === "durable",
+)
+const sessionV1LiveDefinitions = SessionV1.Event.Definitions.filter(
+  (definition) => definition.durability === "ephemeral",
+)
 
 const coreDefinitions = Event.inventory(...sessionV1DurableDefinitions, ...SessionEvent.Definitions)
 
@@ -56,8 +62,8 @@ const featureDefinitions = Event.inventory(
   ...Plugin.Event.Definitions,
   ...ProjectDirectories.Event.Definitions,
   ...Command.Event.Definitions,
+  ...Config.Event.Definitions,
   ...Skill.Event.Definitions,
-  ...FileSystemWatcher.Event.Definitions,
   ...Pty.Event.Definitions,
   ...Shell.Event.Definitions,
   ...Question.Event.Definitions,
@@ -81,6 +87,9 @@ export const ServerDefinitions = Event.inventory(
   ...QuestionV1.Event.Definitions,
   SessionV1.Error,
 )
+export const Server = Event.latest(ServerDefinitions)
+export type ServerEvent = Schema.Schema.Type<(typeof ServerDefinitions)[number]>
+export const isServer = (event: { readonly type: string }): event is ServerEvent => Server.has(event.type)
 
 export const Definitions = Event.inventory(
   ...foundationDefinitions,
@@ -93,6 +102,7 @@ export const Definitions = Event.inventory(
   ...TuiEvent.Definitions,
   ...McpEvent.Definitions,
   ...LegacyEvent.Definitions,
+  ...FileSystemV1.Event.Definitions,
   ...Project.Event.Definitions,
   ...SessionStatusEvent.Definitions,
   ...QuestionV1.Event.Definitions,

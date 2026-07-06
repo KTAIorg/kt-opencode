@@ -28,23 +28,24 @@ export function createSessionRows(sessionID: Accessor<string>) {
   function reduce() {
     const messages = data.session.message.list(sessionID())
     const boundary = revertBoundary()
-    return reduceSessionRows(boundary ? messages.filter((message) => message.id < boundary) : messages)
+    const rows = reduceSessionRows(boundary ? messages.filter((message) => message.id < boundary) : messages)
+    partitionPending(rows, pendingPermissions())
+    return rows
   }
 
-  createEffect(() => {
-    const pending = new Set(
+  function pendingPermissions() {
+    return new Set(
       (data.session.permission.list(sessionID()) ?? []).flatMap((request) =>
         request.source?.type === "tool" ? [request.source.callID] : [],
       ),
     )
+  }
+
+  createEffect(() => {
+    const pending = pendingPermissions()
     setRows(
       produce((draft) => {
-        draft.forEach((row) => {
-          if (row.type !== "group") return
-          const refs = [...row.refs, ...row.pending]
-          row.refs = refs.filter((ref) => !pending.has(ref.partID))
-          row.pending = refs.filter((ref) => pending.has(ref.partID))
-        })
+        partitionPending(draft, pending)
       }),
     )
   })
@@ -67,6 +68,20 @@ export function createSessionRows(sessionID: Accessor<string>) {
     on(revertBoundary, () => {
       setRows(reconcile(reduce()))
     }),
+  )
+
+  createEffect(
+    on(
+      () =>
+        data.session.message
+          .list(sessionID())
+          .flatMap((message) =>
+            message.type === "user"
+              ? [{ id: message.id, created: message.time.created, queued: message.metadata?.queued === true }]
+              : [],
+          ),
+      () => setRows(reconcile(reduce())),
+    ),
   )
 
   const appendMessage = (messageID: string) =>
@@ -126,45 +141,48 @@ export function createSessionRows(sessionID: Accessor<string>) {
     return index === -1 ? rows.length : index
   }
 
-  const message = (event: { data: { sessionID: string; messageID: string } }) => {
-    if (event.data.sessionID === sessionID()) appendMessage(event.data.messageID)
+  const message = (event: { id: string; data: { sessionID: string } }) => {
+    if (event.data.sessionID === sessionID()) appendMessage(event.id.replace(/^evt_/, "msg_"))
+  }
+  const input = (event: { data: { sessionID: string; inputID: string } }) => {
+    if (event.data.sessionID === sessionID()) appendMessage(event.data.inputID)
   }
   const subscriptions = [
-    data.on("session.next.prompt.admitted", message),
-    data.on("session.next.prompted", message),
-    data.on("session.next.context.updated", message),
-    data.on("session.next.synthetic", (event) => {
-      if (event.data.sessionID === sessionID() && event.data.description?.trim()) appendMessage(event.data.messageID)
+    data.on("session.prompt.admitted", input),
+    data.on("session.context.updated", message),
+    data.on("session.synthetic", (event) => {
+      if (event.data.sessionID === sessionID() && event.data.description?.trim())
+        appendMessage(event.id.replace(/^evt_/, "msg_"))
     }),
-    data.on("session.next.shell.started", message),
-    data.on("session.next.agent.switched", message),
-    data.on("session.next.model.switched", message),
-    data.on("session.next.compaction.ended", message),
-    data.on("session.next.text.delta", (event) => {
+    data.on("session.shell.started", message),
+    data.on("session.agent.selected", message),
+    data.on("session.model.selected", message),
+    data.on("session.compaction.ended", message),
+    data.on("session.text.delta", (event) => {
       if (event.data.sessionID === sessionID())
         appendPart({ messageID: event.data.assistantMessageID, partID: event.data.textID })
     }),
-    data.on("session.next.text.ended", (event) => {
+    data.on("session.text.ended", (event) => {
       if (event.data.sessionID === sessionID() && event.data.text.trim())
         appendPart({ messageID: event.data.assistantMessageID, partID: event.data.textID })
     }),
-    data.on("session.next.reasoning.delta", (event) => {
+    data.on("session.reasoning.delta", (event) => {
       if (event.data.sessionID === sessionID())
         appendPart({ messageID: event.data.assistantMessageID, partID: event.data.reasoningID })
     }),
-    data.on("session.next.reasoning.ended", (event) => {
+    data.on("session.reasoning.ended", (event) => {
       if (event.data.sessionID === sessionID() && event.data.text.trim())
         appendPart({ messageID: event.data.assistantMessageID, partID: event.data.reasoningID })
     }),
-    data.on("session.next.tool.input.started", (event) => {
+    data.on("session.tool.input.started", (event) => {
       if (event.data.sessionID === sessionID())
         appendPart({ messageID: event.data.assistantMessageID, partID: event.data.callID }, event.data.name)
     }),
-    data.on("session.next.step.ended", (event) => {
+    data.on("session.step.ended", (event) => {
       if (event.data.sessionID !== sessionID() || ["tool-calls", "unknown"].includes(event.data.finish)) return
       appendFooter(event.data.assistantMessageID)
     }),
-    data.on("session.next.step.failed", (event) => {
+    data.on("session.step.failed", (event) => {
       if (event.data.sessionID === sessionID()) appendFooter(event.data.assistantMessageID)
     }),
   ]
@@ -221,6 +239,15 @@ function completePrevious(rows: SessionRow[], index = rows.length) {
   if (previous?.type === "group") previous.completed = true
 }
 
+function partitionPending(rows: SessionRow[], pending: Set<string>) {
+  rows.forEach((row) => {
+    if (row.type !== "group") return
+    const refs = [...row.refs, ...row.pending]
+    row.refs = refs.filter((ref) => !pending.has(ref.partID))
+    row.pending = refs.filter((ref) => pending.has(ref.partID))
+  })
+}
+
 function exploration(name: string) {
   return ["read", "glob", "grep"].includes(name.toLowerCase())
 }
@@ -229,8 +256,6 @@ function hasPart(rows: SessionRow[], ref: PartRef) {
   return rows.some((row) => {
     if (row.type === "part") return row.ref.messageID === ref.messageID && row.ref.partID === ref.partID
     if (row.type !== "group") return false
-    return [...row.refs, ...row.pending].some(
-      (item) => item.messageID === ref.messageID && item.partID === ref.partID,
-    )
+    return [...row.refs, ...row.pending].some((item) => item.messageID === ref.messageID && item.partID === ref.partID)
   })
 }

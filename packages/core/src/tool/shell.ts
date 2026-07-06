@@ -18,8 +18,9 @@ export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000
 export const MAX_TIMEOUT_MS = 10 * 60 * 1_000
 export const MAX_CAPTURE_BYTES = 1024 * 1024
 
-const BACKGROUND_STARTED =
-  "The command has not completed; it is now running in the background."
+const BACKGROUND_STARTED = "The command was moved to the background."
+const BACKGROUND_INSTRUCTION =
+  "You will be notified automatically when the command finishes. DO NOT sleep, poll, or proactively check on its progress."
 
 export const Input = Schema.Struct({
   command: Schema.String.annotate({ description: "Shell command string to execute" }),
@@ -54,10 +55,11 @@ const Output = Schema.Struct({
 type Output = typeof Output.Type
 
 const modelOutput = (output: Output): string | undefined => {
-  if (output.status === "running") return undefined
   const warnings = output.warnings?.length
     ? `\n\nWarnings:\n${output.warnings.map((warning) => `- ${warning}`).join("\n")}`
     : ""
+  if (output.status === "running")
+    return `${warnings.trimStart()}${warnings ? "\n\n" : ""}${BACKGROUND_INSTRUCTION}`
   if (output.timeout) return `${warnings.trimStart()}${warnings ? "\n\n" : ""}Command timed out before completion.`
   return `${warnings.trimStart()}${warnings ? "\n\n" : ""}Command exited with code ${output.exit}.`
 }
@@ -80,20 +82,24 @@ const modelOutput = (output: Output): string | undefined => {
 
 const shellTokens = (command: string) => command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? []
 const unquote = (value: string) => value.replace(/^(['"])(.*)\1$/, "$2")
-const externalCommandDirectories = (command: string, cwd: string) => {
+const externalCommandDirectories = Effect.fn("ShellTool.externalCommandDirectories")(function* (
+  fs: FSUtil.Interface,
+  command: string,
+  cwd: string,
+) {
   const directories = new Set<string>()
   for (const token of shellTokens(command)) {
     const value = unquote(token).replace(/[;,|&]+$/, "")
     if (!path.isAbsolute(value)) continue
-    const resolved = FSUtil.resolve(value)
+    const resolved = yield* fs.resolve(value)
     if (FSUtil.contains(cwd, resolved)) continue
-    directories.add(FSUtil.resolve(path.dirname(resolved)))
+    directories.add(yield* fs.resolve(path.dirname(resolved)))
   }
   return [...directories]
-}
+})
 
 export const Plugin = {
-  id: "core-shell-tool",
+  id: "opencode.tool.shell",
   effect: Effect.fn("ShellTool.Plugin")(function* (ctx: PluginContext) {
     const runtime = yield* PluginRuntime.Service
     const scope = yield* Scope.Scope
@@ -168,7 +174,7 @@ export const Plugin = {
                   agent: context.agent,
                   source,
                 })
-              const warnings = externalCommandDirectories(input.command, target.canonical).map(
+              const warnings = (yield* externalCommandDirectories(fsUtil, input.command, target.canonical)).map(
                 (directory) =>
                   `Command argument references external directory ${path.join(directory, "*").replaceAll("\\", "/")}. Shell runs with host-user filesystem, process, and network authority; this scan is advisory only.`,
               )

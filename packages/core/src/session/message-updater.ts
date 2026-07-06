@@ -8,23 +8,37 @@ export type MemoryState = {
 }
 
 export interface Adapter {
-  readonly getCurrentAssistant: () => Effect.Effect<SessionMessage.Assistant | undefined>
-  readonly getAssistant: (messageID: SessionMessage.ID) => Effect.Effect<SessionMessage.Assistant | undefined>
-  readonly getCurrentShell: (callID: string) => Effect.Effect<SessionMessage.Shell | undefined>
-  readonly updateAssistant: (assistant: SessionMessage.Assistant) => Effect.Effect<void>
-  readonly updateShell: (shell: SessionMessage.Shell) => Effect.Effect<void>
-  readonly appendMessage: (message: SessionMessage.Message) => Effect.Effect<void>
+  readonly getModel: () => Effect.Effect<SessionMessage.ModelSelected["model"] | undefined, never, never>
+  readonly getCurrentAssistant: () => Effect.Effect<SessionMessage.Assistant | undefined, never, never>
+  readonly getAssistant: (
+    messageID: SessionMessage.ID,
+  ) => Effect.Effect<SessionMessage.Assistant | undefined, never, never>
+  readonly getShell: (
+    shellID: SessionMessage.Shell["shell"]["id"],
+  ) => Effect.Effect<SessionMessage.Shell | undefined, never, never>
+  readonly updateAssistant: (assistant: SessionMessage.Assistant) => Effect.Effect<void, never, never>
+  readonly updateShell: (shell: SessionMessage.Shell) => Effect.Effect<void, never, never>
+  readonly appendMessage: (message: SessionMessage.Message) => Effect.Effect<void, never, never>
 }
 
 export function memory(state: MemoryState): Adapter {
   const assistantIndex = (messageID: SessionMessage.ID) =>
     state.messages.findLastIndex((message) => message.id === messageID)
-  // A newer turn supersedes stale incomplete rows; never resume an older assistant projection.
+  const shellIndex = (messageID: SessionMessage.ID) =>
+    state.messages.findLastIndex((message) => message.id === messageID)
+  // A newer step supersedes stale incomplete rows; never resume an older assistant projection.
   const latestAssistantIndex = () => state.messages.findLastIndex((message) => message.type === "assistant")
-  const activeShellIndex = (callID: string) =>
-    state.messages.findLastIndex((message) => message.type === "shell" && message.callID === callID)
 
   return {
+    getModel() {
+      return Effect.sync(
+        () =>
+          state.messages.findLast(
+            (message): message is SessionMessage.ModelSelected | SessionMessage.Assistant =>
+              message.type === "model-switched" || message.type === "assistant",
+          )?.model,
+      )
+    },
     getCurrentAssistant() {
       return Effect.sync(() => {
         const index = latestAssistantIndex()
@@ -41,12 +55,11 @@ export function memory(state: MemoryState): Adapter {
         return assistant?.type === "assistant" ? assistant : undefined
       })
     },
-    getCurrentShell(callID) {
+    getShell(shellID) {
       return Effect.sync(() => {
-        const index = activeShellIndex(callID)
-        if (index < 0) return
-        const shell = state.messages[index]
-        return shell?.type === "shell" ? shell : undefined
+        return state.messages.find((message): message is SessionMessage.Shell => {
+          return message.type === "shell" && message.shell.id === shellID
+        })
       })
     },
     updateAssistant(assistant) {
@@ -60,7 +73,7 @@ export function memory(state: MemoryState): Adapter {
     },
     updateShell(shell) {
       return Effect.sync(() => {
-        const index = activeShellIndex(shell.callID)
+        const index = shellIndex(shell.id)
         if (index < 0) return
         const current = state.messages[index]
         if (current?.type !== "shell") return
@@ -100,112 +113,103 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
 
   return Effect.gen(function* () {
     yield* SessionEvent.All.match(event, {
-      "session.next.agent.switched": (event) => {
+      "session.agent.selected": (event) => {
         return adapter.appendMessage(
-          SessionMessage.AgentSwitched.make({
-            id: event.data.messageID,
+          SessionMessage.AgentSelected.make({
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "agent-switched",
             metadata: event.metadata,
             agent: event.data.agent,
-            time: { created: event.data.timestamp },
+            time: { created: event.created },
           }),
         )
       },
-      "session.next.model.switched": (event) => {
-        return adapter.appendMessage(
-          SessionMessage.ModelSwitched.make({
-            id: event.data.messageID,
-            type: "model-switched",
-            metadata: event.metadata,
-            model: event.data.model,
-            time: { created: event.data.timestamp },
-          }),
-        )
+      "session.model.selected": (event) => {
+        return Effect.gen(function* () {
+          const previous = yield* adapter.getModel()
+          yield* adapter.appendMessage(
+            SessionMessage.ModelSelected.make({
+              id: SessionMessage.ID.fromEvent(event.id),
+              type: "model-switched",
+              metadata: event.metadata,
+              model: event.data.model,
+              previous,
+              time: { created: event.created },
+            }),
+          )
+        })
       },
-      "session.next.moved": () => Effect.void,
-      "session.next.renamed": () => Effect.void,
-      "session.next.forked": () => Effect.void,
-      "session.next.prompted": (event) => {
-        return adapter.appendMessage(
-          SessionMessage.User.make({
-            id: event.data.messageID,
-            type: "user",
-            metadata: event.metadata,
-            text: event.data.prompt.text,
-            files: event.data.prompt.files,
-            agents: event.data.prompt.agents,
-            time: { created: event.data.timestamp },
-          }),
-        )
-      },
-      "session.next.prompt.admitted": () => Effect.void,
-      "session.next.execution.settled": () => Effect.void,
-      "session.next.context.updated": (event) =>
+      "session.moved": () => Effect.void,
+      "session.renamed": () => Effect.void,
+      "session.forked": () => Effect.void,
+      "session.prompt.promoted": () => Effect.void,
+      "session.prompt.admitted": () => Effect.void,
+      "session.execution.settled": () => Effect.void,
+      "session.context.updated": (event) =>
         adapter.appendMessage(
           SessionMessage.System.make({
-            id: event.data.messageID,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "system",
             text: event.data.text,
-            time: { created: event.data.timestamp },
+            time: { created: event.created },
           }),
         ),
-      "session.next.synthetic": (event) => {
+      "session.synthetic": (event) => {
         return adapter.appendMessage(
           SessionMessage.Synthetic.make({
             sessionID: event.data.sessionID,
             text: event.data.text,
             description: event.data.description,
             metadata: event.data.metadata,
-            id: event.data.messageID,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "synthetic",
-            time: { created: event.data.timestamp },
+            time: { created: event.created },
           }),
         )
       },
-      "session.next.skill.activated": (event) => {
+      "session.skill.activated": (event) => {
         return adapter.appendMessage(
           SessionMessage.Skill.make({
-            id: event.data.messageID,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "skill",
             name: event.data.name,
             text: event.data.text,
-            time: { created: event.data.timestamp },
+            time: { created: event.created },
           }),
         )
       },
-      "session.next.shell.started": (event) => {
+      "session.shell.started": (event) => {
         return adapter.appendMessage(
           SessionMessage.Shell.make({
-            id: event.data.messageID,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "shell",
             metadata: event.metadata,
-            callID: event.data.callID,
-            command: event.data.command,
-            output: "",
-            time: { created: event.data.timestamp },
+            shell: event.data.shell,
+            time: { created: event.created },
           }),
         )
       },
-      "session.next.shell.ended": (event) => {
+      "session.shell.ended": (event) => {
         return Effect.gen(function* () {
-          const currentShell = yield* adapter.getCurrentShell(event.data.callID)
+          const currentShell = yield* adapter.getShell(event.data.shell.id)
           if (currentShell) {
             yield* adapter.updateShell(
               produce(currentShell, (draft) => {
+                draft.shell = castDraft(event.data.shell)
                 draft.output = event.data.output
-                draft.time.completed = event.data.timestamp
+                draft.time.completed = event.created
               }),
             )
           }
         })
       },
-      "session.next.step.started": (event) => {
+      "session.step.started": (event) => {
         return Effect.gen(function* () {
           const currentAssistant = yield* adapter.getCurrentAssistant()
           if (currentAssistant) {
             yield* adapter.updateAssistant(
               produce(currentAssistant, (draft) => {
-                draft.time.completed = event.data.timestamp
+                draft.time.completed = event.created
               }),
             )
           }
@@ -215,16 +219,16 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
               type: "assistant",
               agent: event.data.agent,
               model: event.data.model,
-              time: { created: event.data.timestamp },
+              time: { created: event.created },
               content: [],
               snapshot: event.data.snapshot ? { start: event.data.snapshot } : undefined,
             }),
           )
         })
       },
-      "session.next.step.ended": (event) => {
+      "session.step.ended": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
-          draft.time.completed = event.data.timestamp
+          draft.time.completed = event.created
           draft.finish = event.data.finish
           draft.cost = event.data.cost
           draft.tokens = event.data.tokens
@@ -236,33 +240,33 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
             }
         })
       },
-      "session.next.step.failed": (event) => {
+      "session.step.failed": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
-          draft.time.completed = event.data.timestamp
+          draft.time.completed = event.created
           draft.finish = "error"
           draft.error = event.data.error
         })
       },
-      "session.next.text.started": (event) => {
+      "session.text.started": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           draft.content.push(
             castDraft(SessionMessage.AssistantText.make({ type: "text", id: event.data.textID, text: "" })),
           )
         })
       },
-      "session.next.text.delta": (event) => {
+      "session.text.delta": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           const match = latestText(draft, event.data.textID)
           if (match) match.text += event.data.delta
         })
       },
-      "session.next.text.ended": (event) => {
+      "session.text.ended": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           const match = latestText(draft, event.data.textID)
           if (match) match.text = event.data.text
         })
       },
-      "session.next.tool.input.started": (event) => {
+      "session.tool.input.started": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           draft.content.push(
             castDraft(
@@ -270,26 +274,26 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
                 type: "tool",
                 id: event.data.callID,
                 name: event.data.name,
-                time: { created: event.data.timestamp },
+                time: { created: event.created },
                 state: SessionMessage.ToolStatePending.make({ status: "pending", input: "" }),
               }),
             ),
           )
         })
       },
-      "session.next.tool.input.delta": () => Effect.void,
-      "session.next.tool.input.ended": (event) => {
+      "session.tool.input.delta": () => Effect.void,
+      "session.tool.input.ended": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           const match = latestTool(draft, event.data.callID)
           if (match && match.state.status === "pending") match.state.input = event.data.text
         })
       },
-      "session.next.tool.called": (event) => {
+      "session.tool.called": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           const match = latestTool(draft, event.data.callID)
           if (match) {
             match.provider = event.data.provider
-            match.time.ran = event.data.timestamp
+            match.time.ran = event.created
             match.state = castDraft(
               SessionMessage.ToolStateRunning.make({
                 status: "running",
@@ -301,7 +305,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
           }
         })
       },
-      "session.next.tool.progress": (event) => {
+      "session.tool.progress": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           const match = latestTool(draft, event.data.callID)
           if (match && match.state.status === "running") {
@@ -310,7 +314,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
           }
         })
       },
-      "session.next.tool.success": (event) => {
+      "session.tool.success": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           const match = latestTool(draft, event.data.callID)
           if (match && match.state.status === "running") {
@@ -319,7 +323,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
               metadata: match.provider?.metadata,
               resultMetadata: event.data.provider.metadata,
             }
-            match.time.completed = event.data.timestamp
+            match.time.completed = event.created
             match.state = castDraft(
               SessionMessage.ToolStateCompleted.make({
                 status: "completed",
@@ -333,7 +337,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
           }
         })
       },
-      "session.next.tool.failed": (event) => {
+      "session.tool.failed": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           const match = latestTool(draft, event.data.callID)
           if (match && (match.state.status === "pending" || match.state.status === "running")) {
@@ -342,7 +346,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
               metadata: match.provider?.metadata,
               resultMetadata: event.data.provider.metadata,
             }
-            match.time.completed = event.data.timestamp
+            match.time.completed = event.created
             match.state = castDraft(
               SessionMessage.ToolStateError.make({
                 status: "error",
@@ -356,7 +360,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
           }
         })
       },
-      "session.next.reasoning.started": (event) => {
+      "session.reasoning.started": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           draft.content.push(
             castDraft(
@@ -365,47 +369,47 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
                 id: event.data.reasoningID,
                 text: "",
                 providerMetadata: event.data.providerMetadata,
-                time: { created: event.data.timestamp },
+                time: { created: event.created },
               }),
             ),
           )
         })
       },
-      "session.next.reasoning.delta": (event) => {
+      "session.reasoning.delta": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           const match = latestReasoning(draft, event.data.reasoningID)
           if (match) match.text += event.data.delta
         })
       },
-      "session.next.reasoning.ended": (event) => {
+      "session.reasoning.ended": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           const match = latestReasoning(draft, event.data.reasoningID)
           if (match) {
             match.text = event.data.text
-            match.time = { created: match.time?.created ?? event.data.timestamp, completed: event.data.timestamp }
+            match.time = { created: match.time?.created ?? event.created, completed: event.created }
             if (event.data.providerMetadata !== undefined) match.providerMetadata = event.data.providerMetadata
           }
         })
       },
-      "session.next.retried": () => Effect.void,
-      "session.next.compaction.started": () => Effect.void,
-      "session.next.compaction.delta": () => Effect.void,
-      "session.next.compaction.ended": (event) => {
+      "session.retried": () => Effect.void,
+      "session.compaction.started": () => Effect.void,
+      "session.compaction.delta": () => Effect.void,
+      "session.compaction.ended": (event) => {
         return adapter.appendMessage(
           SessionMessage.Compaction.make({
-            id: event.data.messageID,
+            id: SessionMessage.ID.fromEvent(event.id),
             type: "compaction",
             metadata: event.metadata,
             reason: event.data.reason,
             summary: event.data.text,
             recent: event.data.recent,
-            time: { created: event.data.timestamp },
+            time: { created: event.created },
           }),
         )
       },
-      "session.next.revert.staged": () => Effect.void,
-      "session.next.revert.cleared": () => Effect.void,
-      "session.next.revert.committed": () => Effect.void,
+      "session.revert.staged": () => Effect.void,
+      "session.revert.cleared": () => Effect.void,
+      "session.revert.committed": () => Effect.void,
     })
   })
 }

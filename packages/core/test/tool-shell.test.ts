@@ -79,27 +79,23 @@ const executionNode = makeGlobalNode({
         yield* events.publish(SessionEvent.Step.Started, {
           sessionID: id,
           assistantMessageID,
-          timestamp: yield* DateTime.now,
           agent: session.agent ?? AgentV2.ID.make("code"),
           model: sessionModel,
         })
         yield* events.publish(SessionEvent.Text.Started, {
           sessionID: id,
           assistantMessageID,
-          timestamp: yield* DateTime.now,
           textID,
         })
         yield* events.publish(SessionEvent.Text.Ended, {
           sessionID: id,
           assistantMessageID,
-          timestamp: yield* DateTime.now,
           textID,
           text: "ok",
         })
         yield* events.publish(SessionEvent.Step.Ended, {
           sessionID: id,
           assistantMessageID,
-          timestamp: yield* DateTime.now,
           finish: "stop",
           cost: 0,
           tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -175,9 +171,11 @@ const withSession = <A, E, R>(directory: string, body: (registry: ToolRegistry.I
     })
     const locations = yield* LocationServiceMap.Service
     const locationLayer = locations.get(location)
-    const registry = yield* ToolRegistry.Service.pipe(Effect.provide(locationLayer))
-    yield* waitForTool(registry, ShellTool.name)
-    return yield* body(registry).pipe(Effect.provide(locationLayer))
+    return yield* Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      yield* waitForTool(registry, ShellTool.name)
+      return yield* body(registry)
+    }).pipe(Effect.provide(locationLayer), Effect.ensuring(locations.invalidate(location)))
   })
 
 describe("ShellTool", () => {
@@ -482,9 +480,13 @@ describe("ShellTool", () => {
             const structured = settled.output?.structured as Record<string, unknown> | undefined
             const shellID = typeof structured?.shellID === "string" ? structured.shellID : undefined
             expect(settled.output?.structured).toMatchObject({ truncated: false })
-            expect(settled.output?.content[0]).toMatchObject({
+            expect(settled.output?.content[0]).toEqual({
               type: "text",
-              text: expect.stringContaining("running in the background"),
+              text: "The command was moved to the background.",
+            })
+            expect(settled.output?.content[1]).toMatchObject({
+              type: "text",
+              text: expect.stringContaining("DO NOT sleep, poll"),
             })
             expect(shellID).toStartWith("sh_")
 

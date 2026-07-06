@@ -9,7 +9,6 @@ import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/un
 const fields = {
   id: Event.ID,
   metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
-  durable: Schema.optional(Schema.Struct({ aggregateID: Schema.String, seq: Event.Seq, version: Event.Version })),
   location: Schema.optional(Location.Ref),
 }
 
@@ -56,7 +55,7 @@ const make = <const Definitions extends ReadonlyArray<Definition>>(definitions: 
           }),
         ),
       )
-      .annotateMerge(OpenApi.annotations({ title: "events", description: "Experimental event stream routes." })),
+      .annotateMerge(OpenApi.annotations({ title: "event", description: "Experimental event stream routes." })),
   }
 }
 
@@ -68,3 +67,5 @@ export const EventGroup = event.group
 export const OpenCodeEvent = event.schema
 export type OpenCodeEvent = typeof OpenCodeEvent.Type
 export type OpenCodeEventEncoded = typeof OpenCodeEvent.Encoded
+export const isOpenCodeEvent = (event: { readonly type: string }): event is OpenCodeEvent =>
+  event.type === "server.connected" || EventManifest.isServer(event)

@@ -59,7 +59,13 @@ if (schemas) {
   }
   visit({ ...document, components: { ...document.components, schemas: undefined } })
   for (const name of Object.keys(schemas)) {
-    if (/^SessionNext\w+1$/.test(name) && !reachable.has(name)) delete schemas[name]
+    if (
+      /^(SessionAgentSelected|SessionModelSelected|SessionMoved|SessionRenamed|SessionForked|SessionPromptPromoted|SessionPromptAdmitted|SessionExecutionSettled|SessionContextUpdated|SessionSynthetic|SessionSkillActivated|SessionShellStarted|SessionShellEnded|SessionStepStarted|SessionStepEnded|SessionStepFailed|SessionTextStarted|SessionTextDelta|SessionTextEnded|SessionReasoningStarted|SessionReasoningDelta|SessionReasoningEnded|SessionToolInputStarted|SessionToolInputDelta|SessionToolInputEnded|SessionToolCalled|SessionToolProgress|SessionToolSuccess|SessionToolFailed|SessionRetried|SessionCompactionStarted|SessionCompactionDelta|SessionCompactionEnded|SessionRevertStaged|SessionRevertCleared|SessionRevertCommitted)1$/.test(
+        name,
+      ) &&
+      !reachable.has(name)
+    )
+      delete schemas[name]
   }
   await Bun.write("./openapi.json", JSON.stringify(document))
 }
@@ -93,7 +99,11 @@ await createClient({
 
 const generatedTypesPath = "./src/v2/gen/types.gen.ts"
 const generatedTypes = await Bun.file(generatedTypesPath).text()
-if (/export type SessionNext\w+1 =/.test(generatedTypes)) {
+if (
+  /export type (SessionAgentSelected|SessionModelSelected|SessionMoved|SessionRenamed|SessionForked|SessionPromptPromoted|SessionPromptAdmitted|SessionExecutionSettled|SessionContextUpdated|SessionSynthetic|SessionSkillActivated|SessionShellStarted|SessionShellEnded|SessionStepStarted|SessionStepEnded|SessionStepFailed|SessionTextStarted|SessionTextDelta|SessionTextEnded|SessionReasoningStarted|SessionReasoningDelta|SessionReasoningEnded|SessionToolInputStarted|SessionToolInputDelta|SessionToolInputEnded|SessionToolCalled|SessionToolProgress|SessionToolSuccess|SessionToolFailed|SessionRetried|SessionCompactionStarted|SessionCompactionDelta|SessionCompactionEnded|SessionRevertStaged|SessionRevertCleared|SessionRevertCommitted)1 =/.test(
+    generatedTypes,
+  )
+) {
   throw new Error("Session history generated duplicate Session event variants")
 }
 const logTypesPatched = generatedTypes.replace(

@@ -1,5 +1,25 @@
 # V2 Schema Changelog
 
+## 2026-07-03: Require Durable Envelope On Durable Events
+
+- Make the wire `durable` envelope required on durable event definitions.
+- Remove the `durable` envelope field from live-only event definitions.
+
+Compatibility:
+
+- No stored event row, database, or runtime publish behavior change; runtime already attaches the envelope only after durable commit/replay.
+- Generated clients now model the existing invariant: durable events carry `durable`, live-only events do not.
+
+## 2026-07-03: Declare Event Durability At Definition Level
+
+- Add explicit `Event.durable(...)` and `Event.ephemeral(...)` definition constructors.
+- Preserve the existing durable and live-only event classifications while deriving durable inventories from definition metadata instead of hand-maintained lists.
+
+Compatibility:
+
+- No wire payload, stored event row, database, or behavior change.
+- Generated clients were regenerated from the unchanged public event schemas.
+
 ## 2026-07-02: Rename Session Log Replay Marker
 
 - Rename the replay boundary marker from `log.caught_up` / `EventLog.CaughtUp` to `log.synced` / `EventLog.Synced`.
@@ -884,3 +904,38 @@ Compatibility:
 
 - Existing Context Epoch rows migrate in place by dropping the obsolete selection and pending-replacement columns.
 - Model and agent switches no longer discard earlier chronological System Context updates by forcing a new baseline.
+
+## 2026-07-03: Normalize Session Event Names And Envelope Time
+
+- Drop the experimental `session.next.` prefix from current Session event names.
+- Rename `agent.switched` to `session.agent.selected`, `model.switched` to `session.model.selected`, and `prompted` to `session.prompt.promoted`; add `session.prompt.admitted` as the durable prompt admission record.
+- Add an envelope-level `created` timestamp stored on each event row; payload-level `timestamp` fields are removed.
+- Remove projection-only `messageID` fields from selected/message-producing events; projected message IDs derive from the event ID. `revert.committed.messageID` remains, and `forked.messageID` is now `forked.from`.
+- Rename `session.moved.subdirectory` to `subpath` and normalize event-related schema identifiers.
+
+Compatibility:
+
+- V2 durable events and projections are experimental and are reset by `20260703090000_reset_v2_event_rename_sweep`; existing V2 event rows, event sequences, projected session messages, and admitted inputs are wiped.
+- All renamed durable event types restart at version 1 under their normalized names.
+- Generated Promise, Effect, and legacy JavaScript SDK surfaces were regenerated from the normalized schemas.
+
+## 2026-07-03: Restore Session Event Prefix
+
+- Restore the `session.` prefix on current Session event names; the prior rename intended to drop only the `.next.` segment from `session.next.*` names.
+- Payloads are unchanged. For example, `step.ended` is now `session.step.ended`, while already-correct names such as `session.moved` and `session.context.updated` are unchanged.
+
+Compatibility:
+
+- Covered by the existing `20260703190000_reset_v2_shell_event_payloads` V2 reset; no additional migration or column change is required.
+
+## 2026-07-03: Align Session Shell Payloads With Shell Service
+
+- Change durable `session.shell.started` to carry `shell: Shell.Info`.
+- Change durable `session.shell.ended` to carry the final `shell: Shell.Info` snapshot and structured `output: Shell.Output`.
+- Project `SessionMessage.Shell` with the same nested Shell service objects so consumers can render command, exit status, truncation, and paged output consistently.
+- Remove the transitional `callID` correlation field from shell events and projected shell messages; shell records now key by `shell.id`.
+- Publish `session.shell.started` after the shell process is created so `Shell.Info` reflects the real process. A failed spawn publishes no shell events; the failure surfaces as an error on the shell request itself, so the durable ledger never records a `session.shell.started` without a process that existed.
+
+Compatibility:
+
+- V2 durable events and projections are experimental and are reset by `20260703190000_reset_v2_shell_event_payloads`; existing V2 event rows, event sequences, projected session messages, and admitted inputs are wiped.

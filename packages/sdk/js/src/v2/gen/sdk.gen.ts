@@ -276,6 +276,8 @@ import type {
   V2CredentialRemoveResponses,
   V2CredentialUpdateErrors,
   V2CredentialUpdateResponses,
+  V2DebugLocationErrors,
+  V2DebugLocationResponses,
   V2EventChangesErrors,
   V2EventChangesResponses,
   V2EventSubscribeErrors,
@@ -332,6 +334,8 @@ import type {
   V2ProjectCurrentResponses,
   V2ProjectDirectoriesErrors,
   V2ProjectDirectoriesResponses,
+  V2ProjectListErrors,
+  V2ProjectListResponses,
   V2ProviderGetErrors,
   V2ProviderGetResponses,
   V2ProviderListErrors,
@@ -422,6 +426,8 @@ import type {
   V2SessionRevertCommitResponses,
   V2SessionRevertStageErrors,
   V2SessionRevertStageResponses,
+  V2SessionShellErrors,
+  V2SessionShellResponses,
   V2SessionSkillErrors,
   V2SessionSkillResponses,
   V2SessionSwitchAgentErrors,
@@ -6241,6 +6247,43 @@ export class Session3 extends HeyApiClient {
   }
 
   /**
+   * Run shell command
+   *
+   * Execute one shell command in the session's working directory. Emits a shell.started event before execution and a shell.ended event with the merged output after.
+   */
+  public shell<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      id?: string | null
+      command?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "body", key: "id" },
+            { in: "body", key: "command" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2SessionShellResponses, V2SessionShellErrors, ThrowOnError>({
+      url: "/api/session/{sessionID}/shell",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Compact session
    *
    * Compact a session conversation.
@@ -6991,6 +7034,18 @@ export class Credential extends HeyApiClient {
 }
 
 export class Project2 extends HeyApiClient {
+  /**
+   * List projects
+   *
+   * List known projects.
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V2ProjectListResponses, V2ProjectListErrors, ThrowOnError>({
+      url: "/api/project",
+      ...options,
+    })
+  }
+
   /**
    * Get current project
    *
@@ -7997,6 +8052,20 @@ export class Vcs2 extends HeyApiClient {
   }
 }
 
+export class Debug extends HeyApiClient {
+  /**
+   * List loaded locations
+   *
+   * List locations currently loaded by the server.
+   */
+  public location<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<V2DebugLocationResponses, V2DebugLocationErrors, ThrowOnError>({
+      url: "/api/debug/location",
+      ...options,
+    })
+  }
+}
+
 export class V2 extends HeyApiClient {
   private _health?: Health
   get health(): Health {
@@ -8116,6 +8185,11 @@ export class V2 extends HeyApiClient {
   private _vcs?: Vcs2
   get vcs(): Vcs2 {
     return (this._vcs ??= new Vcs2({ client: this.client }))
+  }
+
+  private _debug?: Debug
+  get debug(): Debug {
+    return (this._debug ??= new Debug({ client: this.client }))
   }
 }
 

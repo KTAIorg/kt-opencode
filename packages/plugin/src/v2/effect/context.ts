@@ -1,28 +1,29 @@
 import type { PluginOptions } from "../options.js"
-import type { AgentDomain } from "./agent.js"
+import type { AgentHooks } from "./agent.js"
 import type { AISDKHooks } from "./aisdk.js"
 import type { CatalogHooks } from "./catalog.js"
 import type { CommandHooks } from "./command.js"
+import type { EventHooks } from "./event.js"
 import type { IntegrationHooks } from "./integration.js"
 import type { PluginDomain } from "./plugin.js"
 import type { ReferenceHooks } from "./reference.js"
 import type { SkillHooks } from "./skill.js"
-import type { Reload } from "./registration.js"
 import type { ToolDomain } from "./tool.js"
-import type { SessionDomain } from "./runtime.js"
+import type { SessionHooks } from "./runtime.js"
 import type { VcsDomain } from "./vcs.js"
 
 export interface PluginContext {
   readonly options: PluginOptions
-  readonly agent: AgentDomain & Reload
+  readonly agent: AgentHooks
   readonly aisdk: AISDKHooks
-  readonly catalog: CatalogHooks & Reload
-  readonly command: CommandHooks & Reload
-  readonly integration: IntegrationHooks & Reload
+  readonly catalog: CatalogHooks
+  readonly command: CommandHooks
+  readonly event: EventHooks
+  readonly integration: IntegrationHooks
   readonly plugin: PluginDomain
-  readonly reference: ReferenceHooks & Reload
-  readonly skill: SkillHooks & Reload
+  readonly reference: ReferenceHooks
+  readonly skill: SkillHooks
   readonly tool: ToolDomain
-  readonly session: SessionDomain
+  readonly session: SessionHooks
   readonly vcs: VcsDomain
 }
