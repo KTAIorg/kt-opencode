@@ -690,6 +690,7 @@
       "version": "1.17.14",
       "dependencies": {
         "@ai-sdk/provider": "3.0.8",
+        "@opencode-ai/schema": "workspace:*",
         "@opencode-ai/sdk": "workspace:*",
         "effect": "catalog:",
         "zod": "catalog:",
@@ -752,6 +753,7 @@
       "dependencies": {
         "@opencode-ai/client": "workspace:*",
         "@opencode-ai/core": "workspace:*",
+        "@opencode-ai/schema": "workspace:*",
         "@opencode-ai/server": "workspace:*",
         "effect": "catalog:",
       },
