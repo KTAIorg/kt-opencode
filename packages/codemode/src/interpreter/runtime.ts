@@ -219,7 +219,7 @@ const normalizeError = (error: unknown): Diagnostic => {
   }
 }
 
-// Shared by catch bindings, Promise.allSettled rejection reasons, and Promise.race losers.
+// Shared by catch bindings and Promise.allSettled rejection reasons.
 const caughtErrorValue = (thrown: unknown): unknown => {
   if (thrown instanceof ProgramThrow) return thrown.value
   if (thrown instanceof InterpreterRuntimeError) return createErrorValue(thrown.errorName, thrown.message)
@@ -703,7 +703,7 @@ class Interpreter<R> {
   // Awaits every fiber-backed promise the program abandoned (fire-and-forget tool calls), so
   // their work completes before the execution ends - mirroring a JS runtime waiting on
   // in-flight I/O at exit. A failure nobody could have handled becomes an unhandled-rejection
-  // diagnostic (interrupted calls, e.g. Promise.race losers, are ignored).
+  // diagnostic.
   private drainPendingSettlements(): Effect.Effect<void, unknown, never> {
     const self = this
     return Effect.gen(function* () {
@@ -752,28 +752,13 @@ class Interpreter<R> {
 
   // `await promise`: succeed with the fulfilled value or re-raise the failure so try/catch
   // observes it exactly like a synchronous throw at the await site.
-  private settlePromise(promise: SandboxPromise, node?: AstNode): Effect.Effect<unknown, unknown, never> {
+  private settlePromise(promise: SandboxPromise): Effect.Effect<unknown, unknown, never> {
     const self = this
-    return Effect.flatMap(this.observePromise(promise), (exit) => self.unwrapPromiseExit(promise, exit, node))
+    return Effect.flatMap(this.observePromise(promise), (exit) => self.unwrapPromiseExit(exit))
   }
 
-  private unwrapPromiseExit(
-    promise: SandboxPromise | undefined,
-    exit: Exit.Exit<unknown, unknown>,
-    node?: AstNode,
-  ): Effect.Effect<unknown, unknown> {
+  private unwrapPromiseExit(exit: Exit.Exit<unknown, unknown>): Effect.Effect<unknown, unknown> {
     if (Exit.isSuccess(exit)) return Effect.succeed(exit.value)
-    // A call Promise.race interrupted after losing settles as a catchable program failure;
-    // any other interruption is execution teardown (timeout/host) and must keep propagating
-    // as interruption rather than becoming program-visible data.
-    if (promise?.interrupted === true && Cause.hasInterruptsOnly(exit.cause)) {
-      return Effect.fail(
-        new InterpreterRuntimeError(
-          "This tool call was interrupted because another value settled a Promise.race first.",
-          node,
-        ),
-      )
-    }
     return Effect.failCause(exit.cause)
   }
 
@@ -1533,7 +1518,7 @@ class Interpreter<R> {
         // matching real JS semantics for non-thenables.
         const self = this
         return Effect.flatMap(this.evaluateExpression(getNode(node, "argument")), (value) =>
-          value instanceof SandboxPromise ? self.settlePromise(value, node) : Effect.succeed(value),
+          value instanceof SandboxPromise ? self.settlePromise(value) : Effect.succeed(value),
         )
       }
       case "NewExpression":
@@ -2257,42 +2242,33 @@ class Interpreter<R> {
                 ),
               ),
             )
-            return yield* self.unwrapPromiseExit(winner.item, winner.exit, node)
+            return yield* self.unwrapPromiseExit(winner.exit)
           }
           return values
         })
       }
       case "allSettled": {
         const observations = items.map((item) =>
-          item instanceof SandboxPromise
-            ? Effect.map(this.observePromise(item), (exit) => ({ promise: item as SandboxPromise | undefined, exit }))
-            : Effect.succeed({ promise: undefined as SandboxPromise | undefined, exit: Exit.succeed(item as unknown) }),
+          item instanceof SandboxPromise ? this.observePromise(item) : Effect.succeed(Exit.succeed(item as unknown)),
         )
         return Effect.gen(function* () {
           const outcomes: Array<unknown> = []
           for (const observation of observations) {
-            const { exit, promise } = yield* observation
+            const exit = yield* observation
             if (Exit.isSuccess(exit)) {
               outcomes.push(
                 Object.assign(Object.create(null) as SafeObject, { status: "fulfilled", value: exit.value }),
               )
               continue
             }
-            const raceInterrupted = promise?.interrupted === true && Cause.hasInterruptsOnly(exit.cause)
-            if (Cause.hasInterruptsOnly(exit.cause) && !raceInterrupted) {
+            if (Cause.hasInterruptsOnly(exit.cause)) {
               // Execution teardown (timeout/host interruption), not a program-level rejection.
               return yield* Effect.failCause(exit.cause)
             }
-            const thrown = raceInterrupted
-              ? new InterpreterRuntimeError(
-                  "This tool call was interrupted because another value settled a Promise.race first.",
-                  node,
-                )
-              : Cause.squash(exit.cause)
             outcomes.push(
               Object.assign(Object.create(null) as SafeObject, {
                 status: "rejected",
-                reason: caughtErrorValue(thrown),
+                reason: caughtErrorValue(Cause.squash(exit.cause)),
               }),
             )
           }
@@ -2312,20 +2288,21 @@ class Interpreter<R> {
             : Effect.succeed({ index, exit: Exit.succeed(item as unknown) }),
         )
         return Effect.gen(function* () {
-          // First settlement (fulfilled OR rejected) wins; the observations never fail, so
-          // racing them yields exactly that. Losing in-flight calls are then interrupted.
+          // First settlement (fulfilled OR rejected) wins. Losers continue like native
+          // promises, while a supervised drain keeps their failures handled and their work
+          // inside the execution lifetime.
           const winner = yield* Effect.raceAll(observations)
-          for (const [index, item] of items.entries()) {
-            if (index === winner.index || !(item instanceof SandboxPromise) || item.fiber === undefined) continue
-            item.interrupted = true
-            yield* Fiber.interrupt(item.fiber)
-          }
-          const winningItem = items[winner.index]
-          return yield* self.unwrapPromiseExit(
-            winningItem instanceof SandboxPromise ? winningItem : undefined,
-            winner.exit,
-            node,
+          yield* self.createPromise(
+            Effect.asVoid(
+              Effect.forEach(
+                items,
+                (item, index) =>
+                  index !== winner.index && item instanceof SandboxPromise ? self.observePromise(item) : Effect.void,
+                { concurrency: "unbounded" },
+              ),
+            ),
           )
+          return yield* self.unwrapPromiseExit(winner.exit)
         })
       }
     }
@@ -2469,7 +2446,7 @@ class Interpreter<R> {
                 new InterpreterRuntimeError("Chaining cycle detected for promise.", node).as("TypeError"),
               )
             }
-            return result instanceof SandboxPromise ? this.settlePromise(result, node) : Effect.succeed(result)
+            return result instanceof SandboxPromise ? this.settlePromise(result) : Effect.succeed(result)
           },
         )
     }
@@ -2477,7 +2454,7 @@ class Interpreter<R> {
     const onFulfilled = name === "then" ? callback(args[0]) : undefined
     const onRejected = name === "then" ? callback(args[1]) : name === "catch" ? callback(args[0]) : undefined
     const onFinally = name === "finally" ? callback(args[0]) : undefined
-    const settlement = Effect.exit(this.settlePromise(promise, node))
+    const settlement = Effect.exit(this.settlePromise(promise))
 
     return Effect.map(
       this.createPromise(

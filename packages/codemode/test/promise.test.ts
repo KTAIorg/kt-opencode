@@ -412,45 +412,36 @@ describe("Promise.allSettled", () => {
 })
 
 describe("Promise.race", () => {
-  test("first settlement wins and losers are interrupted", async () => {
+  test("first settlement wins and losers continue", async () => {
     const trace = makeTrace()
     const result = await value(
       `
         const fast = tools.host.sleepy({ id: 1, ms: 10 })
-        const slow = tools.host.sleepy({ id: 2, ms: 5000 })
+        const slow = tools.host.sleepy({ id: 2, ms: 30 })
         return await Promise.race([fast, slow])
       `,
       { trace },
     )
     expect(result).toBe(1)
-    expect(trace.interrupted).toBe(1)
-    expect(trace.completed).toBe(1)
+    expect(trace.interrupted).toBe(0)
+    expect(trace.completed).toBe(2)
   })
 
-  test("awaiting an interrupted loser afterwards is a catchable program failure", async () => {
+  test("a losing chain continues and remains awaitable", async () => {
     expect(
       await value(`
-      const fast = tools.host.sleepy({ id: 1, ms: 10 })
-      const slow = tools.host.sleepy({ id: 2, ms: 5000 })
-      const winner = await Promise.race([fast, slow])
-      try {
-        await slow
-        return "no"
-      } catch (e) {
-        return { winner, caught: e.message }
-      }
+      const slow = tools.host.sleepy({ id: 2, ms: 30 }).then((id) => id * 2)
+      const winner = await Promise.race([slow, "fast"])
+      return [winner, await slow]
     `),
-    ).toEqual({
-      winner: 1,
-      caught: "This tool call was interrupted because another value settled a Promise.race first.",
-    })
+    ).toEqual(["fast", 4])
   })
 
   test("a rejection can win the race", async () => {
     expect(
       await value(`
       try {
-        await Promise.race([tools.host.fail({}), tools.host.sleepy({ id: 1, ms: 5000 })])
+        await Promise.race([tools.host.fail({}), tools.host.sleepy({ id: 1, ms: 30 })])
         return "no"
       } catch (e) {
         return e.message
@@ -462,9 +453,22 @@ describe("Promise.race", () => {
   test("a plain value wins over pending promises", async () => {
     const trace = makeTrace()
     expect(
-      await value(`return await Promise.race([tools.host.sleepy({ id: 1, ms: 5000 }), "immediate"])`, { trace }),
+      await value(`return await Promise.race([tools.host.sleepy({ id: 1, ms: 30 }), "immediate"])`, { trace }),
     ).toBe("immediate")
-    expect(trace.interrupted).toBe(1)
+    expect(trace.interrupted).toBe(0)
+    expect(trace.completed).toBe(1)
+  })
+
+  test("a losing rejection remains handled", async () => {
+    expect(
+      await value(`
+        const rejectLater = async () => {
+          await tools.host.sleepy({ id: 1, ms: 20 })
+          throw new Error("late")
+        }
+        return await Promise.race([rejectLater(), "winner"])
+      `),
+    ).toBe("winner")
   })
 
   test("an empty race is a clear error instead of hanging", async () => {
