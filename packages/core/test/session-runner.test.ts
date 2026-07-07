@@ -1743,65 +1743,62 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("projects reasoning and tool events without executing or continuing tools", () =>
+  scenarioIt("projects reasoning and tool events without executing or continuing tools", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Use tools" }), resume: false })
 
-      requests.length = 0
-      responses = undefined
-      streamGate = undefined
-      streamStarted = undefined
-      response = [
-        LLMEvent.stepStart({ index: 0 }),
-        LLMEvent.reasoningStart({ id: "reasoning-1" }),
-        LLMEvent.reasoningDelta({ id: "reasoning-1", text: "Think" }),
-        LLMEvent.reasoningEnd({ id: "reasoning-1" }),
-        LLMEvent.toolInputStart({ id: "call-error", name: "write" }),
-        LLMEvent.toolInputDelta({ id: "call-error", name: "write", text: '{"path":"README.md"}' }),
-        LLMEvent.toolInputEnd({ id: "call-error", name: "write" }),
-        LLMEvent.toolCall({ id: "call-error", name: "write", input: { path: "README.md" }, providerExecuted: true }),
-        LLMEvent.toolError({ id: "call-error", name: "write", message: "Denied" }),
-        LLMEvent.toolResult({ id: "call-error", name: "write", result: { type: "error", value: "Denied" } }),
-        LLMEvent.toolCall({
-          id: "call-provider",
-          name: "web_search",
-          input: { query: "hello" },
-          providerExecuted: true,
-          providerMetadata: { fake: { source: "provider" } },
-        }),
-        LLMEvent.toolResult({
-          id: "call-provider",
-          name: "web_search",
-          result: {
-            type: "content",
-            value: [
-              { type: "text", text: "Hello" },
-              { type: "file", uri: "data:image/png;base64,aGVsbG8=", mime: "image/png", name: "hello.png" },
-            ],
-          },
-          providerExecuted: true,
-          providerMetadata: { fake: { source: "provider" } },
-        }),
-        LLMEvent.stepFinish({
-          index: 0,
-          reason: "tool-calls",
-          usage: {
-            inputTokens: 10,
-            nonCachedInputTokens: 8,
-            outputTokens: 4,
-            reasoningTokens: 1,
-            cacheReadInputTokens: 2,
-          },
-        }),
-        LLMEvent.finish({ reason: "tool-calls" }),
-      ]
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.tools.map((tool) => tool.name)).toEqual(["echo", "defect", "storefail"])
+        yield* call.respond.events(
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.reasoningStart({ id: "reasoning-1" }),
+          LLMEvent.reasoningDelta({ id: "reasoning-1", text: "Think" }),
+          LLMEvent.reasoningEnd({ id: "reasoning-1" }),
+          LLMEvent.toolInputStart({ id: "call-error", name: "write" }),
+          LLMEvent.toolInputDelta({ id: "call-error", name: "write", text: '{"path":"README.md"}' }),
+          LLMEvent.toolInputEnd({ id: "call-error", name: "write" }),
+          LLMEvent.toolCall({ id: "call-error", name: "write", input: { path: "README.md" }, providerExecuted: true }),
+          LLMEvent.toolError({ id: "call-error", name: "write", message: "Denied" }),
+          LLMEvent.toolResult({ id: "call-error", name: "write", result: { type: "error", value: "Denied" } }),
+          LLMEvent.toolCall({
+            id: "call-provider",
+            name: "web_search",
+            input: { query: "hello" },
+            providerExecuted: true,
+            providerMetadata: { fake: { source: "provider" } },
+          }),
+          LLMEvent.toolResult({
+            id: "call-provider",
+            name: "web_search",
+            result: {
+              type: "content",
+              value: [
+                { type: "text", text: "Hello" },
+                { type: "file", uri: "data:image/png;base64,aGVsbG8=", mime: "image/png", name: "hello.png" },
+              ],
+            },
+            providerExecuted: true,
+            providerMetadata: { fake: { source: "provider" } },
+          }),
+          LLMEvent.stepFinish({
+            index: 0,
+            reason: "tool-calls",
+            usage: {
+              inputTokens: 10,
+              nonCachedInputTokens: 8,
+              outputTokens: 4,
+              reasoningTokens: 1,
+              cacheReadInputTokens: 2,
+            },
+          }),
+          LLMEvent.finish({ reason: "tool-calls" }),
+        )
+      })
 
-      yield* session.resume(sessionID)
-
-      expect(requests).toHaveLength(1)
-      expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(["echo", "defect", "storefail"])
+      expect(yield* scenario.llm.requests).toHaveLength(1)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Use tools" },
         {
@@ -1896,40 +1893,41 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("reloads a model switch before a tool-driven continuation turn", () =>
+  scenarioIt("reloads a model switch before a tool-driven continuation turn", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Echo this" }), resume: false })
 
-      requests.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-echo", name: "echo", input: { text: "hello" } }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [
+      const executionGate = yield* Deferred.make<void>()
+      const executionsStarted = yield* Deferred.make<void>()
+      toolExecutionGate = executionGate
+      toolExecutionsStarted = executionsStarted
+      toolExecutionsReady = 1
+      yield* scenario.run(function* () {
+        const first = yield* scenario.llm.next()
+        yield* first.respond.toolCall("echo", { text: "hello" }, { id: "call-echo" })
+        yield* Deferred.await(executionsStarted)
+        yield* events.publish(SessionEvent.ModelSelected, {
+          sessionID,
+          model: { id: ModelV2.ID.make("replacement"), providerID: ProviderV2.ID.make("fake") },
+        })
+        systemBaseline = "Replacement context"
+        yield* Deferred.succeed(executionGate, undefined)
+
+        const second = yield* scenario.llm.next()
+        expect(second.request.model).toBe(replacementModel)
+        expect(second.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        expect(systemTexts(second.request)).toContain("Replacement context")
+        yield* second.respond.events(
           LLMEvent.stepStart({ index: 0 }),
           LLMEvent.stepFinish({ index: 0, reason: "stop" }),
           LLMEvent.finish({ reason: "stop" }),
-        ],
-      ]
-      toolExecutionGate = yield* Deferred.make<void>()
-      toolExecutionsStarted = yield* Deferred.make<void>()
-      toolExecutionsReady = 1
-      const run = yield* Effect.forkChild(session.resume(sessionID))
-      yield* Deferred.await(toolExecutionsStarted)
-      yield* events.publish(SessionEvent.ModelSelected, {
-        sessionID,
-        model: { id: ModelV2.ID.make("replacement"), providerID: ProviderV2.ID.make("fake") },
+        )
       })
-      systemBaseline = "Replacement context"
-      yield* Deferred.succeed(toolExecutionGate, undefined)
-      yield* Fiber.join(run)
 
+      const requests = yield* scenario.llm.requests
       expect(requests.map((request) => request.model)).toEqual([model, replacementModel])
       expect(requests.map((request) => request.system.map((part) => part.text))).toEqual([
         [defaultSystem, "Initial context"],
@@ -1939,140 +1937,169 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("restores durable reasoning provider metadata in a second-turn request", () =>
+  scenarioIt("restores durable reasoning provider metadata in a second-turn request", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Think first" }), resume: false })
 
-      requests.length = 0
-      response = [
-        LLMEvent.stepStart({ index: 0 }),
-        LLMEvent.reasoningStart({ id: "reasoning-anthropic" }),
-        LLMEvent.reasoningDelta({ id: "reasoning-anthropic", text: "Signed thought" }),
-        LLMEvent.reasoningEnd({
-          id: "reasoning-anthropic",
-          providerMetadata: { fake: { signature: "sig_1" }, anthropic: { ignored: true } },
-        }),
-        LLMEvent.reasoningStart({
-          id: "reasoning-openai",
-          providerMetadata: {
-            fake: { itemId: "rs_1", reasoningEncryptedContent: null },
-            openai: { ignored: true },
+      const streamed = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      yield* scenario.run(function* () {
+        const first = yield* scenario.llm.next()
+        yield* first.respond.stream(
+          Stream.concat(
+            Stream.fromIterable([
+              LLMEvent.stepStart({ index: 0 }),
+              LLMEvent.reasoningStart({ id: "reasoning-anthropic" }),
+              LLMEvent.reasoningDelta({ id: "reasoning-anthropic", text: "Signed thought" }),
+              LLMEvent.reasoningEnd({
+                id: "reasoning-anthropic",
+                providerMetadata: { fake: { signature: "sig_1" }, anthropic: { ignored: true } },
+              }),
+              LLMEvent.reasoningStart({
+                id: "reasoning-openai",
+                providerMetadata: {
+                  fake: { itemId: "rs_1", reasoningEncryptedContent: null },
+                  openai: { ignored: true },
+                },
+              }),
+              LLMEvent.reasoningDelta({ id: "reasoning-openai", text: "Encrypted thought" }),
+              LLMEvent.reasoningEnd({
+                id: "reasoning-openai",
+                providerMetadata: {
+                  fake: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" },
+                  openai: { ignored: true },
+                },
+              }),
+              LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+              LLMEvent.finish({ reason: "stop" }),
+            ]),
+            Stream.unwrap(
+              Deferred.succeed(streamed, undefined).pipe(
+                Effect.andThen(Deferred.await(release)),
+                Effect.as(Stream.empty),
+              ),
+            ),
+          ),
+        )
+        yield* Deferred.await(streamed)
+        yield* replaySessionProjection(sessionID)
+
+        expect(yield* session.context(sessionID)).toMatchObject([
+          { type: "user", text: "Think first" },
+          {
+            type: "assistant",
+            content: [
+              { type: "reasoning", text: "Signed thought", state: { signature: "sig_1" } },
+              {
+                type: "reasoning",
+                text: "Encrypted thought",
+                state: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" },
+              },
+            ],
           },
-        }),
-        LLMEvent.reasoningDelta({ id: "reasoning-openai", text: "Encrypted thought" }),
-        LLMEvent.reasoningEnd({
-          id: "reasoning-openai",
-          providerMetadata: {
-            fake: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" },
-            openai: { ignored: true },
+        ])
+
+        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
+        yield* Deferred.succeed(release, undefined)
+
+        const second = yield* scenario.llm.next()
+        expect(second.request.messages[1]?.content).toEqual([
+          { type: "reasoning", text: "Signed thought", providerMetadata: { fake: { signature: "sig_1" } } },
+          {
+            type: "reasoning",
+            text: "Encrypted thought",
+            providerMetadata: { fake: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" } },
           },
-        }),
-        LLMEvent.stepFinish({ index: 0, reason: "stop" }),
-        LLMEvent.finish({ reason: "stop" }),
-      ]
-      yield* session.resume(sessionID)
-      yield* replaySessionProjection(sessionID)
-
-      expect(yield* session.context(sessionID)).toMatchObject([
-        { type: "user", text: "Think first" },
-        {
-          type: "assistant",
-          content: [
-            { type: "reasoning", text: "Signed thought", state: { signature: "sig_1" } },
-            {
-              type: "reasoning",
-              text: "Encrypted thought",
-              state: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" },
-            },
-          ],
-        },
-      ])
-
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-      response = []
-      yield* session.resume(sessionID)
-
-      expect(requests[1]?.messages[1]?.content).toEqual([
-        { type: "reasoning", text: "Signed thought", providerMetadata: { fake: { signature: "sig_1" } } },
-        {
-          type: "reasoning",
-          text: "Encrypted thought",
-          providerMetadata: { fake: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" } },
-        },
-      ])
+        ])
+        yield* second.respond.events()
+      })
     }),
   )
 
-  it.effect("replays durable provider-executed tool results inline in a second-turn request", () =>
+  scenarioIt("replays durable provider-executed tool results inline in a second-turn request", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Search first" }), resume: false })
 
-      requests.length = 0
-      response = [
-        LLMEvent.stepStart({ index: 0 }),
-        LLMEvent.toolCall({
-          id: "hosted-search",
-          name: "web_search",
-          input: { query: "Effect" },
-          providerExecuted: true,
-          providerMetadata: { fake: { itemId: "hosted-search" }, openai: { ignored: true } },
-        }),
-        LLMEvent.toolResult({
-          id: "hosted-search",
-          name: "web_search",
-          result: { type: "json", value: [{ title: "Effect" }] },
-          providerExecuted: true,
-          providerMetadata: { fake: { blockType: "web_search_tool_result" }, anthropic: { ignored: true } },
-        }),
-        LLMEvent.stepFinish({ index: 0, reason: "stop" }),
-        LLMEvent.finish({ reason: "stop" }),
-      ]
-      yield* session.resume(sessionID)
-      yield* replaySessionProjection(sessionID)
+      const streamed = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      yield* scenario.run(function* () {
+        const first = yield* scenario.llm.next()
+        yield* first.respond.stream(
+          Stream.concat(
+            Stream.fromIterable([
+              LLMEvent.stepStart({ index: 0 }),
+              LLMEvent.toolCall({
+                id: "hosted-search",
+                name: "web_search",
+                input: { query: "Effect" },
+                providerExecuted: true,
+                providerMetadata: { fake: { itemId: "hosted-search" }, openai: { ignored: true } },
+              }),
+              LLMEvent.toolResult({
+                id: "hosted-search",
+                name: "web_search",
+                result: { type: "json", value: [{ title: "Effect" }] },
+                providerExecuted: true,
+                providerMetadata: { fake: { blockType: "web_search_tool_result" }, anthropic: { ignored: true } },
+              }),
+              LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+              LLMEvent.finish({ reason: "stop" }),
+            ]),
+            Stream.unwrap(
+              Deferred.succeed(streamed, undefined).pipe(
+                Effect.andThen(Deferred.await(release)),
+                Effect.as(Stream.empty),
+              ),
+            ),
+          ),
+        )
+        yield* Deferred.await(streamed)
+        yield* replaySessionProjection(sessionID)
 
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-      response = []
-      yield* session.resume(sessionID)
+        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
+        yield* Deferred.succeed(release, undefined)
 
-      expect(requests[1]?.messages.map((message) => message.role)).toEqual(["user", "assistant", "user"])
-      expect(requests[1]?.messages[1]?.content).toMatchObject([
-        {
-          type: "tool-call",
-          id: "hosted-search",
-          name: "web_search",
-          input: { query: "Effect" },
-          providerExecuted: true,
-          providerMetadata: { fake: { itemId: "hosted-search" } },
-        },
-        {
-          type: "tool-result",
-          id: "hosted-search",
-          name: "web_search",
-          result: { type: "json", value: [{ title: "Effect" }] },
-          providerExecuted: true,
-          providerMetadata: { fake: { blockType: "web_search_tool_result" } },
-        },
-      ])
+        const second = yield* scenario.llm.next()
+        expect(second.request.messages.map((message) => message.role)).toEqual(["user", "assistant", "user"])
+        expect(second.request.messages[1]?.content).toMatchObject([
+          {
+            type: "tool-call",
+            id: "hosted-search",
+            name: "web_search",
+            input: { query: "Effect" },
+            providerExecuted: true,
+            providerMetadata: { fake: { itemId: "hosted-search" } },
+          },
+          {
+            type: "tool-result",
+            id: "hosted-search",
+            name: "web_search",
+            result: { type: "json", value: [{ title: "Effect" }] },
+            providerExecuted: true,
+            providerMetadata: { fake: { blockType: "web_search_tool_result" } },
+          },
+        ])
+        yield* second.respond.events()
+      })
     }),
   )
 
-  it.effect("starts recorded local tools eagerly and awaits settlement before continuing", () =>
+  scenarioIt("starts recorded local tools eagerly and awaits settlement before continuing", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Echo five times" }), resume: false })
 
-      requests.length = 0
       executions.length = 0
-      toolExecutionGate = yield* Deferred.make<void>()
-      toolExecutionsStarted = yield* Deferred.make<void>()
+      const executionGate = yield* Deferred.make<void>()
+      const executionsStarted = yield* Deferred.make<void>()
+      toolExecutionGate = executionGate
+      toolExecutionsStarted = executionsStarted
       const providerGate = yield* Deferred.make<void>()
-      response = []
-      responses = undefined
       const initial = Stream.fromIterable([
         LLMEvent.stepStart({ index: 0 }),
         ...Array.from({ length: 5 }, (_, index) =>
@@ -2083,72 +2110,62 @@ describe("SessionRunnerLLM", () => {
         LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
         LLMEvent.finish({ reason: "tool-calls" }),
       ])
-      streamGate = undefined
-      responseStream = Stream.concat(
-        initial,
-        Stream.fromEffect(Deferred.await(providerGate)).pipe(Stream.flatMap(() => final)),
-      )
 
-      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
-      yield* Deferred.await(toolExecutionsStarted)
+      yield* scenario.run(function* () {
+        const first = yield* scenario.llm.next()
+        yield* first.respond.stream(
+          Stream.concat(
+            initial,
+            Stream.unwrap(Deferred.await(providerGate).pipe(Effect.as(final))),
+          ),
+        )
+        yield* Deferred.await(executionsStarted)
 
-      expect(executions).toHaveLength(5)
-      expect(maxActiveToolExecutions).toBe(5)
-      expect(yield* session.context(sessionID)).toMatchObject([
-        { type: "user", text: "Echo five times" },
-        {
-          type: "assistant",
-          content: Array.from({ length: 5 }, (_, index) => ({
-            type: "tool",
-            id: `call-echo-${index}`,
-            state: { status: "running", input: { text: `${index}` } },
-          })),
-        },
-      ])
+        expect(executions).toHaveLength(5)
+        expect(maxActiveToolExecutions).toBe(5)
+        expect(yield* session.context(sessionID)).toMatchObject([
+          { type: "user", text: "Echo five times" },
+          {
+            type: "assistant",
+            content: Array.from({ length: 5 }, (_, index) => ({
+              type: "tool",
+              id: `call-echo-${index}`,
+              state: { status: "running", input: { text: `${index}` } },
+            })),
+          },
+        ])
 
-      yield* Deferred.succeed(providerGate, undefined)
-      yield* Effect.yieldNow
-      expect(requests).toHaveLength(1)
+        yield* Deferred.succeed(providerGate, undefined)
+        yield* Effect.yieldNow
+        expect(yield* scenario.llm.requests).toHaveLength(1)
 
-      yield* Deferred.succeed(toolExecutionGate, undefined)
-      yield* Fiber.join(run)
+        yield* Deferred.succeed(executionGate, undefined)
+        yield* (yield* scenario.llm.next()).respond.events()
+      })
       toolExecutionGate = undefined
       toolExecutionsStarted = undefined
 
       expect(executions).toHaveLength(5)
       expect(maxActiveToolExecutions).toBe(5)
-      expect(requests).toHaveLength(2)
+      expect(yield* scenario.llm.requests).toHaveLength(2)
     }),
   )
 
-  it.effect("settles repeated provider-local tool call IDs against their owning assistant messages", () =>
+  scenarioIt("settles repeated provider-local tool call IDs against their owning assistant messages", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Echo twice" }), resume: false })
 
-      requests.length = 0
       executions.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "tool_0", name: "echo", input: { text: "first" } }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "tool_0", name: "echo", input: { text: "second" } }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [],
-      ]
-
-      yield* session.resume(sessionID)
+      yield* scenario.run(function* () {
+        yield* (yield* scenario.llm.next()).respond.toolCall("echo", { text: "first" }, { id: "tool_0" })
+        yield* (yield* scenario.llm.next()).respond.toolCall("echo", { text: "second" }, { id: "tool_0" })
+        yield* (yield* scenario.llm.next()).respond.events()
+      })
 
       expect(executions).toEqual(["first", "second"])
-      expect(requests).toHaveLength(3)
+      expect(yield* scenario.llm.requests).toHaveLength(3)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Echo twice" },
         {
