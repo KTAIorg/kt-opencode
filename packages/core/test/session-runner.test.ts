@@ -2935,35 +2935,18 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("durably settles local tool failures before continuing", () =>
+  scenarioIt("durably settles local tool failures before continuing", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Call missing" }), resume: false })
 
-      requests.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-missing", name: "missing", input: {} }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.textStart({ id: "text-after-error" }),
-          LLMEvent.textDelta({ id: "text-after-error", text: "Recovered" }),
-          LLMEvent.textEnd({ id: "text-after-error" }),
-          LLMEvent.stepFinish({ index: 0, reason: "stop" }),
-          LLMEvent.finish({ reason: "stop" }),
-        ],
-      ]
-      streamGate = undefined
-      streamStarted = undefined
+      yield* scenario.run(function* () {
+        yield* (yield* scenario.llm.next()).respond.toolCall("missing", {}, { id: "call-missing" })
+        yield* (yield* scenario.llm.next()).respond.text("Recovered", { id: "text-after-error" })
+      })
 
-      yield* session.resume(sessionID)
-
-      expect(requests).toHaveLength(2)
+      expect(yield* scenario.llm.requests).toHaveLength(2)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Call missing" },
         {
@@ -2981,34 +2964,20 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("returns unexpected local tool defects to the model and continues", () =>
+  scenarioIt("returns unexpected local tool defects to the model and continues", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Call defect" }), resume: false })
 
-      requests.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-defect", name: "defect", input: {} }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.textStart({ id: "text-after-defect" }),
-          LLMEvent.textDelta({ id: "text-after-defect", text: "Recovered" }),
-          LLMEvent.textEnd({ id: "text-after-defect" }),
-          LLMEvent.stepFinish({ index: 0, reason: "stop" }),
-          LLMEvent.finish({ reason: "stop" }),
-        ],
-      ]
+      yield* scenario.run(function* () {
+        yield* (yield* scenario.llm.next()).respond.toolCall("defect", {}, { id: "call-defect" })
+        const second = yield* scenario.llm.next()
+        expect(second.request.messages.map((message) => message.role)).toEqual(["user", "assistant", "tool"])
+        yield* second.respond.text("Recovered", { id: "text-after-defect" })
+      })
 
-      yield* session.resume(sessionID)
-
-      expect(requests).toHaveLength(2)
-      expect(requests[1]?.messages.map((message) => message.role)).toEqual(["user", "assistant", "tool"])
+      expect(yield* scenario.llm.requests).toHaveLength(2)
       const context = yield* session.context(sessionID)
       expect(context).toMatchObject([
         { type: "user", text: "Call defect" },
@@ -3037,7 +3006,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("returns policy-blocked tools to the model and continues", () =>
+  scenarioIt("returns policy-blocked tools to the model and continues", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -3055,24 +3024,12 @@ describe("SessionRunnerLLM", () => {
       })
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Call blocked" }), resume: false })
 
-      requests.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-blocked", name: "blocked", input: {} }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.stepFinish({ index: 0, reason: "stop" }),
-          LLMEvent.finish({ reason: "stop" }),
-        ],
-      ]
+      yield* scenario.run(function* () {
+        yield* (yield* scenario.llm.next()).respond.toolCall("blocked", {}, { id: "call-blocked" })
+        yield* (yield* scenario.llm.next()).respond.stop()
+      })
 
-      yield* session.resume(sessionID)
-
-      expect(requests).toHaveLength(2)
+      expect(yield* scenario.llm.requests).toHaveLength(2)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Call blocked" },
         {
@@ -3086,7 +3043,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("interrupts runner continuation when permission approval is declined", () =>
+  scenarioIt("interrupts runner continuation when permission approval is declined", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -3101,19 +3058,15 @@ describe("SessionRunnerLLM", () => {
       })
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Call declined" }), resume: false })
 
-      requests.length = 0
-      response = [
-        LLMEvent.stepStart({ index: 0 }),
-        LLMEvent.toolCall({ id: "call-declined", name: "declined", input: {} }),
-        LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-        LLMEvent.finish({ reason: "tool-calls" }),
-      ]
-
-      const exit = yield* session.resume(sessionID).pipe(Effect.exit)
+      const exit = yield* scenario
+        .run(function* () {
+          yield* (yield* scenario.llm.next()).respond.toolCall("declined", {}, { id: "call-declined" })
+        })
+        .pipe(Effect.exit)
 
       expect(exit._tag).toBe("Failure")
       if (exit._tag === "Failure") expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
-      expect(requests).toHaveLength(1)
+      expect(yield* scenario.llm.requests).toHaveLength(1)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Call declined" },
         {
@@ -3130,7 +3083,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("returns permission corrections to the model and continues", () =>
+  scenarioIt("returns permission corrections to the model and continues", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -3148,24 +3101,12 @@ describe("SessionRunnerLLM", () => {
       })
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Call corrected" }), resume: false })
 
-      requests.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-corrected", name: "corrected", input: {} }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.stepFinish({ index: 0, reason: "stop" }),
-          LLMEvent.finish({ reason: "stop" }),
-        ],
-      ]
+      yield* scenario.run(function* () {
+        yield* (yield* scenario.llm.next()).respond.toolCall("corrected", {}, { id: "call-corrected" })
+        yield* (yield* scenario.llm.next()).respond.stop()
+      })
 
-      yield* session.resume(sessionID)
-
-      expect(requests).toHaveLength(2)
+      expect(yield* scenario.llm.requests).toHaveLength(2)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Call corrected" },
         {
@@ -3179,27 +3120,20 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("fails the drain when tool output persistence fails", () =>
+  scenarioIt("fails the drain when tool output persistence fails", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Call storefail" }), resume: false })
 
-      requests.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-storefail", name: "storefail", input: {} }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [],
-      ]
-
-      const exit = yield* session.resume(sessionID).pipe(Effect.exit)
+      const exit = yield* scenario
+        .run(function* () {
+          yield* (yield* scenario.llm.next()).respond.toolCall("storefail", {}, { id: "call-storefail" })
+        })
+        .pipe(Effect.exit)
 
       expect(Exit.isFailure(exit)).toBe(true)
-      expect(requests).toHaveLength(1)
+      expect(yield* scenario.llm.requests).toHaveLength(1)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Call storefail" },
         {
@@ -3224,7 +3158,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("preserves permission rejection and stops before continuation", () =>
+  scenarioIt("preserves permission rejection and stops before continuation", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -3250,21 +3184,14 @@ describe("SessionRunnerLLM", () => {
         prompt: PromptInput.Prompt.make({ text: "Reject permission" }),
         resume: false,
       })
-      requests.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-permission", name: "permissionfail", input: {} }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [LLMEvent.stepStart({ index: 0 }), LLMEvent.stepFinish({ index: 0, reason: "stop" })],
-      ]
-
-      const exit = yield* session.resume(sessionID).pipe(Effect.exit)
+      const exit = yield* scenario
+        .run(function* () {
+          yield* (yield* scenario.llm.next()).respond.toolCall("permissionfail", {}, { id: "call-permission" })
+        })
+        .pipe(Effect.exit)
 
       expect(exit._tag).toBe("Failure")
-      expect(requests).toHaveLength(1)
+      expect(yield* scenario.llm.requests).toHaveLength(1)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user" },
         {
@@ -3293,7 +3220,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("interrupts runner continuation when a question is cancelled", () =>
+  scenarioIt("interrupts runner continuation when a question is cancelled", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -3308,23 +3235,15 @@ describe("SessionRunnerLLM", () => {
       })
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Ask then stop" }), resume: false })
 
-      requests.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-question", name: "question", input: {} }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [],
-      ]
-
-      const run = yield* session.resume(sessionID).pipe(Effect.exit, Effect.forkChild)
-      const exit = yield* Fiber.join(run)
+      const exit = yield* scenario
+        .run(function* () {
+          yield* (yield* scenario.llm.next()).respond.toolCall("question", {}, { id: "call-question" })
+        })
+        .pipe(Effect.exit)
 
       expect(exit._tag).toBe("Failure")
       if (exit._tag === "Failure") expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
-      expect(requests).toHaveLength(1)
+      expect(yield* scenario.llm.requests).toHaveLength(1)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Ask then stop" },
         {
@@ -3341,7 +3260,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("awaits started local tools before surfacing provider stream failure", () =>
+  scenarioIt("awaits started local tools before surfacing provider stream failure", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -3352,20 +3271,31 @@ describe("SessionRunnerLLM", () => {
       })
       const failure = providerUnavailable()
       toolExecutionGate = yield* Deferred.make<void>()
-      responseStream = Stream.concat(
-        Stream.fromIterable([
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-before-failure", name: "echo", input: { text: "settle" } }),
-        ]),
-        Stream.fail(failure),
-      )
+      toolExecutionsStarted = yield* Deferred.make<void>()
+      toolExecutionsReady = 1
+      const executionGate = toolExecutionGate
+      const executionsStarted = toolExecutionsStarted
 
-      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
-      while (executions.length === 0) yield* Effect.yieldNow
-      yield* Effect.yieldNow
-      yield* Deferred.succeed(toolExecutionGate, undefined)
-      expect(yield* Fiber.join(run).pipe(Effect.flip)).toBe(failure)
+      expect(
+        yield* scenario
+          .run(function* () {
+            const call = yield* scenario.llm.next()
+            yield* call.respond.stream(
+              Stream.concat(
+                Stream.fromIterable([
+                  LLMEvent.stepStart({ index: 0 }),
+                  LLMEvent.toolCall({ id: "call-before-failure", name: "echo", input: { text: "settle" } }),
+                ]),
+                Stream.fail(failure),
+              ),
+            )
+            yield* Deferred.await(executionsStarted)
+            yield* Deferred.succeed(executionGate, undefined)
+          })
+          .pipe(Effect.flip),
+      ).toBe(failure)
       toolExecutionGate = undefined
+      toolExecutionsStarted = undefined
 
       const context = yield* session.context(sessionID)
       expect(context).toMatchObject([
@@ -3387,7 +3317,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("durably fails blocked local tools when a provider turn is interrupted", () =>
+  scenarioIt("durably fails blocked local tools when a provider turn is interrupted", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -3398,20 +3328,30 @@ describe("SessionRunnerLLM", () => {
       })
       executions.length = 0
       toolExecutionGate = yield* Deferred.make<void>()
-      responseStream = Stream.concat(
-        Stream.fromIterable([
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-before-interrupt", name: "echo", input: { text: "blocked" } }),
-        ]),
-        Stream.never,
-      )
+      toolExecutionsStarted = yield* Deferred.make<void>()
+      toolExecutionsReady = 1
+      const executionsStarted = toolExecutionsStarted
 
-      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
-      while (executions.length === 0) yield* Effect.yieldNow
-      yield* session.interrupt(sessionID)
+      const exit = yield* scenario
+        .run(function* () {
+          const call = yield* scenario.llm.next()
+          yield* call.respond.stream(
+            Stream.concat(
+              Stream.fromIterable([
+                LLMEvent.stepStart({ index: 0 }),
+                LLMEvent.toolCall({ id: "call-before-interrupt", name: "echo", input: { text: "blocked" } }),
+              ]),
+              Stream.never,
+            ),
+          )
+          yield* Deferred.await(executionsStarted)
+          yield* session.interrupt(sessionID)
+        })
+        .pipe(Effect.exit)
       toolExecutionGate = undefined
+      toolExecutionsStarted = undefined
 
-      expect(yield* Fiber.await(run)).toMatchObject({ _tag: "Failure" })
+      expect(exit).toMatchObject({ _tag: "Failure" })
       yield* session.interrupt(sessionID)
       const context = yield* session.context(sessionID)
       expect(context).toMatchObject([
@@ -3441,15 +3381,10 @@ describe("SessionRunnerLLM", () => {
         { type: "user", text: "Interrupt blocked tool" },
         { type: "assistant", content: [{ type: "tool", id: "call-before-interrupt", state: { status: "error" } }] },
       ])
-      requests.length = 0
-      responseStream = undefined
-      response = []
-      yield* session.resume(sessionID)
-      expect(requests[0]?.messages.map((message) => message.role)).toEqual(["user", "assistant", "tool"])
     }),
   )
 
-  it.effect("interrupts a blocked provider turn without local tool execution", () =>
+  scenarioIt("interrupts a blocked provider turn without local tool execution", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
@@ -3458,20 +3393,16 @@ describe("SessionRunnerLLM", () => {
         prompt: PromptInput.Prompt.make({ text: "Interrupt provider" }),
         resume: false,
       })
-      requests.length = 0
-      response = []
-      streamGate = yield* Deferred.make<void>()
-      streamStarted = yield* Deferred.make<void>()
 
-      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
-      yield* Deferred.await(streamStarted)
-      yield* session.interrupt(sessionID)
-      const exit = yield* Fiber.await(run)
-      streamGate = undefined
-      streamStarted = undefined
+      const exit = yield* scenario
+        .run(function* () {
+          yield* (yield* scenario.llm.next()).respond.stream(Stream.never)
+          yield* session.interrupt(sessionID)
+        })
+        .pipe(Effect.exit)
 
       expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBeTrue()
-      expect(requests).toHaveLength(1)
+      expect(yield* scenario.llm.requests).toHaveLength(1)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Interrupt provider" },
         { type: "assistant", finish: "error", error: { type: "aborted", message: "Step interrupted" } },
@@ -3494,6 +3425,7 @@ describe("SessionRunnerLLM", () => {
       toolExecutionGate = yield* Deferred.make<void>()
       toolExecutionsStarted = yield* Deferred.make<void>()
       toolExecutionsReady = 1
+      const executionsStarted = toolExecutionsStarted
       response = [
         LLMEvent.stepStart({ index: 0 }),
         LLMEvent.toolCall({ id: "call-await-interrupt", name: "echo", input: { text: "blocked" } }),
@@ -3503,9 +3435,10 @@ describe("SessionRunnerLLM", () => {
 
       const runner = yield* SessionRunner.Service
       const run = yield* runner.drain({ sessionID, force: true }).pipe(Effect.forkChild)
-      yield* Deferred.await(toolExecutionsStarted)
+      yield* Deferred.await(executionsStarted)
       yield* Fiber.interrupt(run)
       toolExecutionGate = undefined
+      toolExecutionsStarted = undefined
 
       expect(yield* Fiber.await(run)).toMatchObject({ _tag: "Failure" })
       expect(yield* session.context(sessionID)).toMatchObject([
@@ -3529,7 +3462,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("forces a text response on an agent's configured final step", () =>
+  scenarioIt("forces a text response on an agent's configured final step", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const agents = yield* AgentV2.Service
@@ -3545,33 +3478,23 @@ describe("SessionRunnerLLM", () => {
         resume: false,
       })
 
-      requests.length = 0
       executions.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-terminal", name: "echo", input: { text: "done" } }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-forbidden", name: "echo", input: { text: "forbidden" } }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-      ]
+      yield* scenario.run(function* () {
+        const first = yield* scenario.llm.next()
+        expect(first.request.toolChoice).toBeUndefined()
+        yield* first.respond.toolCall("echo", { text: "done" }, { id: "call-terminal" })
 
-      yield* session.resume(sessionID)
-
-      expect(requests).toHaveLength(2)
-      expect(requests[0]?.toolChoice).toBeUndefined()
-      expect(requests[1]?.toolChoice).toMatchObject({ type: "none" })
-      expect(requests[1]?.tools).toEqual([])
-      expect(requests[1]?.messages.at(-1)).toMatchObject({
-        role: "assistant",
-        content: [{ type: "text", text: expect.stringContaining("MAXIMUM STEPS REACHED") }],
+        const second = yield* scenario.llm.next()
+        expect(second.request.toolChoice).toMatchObject({ type: "none" })
+        expect(second.request.tools).toEqual([])
+        expect(second.request.messages.at(-1)).toMatchObject({
+          role: "assistant",
+          content: [{ type: "text", text: expect.stringContaining("MAXIMUM STEPS REACHED") }],
+        })
+        yield* second.respond.toolCall("echo", { text: "forbidden" }, { id: "call-forbidden" })
       })
+
+      expect(yield* scenario.llm.requests).toHaveLength(2)
       expect(executions).toEqual(["done"])
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Finish at the limit" },
@@ -3581,7 +3504,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("resets the configured step allowance when steering input promotes", () =>
+  scenarioIt("resets the configured step allowance when steering input promotes", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const agents = yield* AgentV2.Service
@@ -3593,42 +3516,23 @@ describe("SessionRunnerLLM", () => {
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Start work" }), resume: false })
 
-      requests.length = 0
       executions.length = 0
-      responses = [
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-before-steer", name: "echo", input: { text: "before" } }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.toolCall({ id: "call-after-steer", name: "echo", input: { text: "after" } }),
-          LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
-          LLMEvent.finish({ reason: "tool-calls" }),
-        ],
-        [
-          LLMEvent.stepStart({ index: 0 }),
-          LLMEvent.stepFinish({ index: 0, reason: "stop" }),
-          LLMEvent.finish({ reason: "stop" }),
-        ],
-      ]
-      streamGate = yield* Deferred.make<void>()
-      streamStarted = yield* Deferred.make<void>()
+      yield* scenario.run(function* () {
+        const first = yield* scenario.llm.next()
+        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Change direction" }) })
+        yield* first.respond.toolCall("echo", { text: "before" }, { id: "call-before-steer" })
 
-      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
-      yield* Deferred.await(streamStarted)
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Change direction" }) })
-      yield* Deferred.succeed(streamGate, undefined)
-      yield* Fiber.join(run)
-      streamGate = undefined
-      streamStarted = undefined
+        const second = yield* scenario.llm.next()
+        expect(second.request.toolChoice).toBeUndefined()
+        expect(second.request.tools).not.toEqual([])
+        yield* second.respond.toolCall("echo", { text: "after" }, { id: "call-after-steer" })
 
-      expect(requests).toHaveLength(3)
-      expect(requests[1]?.toolChoice).toBeUndefined()
-      expect(requests[1]?.tools).not.toEqual([])
-      expect(requests[2]?.toolChoice).toMatchObject({ type: "none" })
+        const third = yield* scenario.llm.next()
+        expect(third.request.toolChoice).toMatchObject({ type: "none" })
+        yield* third.respond.stop()
+      })
+
+      expect(yield* scenario.llm.requests).toHaveLength(3)
       expect(executions).toEqual(["before", "after"])
     }),
   )
