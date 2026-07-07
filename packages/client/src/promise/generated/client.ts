@@ -177,6 +177,8 @@ import type {
   VcsDiffInput,
   VcsDiffOutput,
   DebugLocationOutput,
+  SearchQueryInput,
+  SearchQueryOutput,
 } from "./types"
 import { ClientError } from "./client-error"
 
@@ -1478,6 +1480,28 @@ export function make(options: ClientOptions) {
             path: `/api/debug/location`,
             successStatus: 200,
             declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    search: {
+      query: (input: SearchQueryInput, requestOptions?: RequestOptions) =>
+        request<SearchQueryOutput>(
+          {
+            method: "POST",
+            path: `/api/search`,
+            query: { location: input["location"] },
+            body: {
+              query: input["query"],
+              providerID: input["providerID"],
+              numResults: input["numResults"],
+              livecrawl: input["livecrawl"],
+              type: input["type"],
+              contextMaxCharacters: input["contextMaxCharacters"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 503, 401],
             empty: false,
           },
           requestOptions,

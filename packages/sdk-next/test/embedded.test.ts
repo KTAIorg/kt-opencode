@@ -141,6 +141,40 @@ it.live(
   10_000,
 )
 
+it.live("embedded client exposes integration-backed search", () =>
+  withEmbedded("opencode-embedded-search-", (fixture) =>
+    Effect.gen(function* () {
+      const opencode = yield* fixture.sdk.OpenCode.create()
+      const providerID = fixture.sdk.Integration.ID.make("embedded-search")
+      yield* opencode.plugin({
+        id: `embedded-search-${crypto.randomUUID()}`,
+        effect: (ctx) =>
+          ctx.integration.transform((draft) => {
+            draft.update(providerID, (integration) => (integration.name = "Embedded search"))
+            draft.capability.search.update({
+              integrationID: providerID,
+              capability: { type: "search", connection: "optional" },
+              execute: (input) =>
+                Effect.succeed({ text: `Found ${input.query}`, metadata: { source: "embedded" } }),
+            })
+          }),
+      })
+
+      const result = yield* opencode.search.query({
+        query: "opencode",
+        providerID,
+        location: location(fixture),
+      })
+
+      expect(result.data).toEqual({
+        providerID,
+        text: "Found opencode",
+        metadata: { source: "embedded" },
+      })
+    }),
+  ),
+)
+
 it.live(
   "Location-owned runner events reach the ready global client",
   () =>

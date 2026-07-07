@@ -31,6 +31,7 @@ test("exposes every standard HTTP API group", () => {
     "projectCopy",
     "vcs",
     "debug",
+    "search",
   ])
   expect(Object.keys(client.debug)).toEqual(["location"])
   expect(Object.keys(client.message)).toEqual(["list"])
@@ -44,11 +45,38 @@ test("exposes every standard HTTP API group", () => {
     "attemptComplete",
     "attemptCancel",
   ])
+  expect(Object.keys(client.search)).toEqual(["query"])
   expect(Object.keys(client.file)).toEqual(["read", "list", "find"])
   expect(Object.keys(client.vcs)).toEqual(["status", "diff"])
   expect(Object.keys(client.pty)).toEqual(["list", "create", "get", "update", "remove"])
   expect(Object.keys(client.shell)).toEqual(["list", "create", "get", "output", "remove"])
   expect(Object.keys(client.project)).toEqual(["list", "current", "directories"])
+})
+
+test("search.query uses the public HTTP contract", async () => {
+  let request: Request | undefined
+  const client = OpenCode.make({
+    baseUrl: "http://localhost:3000",
+    fetch: async (input, init) => {
+      request = input instanceof Request ? input : new Request(input, init)
+      return Response.json({
+        location: { directory: "/tmp/project", project: { id: "proj_test", directory: "/tmp/project" } },
+        data: { providerID: "exa", text: "result", metadata: { requestID: "req_test" } },
+      })
+    },
+  })
+
+  const result = await client.search.query({
+    query: "opencode",
+    providerID: "exa",
+    numResults: 5,
+    location: { directory: "/tmp/project" },
+  })
+
+  expect(result.data).toEqual({ providerID: "exa", text: "result", metadata: { requestID: "req_test" } })
+  expect(request?.method).toBe("POST")
+  expect(request?.url).toBe("http://localhost:3000/api/search?location%5Bdirectory%5D=%2Ftmp%2Fproject")
+  expect(await request?.json()).toEqual({ query: "opencode", providerID: "exa", numResults: 5 })
 })
 
 test("file.read returns binary content from the public HTTP contract", async () => {

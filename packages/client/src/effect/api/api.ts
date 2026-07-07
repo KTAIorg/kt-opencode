@@ -887,6 +887,23 @@ export interface DebugApi<E = never> {
   readonly location: DebugLocationOperation<E>
 }
 
+type Endpoint26_0Request = Parameters<RawClient["server.search"]["search.query"]>[0]
+export type Endpoint26_0Input = {
+  readonly location?: Endpoint26_0Request["query"]["location"]
+  readonly query: Endpoint26_0Request["payload"]["query"]
+  readonly providerID?: Endpoint26_0Request["payload"]["providerID"]
+  readonly numResults?: Endpoint26_0Request["payload"]["numResults"]
+  readonly livecrawl?: Endpoint26_0Request["payload"]["livecrawl"]
+  readonly type?: Endpoint26_0Request["payload"]["type"]
+  readonly contextMaxCharacters?: Endpoint26_0Request["payload"]["contextMaxCharacters"]
+}
+export type Endpoint26_0Output = EffectValue<ReturnType<RawClient["server.search"]["search.query"]>>
+export type SearchQueryOperation<E = never> = (input: Endpoint26_0Input) => Effect.Effect<Endpoint26_0Output, E>
+
+export interface SearchApi<E = never> {
+  readonly query: SearchQueryOperation<E>
+}
+
 export interface AppApi<E = never> {
   readonly health: HealthApi<E>
   readonly location: LocationApi<E>
@@ -914,4 +931,5 @@ export interface AppApi<E = never> {
   readonly projectCopy: ProjectCopyApi<E>
   readonly vcs: VcsApi<E>
   readonly debug: DebugApi<E>
+  readonly search: SearchApi<E>
 }

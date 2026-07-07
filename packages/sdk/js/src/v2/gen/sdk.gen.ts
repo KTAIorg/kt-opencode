@@ -360,6 +360,8 @@ import type {
   V2QuestionRequestListResponses,
   V2ReferenceListErrors,
   V2ReferenceListResponses,
+  V2SearchQueryErrors,
+  V2SearchQueryResponses,
   V2SessionActiveErrors,
   V2SessionActiveResponses,
   V2SessionBackgroundErrors,
@@ -8119,6 +8121,56 @@ export class Debug extends HeyApiClient {
   }
 }
 
+export class Search extends HeyApiClient {
+  /**
+   * Search the web
+   *
+   * Run one web search through the selected integration. Specify a provider to override the configured default.
+   */
+  public query<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string | null
+        workspace?: string | null
+      } | null
+      query?: string
+      providerID?: string
+      numResults?: number
+      livecrawl?: "fallback" | "preferred"
+      type?: "auto" | "fast" | "deep"
+      contextMaxCharacters?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "location" },
+            { in: "body", key: "query" },
+            { in: "body", key: "providerID" },
+            { in: "body", key: "numResults" },
+            { in: "body", key: "livecrawl" },
+            { in: "body", key: "type" },
+            { in: "body", key: "contextMaxCharacters" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2SearchQueryResponses, V2SearchQueryErrors, ThrowOnError>({
+      url: "/api/search",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class V2 extends HeyApiClient {
   private _health?: Health
   get health(): Health {
@@ -8243,6 +8295,11 @@ export class V2 extends HeyApiClient {
   private _debug?: Debug
   get debug(): Debug {
     return (this._debug ??= new Debug({ client: this.client }))
+  }
+
+  private _search?: Search
+  get search(): Search {
+    return (this._search ??= new Search({ client: this.client }))
   }
 }
 

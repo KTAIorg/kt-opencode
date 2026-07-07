@@ -1066,6 +1066,31 @@ const Endpoint25_0 = (raw: RawClient["server.debug"]) => () =>
 
 const adaptGroup25 = (raw: RawClient["server.debug"]) => ({ location: Endpoint25_0(raw) })
 
+type Endpoint26_0Request = Parameters<RawClient["server.search"]["search.query"]>[0]
+type Endpoint26_0Input = {
+  readonly location?: Endpoint26_0Request["query"]["location"]
+  readonly query: Endpoint26_0Request["payload"]["query"]
+  readonly providerID?: Endpoint26_0Request["payload"]["providerID"]
+  readonly numResults?: Endpoint26_0Request["payload"]["numResults"]
+  readonly livecrawl?: Endpoint26_0Request["payload"]["livecrawl"]
+  readonly type?: Endpoint26_0Request["payload"]["type"]
+  readonly contextMaxCharacters?: Endpoint26_0Request["payload"]["contextMaxCharacters"]
+}
+const Endpoint26_0 = (raw: RawClient["server.search"]) => (input: Endpoint26_0Input) =>
+  raw["search.query"]({
+    query: { location: input["location"] },
+    payload: {
+      query: input["query"],
+      providerID: input["providerID"],
+      numResults: input["numResults"],
+      livecrawl: input["livecrawl"],
+      type: input["type"],
+      contextMaxCharacters: input["contextMaxCharacters"],
+    },
+  }).pipe(Effect.mapError(mapClientError))
+
+const adaptGroup26 = (raw: RawClient["server.search"]) => ({ query: Endpoint26_0(raw) })
+
 const adaptClient = (raw: RawClient) => ({
   health: adaptGroup0(raw["server.health"]),
   location: adaptGroup1(raw["server.location"]),
@@ -1093,6 +1118,7 @@ const adaptClient = (raw: RawClient) => ({
   projectCopy: adaptGroup23(raw["server.projectCopy"]),
   vcs: adaptGroup24(raw["server.vcs"]),
   debug: adaptGroup25(raw["server.debug"]),
+  search: adaptGroup26(raw["server.search"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>

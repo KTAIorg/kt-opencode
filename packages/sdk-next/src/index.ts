@@ -5,11 +5,13 @@ export { ClientError } from "@opencode-ai/client/effect"
 export {
   AbsolutePath,
   Agent,
+  Integration,
   Location,
   Model,
   Prompt,
   Provider,
   RelativePath,
+  Search,
   Session,
   SessionInput,
   SessionMessage,

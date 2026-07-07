@@ -14,6 +14,7 @@ export type {
   PluginApi,
   ProviderApi,
   ReferenceApi,
+  SearchApi,
   SessionApi,
   SkillApi,
 } from "./api.js"
@@ -36,6 +37,7 @@ export { Provider } from "@opencode-ai/schema/provider"
 export { Pty } from "@opencode-ai/schema/pty"
 export { Question } from "@opencode-ai/schema/question"
 export { Reference } from "@opencode-ai/schema/reference"
+export { Search } from "@opencode-ai/schema/search"
 export { AbsolutePath, RelativePath } from "@opencode-ai/schema/schema"
 export { Session } from "@opencode-ai/schema/session"
 export { SessionInput } from "@opencode-ai/schema/session-input"

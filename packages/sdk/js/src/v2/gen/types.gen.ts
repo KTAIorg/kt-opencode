@@ -6693,6 +6693,12 @@ export type ProjectCopyCopy = {
 
 export type VcsMode = "working" | "branch"
 
+export type SearchResult = {
+  providerID: string
+  text: string
+  metadata?: unknown
+}
+
 export type EventModelsDevRefreshed = {
   id: string
   type: "models-dev.refreshed"
@@ -11459,6 +11465,12 @@ export type VcsFileStatusV2 = {
 }
 
 export type VcsMode2 = "working" | "branch"
+
+export type SearchResult2 = {
+  providerID: string
+  text: string
+  metadata?: unknown
+}
 
 export type AuthRemoveData = {
   body?: never
@@ -19272,6 +19284,54 @@ export type V2DebugLocationResponses = {
 }
 
 export type V2DebugLocationResponse = V2DebugLocationResponses[keyof V2DebugLocationResponses]
+
+export type V2SearchQueryData = {
+  body: {
+    query: string
+    providerID?: string
+    numResults?: number
+    livecrawl?: "fallback" | "preferred"
+    type?: "auto" | "fast" | "deep"
+    contextMaxCharacters?: number
+  }
+  path?: never
+  query?: {
+    location?: {
+      directory?: string | null
+      workspace?: string | null
+    } | null
+  }
+  url: "/api/search"
+}
+
+export type V2SearchQueryErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError1 | InvalidRequestErrorV2
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedErrorV2
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableErrorV2
+}
+
+export type V2SearchQueryError = V2SearchQueryErrors[keyof V2SearchQueryErrors]
+
+export type V2SearchQueryResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfo2
+    data: SearchResult2
+  }
+}
+
+export type V2SearchQueryResponse = V2SearchQueryResponses[keyof V2SearchQueryResponses]
 
 export type PtyConnectData = {
   body?: never

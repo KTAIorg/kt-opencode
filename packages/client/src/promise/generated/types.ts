@@ -6084,3 +6084,66 @@ export type VcsDiffOutput = {
 }
 
 export type DebugLocationOutput = ReadonlyArray<{ readonly directory: string; readonly workspaceID?: string }>
+
+export type SearchQueryInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+  readonly query: {
+    readonly query: string
+    readonly providerID?: string
+    readonly numResults?: number
+    readonly livecrawl?: "fallback" | "preferred"
+    readonly type?: "auto" | "fast" | "deep"
+    readonly contextMaxCharacters?: number
+  }["query"]
+  readonly providerID?: {
+    readonly query: string
+    readonly providerID?: string
+    readonly numResults?: number
+    readonly livecrawl?: "fallback" | "preferred"
+    readonly type?: "auto" | "fast" | "deep"
+    readonly contextMaxCharacters?: number
+  }["providerID"]
+  readonly numResults?: {
+    readonly query: string
+    readonly providerID?: string
+    readonly numResults?: number
+    readonly livecrawl?: "fallback" | "preferred"
+    readonly type?: "auto" | "fast" | "deep"
+    readonly contextMaxCharacters?: number
+  }["numResults"]
+  readonly livecrawl?: {
+    readonly query: string
+    readonly providerID?: string
+    readonly numResults?: number
+    readonly livecrawl?: "fallback" | "preferred"
+    readonly type?: "auto" | "fast" | "deep"
+    readonly contextMaxCharacters?: number
+  }["livecrawl"]
+  readonly type?: {
+    readonly query: string
+    readonly providerID?: string
+    readonly numResults?: number
+    readonly livecrawl?: "fallback" | "preferred"
+    readonly type?: "auto" | "fast" | "deep"
+    readonly contextMaxCharacters?: number
+  }["type"]
+  readonly contextMaxCharacters?: {
+    readonly query: string
+    readonly providerID?: string
+    readonly numResults?: number
+    readonly livecrawl?: "fallback" | "preferred"
+    readonly type?: "auto" | "fast" | "deep"
+    readonly contextMaxCharacters?: number
+  }["contextMaxCharacters"]
+}
+
+export type SearchQueryOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: { readonly providerID: string; readonly text: string; readonly metadata?: JsonValue }
+}
