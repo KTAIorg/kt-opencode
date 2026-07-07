@@ -431,15 +431,11 @@ const rateLimited = (retryAfterMs?: number) =>
 const setupOverflowRecovery = Effect.gen(function* () {
   yield* setup
   const session = yield* SessionV2.Service
-  response = fragmentFixture("text", "text-earlier", ["Earlier answer"]).completeEvents
   yield* session.prompt({
     sessionID,
     prompt: PromptInput.Prompt.make({ text: "Earlier question ".repeat(700) }),
     resume: false,
   })
-  yield* session.resume(sessionID)
-  currentModel = recoveryModel
-  requests.length = 0
   return session
 })
 
@@ -1362,215 +1358,210 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("rebuilds the baseline directly after completed compaction", () =>
+  scenarioIt("rebuilds the baseline directly after completed compaction", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
-      requests.length = 0
-      response = []
-      yield* session.resume(sessionID)
-      yield* events.publish(SessionEvent.Compaction.Started, {
-        sessionID,
-        reason: "manual",
-      })
-      yield* events.publish(SessionEvent.Compaction.Ended, {
-        sessionID,
-        reason: "manual",
-        text: "summary",
-        recent: "",
-      })
-      systemBaseline = "Replacement context"
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-      yield* session.resume(sessionID)
+      yield* scenario.run(function* () {
+        const first = yield* scenario.llm.next()
+        expect(first.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        yield* events.publish(SessionEvent.Compaction.Started, {
+          sessionID,
+          reason: "manual",
+        })
+        yield* events.publish(SessionEvent.Compaction.Ended, {
+          sessionID,
+          reason: "manual",
+          text: "summary",
+          recent: "",
+        })
+        systemBaseline = "Replacement context"
+        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
+        yield* first.respond.events()
 
-      expect(requests.map((request) => request.system.map((part) => part.text))).toEqual([
-        [defaultSystem, "Initial context"],
-        [defaultSystem, "Replacement context"],
-      ])
-      yield* replaySessionProjection(sessionID)
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
-      yield* session.resume(sessionID)
+        const second = yield* scenario.llm.next()
+        expect(second.request.system.map((part) => part.text)).toEqual([defaultSystem, "Replacement context"])
+        yield* replaySessionProjection(sessionID)
+        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
+        yield* second.respond.events()
+
+        yield* (yield* scenario.llm.next()).respond.events()
+      })
     }),
   )
 
-  it.effect("runs one durable compaction barrier before later steer and queued prompts", () =>
+  scenarioIt("runs one durable compaction barrier before later steer and queued prompts", (scenario) =>
     Effect.gen(function* () {
       yield* setup
-      requests.length = 0
       currentModel = recoveryModel
       const session = yield* SessionV2.Service
-      streamGate = yield* Deferred.make<void>()
-      streamStarted = yield* Deferred.make<void>()
-      responses = [
-        fragmentFixture("text", "text-active", ["Active complete"]).completeEvents,
-        [LLMEvent.textDelta({ id: "summary", text: "durable summary" })],
-        fragmentFixture("text", "text-steer", ["Steer complete"]).completeEvents,
-        fragmentFixture("text", "text-queue", ["Queue complete"]).completeEvents,
-      ]
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Active work" }), resume: false })
-      const active = yield* session.resume(sessionID).pipe(Effect.forkChild)
-      yield* Deferred.await(streamStarted)
 
-      const first = yield* session.compact({ sessionID })
-      const second = yield* session.compact({ sessionID })
-      expect(second.id).toBe(first.id)
-      expect(yield* SessionInput.pendingCompaction((yield* Database.Service).db, sessionID)).toMatchObject({
-        id: first.id,
-      })
-      expect((yield* session.messages({ sessionID })).find((message) => message.id === first.id)).toMatchObject({
-        type: "compaction",
-        status: "queued",
+      yield* scenario.run(function* () {
+        const active = yield* scenario.llm.next()
+        const first = yield* session.compact({ sessionID })
+        const second = yield* session.compact({ sessionID })
+        expect(second.id).toBe(first.id)
+        expect(yield* SessionInput.pendingCompaction((yield* Database.Service).db, sessionID)).toMatchObject({
+          id: first.id,
+        })
+        expect((yield* session.messages({ sessionID })).find((message) => message.id === first.id)).toMatchObject({
+          type: "compaction",
+          status: "queued",
+        })
+
+        yield* session.prompt({
+          sessionID,
+          prompt: PromptInput.Prompt.make({ text: "Steer after compaction" }),
+          resume: false,
+        })
+        yield* session.prompt({
+          sessionID,
+          prompt: PromptInput.Prompt.make({ text: "Queue after compaction" }),
+          delivery: "queue",
+          resume: false,
+        })
+        expect(yield* SessionInput.hasPending((yield* Database.Service).db, sessionID, "steer")).toBe(false)
+        yield* active.respond.text("Active complete", { id: "text-active" })
+
+        const compaction = yield* scenario.llm.next()
+        expect(userTexts(compaction.request)[0]).toContain("Create a new anchored summary")
+        yield* compaction.respond.events(LLMEvent.textDelta({ id: "summary", text: "durable summary" }))
+
+        const steer = yield* scenario.llm.next()
+        expect(userTexts(steer.request)).toContain("Steer after compaction")
+        yield* steer.respond.text("Steer complete", { id: "text-steer" })
+
+        const queue = yield* scenario.llm.next()
+        expect(userTexts(queue.request)).toContain("Queue after compaction")
+        yield* queue.respond.text("Queue complete", { id: "text-queue" })
+
+        expect(yield* SessionInput.pendingCompaction((yield* Database.Service).db, sessionID)).toBeUndefined()
+        expect((yield* session.messages({ sessionID })).find((message) => message.id === first.id)).toMatchObject({
+          type: "compaction",
+          status: "completed",
+          summary: "durable summary",
+        })
       })
 
-      yield* session.prompt({
-        sessionID,
-        prompt: PromptInput.Prompt.make({ text: "Steer after compaction" }),
-        resume: false,
-      })
-      yield* session.prompt({
-        sessionID,
-        prompt: PromptInput.Prompt.make({ text: "Queue after compaction" }),
-        delivery: "queue",
-        resume: false,
-      })
-      expect(yield* SessionInput.hasPending((yield* Database.Service).db, sessionID, "steer")).toBe(false)
-
-      yield* Deferred.succeed(streamGate, undefined)
-      yield* Fiber.join(active)
-
-      expect(requests).toHaveLength(4)
-      expect(userTexts(requests[1])[0]).toContain("Create a new anchored summary")
-      expect(userTexts(requests[2])).toContain("Steer after compaction")
-      expect(userTexts(requests[3])).toContain("Queue after compaction")
-      expect(yield* SessionInput.pendingCompaction((yield* Database.Service).db, sessionID)).toBeUndefined()
-      expect((yield* session.messages({ sessionID })).find((message) => message.id === first.id)).toMatchObject({
-        type: "compaction",
-        status: "completed",
-        summary: "durable summary",
-      })
+      expect(yield* scenario.llm.requests).toHaveLength(4)
     }),
   )
 
-  it.effect("releases queued prompts when durable compaction fails", () =>
+  scenarioIt("releases queued prompts when durable compaction fails", (scenario) =>
     Effect.gen(function* () {
       yield* setup
-      requests.length = 0
       currentModel = recoveryModel
       const session = yield* SessionV2.Service
-      streamGate = yield* Deferred.make<void>()
-      streamStarted = yield* Deferred.make<void>()
-      responses = [
-        fragmentFixture("text", "text-active-failure", ["Active complete"]).completeEvents,
-        [],
-        fragmentFixture("text", "text-after-failure", ["Continued"]).completeEvents,
-      ]
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Active work" }), resume: false })
-      const active = yield* session.resume(sessionID).pipe(Effect.forkChild)
-      yield* Deferred.await(streamStarted)
 
-      const compaction = yield* session.compact({ sessionID })
-      yield* session.prompt({
-        sessionID,
-        prompt: PromptInput.Prompt.make({ text: "Continue after failure" }),
-        delivery: "queue",
-        resume: false,
-      })
-      yield* Deferred.succeed(streamGate, undefined)
-      yield* Fiber.join(active)
+      yield* scenario.run(function* () {
+        const active = yield* scenario.llm.next()
+        const compaction = yield* session.compact({ sessionID })
+        yield* session.prompt({
+          sessionID,
+          prompt: PromptInput.Prompt.make({ text: "Continue after failure" }),
+          delivery: "queue",
+          resume: false,
+        })
+        yield* active.respond.text("Active complete", { id: "text-active-failure" })
 
-      expect(requests).toHaveLength(3)
-      expect(userTexts(requests[2])).toContain("Continue after failure")
-      expect(yield* SessionInput.pendingCompaction((yield* Database.Service).db, sessionID)).toBeUndefined()
-      expect((yield* session.messages({ sessionID })).find((message) => message.id === compaction.id)).toMatchObject({
-        type: "compaction",
-        status: "failed",
+        yield* (yield* scenario.llm.next()).respond.events()
+        const continued = yield* scenario.llm.next()
+        expect(userTexts(continued.request)).toContain("Continue after failure")
+        yield* continued.respond.text("Continued", { id: "text-after-failure" })
+
+        expect(yield* SessionInput.pendingCompaction((yield* Database.Service).db, sessionID)).toBeUndefined()
+        expect((yield* session.messages({ sessionID })).find((message) => message.id === compaction.id)).toMatchObject({
+          type: "compaction",
+          status: "failed",
+        })
       })
+
+      expect(yield* scenario.llm.requests).toHaveLength(3)
     }),
   )
 
-  it.effect("automatically compacts into a completed summary and retained recent turn", () =>
+  scenarioIt("automatically compacts into a completed summary and retained recent turn", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
-      response = fragmentFixture("text", "text-first", ["Earlier answer"]).completeEvents
       yield* session.prompt({
         sessionID,
         prompt: PromptInput.Prompt.make({ text: "Earlier question ".repeat(180) }),
         resume: false,
       })
-      yield* session.resume(sessionID)
 
-      currentModel = compactModel
-      requests.length = 0
-      responses = [
-        fragmentFixture("text", "text-summary", ["## Objective\n- Preserve the task"]).completeEvents,
-        fragmentFixture("text", "text-final", ["Continued"]).completeEvents,
-      ]
-      yield* session.prompt({
-        sessionID,
-        prompt: PromptInput.Prompt.make({ text: "Recent exact request ".repeat(180) }),
-        resume: false,
+      yield* scenario.run(function* () {
+        const earlier = yield* scenario.llm.next()
+        currentModel = compactModel
+        yield* session.prompt({
+          sessionID,
+          prompt: PromptInput.Prompt.make({ text: "Recent exact request ".repeat(180) }),
+          resume: false,
+        })
+        yield* earlier.respond.text("Earlier answer", { id: "text-first" })
+
+        const summary = yield* scenario.llm.next()
+        expect(userTexts(summary.request)[0]).toContain("## Objective")
+        yield* summary.respond.text("## Objective\n- Preserve the task", { id: "text-summary" })
+
+        const continued = yield* scenario.llm.next()
+        expect(userTexts(continued.request)).toHaveLength(1)
+        expect(userTexts(continued.request)[0]).toContain("<summary>\n## Objective\n- Preserve the task\n</summary>")
+        expect(userTexts(continued.request)[0]).toContain(`[User]: ${"Recent exact request ".repeat(180)}`)
+        yield* session.prompt({
+          sessionID,
+          prompt: PromptInput.Prompt.make({ text: "Newest exact request ".repeat(180) }),
+          resume: false,
+        })
+        yield* continued.respond.text("Continued", { id: "text-final" })
+
+        const updatedSummary = yield* scenario.llm.next()
+        expect(userTexts(updatedSummary.request)[0]).toContain(
+          "<previous-summary>\n## Objective\n- Preserve the task\n</previous-summary>",
+        )
+        expect(userTexts(updatedSummary.request)[0]).toContain("Recent exact request")
+        yield* updatedSummary.respond.text("## Objective\n- Preserve the updated task", { id: "text-summary-2" })
+
+        yield* (yield* scenario.llm.next()).respond.text("Continued again", { id: "text-final-2" })
+        expect((yield* (yield* SessionStore.Service).context(sessionID))[0]).toMatchObject({
+          type: "compaction",
+          summary: "## Objective\n- Preserve the updated task",
+        })
       })
-      yield* session.resume(sessionID)
 
-      expect(requests).toHaveLength(2)
-      expect(userTexts(requests[0])[0]).toContain("## Objective")
-      expect(userTexts(requests[1])).toHaveLength(1)
-      expect(userTexts(requests[1])[0]).toContain("<summary>\n## Objective\n- Preserve the task\n</summary>")
-      expect(userTexts(requests[1])[0]).toContain(`[User]: ${"Recent exact request ".repeat(180)}`)
-
-      const context = yield* (yield* SessionStore.Service).context(sessionID)
-      expect(context.map((message) => message.type)).toEqual(["compaction", "assistant"])
-      expect(context[0]).toMatchObject({
-        type: "compaction",
-        summary: "## Objective\n- Preserve the task",
-      })
-
-      requests.length = 0
-      executions.length = 0
-      responses = [
-        fragmentFixture("text", "text-summary-2", ["## Objective\n- Preserve the updated task"]).completeEvents,
-        fragmentFixture("text", "text-final-2", ["Continued again"]).completeEvents,
-      ]
-      yield* session.prompt({
-        sessionID,
-        prompt: PromptInput.Prompt.make({ text: "Newest exact request ".repeat(180) }),
-        resume: false,
-      })
-      yield* session.resume(sessionID)
-
-      expect(requests).toHaveLength(2)
-      expect(userTexts(requests[0])[0]).toContain(
-        "<previous-summary>\n## Objective\n- Preserve the task\n</previous-summary>",
-      )
-      expect(userTexts(requests[0])[0]).toContain("Recent exact request")
-      expect((yield* (yield* SessionStore.Service).context(sessionID))[0]).toMatchObject({
-        type: "compaction",
-        summary: "## Objective\n- Preserve the updated task",
-      })
+      expect(yield* scenario.llm.requests).toHaveLength(5)
     }),
   )
 
-  it.effect("forces one compaction and retries after provider context overflow", () =>
+  scenarioIt("forces one compaction and retries after provider context overflow", (scenario) =>
     Effect.gen(function* () {
       const session = yield* setupOverflowRecovery
-      responses = [
-        [
+      yield* scenario.run(function* () {
+        const earlier = yield* scenario.llm.next()
+        currentModel = recoveryModel
+        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
+        yield* earlier.respond.text("Earlier answer", { id: "text-earlier" })
+
+        yield* (yield* scenario.llm.next()).respond.events(
           LLMEvent.stepStart({ index: 0 }),
           LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
-        ],
-        fragmentFixture("text", "text-summary", ["## Objective\n- Recover overflow"]).completeEvents,
-        fragmentFixture("text", "text-final", ["Recovered"]).completeEvents,
-      ]
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-      yield* session.resume(sessionID)
+        )
 
-      expect(requests).toHaveLength(3)
-      expect(userTexts(requests[1])[0]).toContain("## Objective")
-      expect(userTexts(requests[2])[0]).toContain("<summary>\n## Objective\n- Recover overflow\n</summary>")
+        const summary = yield* scenario.llm.next()
+        expect(userTexts(summary.request)[0]).toContain("## Objective")
+        yield* summary.respond.text("## Objective\n- Recover overflow", { id: "text-summary" })
+
+        const recovered = yield* scenario.llm.next()
+        expect(userTexts(recovered.request)[0]).toContain("<summary>\n## Objective\n- Recover overflow\n</summary>")
+        yield* recovered.respond.text("Recovered", { id: "text-final" })
+      })
+
+      expect(yield* scenario.llm.requests).toHaveLength(4)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "compaction", summary: "## Objective\n- Recover overflow" },
         { type: "assistant", finish: "stop" },
@@ -1583,22 +1574,35 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("persists a second context overflow after one recovery", () =>
+  scenarioIt("persists a second context overflow after one recovery", (scenario) =>
     Effect.gen(function* () {
       const session = yield* setupOverflowRecovery
       const overflow = () => [
         LLMEvent.stepStart({ index: 0 }),
         LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
       ]
-      responses = [
-        overflow(),
-        fragmentFixture("text", "text-summary", ["## Objective\n- Recover once"]).completeEvents,
-        overflow(),
-      ]
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-      expect((yield* session.resume(sessionID).pipe(Effect.flip)).message).toBe("prompt too long")
+      expect(
+        (yield* scenario
+          .run(function* () {
+            const earlier = yield* scenario.llm.next()
+            currentModel = recoveryModel
+            yield* session.prompt({
+              sessionID,
+              prompt: PromptInput.Prompt.make({ text: "Continue" }),
+              resume: false,
+            })
+            yield* earlier.respond.text("Earlier answer", { id: "text-earlier" })
 
-      expect(requests).toHaveLength(3)
+            yield* (yield* scenario.llm.next()).respond.events(...overflow())
+            yield* (yield* scenario.llm.next()).respond.text("## Objective\n- Recover once", {
+              id: "text-summary",
+            })
+            yield* (yield* scenario.llm.next()).respond.events(...overflow())
+          })
+          .pipe(Effect.flip)).message,
+      ).toBe("prompt too long")
+
+      expect(yield* scenario.llm.requests).toHaveLength(4)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "compaction" },
         { type: "assistant", finish: "error", error: { message: "prompt too long" } },
@@ -1606,27 +1610,32 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("recovers once from a raw context overflow failure", () =>
+  scenarioIt("recovers once from a raw context overflow failure", (scenario) =>
     Effect.gen(function* () {
       const session = yield* setupOverflowRecovery
-      responseStream = Stream.fail(
-        new LLMError({
-          module: "test",
-          method: "stream",
-          reason: new InvalidRequestReason({
-            message: "prompt too long",
-            classification: "context-overflow",
-          }),
-        }),
-      )
-      responses = [
-        fragmentFixture("text", "text-summary", ["## Objective\n- Recover raw overflow"]).completeEvents,
-        fragmentFixture("text", "text-final", ["Recovered"]).completeEvents,
-      ]
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-      yield* session.resume(sessionID)
+      yield* scenario.run(function* () {
+        const earlier = yield* scenario.llm.next()
+        currentModel = recoveryModel
+        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
+        yield* earlier.respond.text("Earlier answer", { id: "text-earlier" })
 
-      expect(requests).toHaveLength(3)
+        yield* (yield* scenario.llm.next()).respond.fail(
+          new LLMError({
+            module: "test",
+            method: "stream",
+            reason: new InvalidRequestReason({
+              message: "prompt too long",
+              classification: "context-overflow",
+            }),
+          }),
+        )
+        yield* (yield* scenario.llm.next()).respond.text("## Objective\n- Recover raw overflow", {
+          id: "text-summary",
+        })
+        yield* (yield* scenario.llm.next()).respond.text("Recovered", { id: "text-final" })
+      })
+
+      expect(yield* scenario.llm.requests).toHaveLength(4)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "compaction", summary: "## Objective\n- Recover raw overflow" },
         { type: "assistant", finish: "stop" },
@@ -1634,17 +1643,32 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("publishes the original overflow when recovery summarization fails", () =>
+  scenarioIt("publishes the original overflow when recovery summarization fails", (scenario) =>
     Effect.gen(function* () {
       const session = yield* setupOverflowRecovery
-      responses = [
-        [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
-        [LLMEvent.providerError({ message: "summary unavailable" })],
-      ]
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-      expect((yield* session.resume(sessionID).pipe(Effect.flip)).message).toBe("prompt too long")
+      expect(
+        (yield* scenario
+          .run(function* () {
+            const earlier = yield* scenario.llm.next()
+            currentModel = recoveryModel
+            yield* session.prompt({
+              sessionID,
+              prompt: PromptInput.Prompt.make({ text: "Continue" }),
+              resume: false,
+            })
+            yield* earlier.respond.text("Earlier answer", { id: "text-earlier" })
 
-      expect(requests).toHaveLength(2)
+            yield* (yield* scenario.llm.next()).respond.events(
+              LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
+            )
+            yield* (yield* scenario.llm.next()).respond.events(
+              LLMEvent.providerError({ message: "summary unavailable" }),
+            )
+          })
+          .pipe(Effect.flip)).message,
+      ).toBe("prompt too long")
+
+      expect(yield* scenario.llm.requests).toHaveLength(3)
       const context = yield* session.context(sessionID)
       expect(context.some((message) => message.type === "compaction")).toBe(false)
       expect(context.slice(-2)).toMatchObject([
@@ -1654,61 +1678,68 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("interrupts overflow recovery while the summary provider is running", () =>
+  scenarioIt("interrupts overflow recovery while the summary provider is running", (scenario) =>
     Effect.gen(function* () {
       const session = yield* setupOverflowRecovery
-      responses = [
-        [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
-        fragmentFixture("text", "text-summary", ["## Objective\n- Interrupted"]).completeEvents,
-      ]
-      const firstGate = yield* Deferred.make<void>()
-      const summaryGate = yield* Deferred.make<void>()
-      streamGate = firstGate
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-      const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
-      while (requests.length < 1) yield* Effect.yieldNow
-      streamGate = summaryGate
-      yield* Deferred.succeed(firstGate, undefined)
-      while (requests.length < 2) yield* Effect.yieldNow
+      const exit = yield* scenario
+        .run(function* () {
+          const earlier = yield* scenario.llm.next()
+          currentModel = recoveryModel
+          yield* session.prompt({
+            sessionID,
+            prompt: PromptInput.Prompt.make({ text: "Continue" }),
+            resume: false,
+          })
+          yield* earlier.respond.text("Earlier answer", { id: "text-earlier" })
 
-      yield* session.interrupt(sessionID)
-      expect(yield* Fiber.await(run)).toMatchObject({ _tag: "Failure" })
-      streamGate = undefined
-      expect(requests).toHaveLength(2)
+          yield* (yield* scenario.llm.next()).respond.events(
+            LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
+          )
+          yield* (yield* scenario.llm.next()).respond.stream(Stream.never)
+          yield* session.interrupt(sessionID)
+        })
+        .pipe(Effect.exit)
+
+      expect(exit).toMatchObject({ _tag: "Failure" })
+      expect(yield* scenario.llm.requests).toHaveLength(3)
       expect((yield* session.context(sessionID)).some((message) => message.type === "compaction")).toBe(false)
     }),
   )
 
-  it.effect("rebaselines after compaction from the last-applied belief while unobservable", () =>
+  scenarioIt("rebaselines after compaction from the last-applied belief while unobservable", (scenario) =>
     Effect.gen(function* () {
       yield* setup
       const session = yield* SessionV2.Service
       const events = yield* EventV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
-      requests.length = 0
-      response = []
-      yield* session.resume(sessionID)
-      systemBaseline = "Changed context"
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-      yield* session.resume(sessionID)
-      yield* events.publish(SessionEvent.Compaction.Started, {
-        sessionID,
-        reason: "manual",
-      })
-      yield* events.publish(SessionEvent.Compaction.Ended, {
-        sessionID,
-        reason: "manual",
-        text: "summary",
-        recent: "",
-      })
-      systemUnavailable = true
-      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
-      yield* session.resume(sessionID)
+      yield* scenario.run(function* () {
+        const first = yield* scenario.llm.next()
+        systemBaseline = "Changed context"
+        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
+        yield* first.respond.events()
 
-      // The rebaseline proceeds while the source is unobservable, restating the model's belief.
-      expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([defaultSystem, "Changed context"])
-      expect(systemTexts(requests.at(-1)!)).not.toContain("Changed context")
+        const second = yield* scenario.llm.next()
+        yield* events.publish(SessionEvent.Compaction.Started, {
+          sessionID,
+          reason: "manual",
+        })
+        yield* events.publish(SessionEvent.Compaction.Ended, {
+          sessionID,
+          reason: "manual",
+          text: "summary",
+          recent: "",
+        })
+        systemUnavailable = true
+        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
+        yield* second.respond.events()
+
+        const third = yield* scenario.llm.next()
+        // The rebaseline proceeds while the source is unobservable, restating the model's belief.
+        expect(third.request.system.map((part) => part.text)).toEqual([defaultSystem, "Changed context"])
+        expect(systemTexts(third.request)).not.toContain("Changed context")
+        yield* third.respond.events()
+      })
     }),
   )
 
