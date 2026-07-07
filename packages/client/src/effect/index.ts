@@ -15,6 +15,7 @@ export type {
   ProviderApi,
   ReferenceApi,
   SessionApi,
+  ServerMcpApi,
   SkillApi,
 } from "./api.js"
 export { Service } from "./service.js"
@@ -27,6 +28,7 @@ export { FileSystem } from "@opencode-ai/schema/filesystem"
 export { Form } from "@opencode-ai/schema/form"
 export { Integration } from "@opencode-ai/schema/integration"
 export { Location } from "@opencode-ai/schema/location"
+export { Mcp } from "@opencode-ai/schema/mcp"
 export { Model } from "@opencode-ai/schema/model"
 export { Permission } from "@opencode-ai/schema/permission"
 export { PermissionSaved } from "@opencode-ai/schema/permission-saved"

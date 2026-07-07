@@ -61,6 +61,15 @@ export class ProviderNotFoundError extends Schema.TaggedErrorClass<ProviderNotFo
   { httpApiStatus: 404 },
 ) {}
 
+export class McpServerNotFoundError extends Schema.TaggedErrorClass<McpServerNotFoundError>()(
+  "McpServerNotFoundError",
+  {
+    server: Schema.String,
+    message: Schema.String,
+  },
+  { httpApiStatus: 404 },
+) {}
+
 export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()(
   "SessionNotFoundError",
   {

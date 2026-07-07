@@ -61,6 +61,8 @@ export const groupNames = {
 } as const
 
 export const endpointNames = {
+  "mcp.resource.catalog": "resourceCatalog",
+  "mcp.resource.read": "readResource",
   "session.messages": "list",
   "integration.connect.key": "connectKey",
   "integration.connect.oauth": "connectOauth",

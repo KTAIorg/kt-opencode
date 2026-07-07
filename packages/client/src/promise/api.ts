@@ -8,6 +8,7 @@ import type {
   ProviderApi as EffectProviderApi,
   ReferenceApi as EffectReferenceApi,
   SessionApi as EffectSessionApi,
+  ServerMcpApi as EffectServerMcpApi,
   SkillApi as EffectSkillApi,
 } from "../effect/api/api.js"
 import type { Effect, Stream } from "effect"
@@ -37,6 +38,7 @@ export type PluginApi = PromisifyApi<EffectPluginApi<unknown>>
 export type ProviderApi = PromisifyApi<EffectProviderApi<unknown>>
 export type ReferenceApi = PromisifyApi<EffectReferenceApi<unknown>>
 export type SessionApi = PromisifyApi<EffectSessionApi<unknown>>
+export type ServerMcpApi = PromisifyApi<EffectServerMcpApi<unknown>>
 export type SkillApi = PromisifyApi<EffectSkillApi<unknown>>
 
 export interface CatalogApi {

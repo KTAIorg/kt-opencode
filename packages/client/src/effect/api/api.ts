@@ -439,8 +439,28 @@ export type Endpoint10_0Input = { readonly location?: Endpoint10_0Request["query
 export type Endpoint10_0Output = EffectValue<ReturnType<RawClient["server.mcp"]["mcp.list"]>>
 export type ServerMcpListOperation<E = never> = (input?: Endpoint10_0Input) => Effect.Effect<Endpoint10_0Output, E>
 
+type Endpoint10_1Request = Parameters<RawClient["server.mcp"]["mcp.resource.catalog"]>[0]
+export type Endpoint10_1Input = { readonly location?: Endpoint10_1Request["query"]["location"] }
+export type Endpoint10_1Output = EffectValue<ReturnType<RawClient["server.mcp"]["mcp.resource.catalog"]>>
+export type ServerMcpResourceCatalogOperation<E = never> = (
+  input?: Endpoint10_1Input,
+) => Effect.Effect<Endpoint10_1Output, E>
+
+type Endpoint10_2Request = Parameters<RawClient["server.mcp"]["mcp.resource.read"]>[0]
+export type Endpoint10_2Input = {
+  readonly location?: Endpoint10_2Request["query"]["location"]
+  readonly server: Endpoint10_2Request["payload"]["server"]
+  readonly uri: Endpoint10_2Request["payload"]["uri"]
+}
+export type Endpoint10_2Output = EffectValue<ReturnType<RawClient["server.mcp"]["mcp.resource.read"]>>
+export type ServerMcpReadResourceOperation<E = never> = (
+  input: Endpoint10_2Input,
+) => Effect.Effect<Endpoint10_2Output, E>
+
 export interface ServerMcpApi<E = never> {
   readonly list: ServerMcpListOperation<E>
+  readonly resourceCatalog: ServerMcpResourceCatalogOperation<E>
+  readonly readResource: ServerMcpReadResourceOperation<E>
 }
 
 type Endpoint11_0Request = Parameters<RawClient["server.credential"]["credential.update"]>[0]

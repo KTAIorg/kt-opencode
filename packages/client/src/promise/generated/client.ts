@@ -87,6 +87,10 @@ import type {
   IntegrationAttemptCancelOutput,
   ServerMcpListInput,
   ServerMcpListOutput,
+  ServerMcpResourceCatalogInput,
+  ServerMcpResourceCatalogOutput,
+  ServerMcpReadResourceInput,
+  ServerMcpReadResourceOutput,
   CredentialUpdateInput,
   CredentialUpdateOutput,
   CredentialRemoveInput,
@@ -886,6 +890,31 @@ export function make(options: ClientOptions) {
             query: { location: input?.["location"] },
             successStatus: 200,
             declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      resourceCatalog: (input?: ServerMcpResourceCatalogInput, requestOptions?: RequestOptions) =>
+        request<ServerMcpResourceCatalogOutput>(
+          {
+            method: "GET",
+            path: `/api/mcp/resource`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      readResource: (input: ServerMcpReadResourceInput, requestOptions?: RequestOptions) =>
+        request<ServerMcpReadResourceOutput>(
+          {
+            method: "POST",
+            path: `/api/mcp/resource/read`,
+            query: { location: input["location"] },
+            body: { server: input["server"], uri: input["uri"] },
+            successStatus: 200,
+            declaredStatuses: [404, 401, 400],
             empty: false,
           },
           requestOptions,

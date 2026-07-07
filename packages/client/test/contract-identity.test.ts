@@ -9,6 +9,7 @@ import { SessionInput as CoreSessionInput } from "@opencode-ai/core/session/inpu
 import { SessionMessage as CoreSessionMessage } from "@opencode-ai/core/session/message"
 import { Agent } from "@opencode-ai/schema/agent"
 import { Location } from "@opencode-ai/schema/location"
+import { Mcp } from "@opencode-ai/schema/mcp"
 import { Model } from "@opencode-ai/schema/model"
 import { Project } from "@opencode-ai/schema/project"
 import { Provider } from "@opencode-ai/schema/provider"
@@ -26,6 +27,7 @@ const Client = await import("../src/effect")
 test("effect entrypoint exposes canonical Schema contracts", () => {
   expect(Client.Agent).toBe(Agent)
   expect(Client.Model).toBe(Model)
+  expect(Client.Mcp).toBe(Mcp)
   expect(Client.Session).toBe(Session)
 })
 

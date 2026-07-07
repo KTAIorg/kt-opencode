@@ -10,6 +10,7 @@ export type {
   ProviderApi,
   ReferenceApi,
   SessionApi,
+  ServerMcpApi,
   SkillApi,
 } from "./api.js"
 export type { EventSubscribeOutput as OpenCodeEvent } from "./generated/types"

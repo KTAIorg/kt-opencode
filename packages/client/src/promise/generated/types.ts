@@ -106,6 +106,14 @@ export type ProviderNotFoundError = {
 export const isProviderNotFoundError = (value: unknown): value is ProviderNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ProviderNotFoundError"
 
+export type McpServerNotFoundError = {
+  readonly _tag: "McpServerNotFoundError"
+  readonly server: string
+  readonly message: string
+}
+export const isMcpServerNotFoundError = (value: unknown): value is McpServerNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "McpServerNotFoundError"
+
 export type FormNotFoundError = { readonly _tag: "FormNotFoundError"; readonly id: string; readonly message: string }
 export const isFormNotFoundError = (value: unknown): value is FormNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "FormNotFoundError"
@@ -2476,6 +2484,60 @@ export type ServerMcpListOutput = {
       | { readonly status: "needs_client_registration"; readonly error: string }
     readonly integrationID?: string
   }>
+}
+
+export type ServerMcpResourceCatalogInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+}
+
+export type ServerMcpResourceCatalogOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: {
+    readonly resources: ReadonlyArray<{
+      readonly server: string
+      readonly name: string
+      readonly uri: string
+      readonly description?: string
+      readonly mimeType?: string
+    }>
+    readonly templates: ReadonlyArray<{
+      readonly server: string
+      readonly name: string
+      readonly uriTemplate: string
+      readonly description?: string
+      readonly mimeType?: string
+    }>
+  }
+}
+
+export type ServerMcpReadResourceInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+  readonly server: { readonly server: string; readonly uri: string }["server"]
+  readonly uri: { readonly server: string; readonly uri: string }["uri"]
+}
+
+export type ServerMcpReadResourceOutput = {
+  readonly location: {
+    readonly directory: string
+    readonly workspaceID?: string
+    readonly project: { readonly id: string; readonly directory: string }
+  }
+  readonly data: {
+    readonly server: string
+    readonly uri: string
+    readonly contents: ReadonlyArray<
+      | { readonly type: "text"; readonly uri: string; readonly text: string; readonly mimeType?: string }
+      | { readonly type: "blob"; readonly uri: string; readonly blob: string; readonly mimeType?: string }
+    >
+  } | null
 }
 
 export type CredentialUpdateInput = {
@@ -5505,6 +5567,14 @@ export type EventSubscribeOutput =
       readonly created: number
       readonly metadata?: { readonly [x: string]: unknown }
       readonly type: "mcp.status.changed"
+      readonly location?: { readonly directory: string; readonly workspaceID?: string }
+      readonly data: { readonly server: string }
+    }
+  | {
+      readonly id: string
+      readonly created: number
+      readonly metadata?: { readonly [x: string]: unknown }
+      readonly type: "mcp.resources.changed"
       readonly location?: { readonly directory: string; readonly workspaceID?: string }
       readonly data: { readonly server: string }
     }

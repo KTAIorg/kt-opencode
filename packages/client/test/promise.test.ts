@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { isSessionNotFoundError, isUnauthorizedError, OpenCode } from "../src/promise/index"
+import { isMcpServerNotFoundError, isSessionNotFoundError, isUnauthorizedError, OpenCode } from "../src/promise/index"
 
 test("exposes every standard HTTP API group", () => {
   const client = OpenCode.make({ baseUrl: "http://localhost:3000" })
@@ -48,6 +48,74 @@ test("exposes every standard HTTP API group", () => {
   expect(Object.keys(client.pty)).toEqual(["list", "create", "get", "update", "remove"])
   expect(Object.keys(client.shell)).toEqual(["list", "create", "get", "timeout", "output", "remove"])
   expect(Object.keys(client.project)).toEqual(["list", "current", "directories"])
+  expect(Object.keys(client["server.mcp"])).toEqual(["list", "resourceCatalog", "readResource"])
+})
+
+test("MCP resource methods use the public HTTP contract", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = []
+  const client = OpenCode.make({
+    baseUrl: "http://localhost:3000",
+    fetch: async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      requests.push({
+        method: request.method,
+        url: request.url,
+        body: request.method === "POST" ? await request.json() : undefined,
+      })
+      if (request.method === "POST")
+        return Response.json({
+          location: { directory: "/tmp/project", project: { id: "proj_test", directory: "/tmp/project" } },
+          data: {
+            server: "docs",
+            uri: "docs://readme",
+            contents: [{ type: "text", uri: "docs://readme", text: "hello", mimeType: "text/plain" }],
+          },
+        })
+      return Response.json({
+        location: { directory: "/tmp/project", project: { id: "proj_test", directory: "/tmp/project" } },
+        data: {
+          resources: [{ server: "docs", name: "Readme", uri: "docs://readme" }],
+          templates: [{ server: "docs", name: "File", uriTemplate: "docs://{path}" }],
+        },
+      })
+    },
+  })
+
+  const location = { directory: "/tmp/project" }
+  expect((await client["server.mcp"].resourceCatalog({ location })).data.resources[0]?.uri).toBe("docs://readme")
+  expect(
+    (await client["server.mcp"].readResource({ server: "docs", uri: "docs://readme", location })).data?.contents,
+  ).toEqual([{ type: "text", uri: "docs://readme", text: "hello", mimeType: "text/plain" }])
+  expect(requests).toEqual([
+    {
+      method: "GET",
+      url: "http://localhost:3000/api/mcp/resource?location%5Bdirectory%5D=%2Ftmp%2Fproject",
+      body: undefined,
+    },
+    {
+      method: "POST",
+      url: "http://localhost:3000/api/mcp/resource/read?location%5Bdirectory%5D=%2Ftmp%2Fproject",
+      body: { server: "docs", uri: "docs://readme" },
+    },
+  ])
+})
+
+test("MCP resource reads preserve unknown-server errors", async () => {
+  const client = OpenCode.make({
+    baseUrl: "http://localhost:3000",
+    fetch: async () =>
+      Response.json(
+        { _tag: "McpServerNotFoundError", server: "missing", message: "MCP server not found: missing" },
+        { status: 404 },
+      ),
+  })
+
+  try {
+    await client["server.mcp"].readResource({ server: "missing", uri: "docs://readme" })
+    throw new Error("Expected request to fail")
+  } catch (error) {
+    expect(isMcpServerNotFoundError(error)).toBe(true)
+  }
 })
 
 test("file.read returns binary content from the public HTTP contract", async () => {
