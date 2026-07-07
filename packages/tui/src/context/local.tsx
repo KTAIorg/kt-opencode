@@ -245,6 +245,27 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         )
       })
 
+      let syncedSessionModel: string | undefined
+      createEffect(() => {
+        if (route.data.type !== "session") {
+          syncedSessionModel = undefined
+          return
+        }
+        const session = data.session.get(route.data.sessionID)
+        const selected = session?.model
+        const a = agent.current()
+        if (!selected || !a) return
+        const model = { providerID: selected.providerID, modelID: selected.id }
+        if (!isModelValid(model)) return
+        const fingerprint = [session.id, a.id, selected.providerID, selected.id, selected.variant ?? "default"].join(":")
+        if (fingerprint === syncedSessionModel) return
+        syncedSessionModel = fingerprint
+        batch(() => {
+          setModelStore("model", a.id, model)
+          setModelStore("variant", `${selected.providerID}/${selected.id}`, selected.variant ?? "default")
+        })
+      })
+
       return {
         current: currentModel,
         get ready() {
