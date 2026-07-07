@@ -31,6 +31,7 @@ import { useExit } from "../../context/exit"
 import { promptOffsetWidth } from "../../prompt/display"
 import { createStore, produce, unwrap } from "solid-js/store"
 import { emptyPrompt, usePromptHistory, type PromptInfo, type PromptPartRef } from "../../prompt/history"
+import { materializeMcpResources } from "./mcp-resource"
 import { computePromptTraits } from "../../prompt/traits"
 import { expandPastedTextPlaceholders, expandTrackedPastedText } from "../../prompt/part"
 import { usePromptStash } from "../../prompt/stash"
@@ -164,9 +165,9 @@ export function Prompt(props: PromptProps) {
   const status = createMemo(() => data.session.status(props.sessionID ?? ""))
   const activeSubagents = createMemo(() => {
     if (!props.sessionID) return 0
-    return data.session.family(props.sessionID).filter(
-      (id) => id !== props.sessionID && data.session.status(id) === "running",
-    ).length
+    return data.session
+      .family(props.sessionID)
+      .filter((id) => id !== props.sessionID && data.session.status(id) === "running").length
   })
   const runningShells = createMemo(
     () => data.shell.list(currentLocation()).filter((shell) => shell.metadata.sessionID === props.sessionID).length,
@@ -984,6 +985,36 @@ export function Prompt(props: PromptProps) {
     }
 
     const variant = local.model.variant.current()
+    const inputText = expandTrackedPastedText(
+      store.prompt.text,
+      input.extmarks.getAllForTypeId(promptPartTypeId).flatMap((extmark) => {
+        const ref = store.extmarkToPart.get(extmark.id)
+        if (ref?.type !== "pasted") return []
+        const part = store.prompt.pasted[ref.index]
+        if (!part) return []
+        return [{ start: extmark.start, end: extmark.end, text: part.text }]
+      }),
+    )
+    const commandName = inputText.split("\n")[0].split(" ")[0].slice(1)
+    const isCommand =
+      inputText.startsWith("/") &&
+      (data.location.command.list(currentLocation()) ?? []).some((command) => command.name === commandName)
+    const isSkill =
+      inputText.startsWith("/") &&
+      (data.location.skill.list(currentLocation()) ?? []).some(
+        (skill) => skill.slash === true && skill.name === commandName,
+      )
+    const files =
+      store.mode === "normal" && !isSkill
+        ? await materializeMcpResources(store.prompt.files, (resource) =>
+            data.location.mcp.resource.read(resource),
+          ).catch((error) => {
+            toast.show({ title: "Failed to read MCP resource", message: errorMessage(error), variant: "error" })
+            return undefined
+          })
+        : []
+    if (!files) return false
+
     let sessionID = props.sessionID
     let session = sessionID ? data.session.get(sessionID) : undefined
     let finishMoveProgress = false
@@ -1025,17 +1056,6 @@ export function Prompt(props: PromptProps) {
       session = structuredClone(created) as SessionV2Info
     }
 
-    const inputText = expandTrackedPastedText(
-      store.prompt.text,
-      input.extmarks.getAllForTypeId(promptPartTypeId).flatMap((extmark) => {
-        const ref = store.extmarkToPart.get(extmark.id)
-        if (ref?.type !== "pasted") return []
-        const part = store.prompt.pasted[ref.index]
-        if (!part) return []
-        return [{ start: extmark.start, end: extmark.end, text: part.text }]
-      }),
-    )
-
     // Capture mode before it gets reset
     const currentMode = store.mode
     const editorSelection = editorContext()
@@ -1063,12 +1083,7 @@ export function Prompt(props: PromptProps) {
         command: inputText,
       })
       setStore("mode", "normal")
-    } else if (
-      inputText.startsWith("/") &&
-      (data.location.command.list(currentLocation()) ?? []).some(
-        (command) => command.name === inputText.split("\n")[0].split(" ")[0].slice(1),
-      )
-    ) {
+    } else if (isCommand) {
       move.startSubmit()
       // Parse command from first line, preserve multi-line content in arguments
       const firstLineEnd = inputText.indexOf("\n")
@@ -1077,25 +1092,25 @@ export function Prompt(props: PromptProps) {
       const restOfInput = firstLineEnd === -1 ? "" : inputText.slice(firstLineEnd + 1)
       const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
 
-      void sdk.api.session
+      const error = await sdk.api.session
         .command({
           sessionID,
           command: command.slice(1),
           arguments: args,
           agent: agent.id,
           model: { providerID: selectedModel.providerID, id: selectedModel.modelID, variant },
-          files: store.prompt.files,
+          files,
           agents: store.prompt.agents,
         })
-        .catch((error) => {
-          toast.show({ title: "Failed to run command", message: errorMessage(error), variant: "error" })
-        })
-    } else if (
-      inputText.startsWith("/") &&
-      (data.location.skill.list(currentLocation()) ?? []).some(
-        (skill) => skill.slash === true && skill.name === inputText.split("\n")[0].split(" ")[0].slice(1),
-      )
-    ) {
+        .then(
+          () => undefined,
+          (error) => error,
+        )
+      if (error) {
+        toast.show({ title: "Failed to run command", message: errorMessage(error), variant: "error" })
+        return false
+      }
+    } else if (isSkill) {
       move.startSubmit()
       void sdk.api.session.skill({
         sessionID,
@@ -1135,7 +1150,7 @@ export function Prompt(props: PromptProps) {
           sessionID,
           prompt: {
             text: [...editorParts.map((part) => part.text), inputText].filter(Boolean).join("\n\n"),
-            files: store.prompt.files,
+            files,
             agents: store.prompt.agents,
           },
         })

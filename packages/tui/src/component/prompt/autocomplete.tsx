@@ -207,7 +207,13 @@ export function Autocomplete(props: {
     props.setPrompt((draft) => {
       if (part.type === "file") {
         const files = (draft.files ??= [])
-        const existingIndex = files.findIndex((file) => file.uri === part.value.uri)
+        const existingIndex = files.findIndex(
+          (file) =>
+            file.uri === part.value.uri &&
+            file.mcp?.server === part.value.mcp?.server &&
+            file.mcp?.location.directory === part.value.mcp?.location.directory &&
+            file.mcp?.location.workspaceID === part.value.mcp?.location.workspaceID,
+        )
         if (existingIndex !== -1) {
           const existing = files[existingIndex]
           if (existing?.mention) {
@@ -215,6 +221,7 @@ export function Autocomplete(props: {
             existing.mention.end = extmarkEnd
             existing.mention.text = virtualText
           }
+          props.setExtmark({ type: "file", index: existingIndex }, extmarkId)
           return
         }
         if (part.value.mention) {
@@ -363,7 +370,7 @@ export function Autocomplete(props: {
     const options: AutocompleteOption[] = []
     const width = props.anchor().width - 4
 
-    for (const res of Object.values(sync.data.mcp_resource)) {
+    for (const res of data.location.mcp.resource.catalog(location())?.resources ?? []) {
       options.push({
         display: Locale.truncateMiddle(res.name, width),
         // Match the name only; matching the URI caused unrelated fuzzy hits.
@@ -377,6 +384,7 @@ export function Autocomplete(props: {
               name: res.name,
               description: res.description,
               mention: { start: 0, end: 0, text: "" },
+              mcp: { server: res.server, uri: res.uri, location: location() ?? data.location.default() },
             },
           })
         },

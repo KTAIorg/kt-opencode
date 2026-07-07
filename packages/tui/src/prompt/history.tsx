@@ -2,6 +2,7 @@ import path from "path"
 import { onMount } from "solid-js"
 import { createStore, produce, unwrap } from "solid-js/store"
 import type { SessionPromptInput } from "@opencode-ai/client/promise"
+import type { LocationRef } from "@opencode-ai/sdk/v2"
 import type { Types } from "effect"
 import { createSimpleContext } from "../context/helper"
 import { useTuiPaths } from "../context/runtime"
@@ -16,7 +17,14 @@ export type PastedText = {
   }
 }
 
-export type PromptInfo = Types.DeepMutable<SessionPromptInput["prompt"]> & {
+type Prompt = Types.DeepMutable<SessionPromptInput["prompt"]>
+
+export type PromptFile = NonNullable<Prompt["files"]>[number] & {
+  mcp?: { server: string; uri: string; location: LocationRef }
+}
+
+export type PromptInfo = Omit<Prompt, "files"> & {
+  files?: PromptFile[]
   pasted: PastedText[]
   mode?: "normal" | "shell"
 }

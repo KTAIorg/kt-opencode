@@ -95,6 +95,7 @@ export type Event =
   | EventTuiToastShow2
   | EventTuiSessionSelect2
   | EventMcpToolsChanged
+  | EventMcpResourcesChanged
   | EventMcpStatusChanged
   | EventCommandExecuted
   | EventFileEdited
@@ -1605,6 +1606,13 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "mcp.resources.changed"
+        properties: {
+          server: string
+        }
+      }
+    | {
+        id: string
         type: "mcp.status.changed"
         properties: {
           server: string
@@ -2991,6 +2999,20 @@ export type ProviderNotFoundError = {
   message: string
 }
 
+export type McpResource2 = {
+  server: string
+  name: string
+  uri: string
+  description?: string
+  mimeType?: string
+}
+
+export type McpServerNotFoundError1 = {
+  _tag: "McpServerNotFoundError"
+  server: string
+  message: string
+}
+
 export type FormNotFoundError = {
   _tag: "FormNotFoundError"
   id: string
@@ -3153,6 +3175,7 @@ export type V2Event =
   | TuiToastShow
   | TuiSessionSelect
   | McpToolsChanged
+  | McpResourcesChanged
   | McpStatusChanged
   | CommandExecuted
   | FileEdited
@@ -5702,6 +5725,39 @@ export type McpServer = {
   integrationID?: string
 }
 
+export type McpResourceTemplate = {
+  server: string
+  name: string
+  uriTemplate: string
+  description?: string
+  mimeType?: string
+}
+
+export type McpResourceCatalog = {
+  resources: Array<McpResource2>
+  templates: Array<McpResourceTemplate>
+}
+
+export type McpResourceContentPart =
+  | {
+      type: "text"
+      uri: string
+      text: string
+      mimeType?: string
+    }
+  | {
+      type: "blob"
+      uri: string
+      blob: string
+      mimeType?: string
+    }
+
+export type McpResourceContent = {
+  server: string
+  uri: string
+  contents: Array<McpResourceContentPart>
+}
+
 export type ProjectCurrent = {
   id: string
   directory: string
@@ -6602,6 +6658,19 @@ export type McpToolsChanged = {
     [key: string]: unknown
   }
   type: "mcp.tools.changed"
+  location?: LocationRef
+  data: {
+    server: string
+  }
+}
+
+export type McpResourcesChanged = {
+  id: string
+  created: number
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "mcp.resources.changed"
   location?: LocationRef
   data: {
     server: string
@@ -7760,6 +7829,14 @@ export type EventMcpToolsChanged = {
   }
 }
 
+export type EventMcpResourcesChanged = {
+  id: string
+  type: "mcp.resources.changed"
+  properties: {
+    server: string
+  }
+}
+
 export type EventMcpStatusChanged = {
   id: string
   type: "mcp.status.changed"
@@ -8032,6 +8109,12 @@ export type SessionMessagesResponseV2 = {
     previous?: string | null
     next?: string | null
   }
+}
+
+export type McpServerNotFoundErrorV2 = {
+  _tag: "McpServerNotFoundError"
+  server: string
+  message: string
 }
 
 export type SessionV2 = {
@@ -8597,6 +8680,7 @@ export type V2EventV2 =
   | InstallationUpdateAvailableV2
   | VcsBranchUpdatedV2
   | McpStatusChangedV2
+  | McpResourcesChangedV2
   | PermissionAskedV2
   | PermissionRepliedV2
   | QuestionAskedV2
@@ -9686,6 +9770,19 @@ export type EventLogSyncedV2 = {
   seq?: number
 }
 
+export type McpResourceV2 = {
+  server: string
+  name: string
+  uri: string
+  description?: string
+  mimeType?: string
+}
+
+export type McpResourceCatalogV2 = {
+  resources: Array<McpResourceV2>
+  templates: Array<McpResourceTemplate>
+}
+
 export type ProjectTimeV2 = {
   created: number
   updated: number
@@ -10609,6 +10706,19 @@ export type McpStatusChangedV2 = {
     [key: string]: unknown
   }
   type: "mcp.status.changed"
+  location?: LocationRefV2
+  data: {
+    server: string
+  }
+}
+
+export type McpResourcesChangedV2 = {
+  id: string
+  created: number
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "mcp.resources.changed"
   location?: LocationRefV2
   data: {
     server: string
@@ -16684,6 +16794,87 @@ export type V2McpListResponses = {
 }
 
 export type V2McpListResponse = V2McpListResponses[keyof V2McpListResponses]
+
+export type V2McpResourceCatalogData = {
+  body?: never
+  path?: never
+  query?: {
+    location?: {
+      directory?: string | null
+      workspace?: string | null
+    } | null
+  }
+  url: "/api/mcp/resource"
+}
+
+export type V2McpResourceCatalogErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestErrorV2
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2McpResourceCatalogError = V2McpResourceCatalogErrors[keyof V2McpResourceCatalogErrors]
+
+export type V2McpResourceCatalogResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfoV2
+    data: McpResourceCatalogV2
+  }
+}
+
+export type V2McpResourceCatalogResponse = V2McpResourceCatalogResponses[keyof V2McpResourceCatalogResponses]
+
+export type V2McpResourceReadData = {
+  body: {
+    server: string
+    uri: string
+  }
+  path?: never
+  query?: {
+    location?: {
+      directory?: string | null
+      workspace?: string | null
+    } | null
+  }
+  url: "/api/mcp/resource/read"
+}
+
+export type V2McpResourceReadErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestErrorV2
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * McpServerNotFoundError
+   */
+  404: McpServerNotFoundErrorV2
+}
+
+export type V2McpResourceReadError = V2McpResourceReadErrors[keyof V2McpResourceReadErrors]
+
+export type V2McpResourceReadResponses = {
+  /**
+   * Success
+   */
+  200: {
+    location: LocationInfoV2
+    data: McpResourceContent | null
+  }
+}
+
+export type V2McpResourceReadResponse = V2McpResourceReadResponses[keyof V2McpResourceReadResponses]
 
 export type V2CredentialRemoveData = {
   body?: never

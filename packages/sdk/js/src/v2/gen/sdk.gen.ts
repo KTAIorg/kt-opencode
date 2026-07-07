@@ -310,6 +310,10 @@ import type {
   V2LocationGetResponses,
   V2McpListErrors,
   V2McpListResponses,
+  V2McpResourceCatalogErrors,
+  V2McpResourceCatalogResponses,
+  V2McpResourceReadErrors,
+  V2McpResourceReadResponses,
   V2ModelDefaultErrors,
   V2ModelDefaultResponses,
   V2ModelListErrors,
@@ -6969,6 +6973,74 @@ export class Integration extends HeyApiClient {
   }
 }
 
+export class Resource2 extends HeyApiClient {
+  /**
+   * List MCP resources
+   *
+   * Retrieve resources and resource templates from connected MCP servers.
+   */
+  public catalog<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string | null
+        workspace?: string | null
+      } | null
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }])
+    return (options?.client ?? this.client).get<
+      V2McpResourceCatalogResponses,
+      V2McpResourceCatalogErrors,
+      ThrowOnError
+    >({
+      url: "/api/mcp/resource",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read MCP resource
+   *
+   * Read the current content of one resource from a connected MCP server.
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters?: {
+      location?: {
+        directory?: string | null
+        workspace?: string | null
+      } | null
+      server?: string
+      uri?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "location" },
+            { in: "body", key: "server" },
+            { in: "body", key: "uri" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2McpResourceReadResponses, V2McpResourceReadErrors, ThrowOnError>({
+      url: "/api/mcp/resource/read",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Mcp2 extends HeyApiClient {
   /**
    * List MCP servers
@@ -6990,6 +7062,11 @@ export class Mcp2 extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _resource?: Resource2
+  get resource(): Resource2 {
+    return (this._resource ??= new Resource2({ client: this.client }))
   }
 }
 

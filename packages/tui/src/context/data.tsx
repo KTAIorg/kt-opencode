@@ -21,6 +21,7 @@ import type {
   SkillV2Info,
   V2Event,
 } from "@opencode-ai/sdk/v2"
+import type { ServerMcpResourceCatalogOutput, ServerMcpReadResourceOutput } from "@opencode-ai/client/promise"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import { useSDK } from "./sdk"
@@ -37,6 +38,7 @@ type LocationData = {
   command?: CommandV2Info[]
   integration?: IntegrationInfo[]
   mcp?: McpServer[]
+  mcpResource?: ServerMcpResourceCatalogOutput["data"]
   model?: ModelV2Info[]
   provider?: ProviderV2Info[]
   reference?: ReferenceInfo[]
@@ -113,6 +115,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     let connectionGeneration = 0
     let statusChanges: Set<string> | undefined
     let bootstrapping: Promise<void> | undefined
+    const pendingMcpRefresh = new Map<string, { location: LocationRef; status: boolean }>()
 
     function setSessionStatus(sessionID: string, status: DataSessionStatus) {
       statusChanges?.add(sessionID)
@@ -754,8 +757,24 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         // Authenticating an MCP integration reconnects its server, which emits mcp.status.changed,
         // so the mcp list refreshes here rather than off integration.updated.
         case "mcp.status.changed":
-          if (bootstrapping) break
-          void result.location.mcp.refresh(event.location)
+          if (bootstrapping) {
+            const location = event.location ?? defaultLocation()
+            pendingMcpRefresh.set(locationKey(location), { location, status: true })
+            break
+          }
+          void Promise.all([
+            result.location.mcp.refresh(event.location),
+            result.location.mcp.resource.refresh(event.location),
+          ])
+          break
+        case "mcp.resources.changed":
+          if (bootstrapping) {
+            const location = event.location ?? defaultLocation()
+            const pending = pendingMcpRefresh.get(locationKey(location))
+            pendingMcpRefresh.set(locationKey(location), { location, status: pending?.status ?? false })
+            break
+          }
+          void result.location.mcp.resource.refresh(event.location)
           break
       }
     }
@@ -938,9 +957,27 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             return store.location[locationKey(location ?? defaultLocation())]?.mcp
           },
           async refresh(ref?: LocationRef) {
-            const result = await sdk.client.v2.mcp.list({ location: locationQuery(ref) }, { throwOnError: true })
-            const key = locationKey(result.data.location)
-            setStore("location", key, { ...store.location[key], mcp: result.data.data })
+            const result = await sdk.api["server.mcp"].list({ location: locationQuery(ref) })
+            const key = locationKey(result.location)
+            setStore("location", key, { ...store.location[key], mcp: mutable(result.data) })
+          },
+          resource: {
+            catalog(location?: LocationRef) {
+              return store.location[locationKey(location ?? defaultLocation())]?.mcpResource
+            },
+            async refresh(ref?: LocationRef) {
+              const result = await sdk.api["server.mcp"].resourceCatalog({ location: locationQuery(ref) })
+              const key = locationKey(result.location)
+              setStore("location", key, { ...store.location[key], mcpResource: mutable(result.data) })
+            },
+            async read(input: { server: string; uri: string; location?: LocationRef }) {
+              const result = await sdk.api["server.mcp"].readResource({
+                server: input.server,
+                uri: input.uri,
+                location: locationQuery(input.location),
+              })
+              return result.data as ServerMcpReadResourceOutput["data"]
+            },
           },
         },
         model: {
@@ -1010,6 +1047,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         result.location.agent.refresh(),
         result.location.integration.refresh(),
         result.location.mcp.refresh(),
+        result.location.mcp.resource.refresh(),
         result.location.model.refresh(),
         result.location.provider.refresh(),
         result.location.reference.refresh(),
@@ -1023,6 +1061,13 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
         })
         .finally(() => {
           bootstrapping = undefined
+          for (const pending of pendingMcpRefresh.values()) {
+            void Promise.all([
+              ...(pending.status ? [result.location.mcp.refresh(pending.location)] : []),
+              result.location.mcp.resource.refresh(pending.location),
+            ])
+          }
+          pendingMcpRefresh.clear()
         })
       return bootstrapping
     }

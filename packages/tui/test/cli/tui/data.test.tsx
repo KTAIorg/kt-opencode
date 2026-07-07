@@ -108,6 +108,63 @@ test("refreshes resources into reactive getters", async () => {
   }
 })
 
+test("refreshes MCP resource catalogs after MCP events", async () => {
+  const events = createEventStream()
+  let resources = [{ server: "docs", name: "Readme", uri: "docs://readme" }]
+  let requests = 0
+  const calls = createFetch((url) => {
+    if (url.pathname !== "/api/mcp/resource") return
+    requests++
+    return json({
+      location: { directory, project: { id: "proj_test", directory } },
+      data: { resources, templates: [] },
+    })
+  }, events)
+  let data!: ReturnType<typeof useData>
+
+  function Probe() {
+    data = useData()
+    return <text>{data.location.mcp.resource.catalog()?.resources[0]?.name ?? "missing"}</text>
+  }
+
+  const app = await testRender(() => (
+    <TestTuiContexts>
+      <SDKProvider client={createClient(calls.fetch)} api={createApi(calls.fetch)}>
+        <ProjectProvider>
+          <DataProvider>
+            <Probe />
+          </DataProvider>
+        </ProjectProvider>
+      </SDKProvider>
+    </TestTuiContexts>
+  ))
+
+  try {
+    await wait(() => requests === 1)
+    expect(data.location.mcp.resource.catalog()?.resources[0]?.uri).toBe("docs://readme")
+
+    resources = [{ server: "docs", name: "Guide", uri: "docs://guide" }]
+    emitEvent(events, {
+      id: "evt_mcp_resources",
+      created: 1,
+      type: "mcp.resources.changed",
+      data: { server: "docs" },
+    })
+    await wait(() => requests === 2 && data.location.mcp.resource.catalog()?.resources[0]?.name === "Guide")
+
+    resources = []
+    emitEvent(events, {
+      id: "evt_mcp_status",
+      created: 2,
+      type: "mcp.status.changed",
+      data: { server: "docs" },
+    })
+    await wait(() => requests === 3 && data.location.mcp.resource.catalog()?.resources.length === 0)
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
 test("restores running manual compaction before applying live deltas", async () => {
   const events = createEventStream()
   const calls = createFetch((url) => {
