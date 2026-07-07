@@ -3,25 +3,202 @@ import { describe, expect, test } from "bun:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { Server } from "@modelcontextprotocol/sdk/server/index.js"
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
+import {
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+  SubscribeRequestSchema,
+  UnsubscribeRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js"
 import { ConfigMCP } from "@opencode-ai/core/config/mcp"
+import { Config } from "@opencode-ai/core/config"
+import { Credential } from "@opencode-ai/core/credential"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { EventV2 } from "@opencode-ai/core/event"
+import { Form } from "@opencode-ai/core/form"
+import { Integration } from "@opencode-ai/core/integration"
+import { Location } from "@opencode-ai/core/location"
 import { MCP } from "@opencode-ai/core/mcp/index"
 import { MCPClient } from "@opencode-ai/core/mcp/client"
 import { PermissionV2 } from "@opencode-ai/core/permission"
+import { AbsolutePath } from "@opencode-ai/core/schema"
 import { SessionV2 } from "@opencode-ai/core/session"
 import { McpTool } from "@opencode-ai/core/tool/mcp"
 import { ToolRegistry } from "@opencode-ai/core/tool/registry"
 import { ToolOutputStore } from "@opencode-ai/core/tool-output-store"
-import { Deferred, Effect, Fiber, Layer, Stream } from "effect"
+import { Deferred, Effect, Exit, Fiber, Layer, Scope, Stream } from "effect"
 import { testEffect } from "./lib/effect"
+import { location } from "./fixture/location"
 import { settleTool, toolDefinitions, toolIdentity, waitForTool } from "./lib/tool"
 
 let assertion: Deferred.Deferred<PermissionV2.AssertInput> | undefined
 let decision: Effect.Effect<void, PermissionV2.Error> = Effect.void
 let calls = 0
+
+type ResourcePage = {
+  items: Array<{ name: string; uri: string; description?: string; mimeType?: string }>
+  nextCursor?: string
+}
+
+type ResourceTemplatePage = {
+  items: Array<{ name: string; uriTemplate: string; description?: string; mimeType?: string }>
+  nextCursor?: string
+}
+
+function resourceServer(input: { resources?: boolean; subscribe?: boolean; listChanged?: boolean } = {}) {
+  return Effect.acquireRelease(
+    Effect.promise(async () => {
+      const state = {
+        resources: [] as ResourcePage["items"],
+        templates: [] as ResourceTemplatePage["items"],
+        resourcePages: undefined as Record<string, ResourcePage> | undefined,
+        templatePages: undefined as Record<string, ResourceTemplatePage> | undefined,
+        contents: [
+          { uri: "docs://readme", text: "hello", mimeType: "text/plain" },
+          { uri: "docs://logo", blob: "aGVsbG8=", mimeType: "image/png" },
+        ] as Array<{ uri: string; text: string; mimeType?: string } | { uri: string; blob: string; mimeType?: string }>,
+        resourceLists: 0,
+        templateLists: 0,
+        resourceListFailures: 0,
+        subscriptions: [] as string[],
+        unsubscriptions: [] as string[],
+        onSubscription: undefined as (() => void) | undefined,
+      }
+      const makeProtocol = async () => {
+        const protocol = new Server(
+          { name: "mcp-resources", version: "1.0.0" },
+          {
+            capabilities: {
+              tools: {},
+              ...(input.resources === false
+                ? {}
+                : { resources: { subscribe: input.subscribe, listChanged: input.listChanged } }),
+            },
+          },
+        )
+        protocol.setRequestHandler(ListToolsRequestSchema, () => Promise.resolve({ tools: [] }))
+        if (input.resources !== false) {
+          protocol.setRequestHandler(ListResourcesRequestSchema, (request) => {
+            state.resourceLists += 1
+            if (state.resourceListFailures > 0) {
+              state.resourceListFailures -= 1
+              throw new Error("resource list failed")
+            }
+            const page = state.resourcePages?.[request.params?.cursor ?? "initial"]
+            return Promise.resolve({ resources: page?.items ?? state.resources, nextCursor: page?.nextCursor })
+          })
+          protocol.setRequestHandler(ListResourceTemplatesRequestSchema, (request) => {
+            state.templateLists += 1
+            const page = state.templatePages?.[request.params?.cursor ?? "initial"]
+            return Promise.resolve({ resourceTemplates: page?.items ?? state.templates, nextCursor: page?.nextCursor })
+          })
+          protocol.setRequestHandler(ReadResourceRequestSchema, () => Promise.resolve({ contents: state.contents }))
+          protocol.setRequestHandler(SubscribeRequestSchema, (request) => {
+            state.subscriptions.push(request.params.uri)
+            state.onSubscription?.()
+            return Promise.resolve({})
+          })
+          protocol.setRequestHandler(UnsubscribeRequestSchema, (request) => {
+            state.unsubscriptions.push(request.params.uri)
+            return Promise.resolve({})
+          })
+        }
+        const transport = new WebStandardStreamableHTTPServerTransport({
+          sessionIdGenerator: () => crypto.randomUUID(),
+          enableJsonResponse: true,
+        })
+        await protocol.connect(transport)
+        return { protocol, transport }
+      }
+      let current = await makeProtocol()
+      let expireSession = false
+      const http = Bun.serve({
+        port: 0,
+        fetch: (request) => {
+          if (expireSession && request.headers.has("mcp-session-id")) {
+            expireSession = false
+            return new Response("session expired", { status: 404 })
+          }
+          return current.transport.handleRequest(request)
+        },
+      })
+      return {
+        state,
+        url: http.url.toString(),
+        sendResourceListChanged: () => current.protocol.sendResourceListChanged(),
+        sendResourceUpdated: (uri: string) => current.protocol.sendResourceUpdated({ uri }),
+        restart: async () => {
+          current = await makeProtocol()
+          expireSession = true
+        },
+        close: async () => {
+          await current.protocol.close().catch(() => {})
+          http.stop(true)
+        },
+      }
+    }),
+    (server) => Effect.promise(server.close),
+  )
+}
+
+function resourceMcpLayer(url: string, changed: Deferred.Deferred<void>) {
+  const directory = AbsolutePath.make(import.meta.dir)
+  const unusedIntegration = () => Effect.die("unused integration service")
+  let resourceChanges = 0
+  return MCP.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(
+          Config.Service,
+          Config.Service.of({
+            entries: () =>
+              Effect.succeed([
+                new Config.Document({
+                  type: "document",
+                  info: new Config.Info({
+                    mcp: new ConfigMCP.Info({
+                      servers: { resources: new ConfigMCP.Remote({ type: "remote", url, oauth: false }) },
+                    }),
+                  }),
+                }),
+              ]),
+          }),
+        ),
+        Layer.succeed(Location.Service, Location.Service.of(location({ directory }))),
+        Layer.mock(EventV2.Service, {
+          subscribe: () => Stream.never,
+          publish: (definition) =>
+            Effect.sync(() => {
+              if (definition.type === "mcp.resources.changed" && ++resourceChanges === 2)
+                Deferred.doneUnsafe(changed, Exit.void)
+              return undefined as never
+            }),
+        }),
+        Layer.mock(Form.Service, {}),
+        Layer.mock(Integration.Service, {
+          connection: {
+            active: unusedIntegration,
+            resolve: unusedIntegration,
+            key: unusedIntegration,
+            oauth: unusedIntegration,
+            update: unusedIntegration,
+            remove: unusedIntegration,
+          },
+          attempt: {
+            status: unusedIntegration,
+            complete: unusedIntegration,
+            cancel: unusedIntegration,
+          },
+        }),
+        Layer.mock(Credential.Service, {}),
+      ),
+    ),
+  )
+}
 
 const mcp = Layer.mock(MCP.Service, {
   tools: () =>
@@ -239,6 +416,297 @@ test("applies the configured MCP execution timeout to prompts", async () => {
   )
 
   await expect(result).rejects.toThrow("Request timed out")
+})
+
+test("applies configured MCP timeouts to resource operations", async () => {
+  const catalog = Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const connection = yield* MCPClient.connect(
+          "resource-catalog-timeout",
+          new ConfigMCP.Local({
+            type: "local",
+            command: [process.execPath, path.join(import.meta.dir, "fixture/mcp-timeout.ts")],
+            environment: { MCP_TIMEOUT_TARGET: "resource-catalog" },
+            timeout: new ConfigMCP.Timeout({ catalog: 10 }),
+          }),
+          import.meta.dir,
+        )
+        return yield* connection.resources()
+      }),
+    ),
+  )
+  await expect(catalog).rejects.toThrow("Request timed out")
+
+  const read = Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const connection = yield* MCPClient.connect(
+          "resource-read-timeout",
+          new ConfigMCP.Local({
+            type: "local",
+            command: [process.execPath, path.join(import.meta.dir, "fixture/mcp-timeout.ts")],
+            timeout: new ConfigMCP.Timeout({ execution: 10 }),
+          }),
+          import.meta.dir,
+        )
+        return yield* connection.readResource({ uri: "test://slow" })
+      }),
+    ),
+  )
+  await expect(read).rejects.toThrow("Request timed out")
+})
+
+test("lists, reads, and invalidates MCP resources", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* resourceServer({ listChanged: true })
+        server.state.resourcePages = {
+          initial: {
+            items: [{ name: "Readme", uri: "docs://readme", description: "Project docs" }],
+            nextCursor: "resources-2",
+          },
+          "resources-2": { items: [{ name: "Logo", uri: "docs://logo", mimeType: "image/png" }] },
+        }
+        server.state.templatePages = {
+          initial: {
+            items: [{ name: "File", uriTemplate: "docs://{path}" }],
+            nextCursor: "templates-2",
+          },
+          "templates-2": { items: [{ name: "Issue", uriTemplate: "issue://{id}", description: "Issue" }] },
+        }
+        const connection = yield* MCPClient.connect(
+          "resources",
+          new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+          import.meta.dir,
+        )
+
+        expect(yield* connection.resources()).toEqual([
+          { name: "Readme", uri: "docs://readme", description: "Project docs", mimeType: undefined },
+          { name: "Logo", uri: "docs://logo", description: undefined, mimeType: "image/png" },
+        ])
+        expect(yield* connection.resourceTemplates()).toEqual([
+          { name: "File", uriTemplate: "docs://{path}", description: undefined, mimeType: undefined },
+          { name: "Issue", uriTemplate: "issue://{id}", description: "Issue", mimeType: undefined },
+        ])
+        expect(yield* connection.readResource({ uri: "docs://readme" })).toEqual({
+          contents: [
+            { type: "text", uri: "docs://readme", text: "hello", mimeType: "text/plain" },
+            { type: "blob", uri: "docs://logo", blob: "aGVsbG8=", mimeType: "image/png" },
+          ],
+        })
+
+        const changed = yield* Deferred.make<void>()
+        connection.onResourcesChanged(() => Deferred.doneUnsafe(changed, Exit.void))
+        yield* Effect.promise(server.sendResourceListChanged)
+        yield* Deferred.await(changed)
+      }),
+    ),
+  )
+})
+
+test("shares scoped MCP resource subscriptions", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* resourceServer({ subscribe: true })
+        const connection = yield* MCPClient.connect(
+          "resources",
+          new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+          import.meta.dir,
+        )
+        const firstScope = yield* Scope.make()
+        const secondScope = yield* Scope.make()
+        const secondUpdate = yield* Deferred.make<void>()
+
+        expect(
+          yield* connection
+            .subscribeResource({ uri: "docs://readme" }, () => {
+              throw new Error("listener failed")
+            })
+            .pipe(Scope.provide(firstScope)),
+        ).toBe(true)
+        expect(
+          yield* connection
+            .subscribeResource({ uri: "docs://readme" }, () => Deferred.doneUnsafe(secondUpdate, Exit.void))
+            .pipe(Scope.provide(secondScope)),
+        ).toBe(true)
+        expect(server.state.subscriptions).toEqual(["docs://readme"])
+
+        yield* Effect.promise(() => server.sendResourceUpdated("docs://readme"))
+        yield* Deferred.await(secondUpdate)
+        yield* Scope.close(firstScope, Exit.void)
+        expect(server.state.unsubscriptions).toEqual([])
+        yield* Scope.close(secondScope, Exit.void)
+        expect(server.state.unsubscriptions).toEqual(["docs://readme"])
+      }),
+    ),
+  )
+})
+
+test("releases MCP resource subscriptions provided a closed scope", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* resourceServer({ subscribe: true })
+        const connection = yield* MCPClient.connect(
+          "resources",
+          new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+          import.meta.dir,
+        )
+        const closed = yield* Scope.make()
+        yield* Scope.close(closed, Exit.void)
+        expect(
+          yield* connection
+            .subscribeResource({ uri: "docs://readme" }, () => {})
+            .pipe(
+              Scope.provide(closed),
+              Effect.timeoutOrElse({
+                duration: "1 second",
+                orElse: () => Effect.fail(new Error("closed-scope resource subscription deadlocked")),
+              }),
+            ),
+        ).toBe(true)
+        expect(server.state.subscriptions).toEqual(["docs://readme"])
+        expect(server.state.unsubscriptions).toEqual(["docs://readme"])
+      }),
+    ),
+  )
+})
+
+test("restores MCP resource state after HTTP session recovery", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* resourceServer({ subscribe: true, listChanged: true })
+        server.state.resources = [{ name: "Readme", uri: "docs://readme" }]
+        const connection = yield* MCPClient.connect(
+          "resources",
+          new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+          import.meta.dir,
+        )
+        const changed = yield* Deferred.make<void>()
+        const subscriptionScope = yield* Scope.make()
+        connection.onResourcesChanged(() => Deferred.doneUnsafe(changed, Exit.void))
+        expect(
+          yield* connection
+            .subscribeResource({ uri: "docs://readme" }, () => {})
+            .pipe(Scope.provide(subscriptionScope)),
+        ).toBe(true)
+
+        yield* Effect.promise(server.restart)
+        server.state.resources = [{ name: "Guide", uri: "docs://guide" }]
+        const resubscribed = yield* Deferred.make<void>()
+        server.state.onSubscription = () => Deferred.doneUnsafe(resubscribed, Exit.void)
+        expect((yield* connection.resources()).map((resource) => resource.uri)).toEqual(["docs://guide"])
+        yield* Deferred.await(changed)
+        yield* Deferred.await(resubscribed)
+        expect(server.state.subscriptions).toEqual(["docs://readme", "docs://readme"])
+        yield* Scope.close(subscriptionScope, Exit.void)
+      }),
+    ),
+  )
+})
+
+test("skips unsupported MCP resource subscriptions", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* resourceServer()
+        const connection = yield* MCPClient.connect(
+          "resources",
+          new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+          import.meta.dir,
+        )
+        expect(yield* connection.subscribeResource({ uri: "docs://readme" }, () => {})).toBe(false)
+        expect(server.state.subscriptions).toEqual([])
+      }),
+    ),
+  )
+})
+
+test("skips MCP resource requests when the capability is absent", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* resourceServer({ resources: false })
+        const connection = yield* MCPClient.connect(
+          "resources",
+          new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+          import.meta.dir,
+        )
+        expect(yield* connection.resources()).toEqual([])
+        expect(yield* connection.resourceTemplates()).toEqual([])
+        expect(yield* connection.readResource({ uri: "docs://readme" })).toBeUndefined()
+        expect({ resources: server.state.resourceLists, templates: server.state.templateLists }).toEqual({
+          resources: 0,
+          templates: 0,
+        })
+      }),
+    ),
+  )
+})
+
+test("caches and invalidates MCP resource catalogs", async () => {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* resourceServer({ listChanged: true, subscribe: true })
+        server.state.resources = [{ name: "Readme", uri: "docs://readme" }]
+        server.state.templates = [{ name: "File", uriTemplate: "docs://{path}" }]
+        server.state.resourceListFailures = 1
+        const changed = yield* Deferred.make<void>()
+
+        yield* Effect.gen(function* () {
+          const service = yield* MCP.Service
+          expect(yield* service.resourceCatalog()).toEqual({
+            resources: [],
+            templates: [
+              {
+                server: "resources",
+                name: "File",
+                uriTemplate: "docs://{path}",
+                description: undefined,
+                mimeType: undefined,
+              },
+            ],
+          })
+          expect((yield* service.resourceCatalog()).resources).toEqual([
+            {
+              server: "resources",
+              name: "Readme",
+              uri: "docs://readme",
+              description: undefined,
+              mimeType: undefined,
+            },
+          ])
+          yield* service.resourceCatalog()
+          expect({ resources: server.state.resourceLists, templates: server.state.templateLists }).toEqual({
+            resources: 2,
+            templates: 1,
+          })
+
+          server.state.resources = [{ name: "Guide", uri: "docs://guide" }]
+          yield* Effect.promise(server.sendResourceListChanged)
+          yield* Deferred.await(changed)
+          expect((yield* service.resourceCatalog()).resources.map((resource) => resource.uri)).toEqual(["docs://guide"])
+          expect({ resources: server.state.resourceLists, templates: server.state.templateLists }).toEqual({
+            resources: 3,
+            templates: 2,
+          })
+          expect(yield* service.readResource({ server: "resources", uri: "docs://readme" })).toEqual({
+            server: "resources",
+            uri: "docs://readme",
+            contents: [
+              { type: "text", uri: "docs://readme", text: "hello", mimeType: "text/plain" },
+              { type: "blob", uri: "docs://logo", blob: "aGVsbG8=", mimeType: "image/png" },
+            ],
+          })
+        }).pipe(Effect.provide(resourceMcpLayer(server.url, changed)))
+      }),
+    ),
+  )
 })
 
 it.effect("advertises MCP output schemas to Code Mode", () =>
