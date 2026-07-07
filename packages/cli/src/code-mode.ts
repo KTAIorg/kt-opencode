@@ -1,18 +1,18 @@
-export * as ServerCodeMode from "./code-mode"
+export * as CodeModeHost from "./code-mode"
 
 import { NodeHttpClient } from "@effect/platform-node"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { ToolRegistry } from "@opencode-ai/core/tool/registry"
 import { OpenAPI, Tool } from "@opencode-ai/codemode"
+import { Api } from "@opencode-ai/server/api"
+import { ServerAuth } from "@opencode-ai/server/auth"
 import { Effect, Layer } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { OpenApi } from "effect/unstable/httpapi"
 import type { Server } from "node:http"
-import { Api } from "./api"
-import { ServerAuth } from "./auth"
 
-export function replacement(server: Server, password: string): LayerNode.Replacement {
-  return ToolRegistry.codeModeReplacement(makeTools(client(server), password))
+export function replacements(server: Server, password: string): LayerNode.Replacements {
+  return [ToolRegistry.codeModeReplacement(makeTools(client(server), password))]
 }
 
 export function makeTools(client: Layer.Layer<HttpClient.HttpClient>, password: string): ToolRegistry.CodeModeTools {

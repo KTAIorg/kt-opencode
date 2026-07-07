@@ -33,6 +33,7 @@
   "dependencies": {
     "@effect/platform-node": "catalog:",
     "@opencode-ai/client": "workspace:*",
+    "@opencode-ai/codemode": "workspace:*",
     "@opencode-ai/core": "workspace:*",
     "@opencode-ai/plugin": "workspace:*",
     "@opencode-ai/schema": "workspace:*",

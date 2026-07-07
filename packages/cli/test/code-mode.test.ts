@@ -2,9 +2,9 @@ import { expect, test } from "bun:test"
 import { CodeMode } from "@opencode-ai/codemode"
 import { Effect, Layer } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
-import { ServerCodeMode } from "../src/code-mode"
+import { CodeModeHost } from "../src/code-mode"
 
-test("exposes the authenticated server API through CodeMode", async () => {
+test("exposes the authenticated OpenCode API through CodeMode", async () => {
   const requests: Array<{ readonly url: string; readonly authorization?: string }> = []
   const client = Layer.succeed(
     HttpClient.HttpClient,
@@ -21,7 +21,7 @@ test("exposes the authenticated server API through CodeMode", async () => {
       )
     }),
   )
-  const result = await CodeMode.make({ tools: ServerCodeMode.makeTools(client, "secret") })
+  const result = await CodeMode.make({ tools: CodeModeHost.makeTools(client, "secret") })
     .execute("return await tools.opencode.v2.health.get({})")
     .pipe(Effect.runPromise)
 

@@ -10,15 +10,15 @@ import { HealthGroup } from "@opencode-ai/protocol/groups/health"
 import { Context, Effect, Layer, Option } from "effect"
 import { HttpClient, HttpClientRequest, HttpRouter, HttpServer } from "effect/unstable/http"
 import { HttpApi, HttpApiClient } from "effect/unstable/httpapi"
-import { createServer } from "node:http"
+import { createServer, type Server } from "node:http"
 import { ServerAuth } from "./auth"
-import { ServerCodeMode } from "./code-mode"
 import { createRoutes } from "./routes"
 
 export type Options = {
   readonly hostname: string
   readonly port: Option.Option<number>
   readonly password: string
+  readonly replacements?: (server: Server) => LayerNode.Replacements
 }
 
 const ReadinessApi = HttpApi.make("readiness").add(HealthGroup)
@@ -43,21 +43,21 @@ export const start = Effect.fn("ServerProcess.start")(function* (options: Option
 })
 
 function listen(options: Options) {
-  if (Option.isSome(options.port)) return bind(options.hostname, options.port.value, options.password)
+  if (Option.isSome(options.port)) return bind(options, options.port.value)
   const next = (port: number): ReturnType<typeof bind> =>
-    bind(options.hostname, port, options.password).pipe(
+    bind(options, port).pipe(
       Effect.catch((error) => (port === 65_535 ? Effect.fail(error) : next(port + 1))),
     )
   return next(4096)
 }
 
-function bind(hostname: string, port: number, password: string) {
+function bind(options: Options, port: number) {
   const server = createServer()
   return Layer.build(
-    HttpRouter.serve(createRoutes(password, [ServerCodeMode.replacement(server, password)]), {
+    HttpRouter.serve(createRoutes(options.password, options.replacements?.(server)), {
       disableListenLog: true,
     }).pipe(
-      Layer.provideMerge(NodeHttpServer.layer(() => server, { port, host: hostname })),
+      Layer.provideMerge(NodeHttpServer.layer(() => server, { port, host: options.hostname })),
       Layer.provide(AppNodeBuilder.build(LayerNode.group([Credential.node, PermissionSaved.node, Project.node]))),
     ),
   ).pipe(

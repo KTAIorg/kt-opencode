@@ -13,6 +13,7 @@ import { randomBytes, randomUUID } from "node:crypto"
 import path from "node:path"
 import { Effect, FileSystem, Logger, Option, Redacted, Schedule, Schema } from "effect"
 import { HttpServer } from "effect/unstable/http"
+import { CodeModeHost } from "./code-mode"
 import { Env } from "./env"
 import { ServiceConfig } from "./services/service-config"
 import { Updater } from "./services/updater"
@@ -63,6 +64,7 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
         hostname: options.hostname ?? config.hostname ?? "127.0.0.1",
         port: Option.fromNullishOr(options.port ?? config.port),
         password,
+        replacements: (server) => CodeModeHost.replacements(server, password),
       }).pipe(Effect.provide(Logger.layer([], { mergeWithExisting: false })))
       if (options.mode === "service") yield* register(address, password)
       const url = HttpServer.formatAddress(address)
