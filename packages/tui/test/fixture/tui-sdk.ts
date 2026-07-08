@@ -69,7 +69,8 @@ export type FetchHandler = (url: URL) => Response | Promise<Response> | undefine
 export function createFetch(override?: FetchHandler, events?: ReturnType<typeof createEventStream>) {
   const session = [] as URL[]
   const fetch = (async (input: RequestInfo | URL) => {
-    const url = new URL(input instanceof Request ? input.url : String(input))
+    const request = input instanceof Request ? input : new Request(input)
+    const url = new URL(request.url)
     if (url.pathname === "/session") session.push(url)
     const overridden = await override?.(url)
     if (overridden) return overridden
@@ -117,6 +118,10 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
       })
     if (url.pathname === "/api/reference")
       return json({ location: { directory, project: { id: "proj_test", directory } }, data: [] })
+    if (url.pathname === "/api/search/provider") {
+      if (request.method === "POST") return new Response(null, { status: 204 })
+      return json({ location: { directory, project: { id: "proj_test", directory } }, data: null })
+    }
     if (url.pathname === "/provider") return json({ all: [], default: {}, connected: [] })
     if (url.pathname === "/session") return json([])
     if (url.pathname === "/vcs") return json({ branch: "main" })

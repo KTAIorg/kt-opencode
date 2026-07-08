@@ -161,7 +161,7 @@ test("pages older messages through nested message state", async () => {
 
   try {
     await data.session.message.refresh(sessionID)
-    expect(pages).toEqual([{ limit: "50", order: "desc", cursor: null }])
+    expect(pages).toEqual([{ limit: "25", order: "desc", cursor: null }])
     expect(data.session.message.ids(sessionID)).toEqual(first.toReversed().map((message) => message.id))
     expect(data.session.message.cursor(sessionID)).toBe("cursor-older")
     expect(data.session.message.complete(sessionID)).toBe(false)
@@ -169,8 +169,8 @@ test("pages older messages through nested message state", async () => {
 
     await data.session.message.more(sessionID)
     expect(pages).toEqual([
-      { limit: "50", order: "desc", cursor: null },
-      { limit: "50", order: null, cursor: "cursor-older" },
+      { limit: "25", order: "desc", cursor: null },
+      { limit: "25", order: null, cursor: "cursor-older" },
     ])
     expect(data.session.message.ids(sessionID)[0]).toBe("msg_1")
     expect(data.session.message.ids(sessionID)).toHaveLength(51)
