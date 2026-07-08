@@ -2270,11 +2270,17 @@ class Interpreter<R> {
       })
     }
 
-    const items = Array.isArray(args[0]) ? args[0] : spreadItems(args[0])
+    // Promise combinators consume arrays through their iterator, which visits holes as
+    // explicit undefined values instead of preserving sparse positions like Array.map.
+    const items = Array.isArray(args[0]) ? [...args[0]] : spreadItems(args[0])
     if (items === undefined) {
-      throw new InterpreterRuntimeError(
-        `Promise.${ref.name} expects an array of promises or plain values (e.g. Promise.${ref.name}(items.map((item) => tools.ns.tool(item)))).`,
-        node,
+      return this.createPromise(
+        Effect.fail(
+          new InterpreterRuntimeError(
+            `Promise.${ref.name} expects an array of promises or plain values (e.g. Promise.${ref.name}(items.map((item) => tools.ns.tool(item)))).`,
+            node,
+          ).as("TypeError"),
+        ),
       )
     }
 

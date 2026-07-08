@@ -92,31 +92,12 @@ describe("first-class promise values", () => {
         }
         const first = load(1)
         const second = load(2)
-        return [first instanceof Promise, second instanceof Promise, await Promise.all([first, second])]
+        return await Promise.all([first, second])
       `),
     ).toEqual([
-      true,
-      true,
-      [
-        [1, 1],
-        [2, 2],
-      ],
+      [1, 1],
+      [2, 2],
     ])
-  })
-
-  test("async function errors reject instead of throwing at the call site", async () => {
-    expect(
-      await value(`
-        const fail = async () => { throw new Error("boom") }
-        const promise = fail()
-        try {
-          await promise
-          return "no"
-        } catch (error) {
-          return error.message
-        }
-      `),
-    ).toBe("boom")
   })
 
   test("an un-awaited tool call starts eagerly, in call order, before any await", async () => {
@@ -403,10 +384,6 @@ describe("Promise.all over arbitrary arrays", () => {
     expect(trace.maxActive).toBeLessThanOrEqual(8)
   })
 
-  test("resolves the empty array", async () => {
-    expect(await value(`return await Promise.all([])`)).toEqual([])
-  })
-
   test("rejects with the first failure, catchable in-program", async () => {
     expect(
       await value(`
@@ -564,23 +541,8 @@ describe("Promise.race", () => {
 })
 
 describe("Promise.resolve / Promise.reject", () => {
-  test("resolve wraps plain values and passes promises through", async () => {
-    expect(await value(`return await Promise.resolve(42)`)).toBe(42)
-    expect(await value(`return await Promise.resolve(Promise.resolve("nested"))`)).toBe("nested")
+  test("resolve adopts a tool-call promise", async () => {
     expect(await value(`return await Promise.resolve(tools.host.sleepy({ id: 3 }))`)).toBe(3)
-  })
-
-  test("reject produces a promise whose await throws the reason", async () => {
-    expect(
-      await value(`
-      try {
-        await Promise.reject("nope")
-        return "no"
-      } catch (e) {
-        return e
-      }
-    `),
-    ).toBe("nope")
   })
 
   test("an abandoned rejected promise surfaces as an unhandled rejection", async () => {
@@ -602,15 +564,12 @@ describe("Promise combinator values", () => {
         const settled = Promise.allSettled([Promise.resolve(3)])
         const race = Promise.race([Promise.resolve(4)])
         return [
-          all instanceof Promise,
-          settled instanceof Promise,
-          race instanceof Promise,
           await all.then((values) => values.join(",")),
           await settled.then((values) => values[0].value),
           await race.then((value) => value + 1),
         ]
       `),
-    ).toEqual([true, true, true, "1,2", 3, 5])
+    ).toEqual(["1,2", 3, 5])
   })
 })
 

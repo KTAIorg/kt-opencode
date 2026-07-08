@@ -121,9 +121,14 @@ closing. Timeout and external interruption cancel immediately instead.
 
 ### Confirmed defects
 
-- [ ] Return rejected promises for invalid `Promise.all`/`allSettled`/`race` inputs instead of throwing during the call.
 - [ ] Align handler callability with the values CodeMode reports as functions, or document the narrower callback
       allowlist. For example, unsupported constructor-like callables are currently treated as absent handlers.
+- [ ] Run synchronous Promise reactions to completion. Reactions currently start in FIFO order but can interleave when
+      Effect auto-yields a long synchronous handler.
+- [ ] Give `Promise.race` settlement the same reaction turn as native promises. Its result currently settles before an
+      independently queued reaction in several Test262 ordering cases.
+- [ ] Drain queued reactions before classifying rejected sources as unhandled. A handler attached by an already-queued
+      reaction can currently lose to execution-boundary rejection reporting.
 
 ### Deliberate deviations and open decisions
 
@@ -152,6 +157,7 @@ closing. Timeout and external interruption cancel immediately instead.
 - Promise reactions and plain, pending, or settled `await` continuations start in deterministic FIFO order. Nested
   reactions preserve enqueue order, while an async reaction can suspend without blocking the next queued reaction.
 - Awaiting the same promise twice settles it once.
+- Sparse combinator inputs consume holes as explicit `undefined` values.
 
 ### Missing coverage
 
@@ -182,7 +188,7 @@ represent accurately rather than guessing semantics.
 | Keep an owned tree-walking interpreter. | The product need is bounded tool orchestration, not arbitrary JavaScript. Owning the language surface keeps authority and behavior explicit. |
 | Treat schemas as the model-facing interface. | Signatures drive correct calls; Effect Schema also provides the runtime validation boundary, while JSON Schema supports adapter interoperability. |
 | Keep authority host-owned. | CodeMode can only confine programs to supplied tools. The host chooses those tools, and each tool enforces its own authorization and side-effect policy. |
-| Use progressive catalog disclosure plus search. | Large tool sets should not consume the prompt, but every namespace must remain discoverable and speculative search calls should remain valid. |
+| Use progressive catalog disclosure plus search. | Large tool sets should not consume the prompt, but every namespace must remain discoverable and speculative search calls must remain valid. |
 | Start tool promises eagerly and supervise them. | This preserves normal call-time parallelism while giving each call run-once settlement and interruption safety. |
 | Keep files outside the sandbox value space. | Models should compose structured data without routing binary payloads through generated code or context. |
 | Treat `execute` as the model-facing invocation boundary. | Nested calls are implementation details of one orchestration program. Reusing the outer context and bounding only the final result preserves complete intermediate data without inventing durable child-call identities. |
