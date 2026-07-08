@@ -139,6 +139,145 @@ Recent work
     ])
   })
 
+  test("defaults missing model capabilities to text and image input", () => {
+    const messages = toLLMMessages(
+      [
+        SessionMessage.User.make({
+          id: id("user-local-image"),
+          type: "user",
+          text: "Inspect this image",
+          files: [
+            FileAttachment.make({
+              uri: "data:image/png;base64,AAECAw==",
+              mime: "image/png",
+              name: "image.png",
+            }),
+            FileAttachment.make({
+              uri: "data:application/pdf;base64,JVBERg==",
+              mime: "application/pdf",
+              name: "document.pdf",
+            }),
+          ],
+          time: { created },
+        }),
+      ],
+      model,
+    )
+
+    expect(messages[0]?.content).toEqual([
+      { type: "text", text: "Inspect this image" },
+      { type: "media", mediaType: "image/png", data: "data:image/png;base64,AAECAw==", filename: "image.png" },
+      {
+        type: "text",
+        text: 'ERROR: Cannot read "document.pdf" (this model does not support pdf input). Inform the user.',
+      },
+    ])
+  })
+
+  test("uses explicit model input capabilities instead of attachment defaults", () => {
+    const messages = toLLMMessages(
+      [
+        SessionMessage.User.make({
+          id: id("user-unsupported-pdf"),
+          type: "user",
+          text: "Inspect these files",
+          files: [
+            FileAttachment.make({
+              uri: "data:image/png;base64,AAECAw==",
+              mime: "image/png",
+              name: "image.png",
+            }),
+            FileAttachment.make({
+              uri: "data:application/pdf;base64,JVBERg==",
+              mime: "application/pdf",
+              name: "document.pdf",
+            }),
+          ],
+          time: { created },
+        }),
+      ],
+      model,
+      { tools: true, input: ["text", "pdf"], output: ["text"] },
+    )
+
+    expect(messages[0]?.content).toEqual([
+      { type: "text", text: "Inspect these files" },
+      {
+        type: "text",
+        text: 'ERROR: Cannot read "image.png" (this model does not support image input). Inform the user.',
+      },
+      {
+        type: "media",
+        mediaType: "application/pdf",
+        data: "data:application/pdf;base64,JVBERg==",
+        filename: "document.pdf",
+      },
+    ])
+  })
+
+  test("treats explicit empty input capabilities as authoritative", () => {
+    const messages = toLLMMessages(
+      [
+        SessionMessage.User.make({
+          id: id("user-empty-capabilities"),
+          type: "user",
+          text: "Inspect this image",
+          files: [
+            FileAttachment.make({
+              uri: "data:image/png;base64,AAECAw==",
+              mime: "image/png",
+              name: "image.png",
+            }),
+          ],
+          time: { created },
+        }),
+      ],
+      model,
+      { tools: false, input: [], output: [] },
+    )
+
+    expect(messages[0]?.content).toEqual([
+      { type: "text", text: "Inspect this image" },
+      {
+        type: "text",
+        text: 'ERROR: Cannot read "image.png" (this model does not support image input). Inform the user.',
+      },
+    ])
+  })
+
+  test("classifies audio and video MIME families through explicit capabilities", () => {
+    const messages = toLLMMessages(
+      [
+        SessionMessage.User.make({
+          id: id("user-media-capabilities"),
+          type: "user",
+          text: "Inspect this media",
+          files: [
+            FileAttachment.make({
+              uri: "data:audio/mpeg;base64,AAECAw==",
+              mime: "audio/mpeg",
+              name: "audio.mp3",
+            }),
+            FileAttachment.make({
+              uri: "data:video/webm;base64,AAECAw==",
+              mime: "video/webm",
+              name: "video.webm",
+            }),
+          ],
+          time: { created },
+        }),
+      ],
+      model,
+      { tools: false, input: ["text", "audio", "video"], output: ["text"] },
+    )
+
+    expect(messages[0]?.content).toEqual([
+      { type: "text", text: "Inspect this media" },
+      { type: "media", mediaType: "audio/mpeg", data: "data:audio/mpeg;base64,AAECAw==", filename: "audio.mp3" },
+      { type: "media", mediaType: "video/webm", data: "data:video/webm;base64,AAECAw==", filename: "video.webm" },
+    ])
+  })
+
   test("replays durable tool media into canonical tool messages without structured base64", () => {
     const messages = toLLMMessages(
       [

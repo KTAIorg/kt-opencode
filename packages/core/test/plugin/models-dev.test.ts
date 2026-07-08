@@ -76,6 +76,26 @@ describe("ModelsDevPlugin", () => {
                     },
                   },
                 },
+                default: {
+                  id: "default",
+                  name: "Default",
+                  release_date: "2026-01-01",
+                  reasoning: false,
+                  temperature: true,
+                  tool_call: false,
+                  limit: { context: 128_000, output: 8_192 },
+                },
+                explicit: {
+                  id: "explicit",
+                  name: "Explicit",
+                  release_date: "2026-01-01",
+                  attachment: true,
+                  reasoning: false,
+                  temperature: true,
+                  tool_call: false,
+                  modalities: { input: ["audio"], output: ["audio"] },
+                  limit: { context: 128_000, output: 8_192 },
+                },
               },
             },
           } satisfies Record<string, ModelsDev.Provider>),
@@ -92,9 +112,14 @@ describe("ModelsDevPlugin", () => {
       const providerID = ProviderV2.ID.make("acme")
       const base = yield* catalog.model.get(providerID, ModelV2.ID.make("gpt-5.4"))
       const fast = yield* catalog.model.get(providerID, ModelV2.ID.make("gpt-5.4-fast"))
+      const defaults = yield* catalog.model.get(providerID, ModelV2.ID.make("default"))
+      const explicit = yield* catalog.model.get(providerID, ModelV2.ID.make("explicit"))
 
       expect(base?.variants).toEqual([])
       expect(base?.request.body).toEqual({})
+      expect(base?.capabilities).toEqual({ tools: true, input: ["text"], output: ["text"] })
+      expect(defaults?.capabilities).toEqual({ tools: false, input: ["text", "image"], output: ["text"] })
+      expect(explicit?.capabilities).toEqual({ tools: false, input: ["audio"], output: ["audio"] })
       expect(fast).toMatchObject({
         id: "gpt-5.4-fast",
         providerID: "acme",
@@ -159,6 +184,9 @@ describe("ModelsDevPlugin", () => {
               connections: [],
             }),
           ])
+          expect(yield* catalog.model.get(ProviderV2.ID.opencode, ModelV2.ID.make("gpt-5.5"))).toMatchObject({
+            capabilities: { tools: true, input: ["text", "image"], output: ["text"] },
+          })
         }).pipe(Effect.provide(AppNodeBuilder.build(ModelsDev.node))),
       (previous) =>
         Effect.sync(() => {

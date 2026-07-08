@@ -2,6 +2,7 @@ import { define } from "./internal"
 import type { ModelV2Info } from "@opencode-ai/sdk/v2/types"
 import { Effect, Stream } from "effect"
 import { EventV2 } from "../event"
+import { ModelV2 } from "../model"
 import { ModelsDev } from "../models-dev"
 import { ProviderV2 } from "../provider"
 
@@ -97,11 +98,12 @@ function applyModel(
         url: model.provider?.api,
         settings: {},
       }
-  draft.capabilities = {
+  const capabilities = ModelV2.Capabilities.defaults({
     tools: model.tool_call,
-    input: [...(model.modalities?.input ?? [])],
-    output: [...(model.modalities?.output ?? [])],
-  }
+    input: model.modalities?.input ?? (model.attachment === false ? ["text"] : undefined),
+    output: model.modalities?.output,
+  })
+  draft.capabilities = { ...capabilities, input: [...capabilities.input], output: [...capabilities.output] }
   draft.variants = []
   draft.time.released = released(model.release_date)
   draft.cost = input.cost ?? cost(model.cost)

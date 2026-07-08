@@ -1,5 +1,5 @@
 import { describe, expect, beforeAll, beforeEach, afterAll } from "bun:test"
-import { Effect, Layer, Ref } from "effect"
+import { Effect, Layer, Ref, Schema } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNodePlatform } from "@opencode-ai/core/effect/app-node-platform"
@@ -127,6 +127,21 @@ const initialState: MockState = {
 }
 
 describe("ModelsDev Service", () => {
+  it.effect("allows models.dev entries without legacy attachment metadata", () =>
+    Effect.sync(() => {
+      const result = Schema.decodeUnknownSync(ModelsDev.Model)({
+        id: "no-attachment-model",
+        name: "No Attachment Model",
+        release_date: "2026-01-01",
+        reasoning: false,
+        temperature: true,
+        tool_call: true,
+        limit: { context: 128000, output: 8192 },
+      })
+
+      expect(result.attachment).toBeUndefined()
+    }),
+  )
   it.live("get() returns providers from disk when cache file exists", () =>
     Effect.gen(function* () {
       yield* writeCache(fixture)

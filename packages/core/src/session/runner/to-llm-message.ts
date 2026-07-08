@@ -7,6 +7,7 @@ import {
   type Model,
   type ProviderMetadata,
 } from "@opencode-ai/llm"
+import type { ModelV2 } from "../../model"
 import { SessionMessage } from "../message"
 import type { FileAttachment } from "../prompt"
 
@@ -17,6 +18,23 @@ const media = (file: FileAttachment): ContentPart => ({
   filename: file.name,
   metadata: file.description === undefined ? undefined : { description: file.description },
 })
+
+const modality = (mime: string) => {
+  if (mime.startsWith("image/")) return "image"
+  if (mime.startsWith("audio/")) return "audio"
+  if (mime.startsWith("video/")) return "video"
+  if (mime === "application/pdf") return "pdf"
+  return undefined
+}
+
+const attachment = (file: FileAttachment, capabilities?: ModelV2.Capabilities): ContentPart => {
+  const type = modality(file.mime)
+  if (!type || (capabilities?.input ?? ["text", "image"]).includes(type)) return media(file)
+  return {
+    type: "text",
+    text: `ERROR: Cannot read ${file.name ? `"${file.name}"` : type} (this model does not support ${type} input). Inform the user.`,
+  }
+}
 
 const toolInput = (tool: SessionMessage.AssistantTool) => {
   if (tool.state.status !== "pending") return tool.state.input
@@ -112,7 +130,11 @@ const assistant = (message: SessionMessage.Assistant, model: Model) => {
   ]
 }
 
-function toLLMMessage(message: SessionMessage.Message, model: Model): Message[] {
+function toLLMMessage(
+  message: SessionMessage.Message,
+  model: Model,
+  capabilities?: ModelV2.Capabilities,
+): Message[] {
   switch (message.type) {
     case "agent-switched":
     case "model-switched":
@@ -122,7 +144,10 @@ function toLLMMessage(message: SessionMessage.Message, model: Model): Message[] 
         Message.make({
           id: message.id,
           role: "user",
-          content: [{ type: "text", text: message.text }, ...(message.files ?? []).map(media)],
+          content: [
+            { type: "text", text: message.text },
+            ...(message.files ?? []).map((file) => attachment(file, capabilities)),
+          ],
           metadata: {
             ...message.metadata,
             ...(message.agents?.length ? { agents: message.agents } : {}),
@@ -167,5 +192,8 @@ ${message.recent}
 }
 
 /** Translate projected V2 Session history into canonical @opencode-ai/llm context. */
-export const toLLMMessages = (messages: readonly SessionMessage.Message[], model: Model) =>
-  messages.flatMap((message) => toLLMMessage(message, model))
+export const toLLMMessages = (
+  messages: readonly SessionMessage.Message[],
+  model: Model,
+  capabilities?: ModelV2.Capabilities,
+) => messages.flatMap((message) => toLLMMessage(message, model, capabilities))

@@ -530,8 +530,16 @@ describe("Config", () => {
                     options: { apiKey: "secret" },
                     models: {
                       model: {
+                        attachment: true,
                         options: { reasoningEffort: "high" },
                         variants: { fast: { temperature: 0.2 } },
+                      },
+                      text: {
+                        attachment: false,
+                      },
+                      audio: {
+                        attachment: true,
+                        modalities: { input: ["audio"], output: ["audio"] },
                       },
                     },
                   },
@@ -608,8 +616,15 @@ describe("Config", () => {
               request: { body: { apiKey: "secret" } },
               models: {
                 model: {
+                  capabilities: { tools: false, input: ["text", "image"], output: ["text"] },
                   request: { body: { reasoningEffort: "high" } },
                   variants: [{ id: "fast", body: { temperature: 0.2 } }],
+                },
+                text: {
+                  capabilities: { tools: false, input: ["text"], output: ["text"] },
+                },
+                audio: {
+                  capabilities: { tools: false, input: ["audio"], output: ["audio"] },
                 },
               },
             })
