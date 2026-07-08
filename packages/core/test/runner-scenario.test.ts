@@ -224,11 +224,13 @@ describe("RunnerScenario", () => {
   it.effect("interrupts a runner that hangs after its final response", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>()
+      const interrupted = yield* Deferred.make<void>()
       const scenario = yield* RunnerScenario.make((llm) =>
         LLM.stream(request("Hang")).pipe(
           Stream.runDrain,
           Effect.andThen(Deferred.succeed(started, undefined)),
           Effect.andThen(Effect.never),
+          Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
           Effect.provide(llm.layer),
         ),
       )
@@ -242,11 +244,12 @@ describe("RunnerScenario", () => {
 
       yield* Fiber.interrupt(run)
 
+      expect(Deferred.isDoneUnsafe(interrupted)).toBe(true)
       expect(run.pollUnsafe()).toBeDefined()
     }),
   )
 
-  it.effect("rejects running one scenario twice", () =>
+  it.effect("runs one scenario sequentially while retaining request history", () =>
     Effect.gen(function* () {
       const scenario = yield* RunnerScenario.make((llm) =>
         LLM.stream(request("Once")).pipe(Stream.runDrain, Effect.provide(llm.layer)),
@@ -254,13 +257,35 @@ describe("RunnerScenario", () => {
       yield* scenario.run(function* () {
         yield* (yield* scenario.llm.next()).respond.stop()
       })
+      yield* scenario.run(function* () {
+        yield* (yield* scenario.llm.next()).respond.stop()
+      })
+
+      expect(yield* scenario.llm.requests).toHaveLength(2)
+    }),
+  )
+
+  it.effect("rejects concurrent runs of one scenario", () =>
+    Effect.gen(function* () {
+      const scenario = yield* RunnerScenario.make((llm) =>
+        LLM.stream(request("Once")).pipe(Stream.runDrain, Effect.provide(llm.layer)),
+      )
+      const active = yield* scenario
+        .run(function* () {
+          yield* scenario.llm.next()
+          yield* Effect.never
+        })
+        .pipe(Effect.forkChild)
+      yield* Effect.yieldNow
+
       const failure = yield* scenario.run(function* (): Effect.gen.Return<void> {}).pipe(Effect.exit)
       expect(failure._tag).toBe("Failure")
-      if (failure._tag !== "Failure") throw new Error("Expected second run to fail")
+      if (failure._tag !== "Failure") throw new Error("Expected concurrent run to fail")
       const error = failure.cause.reasons.find((reason) => reason._tag === "Fail")
       expect(error?._tag).toBe("Fail")
       if (error?._tag !== "Fail") throw new Error("Expected a typed failure")
-      expect(error.error).toMatchObject({ message: "RunnerScenario.run may only be called once" })
+      expect(error.error).toMatchObject({ message: "RunnerScenario.run is already active" })
+      yield* Fiber.interrupt(active)
     }),
   )
 })

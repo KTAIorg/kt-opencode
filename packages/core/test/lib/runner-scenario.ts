@@ -14,9 +14,9 @@ class RunnerEndedError extends Error {
   }
 }
 
-class RunnerScenarioUsedError extends Error {
+class RunnerScenarioActiveError extends Error {
   constructor() {
-    super("RunnerScenario.run may only be called once")
+    super("RunnerScenario.run is already active")
   }
 }
 
@@ -48,29 +48,41 @@ export interface RunnerLLMCall {
   }
 }
 
+interface CallState {
+  readonly generation: number
+  readonly status: "pending" | "responded" | "closed"
+}
+
 interface State {
-  readonly started: boolean
   readonly accepting: boolean
-  readonly ended: boolean
+  readonly active: number | undefined
+  readonly nextGeneration: number
   readonly nextID: number
-  readonly calls: ReadonlyMap<number, "pending" | "responded" | "closed">
+  readonly calls: ReadonlyMap<number, CallState>
   readonly requests: ReadonlyArray<LLMRequest>
 }
 
 type Registration =
-  | { readonly _tag: "Registered"; readonly id: number }
+  | { readonly _tag: "Registered"; readonly id: number; readonly generation: number }
   | { readonly _tag: "Unexpected"; readonly error: Error }
 
 interface PendingCall {
+  readonly _tag: "Call"
+  readonly generation: number
   readonly id: number
   readonly call: RunnerLLMCall
 }
 
+interface RunnerEnd {
+  readonly _tag: "End"
+  readonly generation: number
+}
+
 interface RunnerLLMInternal {
   readonly llm: RunnerLLM
-  readonly begin: Effect.Effect<void, RunnerScenarioUsedError>
-  readonly finishInteraction: Effect.Effect<void, Error>
-  readonly end: Effect.Effect<void>
+  readonly begin: Effect.Effect<number, RunnerScenarioActiveError>
+  readonly finishInteraction: (generation: number) => Effect.Effect<void, Error>
+  readonly end: (generation: number) => Effect.Effect<void>
 }
 
 export interface RunnerLLM {
@@ -115,11 +127,11 @@ const toolCall = (
 }
 
 const makeRunnerLLM = Effect.gen(function* () {
-  const calls = yield* Queue.unbounded<PendingCall, Cause.Done>()
+  const calls = yield* Queue.unbounded<PendingCall | RunnerEnd>()
   const state = yield* Ref.make<State>({
-    started: false,
     accepting: false,
-    ended: false,
+    active: undefined,
+    nextGeneration: 1,
     nextID: 1,
     calls: new Map(),
     requests: [],
@@ -133,8 +145,9 @@ const makeRunnerLLM = Effect.gen(function* () {
     Effect.uninterruptible(
       Effect.gen(function* () {
         const pending = yield* Ref.modify(state, (current) => {
-          if (current.calls.get(id) !== "pending") return [false, current]
-          return [true, { ...current, calls: new Map(current.calls).set(id, "responded") }]
+          const call = current.calls.get(id)
+          if (call?.status !== "pending") return [false, current]
+          return [true, { ...current, calls: new Map(current.calls).set(id, { ...call, status: "responded" }) }]
         })
         if (!pending) return yield* Effect.fail(new RunnerLLMResponseClosedError(id))
         yield* Deferred.succeed(response, stream)
@@ -147,7 +160,7 @@ const makeRunnerLLM = Effect.gen(function* () {
         Effect.gen(function* () {
           const response = yield* Deferred.make<Stream.Stream<LLMEvent, LLMError>>()
           const registered = yield* Ref.modify<State, Registration>(state, (current) => {
-            if (!current.accepting) {
+            if (!current.accepting || current.active === undefined) {
               const error = new RunnerLLMRequestError(current.nextID)
               return [
                 { _tag: "Unexpected" as const, error },
@@ -155,11 +168,14 @@ const makeRunnerLLM = Effect.gen(function* () {
               ]
             }
             return [
-              { _tag: "Registered" as const, id: current.nextID },
+              { _tag: "Registered" as const, id: current.nextID, generation: current.active },
               {
                 ...current,
                 nextID: current.nextID + 1,
-                calls: new Map(current.calls).set(current.nextID, "pending"),
+                calls: new Map(current.calls).set(current.nextID, {
+                  generation: current.active,
+                  status: "pending",
+                }),
                 requests: [...current.requests, request],
               },
             ]
@@ -167,6 +183,8 @@ const makeRunnerLLM = Effect.gen(function* () {
           if (registered._tag === "Unexpected") return yield* Effect.fail(registered.error)
           const reply = (stream: Stream.Stream<LLMEvent, LLMError>) => respond(registered.id, response, stream)
           yield* Queue.offer(calls, {
+            _tag: "Call",
+            generation: registered.generation,
             id: registered.id,
             call: {
               request,
@@ -182,11 +200,11 @@ const makeRunnerLLM = Effect.gen(function* () {
           })
           return yield* restore(Deferred.await(response)).pipe(
             Effect.onInterrupt(() =>
-              Ref.update(state, (current) =>
-                current.calls.get(registered.id) === "pending"
-                  ? { ...current, calls: new Map(current.calls).set(registered.id, "closed") }
-                  : current,
-              ),
+              Ref.update(state, (current) => {
+                const call = current.calls.get(registered.id)
+                if (call?.status !== "pending") return current
+                return { ...current, calls: new Map(current.calls).set(registered.id, { ...call, status: "closed" }) }
+              }),
             ),
           )
         }),
@@ -195,11 +213,12 @@ const makeRunnerLLM = Effect.gen(function* () {
 
   const next = (): Effect.Effect<RunnerLLMCall, Error> =>
     Effect.gen(function* () {
-      if ((yield* Ref.get(state)).ended) return yield* Effect.fail(new RunnerEndedError())
-      const pending = yield* Queue.take(calls).pipe(Effect.mapError(() => new RunnerEndedError()))
-      const current = yield* Ref.get(state)
-      if (current.ended) return yield* Effect.fail(new RunnerEndedError())
-      if (current.calls.get(pending.id) === "pending") return pending.call
+      const generation = (yield* Ref.get(state)).active
+      if (generation === undefined) return yield* Effect.fail(new RunnerEndedError())
+      const pending = yield* Queue.take(calls)
+      if (pending.generation !== generation) return yield* next()
+      if (pending._tag === "End") return yield* Effect.fail(new RunnerEndedError())
+      if ((yield* Ref.get(state)).calls.get(pending.id)?.status === "pending") return pending.call
       return yield* next()
     })
 
@@ -216,22 +235,44 @@ const makeRunnerLLM = Effect.gen(function* () {
       next,
       requests: Ref.get(state).pipe(Effect.map((state) => state.requests)),
     },
-    begin: Ref.modify<State, Effect.Effect<void, RunnerScenarioUsedError>>(state, (current) =>
-      current.started
-        ? [Effect.fail(new RunnerScenarioUsedError()), current]
-        : [Effect.void, { ...current, started: true, accepting: true }],
+    begin: Ref.modify<State, Effect.Effect<number, RunnerScenarioActiveError>>(state, (current) =>
+      current.active !== undefined
+        ? [Effect.fail(new RunnerScenarioActiveError()), current]
+        : [
+            Effect.succeed(current.nextGeneration),
+            {
+              ...current,
+              accepting: true,
+              active: current.nextGeneration,
+              nextGeneration: current.nextGeneration + 1,
+            },
+          ],
     ).pipe(Effect.flatten),
-    finishInteraction: Effect.gen(function* () {
-      const unanswered = yield* Ref.modify(state, (current) => [
-        [...current.calls].find(([, status]) => status === "pending")?.[0],
-        { ...current, accepting: false },
-      ])
-      if (unanswered !== undefined) return yield* Effect.fail(new RunnerLLMRequestError(unanswered))
-    }),
-    end: Effect.gen(function* () {
-      yield* Ref.update(state, (current) => ({ ...current, accepting: false, ended: true }))
-      yield* Queue.end(calls)
-    }),
+    finishInteraction: (generation) =>
+      Effect.gen(function* () {
+        const unanswered = yield* Ref.modify(state, (current) => [
+          [...current.calls].find(([, call]) => call.generation === generation && call.status === "pending")?.[0],
+          current.active === generation ? { ...current, accepting: false } : current,
+        ])
+        if (unanswered !== undefined) return yield* Effect.fail(new RunnerLLMRequestError(unanswered))
+      }),
+    end: (generation) =>
+      Effect.gen(function* () {
+        yield* Ref.update(state, (current) => ({
+          ...current,
+          accepting: current.active === generation ? false : current.accepting,
+          active: current.active === generation ? undefined : current.active,
+          calls: new Map(
+            [...current.calls].map(([id, call]) => [
+              id,
+              call.generation === generation && call.status === "pending"
+                ? { ...call, status: "closed" as const }
+                : call,
+            ]),
+          ),
+        }))
+        yield* Queue.offer(calls, { _tag: "End", generation })
+      }),
   } satisfies RunnerLLMInternal
 })
 
@@ -253,13 +294,13 @@ export namespace RunnerScenario {
       ): Effect.Effect<A, RunError | E | Error, RunRequirements | R> =>
         Effect.uninterruptibleMask((restore) =>
           Effect.gen(function* () {
-            yield* internal.begin
-            const runner = yield* start(internal.llm).pipe(Effect.ensuring(internal.end), Effect.forkChild)
+            const generation = yield* internal.begin
+            const runner = yield* start(internal.llm).pipe(Effect.ensuring(internal.end(generation)), Effect.forkChild)
             return yield* restore(
               Effect.gen(function* () {
                 const interactionExit = yield* Effect.gen(interaction).pipe(Effect.exit)
                 if (Exit.isSuccess(interactionExit)) {
-                  yield* internal.finishInteraction
+                  yield* internal.finishInteraction(generation)
                   yield* Fiber.join(runner)
                   return interactionExit.value
                 }
@@ -267,7 +308,7 @@ export namespace RunnerScenario {
                 if (Option.isSome(error) && error.value instanceof RunnerEndedError) yield* Fiber.join(runner)
                 return yield* Effect.failCause(interactionExit.cause)
               }),
-            ).pipe(Effect.ensuring(Fiber.interrupt(runner).pipe(Effect.andThen(internal.end))))
+            ).pipe(Effect.ensuring(Fiber.interrupt(runner).pipe(Effect.andThen(internal.end(generation)))))
           }),
         )
       return {

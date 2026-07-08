@@ -389,16 +389,21 @@ const rateLimited = (retryAfterMs?: number) =>
     reason: new RateLimitReason({ message: "Rate limited", retryAfterMs }),
   })
 
-const setupOverflowRecovery = Effect.gen(function* () {
-  yield* setup
-  const session = yield* SessionV2.Service
-  yield* session.prompt({
-    sessionID,
-    prompt: PromptInput.Prompt.make({ text: "Earlier question ".repeat(700) }),
-    resume: false,
+const setupOverflowRecovery = (scenario: SessionScenario) =>
+  Effect.gen(function* () {
+    yield* setup
+    const session = yield* SessionV2.Service
+    yield* session.prompt({
+      sessionID,
+      prompt: PromptInput.Prompt.make({ text: "Earlier question ".repeat(700) }),
+      resume: false,
+    })
+    yield* scenario.run(function* () {
+      yield* (yield* scenario.llm.next()).respond.text("Earlier answer", { id: "text-earlier" })
+    })
+    currentModel = recoveryModel
+    return session
   })
-  return session
-})
 
 const messageTexts = (request: LLMRequest, role: "user" | "system") =>
   request.messages.flatMap((message) =>
@@ -663,7 +668,11 @@ describe("SessionRunnerLLM", () => {
         resume: false,
       })
 
-      const exit = yield* session.resume(sessionID).pipe(Effect.exit)
+      const exit = yield* scenario
+        .run(function* () {
+          yield* scenario.llm.next()
+        })
+        .pipe(Effect.exit)
 
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) expect(Cause.squash(exit.cause)).toBeInstanceOf(Instructions.InitializationBlocked)
@@ -697,25 +706,28 @@ describe("SessionRunnerLLM", () => {
       const { db } = yield* Database.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
-      const exit = yield* scenario.run(function* () {
+      yield* scenario.run(function* () {
         yield* (yield* scenario.llm.next()).respond.events()
-        yield* session.wait(sessionID)
-
-        yield* events.publish(SessionEvent.Moved, {
-          sessionID,
-          location: Location.Ref.make({ directory: AbsolutePath.make("/moved") }),
-        })
-        expect(
-          yield* db
-            .select()
-            .from(InstructionCheckpointTable)
-            .where(eq(InstructionCheckpointTable.session_id, sessionID))
-            .get(),
-        ).toBeUndefined()
-
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-        return yield* session.resume(sessionID).pipe(Effect.exit)
       })
+
+      yield* events.publish(SessionEvent.Moved, {
+        sessionID,
+        location: Location.Ref.make({ directory: AbsolutePath.make("/moved") }),
+      })
+      expect(
+        yield* db
+          .select()
+          .from(InstructionCheckpointTable)
+          .where(eq(InstructionCheckpointTable.session_id, sessionID))
+          .get(),
+      ).toBeUndefined()
+
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
+      const exit = yield* scenario
+        .run(function* () {
+          yield* scenario.llm.next()
+        })
+        .pipe(Effect.exit)
 
       expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true)
       expect(yield* scenario.llm.requests).toHaveLength(1)
@@ -760,22 +772,23 @@ describe("SessionRunnerLLM", () => {
       const { db } = yield* Database.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
-        yield* db
-          .update(InstructionCheckpointTable)
-          .set({ snapshot: { invalid: { value: "bad" } } })
-          .where(eq(InstructionCheckpointTable.session_id, sessionID))
-          .run()
-          .pipe(Effect.orDie)
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-        yield* first.respond.events()
+        yield* (yield* scenario.llm.next()).respond.events()
+      })
+      yield* db
+        .update(InstructionCheckpointTable)
+        .set({ snapshot: { invalid: { value: "bad" } } })
+        .where(eq(InstructionCheckpointTable.session_id, sessionID))
+        .run()
+        .pipe(Effect.orDie)
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
 
-        const second = yield* scenario.llm.next()
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
         // Comparison state was lost, so every source re-announces as new.
-        expect(second.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
-        expect(second.request.messages.map((message) => message.role)).toEqual(["user", "system", "user"])
-        expect(second.request.messages.at(1)?.content).toEqual([{ type: "text", text: "Initial context" }])
-        yield* second.respond.events()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        expect(call.request.messages.map((message) => message.role)).toEqual(["user", "system", "user"])
+        expect(call.request.messages.at(1)?.content).toEqual([{ type: "text", text: "Initial context" }])
+        yield* call.respond.events()
       })
 
       expect(yield* scenario.llm.requests).toHaveLength(2)
@@ -796,17 +809,19 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
-        expect(first.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
-        systemBaseline = "Changed context"
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-        yield* first.respond.events()
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        yield* call.respond.events()
+      })
+      systemBaseline = "Changed context"
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
 
-        const second = yield* scenario.llm.next()
-        expect(second.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
-        expect(second.request.messages.map((message) => message.role)).toEqual(["user", "system", "user"])
-        expect(second.request.messages.at(1)?.content).toEqual([{ type: "text", text: "Changed context" }])
-        yield* second.respond.events()
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        expect(call.request.messages.map((message) => message.role)).toEqual(["user", "system", "user"])
+        expect(call.request.messages.at(1)?.content).toEqual([{ type: "text", text: "Changed context" }])
+        yield* call.respond.events()
       })
 
       expect(yield* session.messages({ sessionID })).toHaveLength(3)
@@ -976,26 +991,22 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
-        expect(first.request.system.map((part) => part.text)).toEqual([
-          defaultSystem,
-          "Initial context\n\nBuild skills",
-        ])
-        skillBaselines.set(AgentV2.ID.make("reviewer"), "Reviewer skills")
-        yield* events.publish(SessionEvent.AgentSelected, {
-          sessionID,
-          agent: "reviewer",
-        })
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-        yield* first.respond.events()
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context\n\nBuild skills"])
+        yield* call.respond.events()
+      })
+      skillBaselines.set(AgentV2.ID.make("reviewer"), "Reviewer skills")
+      yield* events.publish(SessionEvent.AgentSelected, {
+        sessionID,
+        agent: "reviewer",
+      })
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
 
-        const second = yield* scenario.llm.next()
-        expect(second.request.system.map((part) => part.text)).toEqual([
-          defaultSystem,
-          "Initial context\n\nBuild skills",
-        ])
-        expect(systemTexts(second.request)).toContainEqual(expect.stringContaining("Reviewer skills"))
-        yield* second.respond.events()
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context\n\nBuild skills"])
+        expect(systemTexts(call.request)).toContainEqual(expect.stringContaining("Reviewer skills"))
+        yield* call.respond.events()
       })
     }),
   )
@@ -1062,17 +1073,18 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
-        systemRemoved = true
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-        yield* first.respond.events()
+        yield* (yield* scenario.llm.next()).respond.events()
+      })
+      systemRemoved = true
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
 
-        const second = yield* scenario.llm.next()
-        expect(second.request.messages.map((message) => message.role)).toEqual(["user", "system", "user"])
-        expect(second.request.messages.at(1)?.content).toEqual([
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.messages.map((message) => message.role)).toEqual(["user", "system", "user"])
+        expect(call.request.messages.at(1)?.content).toEqual([
           { type: "text", text: "System context source removed: test/context" },
         ])
-        yield* second.respond.events()
+        yield* call.respond.events()
       })
 
       expect(yield* session.messages({ sessionID })).toHaveLength(3)
@@ -1088,21 +1100,23 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
+        const call = yield* scenario.llm.next()
         // String values render verbatim inside the tagged block at baseline.
-        expect(first.request.system.map((part) => part.text)).toEqual([
+        expect(call.request.system.map((part) => part.text)).toEqual([
           defaultSystem,
           ["Initial context", "", '<context key="deploy-target">', "production", "</context>"].join("\n"),
         ])
+        yield* call.respond.events()
+      })
 
-        // Non-string JSON pretty-prints; the change narrates as a System update.
-        yield* contextEntries.put({ sessionID, key: "deploy-target", value: { region: "us-east-1" } })
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-        yield* first.respond.events()
+      // Non-string JSON pretty-prints; the change narrates as a System update.
+      yield* contextEntries.put({ sessionID, key: "deploy-target", value: { region: "us-east-1" } })
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
 
-        const second = yield* scenario.llm.next()
-        expect(second.request.messages.map((message) => message.role)).toEqual(["user", "system", "user"])
-        expect(second.request.messages.at(1)?.content).toEqual([
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.messages.map((message) => message.role)).toEqual(["user", "system", "user"])
+        expect(call.request.messages.at(1)?.content).toEqual([
           {
             type: "text",
             text: [
@@ -1115,27 +1129,27 @@ describe("SessionRunnerLLM", () => {
             ].join("\n"),
           },
         ])
-        expect(yield* contextEntries.list(sessionID)).toEqual([
-          { key: "deploy-target", value: { region: "us-east-1" } },
-        ])
+        yield* call.respond.events()
+      })
+      expect(yield* contextEntries.list(sessionID)).toEqual([{ key: "deploy-target", value: { region: "us-east-1" } }])
 
-        // Deleting the row announces removal through the stored removal text.
-        yield* contextEntries.remove({ sessionID, key: "deploy-target" })
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
-        yield* second.respond.events()
+      // Deleting the row announces removal through the stored removal text.
+      yield* contextEntries.remove({ sessionID, key: "deploy-target" })
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
 
-        const third = yield* scenario.llm.next()
-        expect(third.request.messages.map((message) => message.role)).toEqual([
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.messages.map((message) => message.role)).toEqual([
           "user",
           "system",
           "user",
           "system",
           "user",
         ])
-        expect(third.request.messages.at(-2)?.content).toEqual([
+        expect(call.request.messages.at(-2)?.content).toEqual([
           { type: "text", text: 'The context under "deploy-target" no longer applies. Disregard it.' },
         ])
-        yield* third.respond.events()
+        yield* call.respond.events()
       })
 
       expect(yield* contextEntries.list(sessionID)).toEqual([])
@@ -1150,39 +1164,45 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
-        expect(first.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
-        systemBaseline = "Changed context"
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-        yield* first.respond.events()
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        yield* call.respond.events()
+      })
+      systemBaseline = "Changed context"
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
 
-        const second = yield* scenario.llm.next()
-        expect(second.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
-        expect(second.request.messages.map((message) => message.role)).toEqual(["user", "system", "user"])
-        yield* events.publish(SessionEvent.ModelSelected, {
-          sessionID,
-          model: { id: ModelV2.ID.make("replacement"), providerID: ProviderV2.ID.make("fake") },
-        })
-        systemBaseline = "Replacement context"
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
-        yield* second.respond.events()
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        expect(call.request.messages.map((message) => message.role)).toEqual(["user", "system", "user"])
+        yield* call.respond.events()
+      })
+      yield* events.publish(SessionEvent.ModelSelected, {
+        sessionID,
+        model: { id: ModelV2.ID.make("replacement"), providerID: ProviderV2.ID.make("fake") },
+      })
+      systemBaseline = "Replacement context"
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
 
-        const third = yield* scenario.llm.next()
-        expect(third.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
-        expect(third.request.messages.filter((message) => message.role === "system")).toHaveLength(2)
-        expect((yield* session.context(sessionID)).map((message) => message.type)).toEqual([
-          "user",
-          "system",
-          "user",
-          "model-switched",
-          "system",
-          "user",
-        ])
-        yield* replaySessionProjection(sessionID)
-        expect(yield* session.messages({ sessionID })).toHaveLength(6)
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Fourth" }), resume: false })
-        yield* third.respond.events()
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        expect(call.request.messages.filter((message) => message.role === "system")).toHaveLength(2)
+        yield* call.respond.events()
+      })
+      expect((yield* session.context(sessionID)).map((message) => message.type)).toEqual([
+        "user",
+        "system",
+        "user",
+        "model-switched",
+        "system",
+        "user",
+      ])
+      yield* replaySessionProjection(sessionID)
+      expect(yield* session.messages({ sessionID })).toHaveLength(6)
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Fourth" }), resume: false })
 
+      yield* scenario.run(function* () {
         yield* (yield* scenario.llm.next()).respond.events()
       })
     }),
@@ -1196,26 +1216,30 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
-        expect(first.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
-        yield* events.publish(SessionEvent.ModelSelected, {
-          sessionID,
-          model: { id: ModelV2.ID.make("replacement"), providerID: ProviderV2.ID.make("fake") },
-        })
-        systemUnavailable = true
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-        yield* first.respond.events()
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        yield* call.respond.events()
+      })
+      yield* events.publish(SessionEvent.ModelSelected, {
+        sessionID,
+        model: { id: ModelV2.ID.make("replacement"), providerID: ProviderV2.ID.make("fake") },
+      })
+      systemUnavailable = true
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
 
-        const second = yield* scenario.llm.next()
-        expect(second.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
-        systemUnavailable = false
-        systemBaseline = "Replacement context"
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
-        yield* second.respond.events()
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        yield* call.respond.events()
+      })
+      systemUnavailable = false
+      systemBaseline = "Replacement context"
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
 
-        const third = yield* scenario.llm.next()
-        expect(third.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
-        yield* third.respond.events()
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        yield* call.respond.events()
       })
     }),
   )
@@ -1228,28 +1252,32 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
-        expect(first.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
-        yield* events.publish(SessionEvent.Compaction.Started, {
-          sessionID,
-          reason: "manual",
-        })
-        yield* events.publish(SessionEvent.Compaction.Ended, {
-          sessionID,
-          reason: "manual",
-          text: "summary",
-          recent: "",
-        })
-        systemBaseline = "Replacement context"
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-        yield* first.respond.events()
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Initial context"])
+        yield* call.respond.events()
+      })
+      yield* events.publish(SessionEvent.Compaction.Started, {
+        sessionID,
+        reason: "manual",
+      })
+      yield* events.publish(SessionEvent.Compaction.Ended, {
+        sessionID,
+        reason: "manual",
+        text: "summary",
+        recent: "",
+      })
+      systemBaseline = "Replacement context"
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
 
-        const second = yield* scenario.llm.next()
-        expect(second.request.system.map((part) => part.text)).toEqual([defaultSystem, "Replacement context"])
-        yield* replaySessionProjection(sessionID)
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
-        yield* second.respond.events()
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Replacement context"])
+        yield* call.respond.events()
+      })
+      yield* replaySessionProjection(sessionID)
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
 
+      yield* scenario.run(function* () {
         yield* (yield* scenario.llm.next()).respond.events()
       })
     }),
@@ -1358,15 +1386,16 @@ describe("SessionRunnerLLM", () => {
       })
 
       yield* scenario.run(function* () {
-        const earlier = yield* scenario.llm.next()
-        currentModel = compactModel
-        yield* session.prompt({
-          sessionID,
-          prompt: PromptInput.Prompt.make({ text: "Recent exact request ".repeat(180) }),
-          resume: false,
-        })
-        yield* earlier.respond.text("Earlier answer", { id: "text-first" })
+        yield* (yield* scenario.llm.next()).respond.text("Earlier answer", { id: "text-first" })
+      })
+      currentModel = compactModel
+      yield* session.prompt({
+        sessionID,
+        prompt: PromptInput.Prompt.make({ text: "Recent exact request ".repeat(180) }),
+        resume: false,
+      })
 
+      yield* scenario.run(function* () {
         const summary = yield* scenario.llm.next()
         expect(userTexts(summary.request)[0]).toContain("## Objective")
         yield* summary.respond.text("## Objective\n- Preserve the task", { id: "text-summary" })
@@ -1375,13 +1404,15 @@ describe("SessionRunnerLLM", () => {
         expect(userTexts(continued.request)).toHaveLength(1)
         expect(userTexts(continued.request)[0]).toContain("<summary>\n## Objective\n- Preserve the task\n</summary>")
         expect(userTexts(continued.request)[0]).toContain(`[User]: ${"Recent exact request ".repeat(180)}`)
-        yield* session.prompt({
-          sessionID,
-          prompt: PromptInput.Prompt.make({ text: "Newest exact request ".repeat(180) }),
-          resume: false,
-        })
         yield* continued.respond.text("Continued", { id: "text-final" })
+      })
+      yield* session.prompt({
+        sessionID,
+        prompt: PromptInput.Prompt.make({ text: "Newest exact request ".repeat(180) }),
+        resume: false,
+      })
 
+      yield* scenario.run(function* () {
         const updatedSummary = yield* scenario.llm.next()
         expect(userTexts(updatedSummary.request)[0]).toContain(
           "<previous-summary>\n## Objective\n- Preserve the task\n</previous-summary>",
@@ -1402,13 +1433,9 @@ describe("SessionRunnerLLM", () => {
 
   scenarioIt("forces one compaction and retries after provider context overflow", (scenario) =>
     Effect.gen(function* () {
-      const session = yield* setupOverflowRecovery
+      const session = yield* setupOverflowRecovery(scenario)
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
       yield* scenario.run(function* () {
-        const earlier = yield* scenario.llm.next()
-        currentModel = recoveryModel
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-        yield* earlier.respond.text("Earlier answer", { id: "text-earlier" })
-
         yield* (yield* scenario.llm.next()).respond.events(
           LLMEvent.stepStart({ index: 0 }),
           LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
@@ -1438,7 +1465,8 @@ describe("SessionRunnerLLM", () => {
 
   scenarioIt("persists a second context overflow after one recovery", (scenario) =>
     Effect.gen(function* () {
-      const session = yield* setupOverflowRecovery
+      const session = yield* setupOverflowRecovery(scenario)
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
       const overflow = () => [
         LLMEvent.stepStart({ index: 0 }),
         LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
@@ -1446,15 +1474,6 @@ describe("SessionRunnerLLM", () => {
       expect(
         (yield* scenario
           .run(function* () {
-            const earlier = yield* scenario.llm.next()
-            currentModel = recoveryModel
-            yield* session.prompt({
-              sessionID,
-              prompt: PromptInput.Prompt.make({ text: "Continue" }),
-              resume: false,
-            })
-            yield* earlier.respond.text("Earlier answer", { id: "text-earlier" })
-
             yield* (yield* scenario.llm.next()).respond.events(...overflow())
             yield* (yield* scenario.llm.next()).respond.text("## Objective\n- Recover once", {
               id: "text-summary",
@@ -1474,13 +1493,9 @@ describe("SessionRunnerLLM", () => {
 
   scenarioIt("recovers once from a raw context overflow failure", (scenario) =>
     Effect.gen(function* () {
-      const session = yield* setupOverflowRecovery
+      const session = yield* setupOverflowRecovery(scenario)
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
       yield* scenario.run(function* () {
-        const earlier = yield* scenario.llm.next()
-        currentModel = recoveryModel
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-        yield* earlier.respond.text("Earlier answer", { id: "text-earlier" })
-
         yield* (yield* scenario.llm.next()).respond.fail(
           new LLMError({
             module: "test",
@@ -1507,19 +1522,11 @@ describe("SessionRunnerLLM", () => {
 
   scenarioIt("publishes the original overflow when recovery summarization fails", (scenario) =>
     Effect.gen(function* () {
-      const session = yield* setupOverflowRecovery
+      const session = yield* setupOverflowRecovery(scenario)
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
       expect(
         (yield* scenario
           .run(function* () {
-            const earlier = yield* scenario.llm.next()
-            currentModel = recoveryModel
-            yield* session.prompt({
-              sessionID,
-              prompt: PromptInput.Prompt.make({ text: "Continue" }),
-              resume: false,
-            })
-            yield* earlier.respond.text("Earlier answer", { id: "text-earlier" })
-
             yield* (yield* scenario.llm.next()).respond.events(
               LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
             )
@@ -1542,18 +1549,10 @@ describe("SessionRunnerLLM", () => {
 
   scenarioIt("interrupts overflow recovery while the summary provider is running", (scenario) =>
     Effect.gen(function* () {
-      const session = yield* setupOverflowRecovery
+      const session = yield* setupOverflowRecovery(scenario)
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
       const exit = yield* scenario
         .run(function* () {
-          const earlier = yield* scenario.llm.next()
-          currentModel = recoveryModel
-          yield* session.prompt({
-            sessionID,
-            prompt: PromptInput.Prompt.make({ text: "Continue" }),
-            resume: false,
-          })
-          yield* earlier.respond.text("Earlier answer", { id: "text-earlier" })
-
           yield* (yield* scenario.llm.next()).respond.events(
             LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
           )
@@ -1576,31 +1575,33 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "First" }), resume: false })
 
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
-        systemBaseline = "Changed context"
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
-        yield* first.respond.events()
+        yield* (yield* scenario.llm.next()).respond.events()
+      })
+      systemBaseline = "Changed context"
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Second" }), resume: false })
 
-        const second = yield* scenario.llm.next()
-        yield* events.publish(SessionEvent.Compaction.Started, {
-          sessionID,
-          reason: "manual",
-        })
-        yield* events.publish(SessionEvent.Compaction.Ended, {
-          sessionID,
-          reason: "manual",
-          text: "summary",
-          recent: "",
-        })
-        systemUnavailable = true
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
-        yield* second.respond.events()
+      yield* scenario.run(function* () {
+        yield* (yield* scenario.llm.next()).respond.events()
+      })
+      yield* events.publish(SessionEvent.Compaction.Started, {
+        sessionID,
+        reason: "manual",
+      })
+      yield* events.publish(SessionEvent.Compaction.Ended, {
+        sessionID,
+        reason: "manual",
+        text: "summary",
+        recent: "",
+      })
+      systemUnavailable = true
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Third" }), resume: false })
 
-        const third = yield* scenario.llm.next()
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
         // The rebaseline proceeds while the source is unobservable, restating the model's belief.
-        expect(third.request.system.map((part) => part.text)).toEqual([defaultSystem, "Changed context"])
-        expect(systemTexts(third.request)).not.toContain("Changed context")
-        yield* third.respond.events()
+        expect(call.request.system.map((part) => part.text)).toEqual([defaultSystem, "Changed context"])
+        expect(systemTexts(call.request)).not.toContain("Changed context")
+        yield* call.respond.events()
       })
     }),
   )
@@ -1805,69 +1806,56 @@ describe("SessionRunnerLLM", () => {
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Think first" }), resume: false })
 
-      const streamed = yield* Deferred.make<void>()
-      const release = yield* Deferred.make<void>()
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
-        yield* first.respond.stream(
-          Stream.concat(
-            Stream.fromIterable([
-              LLMEvent.stepStart({ index: 0 }),
-              LLMEvent.reasoningStart({ id: "reasoning-anthropic" }),
-              LLMEvent.reasoningDelta({ id: "reasoning-anthropic", text: "Signed thought" }),
-              LLMEvent.reasoningEnd({
-                id: "reasoning-anthropic",
-                providerMetadata: { fake: { signature: "sig_1" }, anthropic: { ignored: true } },
-              }),
-              LLMEvent.reasoningStart({
-                id: "reasoning-openai",
-                providerMetadata: {
-                  fake: { itemId: "rs_1", reasoningEncryptedContent: null },
-                  openai: { ignored: true },
-                },
-              }),
-              LLMEvent.reasoningDelta({ id: "reasoning-openai", text: "Encrypted thought" }),
-              LLMEvent.reasoningEnd({
-                id: "reasoning-openai",
-                providerMetadata: {
-                  fake: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" },
-                  openai: { ignored: true },
-                },
-              }),
-              LLMEvent.stepFinish({ index: 0, reason: "stop" }),
-              LLMEvent.finish({ reason: "stop" }),
-            ]),
-            Stream.unwrap(
-              Deferred.succeed(streamed, undefined).pipe(
-                Effect.andThen(Deferred.await(release)),
-                Effect.as(Stream.empty),
-              ),
-            ),
-          ),
+        yield* (yield* scenario.llm.next()).respond.events(
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.reasoningStart({ id: "reasoning-anthropic" }),
+          LLMEvent.reasoningDelta({ id: "reasoning-anthropic", text: "Signed thought" }),
+          LLMEvent.reasoningEnd({
+            id: "reasoning-anthropic",
+            providerMetadata: { fake: { signature: "sig_1" }, anthropic: { ignored: true } },
+          }),
+          LLMEvent.reasoningStart({
+            id: "reasoning-openai",
+            providerMetadata: {
+              fake: { itemId: "rs_1", reasoningEncryptedContent: null },
+              openai: { ignored: true },
+            },
+          }),
+          LLMEvent.reasoningDelta({ id: "reasoning-openai", text: "Encrypted thought" }),
+          LLMEvent.reasoningEnd({
+            id: "reasoning-openai",
+            providerMetadata: {
+              fake: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" },
+              openai: { ignored: true },
+            },
+          }),
+          LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+          LLMEvent.finish({ reason: "stop" }),
         )
-        yield* Deferred.await(streamed)
-        yield* replaySessionProjection(sessionID)
+      })
+      yield* replaySessionProjection(sessionID)
 
-        expect(yield* session.context(sessionID)).toMatchObject([
-          { type: "user", text: "Think first" },
-          {
-            type: "assistant",
-            content: [
-              { type: "reasoning", text: "Signed thought", state: { signature: "sig_1" } },
-              {
-                type: "reasoning",
-                text: "Encrypted thought",
-                state: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" },
-              },
-            ],
-          },
-        ])
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Think first" },
+        {
+          type: "assistant",
+          content: [
+            { type: "reasoning", text: "Signed thought", state: { signature: "sig_1" } },
+            {
+              type: "reasoning",
+              text: "Encrypted thought",
+              state: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" },
+            },
+          ],
+        },
+      ])
 
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-        yield* Deferred.succeed(release, undefined)
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
 
-        const second = yield* scenario.llm.next()
-        expect(second.request.messages[1]?.content).toEqual([
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.messages[1]?.content).toEqual([
           { type: "reasoning", text: "Signed thought", providerMetadata: { fake: { signature: "sig_1" } } },
           {
             type: "reasoning",
@@ -1875,8 +1863,10 @@ describe("SessionRunnerLLM", () => {
             providerMetadata: { fake: { itemId: "rs_1", reasoningEncryptedContent: "encrypted-state" } },
           },
         ])
-        yield* second.respond.events()
+        yield* call.respond.events()
       })
+
+      expect(yield* scenario.llm.requests).toHaveLength(2)
     }),
   )
 
@@ -1886,48 +1876,35 @@ describe("SessionRunnerLLM", () => {
       const session = yield* SessionV2.Service
       yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Search first" }), resume: false })
 
-      const streamed = yield* Deferred.make<void>()
-      const release = yield* Deferred.make<void>()
       yield* scenario.run(function* () {
-        const first = yield* scenario.llm.next()
-        yield* first.respond.stream(
-          Stream.concat(
-            Stream.fromIterable([
-              LLMEvent.stepStart({ index: 0 }),
-              LLMEvent.toolCall({
-                id: "hosted-search",
-                name: "web_search",
-                input: { query: "Effect" },
-                providerExecuted: true,
-                providerMetadata: { fake: { itemId: "hosted-search" }, openai: { ignored: true } },
-              }),
-              LLMEvent.toolResult({
-                id: "hosted-search",
-                name: "web_search",
-                result: { type: "json", value: [{ title: "Effect" }] },
-                providerExecuted: true,
-                providerMetadata: { fake: { blockType: "web_search_tool_result" }, anthropic: { ignored: true } },
-              }),
-              LLMEvent.stepFinish({ index: 0, reason: "stop" }),
-              LLMEvent.finish({ reason: "stop" }),
-            ]),
-            Stream.unwrap(
-              Deferred.succeed(streamed, undefined).pipe(
-                Effect.andThen(Deferred.await(release)),
-                Effect.as(Stream.empty),
-              ),
-            ),
-          ),
+        yield* (yield* scenario.llm.next()).respond.events(
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.toolCall({
+            id: "hosted-search",
+            name: "web_search",
+            input: { query: "Effect" },
+            providerExecuted: true,
+            providerMetadata: { fake: { itemId: "hosted-search" }, openai: { ignored: true } },
+          }),
+          LLMEvent.toolResult({
+            id: "hosted-search",
+            name: "web_search",
+            result: { type: "json", value: [{ title: "Effect" }] },
+            providerExecuted: true,
+            providerMetadata: { fake: { blockType: "web_search_tool_result" }, anthropic: { ignored: true } },
+          }),
+          LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+          LLMEvent.finish({ reason: "stop" }),
         )
-        yield* Deferred.await(streamed)
-        yield* replaySessionProjection(sessionID)
+      })
+      yield* replaySessionProjection(sessionID)
 
-        yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
-        yield* Deferred.succeed(release, undefined)
+      yield* session.prompt({ sessionID, prompt: PromptInput.Prompt.make({ text: "Continue" }), resume: false })
 
-        const second = yield* scenario.llm.next()
-        expect(second.request.messages.map((message) => message.role)).toEqual(["user", "assistant", "user"])
-        expect(second.request.messages[1]?.content).toMatchObject([
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.messages.map((message) => message.role)).toEqual(["user", "assistant", "user"])
+        expect(call.request.messages[1]?.content).toMatchObject([
           {
             type: "tool-call",
             id: "hosted-search",
@@ -1945,8 +1922,10 @@ describe("SessionRunnerLLM", () => {
             providerMetadata: { fake: { blockType: "web_search_tool_result" } },
           },
         ])
-        yield* second.respond.events()
+        yield* call.respond.events()
       })
+
+      expect(yield* scenario.llm.requests).toHaveLength(2)
     }),
   )
 
@@ -2767,7 +2746,6 @@ describe("SessionRunnerLLM", () => {
             Exit.Exit<void, SessionRunner.RunError | SessionV2.NotFoundError>,
           ]
         >()
-      const retry = yield* Deferred.make<void>()
       const scenario = yield* RunnerScenario.make(() =>
         SessionV2.Service.use((session) =>
           Effect.gen(function* () {
@@ -2775,8 +2753,6 @@ describe("SessionRunnerLLM", () => {
             yield* Deferred.await(join)
             const second = yield* session.resume(sessionID).pipe(Effect.forkChild)
             yield* Deferred.succeed(joined, yield* Effect.all([Fiber.await(first), Fiber.await(second)]))
-            yield* Deferred.await(retry)
-            yield* session.resume(sessionID)
           }),
         ),
       )
@@ -2798,8 +2774,9 @@ describe("SessionRunnerLLM", () => {
           yield* first.respond.fail(failure)
           const [firstExit, secondExit] = yield* Deferred.await(joined)
           expect(secondExit).toEqual(firstExit)
+        })
 
-          yield* Deferred.succeed(retry, undefined)
+        yield* scenario.run(function* () {
           yield* (yield* scenario.llm.next()).respond.events()
         })
 
@@ -3254,6 +3231,14 @@ describe("SessionRunnerLLM", () => {
         { type: "user", text: "Interrupt blocked tool" },
         { type: "assistant", content: [{ type: "tool", id: "call-before-interrupt", state: { status: "error" } }] },
       ])
+
+      yield* scenario.run(function* () {
+        const call = yield* scenario.llm.next()
+        expect(call.request.messages.map((message) => message.role)).toEqual(["user", "assistant", "tool"])
+        yield* call.respond.events()
+      })
+
+      expect(yield* scenario.llm.requests).toHaveLength(2)
     }),
   )
 
