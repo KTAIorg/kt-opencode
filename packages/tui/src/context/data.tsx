@@ -22,6 +22,7 @@ import type {
   SessionMessageAssistantText,
   SessionMessageAssistantTool,
   SessionInfo,
+  SessionPendingInfo,
   Shell,
   SkillInfo,
 } from "@opencode-ai/sdk/v2"
@@ -144,6 +145,31 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       compaction(messages: SessionMessageInfo[]) {
         const item = messages.findLast((item) => item.type === "compaction" && item.status === "running")
         return item?.type === "compaction" ? item : undefined
+      },
+      fromPending(item: SessionPendingInfo): SessionMessageInfo {
+        if (item.type === "user")
+          return {
+            id: item.id,
+            type: "user",
+            ...item.data,
+            time: { created: item.timeCreated },
+          }
+        if (item.type === "synthetic")
+          return {
+            id: item.id,
+            type: "synthetic",
+            ...item.data,
+            time: { created: item.timeCreated },
+          }
+        return {
+          id: item.id,
+          type: "compaction",
+          status: "running",
+          reason: "manual",
+          summary: "",
+          recent: "",
+          time: { created: item.timeCreated },
+        }
       },
       latestTool(assistant: SessionMessageAssistant | undefined, callID?: string) {
         return assistant?.content.findLast(
@@ -612,11 +638,38 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           setSessionStatus(event.data.sessionID, "running")
           break
         case "session.compaction.admitted":
+          message.update(event.data.sessionID, (draft, index) => {
+            message.append(draft, index, {
+              id: event.data.inputID,
+              type: "compaction",
+              status: "running",
+              reason: "manual",
+              summary: "",
+              recent: "",
+              time: { created: event.created },
+            })
+          })
           break
         case "session.compaction.started":
           message.update(event.data.sessionID, (draft, index) => {
+            const id = event.data.inputID ?? messageIDFromEvent(event.id)
+            const position = index.get(id)
+            const existing = position === undefined ? undefined : draft[position]
+            if (position !== undefined && existing?.type === "compaction") {
+              draft[position] = {
+                id,
+                type: "compaction",
+                status: "running",
+                reason: event.data.reason,
+                summary: existing.status === "running" ? existing.summary : "",
+                recent: event.data.recent,
+                metadata: existing.metadata,
+                time: existing.time,
+              }
+              return
+            }
             message.append(draft, index, {
-              id: event.data.inputID ?? messageIDFromEvent(event.id),
+              id,
               type: "compaction",
               status: "running",
               reason: event.data.reason,
@@ -836,9 +889,22 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             return position === undefined ? undefined : messages?.[position]
           },
           async refresh(sessionID: string) {
-            const messages = (await sdk.api.message.list({ sessionID, limit: 200, order: "desc" })).data.toReversed()
-            messageIndex.set(sessionID, new Map(messages.map((message, index) => [message.id, index])))
-            setStore("session", "message", sessionID, reconcile(messages))
+            const [projected, pending] = await Promise.all([
+              sdk.api.message.list({ sessionID, limit: 200, order: "desc" }),
+              sdk.api.session.pending.list({ sessionID }),
+            ])
+            const messages = projected.data.toReversed()
+            const projectedIDs = new Set(messages.map((message) => message.id))
+            const pendingMessages = pending.filter((item) => !projectedIDs.has(item.id)).map(message.fromPending)
+            const next = [...messages, ...pendingMessages]
+            messageIndex.set(sessionID, new Map(next.map((message, index) => [message.id, index])))
+            setStore(
+              "session",
+              "input",
+              sessionID,
+              pendingMessages.flatMap((item) => (item.type === "user" || item.type === "synthetic" ? [item.id] : [])),
+            )
+            setStore("session", "message", sessionID, reconcile(next))
           },
         },
         permission: {

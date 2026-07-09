@@ -2091,6 +2091,110 @@ test("renders admitted prompts immediately and tracks them until promoted", asyn
   }
 })
 
+test("refreshes pending session work into message state", async () => {
+  const events = createEventStream()
+  const sessionID = "session-pending"
+  const calls = createFetch((url) => {
+    if (url.pathname === `/api/session/${sessionID}/message`)
+      return json({
+        data: [{ id: "msg_projected", type: "user", text: "already visible", time: { created: 1 } }],
+        cursor: {},
+      })
+    if (url.pathname === `/api/session/${sessionID}/pending`)
+      return json({
+        data: [
+          {
+            admittedSeq: 1,
+            id: "msg_projected",
+            sessionID,
+            timeCreated: 1,
+            type: "user",
+            data: { text: "already visible" },
+            delivery: "steer",
+          },
+          {
+            admittedSeq: 2,
+            id: "msg_pending_user",
+            sessionID,
+            timeCreated: 2,
+            type: "user",
+            data: { text: "queued user", metadata: { source: "test" } },
+            delivery: "queue",
+          },
+          {
+            admittedSeq: 3,
+            id: "msg_pending_synthetic",
+            sessionID,
+            timeCreated: 3,
+            type: "synthetic",
+            data: { text: "internal", description: "Queued synthetic" },
+            delivery: "steer",
+          },
+          {
+            admittedSeq: 4,
+            id: "msg_pending_compaction",
+            sessionID,
+            timeCreated: 4,
+            type: "compaction",
+          },
+        ],
+      })
+  }, events)
+  let data!: ReturnType<typeof useData>
+
+  function Probe() {
+    data = useData()
+    return <box />
+  }
+
+  const app = await testRender(() => (
+    <TestTuiContexts>
+      <SDKProvider client={createClient(calls.fetch)} api={createApi(calls.fetch)}>
+        <ProjectProvider>
+          <DataProvider>
+            <Probe />
+          </DataProvider>
+        </ProjectProvider>
+      </SDKProvider>
+    </TestTuiContexts>
+  ))
+
+  try {
+    await data.session.message.refresh(sessionID)
+    expect(data.session.message.ids(sessionID)).toEqual([
+      "msg_projected",
+      "msg_pending_user",
+      "msg_pending_synthetic",
+      "msg_pending_compaction",
+    ])
+    expect(data.session.input.list(sessionID)).toEqual(["msg_pending_user", "msg_pending_synthetic"])
+    expect(data.session.message.get(sessionID, "msg_pending_user")).toMatchObject({
+      id: "msg_pending_user",
+      type: "user",
+      text: "queued user",
+      metadata: { source: "test" },
+      time: { created: 2 },
+    })
+    expect(data.session.message.get(sessionID, "msg_pending_synthetic")).toMatchObject({
+      id: "msg_pending_synthetic",
+      type: "synthetic",
+      text: "internal",
+      description: "Queued synthetic",
+      time: { created: 3 },
+    })
+    expect(data.session.message.get(sessionID, "msg_pending_compaction")).toMatchObject({
+      id: "msg_pending_compaction",
+      type: "compaction",
+      status: "running",
+      summary: "",
+      recent: "",
+      time: { created: 4 },
+    })
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
 test("projects live instruction updates with their message ID", async () => {
   const events = createEventStream()
   const calls = createFetch(undefined, events)
