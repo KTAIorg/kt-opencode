@@ -89,6 +89,10 @@ const icons = {
     viewBox: "0 0 16 16",
     body: `<path d="M4.25 11.75L11.75 4.25M11.75 11.75L4.25 4.25" stroke="currentColor"/>`,
   },
+  "outline-terminal": {
+    viewBox: "0 0 16 16",
+    body: `<g transform="translate(2.223 2.773)"><path d="M7.55355 9.95355H11.5536" stroke="currentColor" stroke-linejoin="round"/><path d="M0.353553 0.353553L5.15355 5.15355L0.353553 9.95355" stroke="currentColor" stroke-linejoin="round"/></g>`,
+  },
   "outline-chevron-down": {
     viewBox: "0 0 16 16",
     body: `<path d="M5 6.5L8 9.5L11 6.5" stroke="currentColor"/>`,
