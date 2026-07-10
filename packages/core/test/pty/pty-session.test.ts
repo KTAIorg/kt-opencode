@@ -153,6 +153,14 @@ describe("pty", () => {
     }),
   )
 
+  ptyTest("marks terminal sessions as running under opencode", () =>
+    Effect.gen(function* () {
+      const info = yield* createPty("sh", ["-c", 'printf "%s|%s" "$AGENT" "$OPENCODE"; sleep 1'])
+      const attached = yield* attachCollecting(info.id)
+      expect(yield* waitForOutput(attached.output, "1|1")).toContain("1|1")
+    }),
+  )
+
   ptyTest("stops delivering output after detach", () =>
     Effect.gen(function* () {
       const pty = yield* Pty.Service

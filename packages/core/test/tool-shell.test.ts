@@ -162,6 +162,9 @@ const idleCommand = isWindows ? "Start-Sleep -Seconds 60" : "sleep 60"
 const bodyExitCommand = isWindows
   ? "[Console]::Out.Write('body'); Start-Sleep -Milliseconds 100; exit 7"
   : "printf body && exit 7"
+const agentEnvCommand = isWindows
+  ? '[Console]::Out.Write("$env:AGENT|$env:OPENCODE"); Start-Sleep -Milliseconds 100'
+  : 'printf "%s|%s" "$AGENT" "$OPENCODE"'
 const overflowCommand = (bytes: number) =>
   isWindows
     ? `[Console]::Out.Write(('x' * ${bytes})); Start-Sleep -Milliseconds 100`
@@ -259,6 +262,29 @@ describe("ShellTool", () => {
             expect(output).toContain("stdout")
             expect(output).toContain("stderr")
           }),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
+  )
+
+  it.live("marks shell commands as running under opencode", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        return withSession(tmp.path, (registry) =>
+          settleTool(registry, call({ command: agentEnvCommand }, "call-agent-env")),
+        ).pipe(
+          Effect.andThen((settled) =>
+            Effect.sync(() => {
+              expect(settled.output?.structured).toMatchObject({ exit: 0, truncated: false })
+              const output = settled.output?.content[0]?.type === "text" ? settled.output.content[0].text : ""
+              const parts = output.split("|")
+              expect(parts[0]).toBe("1")
+              expect(parts[1]).toBe("1")
+            }),
+          ),
         )
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),

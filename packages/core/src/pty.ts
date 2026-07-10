@@ -170,6 +170,8 @@ const layer = Layer.effect(
       const env = {
         ...process.env,
         ...input.env,
+        AGENT: "1",
+        OPENCODE: "1",
         TERM: "xterm-256color",
         OPENCODE_TERMINAL: "1",
       } as Record<string, string>
