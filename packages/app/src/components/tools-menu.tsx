@@ -57,7 +57,7 @@ export function ToolsMenu(props: ToolsMenuProps) {
   const [state, setState] = createStore({ tab: props.defaultTab ?? ("mcp" as ToolsMenuTab) })
 
   return (
-    <div class="w-[360px] max-w-[calc(100vw-40px)] rounded-xl bg-v2-background-bg-base p-4 shadow-[var(--v2-elevation-floating)]">
+    <div class="w-[360px] max-w-[calc(100vw-40px)] rounded-xl bg-v2-background-bg-base p-4 [font-family:var(--v2-font-family-sans)] shadow-[var(--v2-elevation-floating)]">
       <SegmentedControlV2
         value={state.tab}
         onChange={(value) => value && setState("tab", value as ToolsMenuTab)}
@@ -79,7 +79,7 @@ export function ToolsMenu(props: ToolsMenuProps) {
               {(item) => (
                 <div class="flex h-8 items-center gap-2 px-2">
                   <StatusDot status={item().status} />
-                  <span class="min-w-0 flex-1 truncate text-[13px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-base">
+                  <span class="min-w-0 flex-1 truncate text-[13px] font-[530] leading-4 tracking-[-0.04px] text-v2-text-text-base">
                     {item().name}
                   </span>
                   <Show
@@ -134,7 +134,7 @@ export function ToolsMenu(props: ToolsMenuProps) {
               {(item) => (
                 <div class="flex h-8 items-center gap-2 px-2">
                   <StatusDot status={item.status} />
-                  <span class="min-w-0 flex-1 truncate text-[13px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-base">
+                  <span class="min-w-0 flex-1 truncate text-[13px] font-[530] leading-4 tracking-[-0.04px] text-v2-text-text-base">
                     {item.name}
                   </span>
                 </div>
@@ -154,7 +154,7 @@ export function ToolsMenu(props: ToolsMenuProps) {
               {(plugin) => (
                 <div class="flex h-8 items-center gap-2 px-2">
                   <StatusDot status="connected" />
-                  <span class="min-w-0 flex-1 truncate text-[13px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-base">
+                  <span class="min-w-0 flex-1 truncate text-[13px] font-[530] leading-4 tracking-[-0.04px] text-v2-text-text-base">
                     {plugin}
                   </span>
                 </div>
@@ -181,7 +181,7 @@ function ToolsList(props: { description: string; children: JSXElement }) {
 function ToolsEmpty(props: { title: JSXElement; description: string }) {
   return (
     <div class="mt-4 flex flex-col gap-2 text-center text-[13px] leading-4 tracking-[-0.04px]">
-      <div class="h-4 font-[500] text-v2-text-text-muted">{props.title}</div>
+      <div class="h-4 font-[530] text-v2-text-text-muted">{props.title}</div>
       <div class="h-4 font-[440] text-v2-text-text-faint">{props.description}</div>
     </div>
   )
