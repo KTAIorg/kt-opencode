@@ -38,6 +38,7 @@ import { QuestionTool } from "../tool/question"
 import { ReadToolFileSystem } from "../tool/read-filesystem"
 import { ReadTool } from "../tool/read"
 import { ShellTool } from "../tool/shell"
+import { SearchFixtureTool } from "../tool/search-fixture"
 import { SkillTool } from "../tool/skill"
 import { SubagentTool } from "../tool/subagent"
 import { Tools } from "../tool/tools"
@@ -129,6 +130,7 @@ const pre = [
   GrepTool.Plugin,
   QuestionTool.Plugin,
   ReadTool.Plugin,
+  SearchFixtureTool.Plugin,
   ShellTool.Plugin,
   SkillTool.Plugin,
   SubagentTool.Plugin,
