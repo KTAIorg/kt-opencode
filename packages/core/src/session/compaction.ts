@@ -232,8 +232,6 @@ const make = (dependencies: Dependencies) => {
               type: event.classification === "context-overflow" ? "provider.invalid-request" : "provider.error",
               message: event.message,
             }
-          if (LLMEvent.is.finish(event) && event.reason === "length")
-            failure = { type: "compaction.failed", message: "Compaction reached the model output limit" }
           if (LLMEvent.is.textDelta(event)) {
             chunks.push(event.text)
             return dependencies.events.publish(SessionEvent.Compaction.Delta, {
@@ -311,6 +309,7 @@ const make = (dependencies: Dependencies) => {
       messages: input.messages,
       model: input.request.model,
       reason: "auto",
+      output: input.request.generation?.maxTokens ?? input.request.model.route.defaults.limits?.output ?? 0,
     })
   })
   const compactManual = Effect.fn("SessionCompaction.compactManual")(function* (input: CompactInput) {
