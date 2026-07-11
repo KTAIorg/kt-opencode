@@ -38,25 +38,85 @@ export type StartOptions = Options & {
   readonly onStart?: (reason: StartReason) => void
 }
 
+type Registration = {
+  readonly url: string
+  readonly pid: number
+  readonly version?: string
+}
+
 export type Status =
   | { readonly status: "stopped" }
+  | { readonly status: "invalid"; readonly reason: "unreadable" | "malformed" }
+  | {
+      readonly status: "unhealthy"
+      readonly reason: "unreachable" | "invalid-response"
+      readonly registration: Registration
+    }
+  | {
+      readonly status: "unhealthy"
+      readonly reason: "http-error"
+      readonly registration: Registration
+      readonly statusCode: number
+    }
+  | { readonly status: "legacy"; readonly registration: Registration }
+  | {
+      readonly status: "inconsistent"
+      readonly fields: readonly ["pid" | "version", ...Array<"pid" | "version">]
+      readonly registration: Registration
+      readonly health: { readonly pid: number; readonly version: string }
+    }
   | {
       readonly status: "running"
       readonly url: string
       readonly pid: number
-      readonly version?: string
-      readonly compatible: boolean
+      readonly version: string
+      readonly compatible?: boolean
     }
 
 export const status = Effect.fn("service.status")(function* (options: Options = {}) {
-  const found = yield* discoverLocal({ ...options, version: undefined })
-  if (found === undefined) return { status: "stopped" } as const
+  const registration = yield* inspectRegistration(options.file)
+  if (registration._tag === "Missing") return { status: "stopped" } as const
+  if (registration._tag === "Unreadable") return { status: "invalid", reason: "unreadable" } as const
+  if (registration._tag === "Malformed") return { status: "invalid", reason: "malformed" } as const
+
+  const info = registration.info
+  const health = yield* inspectHealth(info)
+  if (health._tag !== "Healthy") {
+    if (health.reason === "legacy-response") {
+      return { status: "legacy", registration: publicRegistration(info) } as const
+    }
+    if (health.reason === "http-error") {
+      return {
+        status: "unhealthy",
+        reason: health.reason,
+        registration: publicRegistration(info),
+        statusCode: health.statusCode,
+      } as const
+    }
+    return {
+      status: "unhealthy",
+      reason: health.reason,
+      registration: publicRegistration(info),
+    } as const
+  }
+  const fields = [
+    ...(health.pid === info.pid ? [] : (["pid"] as const)),
+    ...(info.version === undefined || health.version === info.version ? [] : (["version"] as const)),
+  ]
+  if (fields[0] !== undefined) {
+    return {
+      status: "inconsistent",
+      fields: [fields[0], ...fields.slice(1)],
+      registration: publicRegistration(info),
+      health: { pid: health.pid, version: health.version },
+    } as const
+  }
   return {
     status: "running",
-    url: found.endpoint.url,
-    pid: found.info.pid,
-    version: found.info.version,
-    compatible: options.version === undefined || found.info.version === options.version,
+    url: info.url,
+    pid: health.pid,
+    version: health.version,
+    ...(options.version === undefined ? {} : { compatible: health.version === options.version }),
   } satisfies Status
 })
 
@@ -143,13 +203,27 @@ const decodeHealth = Schema.decodeUnknownOption(
 )
 const decodeLegacyHealth = Schema.decodeUnknownOption(Schema.Struct({ healthy: Schema.Literal(true) }))
 
-// A missing or corrupt file means no valid info; callers treat both
-// the same (the registering server self-evicts, clients rediscover).
-const read = Effect.fnUntraced(function* (file?: string) {
+const inspectRegistration = Effect.fnUntraced(function* (file?: string) {
   const fs = yield* FileSystem.FileSystem
-  const text = yield* fs.readFileString(file ?? fallback()).pipe(Effect.option)
-  if (Option.isNone(text)) return undefined
-  return yield* decode(text.value).pipe(Effect.option, Effect.map(Option.getOrUndefined))
+  const text = yield* fs.readFileString(file ?? fallback()).pipe(
+    Effect.map((value) => ({ _tag: "Found", value }) as const),
+    Effect.catch((error) =>
+      Effect.succeed(
+        error.reason._tag === "NotFound" ? ({ _tag: "Missing" } as const) : ({ _tag: "Unreadable" } as const),
+      ),
+    ),
+  )
+  if (text._tag !== "Found") return text
+  const info = yield* decode(text.value).pipe(Effect.option)
+  if (Option.isNone(info)) return { _tag: "Malformed" } as const
+  return { _tag: "Valid", info: info.value } as const
+})
+
+// Lifecycle operations intentionally treat missing and corrupt registrations
+// alike; only status exposes that diagnostic distinction.
+const read = Effect.fnUntraced(function* (file?: string) {
+  const registration = yield* inspectRegistration(file)
+  return registration._tag === "Valid" ? registration.info : undefined
 })
 
 type LocalService = {
@@ -157,37 +231,52 @@ type LocalService = {
   readonly endpoint: Endpoint
 }
 
+const inspectHealth = Effect.fnUntraced(function* (info: Info) {
+  const response = yield* Effect.tryPromise(() =>
+    fetch(new URL("/api/health", info.url), {
+      headers: headers(endpoint(info)),
+      signal: AbortSignal.timeout(2_000),
+    }),
+  ).pipe(Effect.option)
+  if (Option.isNone(response)) return { _tag: "Unhealthy", reason: "unreachable" } as const
+  if (!response.value.ok) return { _tag: "Unhealthy", reason: "http-error", statusCode: response.value.status } as const
+  const body = yield* Effect.tryPromise(() => response.value.json()).pipe(Effect.option)
+  if (Option.isNone(body)) return { _tag: "Unhealthy", reason: "invalid-response" } as const
+  const health = decodeHealth(body.value)
+  if (Option.isSome(health)) return { _tag: "Healthy", ...health.value } as const
+  if (
+    Option.isSome(decodeLegacyHealth(body.value)) &&
+    !(typeof body.value === "object" && body.value !== null && ("version" in body.value || "pid" in body.value))
+  )
+    return { _tag: "Unhealthy", reason: "legacy-response" } as const
+  return { _tag: "Unhealthy", reason: "invalid-response" } as const
+})
+
 const probe = Effect.fnUntraced(function* (info: Info, version?: string, allowLegacy = false) {
-  const endpoint = {
+  const health = yield* inspectHealth(info)
+  if (health._tag === "Healthy") {
+    if (health.pid !== info.pid) return undefined
+    if (info.version !== undefined && health.version !== info.version) return undefined
+    if (version !== undefined && health.version !== version) return undefined
+    return { info, endpoint: endpoint(info) } satisfies LocalService
+  }
+  if (!allowLegacy || health.reason !== "legacy-response") return undefined
+  return { info, endpoint: endpoint(info) } satisfies LocalService
+})
+
+function endpoint(info: Info) {
+  return {
     url: info.url,
     auth:
       info.password === undefined
         ? undefined
         : { type: "basic" as const, username: "opencode", password: info.password },
   } satisfies Endpoint
-  const response = yield* Effect.tryPromise(() =>
-    fetch(new URL("/api/health", info.url), {
-      headers: headers(endpoint),
-      signal: AbortSignal.timeout(2_000),
-    }),
-  ).pipe(Effect.option, Effect.map(Option.getOrUndefined))
-  if (response === undefined || !response.ok) return undefined
-  const body = yield* Effect.tryPromise(() => response.json()).pipe(Effect.option, Effect.map(Option.getOrUndefined))
-  const health = decodeHealth(body)
-  if (Option.isSome(health)) {
-    if (health.value.pid !== info.pid) return undefined
-    if (info.version !== undefined && health.value.version !== info.version) return undefined
-    if (version !== undefined && health.value.version !== version) return undefined
-    return { info, endpoint } satisfies LocalService
-  }
-  if (
-    !allowLegacy ||
-    Option.isNone(decodeLegacyHealth(body)) ||
-    (typeof body === "object" && body !== null && ("version" in body || "pid" in body))
-  )
-    return undefined
-  return { info, endpoint } satisfies LocalService
-})
+}
+
+function publicRegistration(info: Info): Registration {
+  return { url: info.url, pid: info.pid, version: info.version }
+}
 
 // Health-checked lookup without the version gate: lifecycle operations must be
 // able to see (and replace or stop) a server from a different version.
