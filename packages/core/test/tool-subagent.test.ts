@@ -289,7 +289,7 @@ describe("SubagentTool", () => {
           const admission = Array.from(yield* Fiber.join(admitted))[0]
           expect(admission?.data.input.data.text).toContain(`<subagent id="${childID}" state="completed"`)
           expect(admission?.data.input.data).toMatchObject({
-            description: "Background agent completed: background review",
+            description: "background review",
             metadata: {
               source: "subagent",
               childID,

@@ -73,7 +73,7 @@ export const Plugin = {
       yield* runtime.session.synthetic({
         sessionID: parentID,
         text: `<subagent id="${childID}" state="${state}" description="${description}">\n${text}\n</subagent>`,
-        description: `Background agent ${state}: ${description}`,
+        description,
         metadata: { source: "subagent", childID, agent, state, description },
       })
     })
