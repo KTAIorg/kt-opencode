@@ -25,19 +25,12 @@ export function DialogMessage(props: { messageID: string; sessionID: string }) {
           title: "Revert",
           value: "session.revert",
           description: "undo messages and file changes",
-          onSelect: async (dialog) => {
-            const error = await sdk.api.session.revert
-              .stage({ sessionID: props.sessionID, messageID: props.messageID })
-              .then(
-                () => undefined,
-                (error) => error,
-              )
-            if (error) {
-              toast.show({ message: errorMessage(error), variant: "error", duration: 5000 })
-              return
-            }
+          onSelect: (dialog) => {
             const value = message()
             if (value?.type === "user") promptRef.current?.set(revertedPrompt(value))
+            void sdk.api.session.revert
+              .stage({ sessionID: props.sessionID, messageID: props.messageID })
+              .catch((error) => toast.show({ message: errorMessage(error), variant: "error", duration: 5000 }))
             dialog.clear()
           },
         },
