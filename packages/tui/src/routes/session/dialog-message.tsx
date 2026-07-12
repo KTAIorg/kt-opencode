@@ -6,15 +6,18 @@ import { useToast } from "../../ui/toast"
 import { useSDK } from "../../context/sdk"
 import { errorMessage } from "../../util/error"
 import { DialogFork } from "./dialog-fork"
-import { usePromptRef } from "../../context/prompt"
 import { revertedPrompt } from "../../util/revert-prompt"
+import type { PromptInfo } from "../../prompt/history"
 
-export function DialogMessage(props: { messageID: string; sessionID: string }) {
+export function DialogMessage(props: {
+  messageID: string
+  sessionID: string
+  setPrompt?: (prompt: PromptInfo) => void
+}) {
   const data = useData()
   const clipboard = useClipboard()
   const toast = useToast()
   const sdk = useSDK()
-  const promptRef = usePromptRef()
   const message = createMemo(() => data.session.message.get(props.sessionID, props.messageID))
 
   return (
@@ -27,7 +30,7 @@ export function DialogMessage(props: { messageID: string; sessionID: string }) {
           description: "undo messages and file changes",
           onSelect: (dialog) => {
             const value = message()
-            if (value?.type === "user") promptRef.current?.set(revertedPrompt(value))
+            if (value?.type === "user") props.setPrompt?.(revertedPrompt(value))
             void sdk.api.session.revert
               .stage({ sessionID: props.sessionID, messageID: props.messageID })
               .catch((error) => toast.show({ message: errorMessage(error), variant: "error", duration: 5000 }))
