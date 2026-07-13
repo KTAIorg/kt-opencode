@@ -229,6 +229,35 @@ const streamError = (route: string, message: string, cause: Cause.Cause<unknown>
   return ProviderShared.eventError(route, message, Cause.pretty(cause))
 }
 
+/**
+ * Terminal contract for every route, native or synthetic: a successful
+ * stream emits exactly one `finish`, and nothing after it. EOF before
+ * `finish` means the provider stream was truncated (proxy cut, silent
+ * drop) and must fail rather than let a partial response settle as
+ * complete. Applied after protocol parsing so `stream.onHalt` flushes are
+ * still subject to it.
+ */
+const enforceTerminal = (route: string) => (events: Stream.Stream<LLMEvent, LLMError>) => {
+  let finished = false
+  return events.pipe(
+    Stream.mapEffect((event) => {
+      if (finished)
+        return Effect.fail(
+          ProviderShared.eventError(route, `Provider emitted ${event.type} after the terminal finish event`),
+        )
+      if (event.type === "finish") finished = true
+      return Effect.succeed(event)
+    }),
+    Stream.concat(
+      Stream.suspend(() =>
+        finished
+          ? Stream.empty
+          : Stream.fail(ProviderShared.eventError(route, "Provider stream ended without a terminal finish event")),
+      ),
+    ),
+  )
+}
+
 function makeFromTransport<Body, Prepared, Frame, Event, State>(
   input: MakeTransportInput<Body, Prepared, Frame, Event, State>,
 ): Route<Body, Prepared> {
@@ -383,7 +412,10 @@ const streamRequestWith = (runtime: TransportRuntime) => (request: LLMRequest) =
   Stream.unwrap(
     Effect.gen(function* () {
       const compiled = yield* compile(request)
-      return compiled.route.streamPrepared(compiled.prepared, compiled.request, runtime)
+      const route = `${compiled.request.model.provider}/${compiled.route.id}`
+      return compiled.route
+        .streamPrepared(compiled.prepared, compiled.request, runtime)
+        .pipe(enforceTerminal(route))
     }),
   )
 

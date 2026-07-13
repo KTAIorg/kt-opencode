@@ -614,8 +614,11 @@ describe("OpenAI Chat route", () => {
       const input = LLM.updateRequest(request, {
         tools: [{ name: "lookup", description: "Lookup data", inputSchema: { type: "object" } }],
       })
-      const events = Array.from(
-        yield* LLMClient.stream(input).pipe(Stream.runCollect, Effect.provide(fixedResponse(body))),
+      const events: LLMEvent[] = []
+      const streamError = yield* LLMClient.stream(input).pipe(
+        Stream.runForEach((event) => Effect.sync(() => events.push(event))),
+        Effect.flip,
+        Effect.provide(fixedResponse(body)),
       )
       const error = yield* LLMClient.generate(input).pipe(Effect.provide(fixedResponse(body)), Effect.flip)
 
@@ -626,6 +629,7 @@ describe("OpenAI Chat route", () => {
         { type: "tool-input-delta", id: "call_1", name: "lookup", text: ':"weather"}' },
       ])
       expect(events.filter(LLMEvent.is.toolCall)).toEqual([])
+      expect(streamError.message).toContain("Provider stream ended without a terminal finish event")
       expect(error.message).toContain("Provider stream ended without a terminal finish event")
     }),
   )
