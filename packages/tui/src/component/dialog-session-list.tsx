@@ -26,6 +26,7 @@ export function DialogSessionList() {
   const sdk = useSDK()
   const local = useLocal()
   const toast = useToast()
+  const [filter, setFilter] = createSignal("")
   const [search, setSearch] = createDebouncedSignal("", 150)
   const [toDelete, setToDelete] = createSignal<string>()
   const quickSwitch1 = useCommandShortcut("session.quick_switch.1")
@@ -55,10 +56,15 @@ export function DialogSessionList() {
 
   const currentSessionID = createMemo(() => (route.data.type === "session" ? route.data.sessionID : undefined))
   const sessions = createMemo(() => {
-    const query = search()
+    const query = filter()
     if (!query) return data.session.list()
     const result = searchResults()
     return result?.query === query ? result.sessions : []
+  })
+  const searching = createMemo(() => {
+    const query = filter()
+    if (!query) return false
+    return query !== search() || searchResults.loading || searchResults()?.query !== query
   })
 
   const quickSwitchHint = createMemo(() => {
@@ -118,9 +124,18 @@ export function DialogSessionList() {
     <DialogSelect
       title="Sessions"
       options={options()}
+      loading={searching()}
+      emptyView={
+        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+          <text fg={theme.textMuted}>No sessions yet</text>
+        </box>
+      }
       skipFilter={true}
       current={currentSessionID()}
-      onFilter={setSearch}
+      onFilter={(query) => {
+        setFilter(query)
+        setSearch(query)
+      }}
       onMove={() => setToDelete(undefined)}
       onSelect={(option) => {
         route.navigate({ type: "session", sessionID: option.value })

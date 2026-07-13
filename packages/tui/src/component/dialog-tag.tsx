@@ -40,6 +40,7 @@ export function DialogTag(props: { onSelect?: (value: string) => void }) {
     <DialogSelect
       title="Autocomplete"
       options={options()}
+      loading={files.loading}
       onSelect={(option) => {
         props.onSelect?.(option.value)
         dialog.clear()
