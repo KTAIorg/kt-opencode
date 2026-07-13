@@ -1,10 +1,8 @@
 import type { Duration, Effect } from "effect"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
-import type { Config } from "../../../src/config/config"
 import type { Project } from "../../../src/project/project"
 import type { Worktree } from "../../../src/worktree"
-import type { MessageV2 } from "../../../src/session/message-v2"
 import type { SessionID } from "../../../src/session/schema"
 
 export const OpenApiMethods = ["get", "post", "put", "delete", "patch"] as const
@@ -13,7 +11,6 @@ export const Methods = ["GET", "POST", "PUT", "DELETE", "PATCH"] as const
 export type Method = (typeof Methods)[number]
 export type OpenApiMethod = (typeof OpenApiMethods)[number]
 export type Mode = "effect" | "coverage" | "auth"
-export type Comparison = "none" | "status" | "json"
 export type CaptureMode = "full" | "stream"
 export type AuthPolicy = "protected" | "public" | "public-bypass" | "ticket-bypass"
 export type ProjectOptions = { git?: boolean; config?: Partial<ConfigV1.Info>; llm?: boolean }
@@ -80,12 +77,10 @@ export type ActiveScenario = {
   name: string
   project: ProjectOptions | undefined
   seed: (ctx: ScenarioContext) => Effect.Effect<unknown>
-  request: (ctx: ScenarioContext, state: unknown) => RequestSpec
+  request: (ctx: SeededContext<unknown>) => RequestSpec
   authProbe: RequestSpec | undefined
-  expect: (ctx: ScenarioContext, state: unknown, result: CallResult) => Effect.Effect<void>
-  compare: Comparison
+  expect: (ctx: SeededContext<unknown>, result: CallResult) => Effect.Effect<void>
   capture: CaptureMode
-  mutates: boolean
   reset: boolean
   auth: AuthPolicy
 }
@@ -99,7 +94,6 @@ export type BuilderState<S> = {
   request: (ctx: SeededContext<S>) => RequestSpec
   authProbe: RequestSpec | undefined
   capture: CaptureMode
-  mutates: boolean
   reset: boolean
   auth: AuthPolicy
 }

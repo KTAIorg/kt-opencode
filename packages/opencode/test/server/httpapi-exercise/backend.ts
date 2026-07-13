@@ -11,9 +11,9 @@ type CallOptions = {
   }
 }
 
-export function call(scenario: ActiveScenario, ctx: SeededContext<unknown>, options: CallOptions = {}) {
+export function call(scenario: ActiveScenario, ctx: SeededContext<unknown>) {
   return Effect.promise(async () =>
-    capture(await app(await runtime(), options).request(toRequest(scenario, ctx)), scenario.capture),
+    capture(await app(await runtime(), {}).request(toRequest(scenario, ctx)), scenario.capture),
   )
 }
 
@@ -78,7 +78,7 @@ function app(modules: Runtime, options: CallOptions) {
 }
 
 function toRequest(scenario: ActiveScenario, ctx: SeededContext<unknown>) {
-  const spec = scenario.request(ctx, ctx.state)
+  const spec = scenario.request(ctx)
   return new Request(new URL(spec.path, "http://localhost"), {
     method: scenario.method,
     headers: spec.body === undefined ? spec.headers : { "content-type": "application/json", ...spec.headers },

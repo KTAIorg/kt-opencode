@@ -5,7 +5,6 @@ import type {
   AuthPolicy,
   BuilderState,
   CallResult,
-  Comparison,
   Method,
   ProjectOptions,
   RequestSpec,
@@ -28,7 +27,6 @@ class ScenarioBuilder<S = undefined> {
       request: (ctx) => ({ path, headers: ctx.headers() }),
       authProbe: undefined,
       capture: "full",
-      mutates: false,
       reset: true,
       auth,
     }
@@ -54,11 +52,7 @@ class ScenarioBuilder<S = undefined> {
     return this.clone({ authProbe })
   }
 
-  mutating() {
-    return this.clone({ mutates: true })
-  }
-
-  preserveDatabase() {
+  preserveState() {
     return this.clone({ reset: false })
   }
 
@@ -66,41 +60,8 @@ class ScenarioBuilder<S = undefined> {
     return this.clone({ capture: "stream" })
   }
 
-  protected() {
-    return this.auth("protected")
-  }
-
-  public() {
-    return this.auth("public")
-  }
-
-  publicBypass() {
-    return this.auth("public-bypass")
-  }
-
-  ticketBypass() {
-    return this.auth("ticket-bypass")
-  }
-
-  private auth(auth: AuthPolicy) {
-    return this.clone({ auth })
-  }
-
-  /** Assert a non-JSON or shape-only response. */
-  ok(status = 200, compare: Comparison = "status") {
-    return this.done(compare, (_ctx, result) =>
-      Effect.sync(() => {
-        if (result.status !== status) throw new Error(`expected ${status}, got ${result.status}: ${result.text}`)
-      }),
-    )
-  }
-
-  status(
-    status = 200,
-    inspect?: (ctx: SeededContext<S>, result: CallResult) => Effect.Effect<void>,
-    compare: Comparison = "status",
-  ) {
-    return this.done(compare, (ctx, result) =>
+  status(status = 200, inspect?: (ctx: SeededContext<S>, result: CallResult) => Effect.Effect<void>) {
+    return this.done((ctx, result) =>
       Effect.gen(function* () {
         if (result.status !== status) throw new Error(`expected ${status}, got ${result.status}: ${result.text}`)
         if (inspect) yield* inspect(ctx, result)
@@ -109,17 +70,13 @@ class ScenarioBuilder<S = undefined> {
   }
 
   /** Assert JSON status/content-type plus an optional synchronous body check. */
-  json(status = 200, inspect?: (body: unknown, ctx: SeededContext<S>) => void, compare: Comparison = "json") {
-    return this.jsonEffect(status, inspect ? (body, ctx) => Effect.sync(() => inspect(body, ctx)) : undefined, compare)
+  json(status = 200, inspect?: (body: unknown, ctx: SeededContext<S>) => void) {
+    return this.jsonEffect(status, inspect ? (body, ctx) => Effect.sync(() => inspect(body, ctx)) : undefined)
   }
 
   /** Assert JSON status/content-type plus optional Effect assertions, e.g. DB side effects. */
-  jsonEffect(
-    status = 200,
-    inspect?: (body: unknown, ctx: SeededContext<S>) => Effect.Effect<void>,
-    compare: Comparison = "json",
-  ) {
-    return this.done(compare, (ctx, result) =>
+  jsonEffect(status = 200, inspect?: (body: unknown, ctx: SeededContext<S>) => Effect.Effect<void>) {
+    return this.done((ctx, result) =>
       Effect.gen(function* () {
         if (result.status !== status) throw new Error(`expected ${status}, got ${result.status}: ${result.text}`)
         if (!looksJson(result))
@@ -145,10 +102,7 @@ class ScenarioBuilder<S = undefined> {
     return builder
   }
 
-  private done(
-    compare: Comparison,
-    expect: (ctx: SeededContext<S>, result: CallResult) => Effect.Effect<void>,
-  ): ActiveScenario {
+  private done(expect: (ctx: SeededContext<S>, result: CallResult) => Effect.Effect<void>): ActiveScenario {
     const state = this.state
     return {
       kind: "active",
@@ -159,12 +113,10 @@ class ScenarioBuilder<S = undefined> {
       seed: state.seed,
       authProbe: state.authProbe,
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- `.seeded(...)` preserves the paired request/state type inside the builder.
-      request: (ctx, seeded) => state.request({ ...ctx, state: seeded as S }),
+      request: (ctx) => state.request(ctx as SeededContext<S>),
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- `.seeded(...)` preserves the paired assertion/state type inside the builder.
-      expect: (ctx, seeded, result) => expect({ ...ctx, state: seeded as S }, result),
-      compare,
+      expect: (ctx, result) => expect(ctx as SeededContext<S>, result),
       capture: state.capture,
-      mutates: state.mutates,
       reset: state.reset,
       auth: state.auth,
     }

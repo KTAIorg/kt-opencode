@@ -3,9 +3,6 @@ import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Cause, Duration, Effect, Layer, Scope } from "effect"
 import { TestLLMServer } from "../../lib/llm-server"
-import type { Config } from "../../../src/config/config"
-
-import type { MessageV2 } from "../../../src/session/message-v2"
 import { MessageID, PartID } from "../../../src/session/schema"
 import { call, callAuthProbe, disposeApps } from "./backend"
 import { original } from "./environment"
@@ -38,7 +35,7 @@ function runActive(options: Options, scenario: ActiveScenario) {
       const result = yield* call(scenario, ctx)
       yield* trace(options, scenario, `response ${result.status}`)
       yield* trace(options, scenario, "expect start")
-      yield* scenario.expect(ctx, ctx.state, result)
+      yield* scenario.expect(ctx, result)
       yield* trace(options, scenario, "expect done")
     }),
   )

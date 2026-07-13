@@ -1,5 +1,6 @@
 import { Duration } from "effect"
 import { indent, pad } from "./assertions"
+import { routeKey } from "./routing"
 import type { Options, Result, Scenario } from "./types"
 
 export const color = {
@@ -59,8 +60,4 @@ export function printResults(results: Result[], missing: string[], extra: Scenar
   console.log(
     `\n${color.dim}summary pass=${results.filter((result) => result.status === "pass").length} fail=${results.filter((result) => result.status === "fail").length} skip=${results.filter((result) => result.status === "skip").length} missing=${missing.length} extra=${extra.length}${color.reset}`,
   )
-}
-
-function routeKey(scenario: Scenario) {
-  return `${scenario.method} ${scenario.path}`
 }
