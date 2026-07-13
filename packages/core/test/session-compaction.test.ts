@@ -151,7 +151,7 @@ it.effect("manual compaction summarizes short context instead of no-op", () =>
     expect(Array.from(yield* Fiber.join(delta)).map((event) => event.data.text)).toEqual(["manual summary"])
 
     expect(requests).toHaveLength(1)
-    expect(requests[0]?.generation).toBeUndefined()
+    expect(requests[0]?.generation?.maxTokens).toBe(4_096)
     expect(JSON.stringify(requests[0]?.messages)).toContain("Manual compaction should include this short conversation.")
     expect(yield* store.context(sessionID)).toMatchObject([
       { type: "compaction", reason: "manual", summary: "manual summary", recent: "" },
@@ -168,5 +168,55 @@ it.effect("manual compaction summarizes short context instead of no-op", () =>
       { type: EventV2.versionedType(SessionEvent.Compaction.Started.type, 1) },
       { type: EventV2.versionedType(SessionEvent.Compaction.Ended.type, 1) },
     ])
+  }),
+)
+
+it.effect("manual compaction rolls large histories through bounded requests", () =>
+  Effect.gen(function* () {
+    requests = []
+    const db = (yield* Database.Service).db
+    const compaction = yield* SessionCompaction.Service
+    const store = yield* SessionStore.Service
+    const sessionID = SessionV2.ID.make("ses_bounded_compaction")
+    yield* db
+      .insert(ProjectTable)
+      .values({ id: Project.ID.global, worktree: AbsolutePath.make("/project"), sandboxes: [] })
+      .onConflictDoNothing()
+      .run()
+      .pipe(Effect.orDie)
+    yield* db
+      .insert(SessionTable)
+      .values({
+        id: sessionID,
+        project_id: Project.ID.global,
+        slug: "bounded-compaction",
+        directory: "/project",
+        title: "Bounded compaction",
+        version: "test",
+      })
+      .run()
+      .pipe(Effect.orDie)
+    const session = yield* store
+      .get(sessionID)
+      .pipe(Effect.flatMap((value) => (value ? Effect.succeed(value) : Effect.die("test session missing"))))
+
+    expect(
+      yield* compaction.compactManual({
+        session,
+        messages: [
+          {
+            id: SessionMessage.ID.create(),
+            type: "user",
+            text: "a".repeat(300_000),
+            time: { created: DateTime.makeUnsafe(0) },
+          },
+        ],
+        inputID: SessionMessage.ID.make("msg_bounded_compaction"),
+      }),
+    ).toEqual({ status: "completed" })
+
+    expect(requests.length).toBeGreaterThan(1)
+    expect(requests.every((request) => JSON.stringify(request.messages).length < 150_000)).toBe(true)
+    expect(JSON.stringify(requests[1]?.messages)).toContain("manual summary")
   }),
 )
