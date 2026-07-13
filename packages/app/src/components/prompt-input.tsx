@@ -34,6 +34,7 @@ import { useComments } from "@/context/comments"
 import { Button } from "@opencode-ai/ui/button"
 import { DockShellForm, DockTray } from "@opencode-ai/ui/dock-surface"
 import { Icon } from "@opencode-ai/ui/icon"
+import { Mark } from "@opencode-ai/ui/logo"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
@@ -1550,6 +1551,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     keybind: command.keybindParts("model.choose"),
     model: props.controls.model.selection,
     providerID: props.controls.model.selection.current()?.provider?.id,
+    free:
+      props.controls.model.selection.current()?.provider?.id === "opencode" &&
+      (!props.controls.model.selection.current()?.cost || props.controls.model.selection.current()?.cost.input === 0),
     modelName: props.controls.model.selection.current()?.name ?? language.t("dialog.model.select.title"),
     newLayoutDesigns: props.controls.newLayoutDesigns,
     style: control(),
@@ -2083,13 +2087,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                     ))
                                   }}
                                 >
-                                  <Show when={props.controls.model.selection.current()?.provider?.id}>
-                                    <ProviderIcon
-                                      id={props.controls.model.selection.current()?.provider?.id ?? ""}
-                                      class="size-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity duration-150"
-                                      style={{ "will-change": "opacity", transform: "translateZ(0)" }}
-                                    />
-                                  </Show>
+                                  <ModelProviderIcon
+                                    providerID={modelControlState().providerID}
+                                    free={modelControlState().free}
+                                  />
                                   <span class="truncate">
                                     {props.controls.model.selection.current()?.name ??
                                       language.t("dialog.model.select.title")}
@@ -2117,13 +2118,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                 }}
                                 onClose={restoreFocus}
                               >
-                                <Show when={props.controls.model.selection.current()?.provider?.id}>
-                                  <ProviderIcon
-                                    id={props.controls.model.selection.current()?.provider?.id ?? ""}
-                                    class="size-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity duration-150"
-                                    style={{ "will-change": "opacity", transform: "translateZ(0)" }}
-                                  />
-                                </Show>
+                                <ModelProviderIcon
+                                  providerID={modelControlState().providerID}
+                                  free={modelControlState().free}
+                                />
                                 <span class="truncate">
                                   {props.controls.model.selection.current()?.name ??
                                     language.t("dialog.model.select.title")}
@@ -2192,6 +2190,7 @@ type ComposerModelControlState = {
   keybind: string[]
   model: ReturnType<typeof useLocal>["model"]
   providerID?: string
+  free: boolean
   modelName: string
   newLayoutDesigns: boolean
   style: JSX.CSSProperties | undefined
@@ -2260,15 +2259,7 @@ function ComposerModelControl(props: { state: ComposerModelControlState }) {
                   style={props.state.style}
                   onClick={props.state.onUnpaidClick}
                 >
-                  <Show when={props.state.providerID}>
-                    {(providerID) => (
-                      <ProviderIcon
-                        id={providerID()}
-                        class="size-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity duration-150"
-                        style={{ "will-change": "opacity", transform: "translateZ(0)" }}
-                      />
-                    )}
-                  </Show>
+                  <ModelProviderIcon providerID={props.state.providerID} free={props.state.free} />
                   <span class="truncate">{props.state.modelName}</span>
                   <span class="-ml-1 shrink-0 flex size-fit">
                     <Icon name="chevron-down" size="small" class="text-v2-icon-icon-muted" />
@@ -2347,19 +2338,32 @@ function ComposerModelControl(props: { state: ComposerModelControlState }) {
 function ModelControlContent(props: { state: ComposerModelControlState; v2?: boolean }) {
   return (
     <>
-      <Show when={props.state.providerID}>
-        {(providerID) => (
-          <ProviderIcon
-            id={providerID()}
-            class="size-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity duration-150"
-            style={{ "will-change": "opacity", transform: "translateZ(0)" }}
-          />
-        )}
-      </Show>
+      <ModelProviderIcon providerID={props.state.providerID} free={props.state.free} />
       <span class="truncate leading-4">{props.state.modelName}</span>
       <span class={props.v2 ? "-ml-0.5 -mr-1 flex shrink-0" : "-ml-1 shrink-0 flex size-fit"}>
         <Icon name="chevron-down" size="small" class="text-v2-icon-icon-muted" />
       </span>
     </>
+  )
+}
+
+function ModelProviderIcon(props: { providerID?: string; free: boolean }) {
+  return (
+    <Show when={props.providerID}>
+      {(providerID) => (
+        <Show
+          when={props.free}
+          fallback={
+            <ProviderIcon
+              id={providerID()}
+              class="size-4 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity duration-150"
+              style={{ "will-change": "opacity", transform: "translateZ(0)" }}
+            />
+          }
+        >
+          <Mark class="h-4 w-3.5 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity duration-150" />
+        </Show>
+      )}
+    </Show>
   )
 }
