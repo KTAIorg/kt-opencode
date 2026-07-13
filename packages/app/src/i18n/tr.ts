@@ -820,6 +820,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Yeni",
   "settings.general.row.newInterface.description":
     "Yeniden tasarlanan düzen, sekmeler, yazma alanı ve yeni ana sayfa. Eski arayüz {{date}} tarihinde kaldırılacak.",
+  "settings.general.row.newInterfaceNotice.title": "Artık yeni arayüzü kullanıyorsunuz",
+  "settings.general.row.newInterfaceNotice.description": "Eski arayüz {{date}} tarihinde kullanımdan kaldırıldı.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Kapat",
   "settings.general.row.pinchZoom.title": "Sıkıştırarak yakınlaştır",
   "settings.general.row.pinchZoom.description":
     "İzleme dörtgeninde sıkıştırma ve Ctrl-kaydırma hareketleriyle yakınlaştırmaya izin ver",

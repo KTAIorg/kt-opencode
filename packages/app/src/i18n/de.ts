@@ -763,6 +763,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Neu",
   "settings.general.row.newInterface.description":
     "Neu gestaltetes Layout, Tabs, Eingabebereich und neue Startseite. Die alte Oberfläche wird am {{date}} entfernt.",
+  "settings.general.row.newInterfaceNotice.title": "Sie verwenden jetzt die neue Oberfläche",
+  "settings.general.row.newInterfaceNotice.description": "Die alte Oberfläche wurde am {{date}} eingestellt.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Verwerfen",
   "settings.general.row.pinchZoom.title": "Zoom per Fingergeste",
   "settings.general.row.pinchZoom.description": "Zoomen per Zwei-Finger- und Ctrl-Scroll-Geste erlauben",
   "settings.general.row.wayland.title": "Natives Wayland verwenden",

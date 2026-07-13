@@ -750,6 +750,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Nowość",
   "settings.general.row.newInterface.description":
     "Przeprojektowany układ, karty, edytor i nowa strona główna. Poprzedni interfejs zniknie {{date}}.",
+  "settings.general.row.newInterfaceNotice.title": "Korzystasz teraz z nowego interfejsu",
+  "settings.general.row.newInterfaceNotice.description": "Poprzedni interfejs został wycofany {{date}}.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Odrzuć",
   "settings.general.row.pinchZoom.title": "Powiększanie gestem szczypania",
   "settings.general.row.pinchZoom.description":
     "Zezwalaj na powiększanie gestem szczypania na gładziku i przewijaniem z klawiszem Ctrl",

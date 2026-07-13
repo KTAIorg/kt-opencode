@@ -750,6 +750,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Novo",
   "settings.general.row.newInterface.description":
     "Layout, abas, área de composição e página inicial reformulados. A interface anterior será removida em {{date}}.",
+  "settings.general.row.newInterfaceNotice.title": "Agora você está usando a nova interface",
+  "settings.general.row.newInterfaceNotice.description": "A interface antiga foi descontinuada em {{date}}.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Descartar",
   "settings.general.row.pinchZoom.title": "Zoom com gesto de pinça",
   "settings.general.row.pinchZoom.description":
     "Permitir gestos de pinça no trackpad e de Ctrl+rolagem para aplicar zoom",

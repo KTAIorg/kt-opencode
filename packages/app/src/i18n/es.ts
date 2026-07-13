@@ -820,6 +820,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Nuevo",
   "settings.general.row.newInterface.description":
     "Un diseño renovado con pestañas, editor y nueva página de inicio. La interfaz anterior desaparecerá el {{date}}.",
+  "settings.general.row.newInterfaceNotice.title": "Ahora estás usando la nueva interfaz",
+  "settings.general.row.newInterfaceNotice.description": "La interfaz anterior se retiró el {{date}}.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Descartar",
   "settings.general.row.pinchZoom.title": "Pellizcar para ampliar",
   "settings.general.row.pinchZoom.description":
     "Permitir ampliar con el gesto de pellizco del panel táctil y con Ctrl-scroll",

@@ -739,6 +739,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "جديد",
   "settings.general.row.newInterface.description":
     "تخطيط وعلامات تبويب ومحرر رسائل وصفحة رئيسية معاد تصميمها. ستختفي الواجهة السابقة في {{date}}.",
+  "settings.general.row.newInterfaceNotice.title": "أنت تستخدم الآن الواجهة الجديدة",
+  "settings.general.row.newInterfaceNotice.description": "تم إيقاف الواجهة القديمة تدريجيًا في {{date}}.",
+  "settings.general.row.newInterfaceNotice.dismiss": "رفض",
   "settings.general.row.pinchZoom.title": "التكبير بإيماءة القرص",
   "settings.general.row.pinchZoom.description": "السماح بإيماءة القرص على لوحة اللمس وإيماءة Ctrl-scroll للتكبير",
   "settings.general.row.wayland.title": "استخدام Wayland الأصلي",

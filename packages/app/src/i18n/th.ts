@@ -805,6 +805,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "ใหม่",
   "settings.general.row.newInterface.description":
     "เลย์เอาต์ แท็บ ช่องเขียนข้อความ และหน้าแรกที่ออกแบบใหม่ อินเทอร์เฟซเดิมจะเลิกใช้งานในวันที่ {{date}}",
+  "settings.general.row.newInterfaceNotice.title": "ขณะนี้คุณกำลังใช้อินเทอร์เฟซใหม่",
+  "settings.general.row.newInterfaceNotice.description": "อินเทอร์เฟซเดิมถูกยกเลิกเมื่อวันที่ {{date}}",
+  "settings.general.row.newInterfaceNotice.dismiss": "ปิด",
   "settings.general.row.pinchZoom.title": "บีบนิ้วเพื่อซูม",
   "settings.general.row.pinchZoom.description": "อนุญาตให้ใช้ท่าบีบนิ้วบนแทร็คแพดและ Ctrl-scroll เพื่อซูม",
   "settings.general.row.wayland.title": "ใช้ Wayland แบบเนทีฟ",

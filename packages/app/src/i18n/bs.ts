@@ -815,6 +815,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Novo",
   "settings.general.row.newInterface.description":
     "Redizajnirani raspored, kartice, uređivač poruke i nova početna stranica. Stari interfejs nestaje {{date}}.",
+  "settings.general.row.newInterfaceNotice.title": "Sada koristite novi interfejs",
+  "settings.general.row.newInterfaceNotice.description": "Stari interfejs je ukinut {{date}}.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Odbaci",
   "settings.general.row.pinchZoom.title": "Zumiranje štipanjem",
   "settings.general.row.pinchZoom.description":
     "Dozvoli zumiranje gestom štipanja na dodirnoj ploči i pomoću Ctrl-pomjeranja",

@@ -1003,6 +1003,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "신규",
   "settings.general.row.newInterface.description":
     "새롭게 디자인된 레이아웃, 탭, 입력창과 새 홈 화면입니다. 이전 인터페이스는 {{date}}에 종료됩니다.",
+  "settings.general.row.newInterfaceNotice.title": "이제 새 인터페이스를 사용 중입니다",
+  "settings.general.row.newInterfaceNotice.description": "이전 인터페이스는 {{date}}에 사용이 중단되었습니다.",
+  "settings.general.row.newInterfaceNotice.dismiss": "닫기",
   "settings.general.row.pinchZoom.title": "핀치 줌",
   "settings.general.row.pinchZoom.description": "트랙패드 핀치 및 Ctrl-스크롤 제스처로 확대/축소 허용",
   "settings.updates.action.downloading": "다운로드 중...",

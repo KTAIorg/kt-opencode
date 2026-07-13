@@ -808,6 +808,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Ny",
   "settings.general.row.newInterface.description":
     "Et nydesignet layout, faner, promptfelt og ny startside. Den gamle brugerflade forsvinder den {{date}}.",
+  "settings.general.row.newInterfaceNotice.title": "Du bruger nu den nye brugerflade",
+  "settings.general.row.newInterfaceNotice.description": "Den gamle brugerflade blev udfaset den {{date}}.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Afvis",
   "settings.general.row.pinchZoom.title": "Knib for at zoome",
   "settings.general.row.pinchZoom.description": "Tillad knibebevægelser på pegefeltet og Ctrl-rulning for at zoome",
   "settings.general.row.wayland.title": "Brug native Wayland",

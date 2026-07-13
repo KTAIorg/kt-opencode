@@ -1099,6 +1099,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Ny",
   "settings.general.row.newInterface.description":
     "Et redesignet oppsett med faner, skrivefelt og ny startside. Det gamle grensesnittet forsvinner {{date}}.",
+  "settings.general.row.newInterfaceNotice.title": "Du bruker nå det nye grensesnittet",
+  "settings.general.row.newInterfaceNotice.description": "Det gamle grensesnittet ble faset ut {{date}}.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Avvis",
   "settings.general.row.pinchZoom.title": "Knip for å zoome",
   "settings.general.row.pinchZoom.description": "Tillat knipebevegelser på styreflaten og Ctrl-rulling for å zoome",
   "settings.updates.action.downloading": "Laster ned...",

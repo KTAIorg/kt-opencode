@@ -745,6 +745,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "新機能",
   "settings.general.row.newInterface.description":
     "刷新されたレイアウト、タブ、コンポーザー、ホーム画面です。以前のインターフェースは{{date}}に終了します。",
+  "settings.general.row.newInterfaceNotice.title": "新しいインターフェースを使用しています",
+  "settings.general.row.newInterfaceNotice.description": "以前のインターフェースは{{date}}に廃止されました。",
+  "settings.general.row.newInterfaceNotice.dismiss": "閉じる",
   "settings.general.row.pinchZoom.title": "ピンチでズーム",
   "settings.general.row.pinchZoom.description":
     "トラックパッドのピンチ操作とCtrl+スクロール操作によるズームを許可します",

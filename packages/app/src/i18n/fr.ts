@@ -760,6 +760,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Nouveau",
   "settings.general.row.newInterface.description":
     "Une mise en page repensée, des onglets, une zone de saisie et un nouvel accueil. L'ancienne interface disparaîtra le {{date}}.",
+  "settings.general.row.newInterfaceNotice.title": "Vous utilisez maintenant la nouvelle interface",
+  "settings.general.row.newInterfaceNotice.description": "L'ancienne interface a été retirée le {{date}}.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Ignorer",
   "settings.general.row.pinchZoom.title": "Pincer pour zoomer",
   "settings.general.row.pinchZoom.description":
     "Autoriser les gestes de pincement du pavé tactile et Ctrl-défilement pour zoomer",

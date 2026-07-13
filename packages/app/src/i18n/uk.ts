@@ -906,6 +906,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Нове",
   "settings.general.row.newInterface.description":
     "Оновлений макет, вкладки, редактор запитів і нова головна сторінка. Попередній інтерфейс зникне {{date}}.",
+  "settings.general.row.newInterfaceNotice.title": "Тепер ви використовуєте новий інтерфейс",
+  "settings.general.row.newInterfaceNotice.description": "Попередній інтерфейс було виведено з експлуатації {{date}}.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Відхилити",
   "settings.general.row.pinchZoom.title": "Масштабування щипком",
   "settings.general.row.pinchZoom.description":
     "Дозволити масштабування жестом щипка на трекпаді та прокручуванням із Ctrl",

@@ -816,6 +816,9 @@ export const dict = {
   "settings.general.row.newInterface.badge": "Новое",
   "settings.general.row.newInterface.description":
     "Обновлённая компоновка, вкладки, редактор запросов и новая главная страница. Прежний интерфейс исчезнет {{date}}.",
+  "settings.general.row.newInterfaceNotice.title": "Теперь вы используете новый интерфейс",
+  "settings.general.row.newInterfaceNotice.description": "Прежний интерфейс был окончательно отключён {{date}}.",
+  "settings.general.row.newInterfaceNotice.dismiss": "Закрыть",
   "settings.general.row.pinchZoom.title": "Масштабирование щипком",
   "settings.general.row.pinchZoom.description":
     "Разрешить масштабирование жестом щипка на трекпаде и прокруткой с Ctrl",
