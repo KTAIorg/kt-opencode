@@ -217,6 +217,15 @@ const layer = Layer.effect(
             return
           }
 
+          // GitHub exposes utility models for title generation without including them in the picker.
+          // They remain in the catalog with enabled=false, so prefer them before family selection.
+          if (providerID.startsWith("github-copilot")) {
+            for (const id of COPILOT_UTILITY_MODELS) {
+              const model = record.models.get(ModelV2.ID.make(id))
+              if (model?.status === "active") return projectModel(model, provider)
+            }
+          }
+
           const priority = providerID.startsWith("opencode")
             ? ["gpt-nano"]
             : providerID.startsWith("github-copilot")
@@ -246,7 +255,9 @@ const layer = Layer.effect(
                 }
               }
 
-              const unprefixed = candidates.find((model) => !crossRegionPrefixes.some((prefix) => model.id.startsWith(prefix)))
+              const unprefixed = candidates.find(
+                (model) => !crossRegionPrefixes.some((prefix) => model.id.startsWith(prefix)),
+              )
               if (unprefixed) return projectModel(unprefixed, provider)
               continue
             }
@@ -261,5 +272,6 @@ const layer = Layer.effect(
 )
 
 const SMALL_MODEL_FAMILY_PRIORITY = ["gemini-flash", "gpt-nano", "claude-haiku"]
+const COPILOT_UTILITY_MODELS = ["gpt-5.4-nano", "gpt-4.1", "gpt-4o", "gpt-4o-mini"]
 
 export const node = makeLocationNode({ service: Service, layer, deps: [EventV2.node, Integration.node] })

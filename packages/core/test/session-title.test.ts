@@ -26,6 +26,7 @@ import { testEffect } from "./lib/effect"
 
 let requests: LLMRequest[] = []
 let resolvedModels: Array<{ id: string; provider: string } | undefined> = []
+let failSmallResolve = false
 const model = Model.make({
   id: "title-model",
   provider: "test",
@@ -42,6 +43,9 @@ const client = Layer.mock(LLMClient.Service)({
 const models = Layer.mock(SessionRunnerModel.Service)({
   resolve: (session) => {
     resolvedModels.push(session.model ? { id: session.model.id, provider: session.model.providerID } : undefined)
+    if (failSmallResolve && session.model?.id === "mini") {
+      return Effect.fail(new Error("small unavailable") as never)
+    }
     const selected = session.model
       ? Model.make({
           id: session.model.id,
@@ -218,6 +222,81 @@ it.effect("prefers the title agent model over the catalog small model", () =>
 
     expect(resolvedModels).toEqual([{ id: "agent-title", provider: "test" }])
     expect(String(requests[0]?.model.id)).toBe("agent-title")
+  }),
+)
+
+it.effect("falls back to the session model when no small model exists", () =>
+  Effect.gen(function* () {
+    requests = []
+    resolvedModels = []
+    failSmallResolve = false
+    yield* enableTitleAgent()
+    const sessionID = SessionV2.ID.make("ses_title_session_fallback")
+    yield* insertSession(sessionID, { id: "main", providerID: "test" })
+    yield* prompt(sessionID, "Help me debug the failing build")
+
+    const store = yield* SessionStore.Service
+    const session = yield* store
+      .get(sessionID)
+      .pipe(Effect.flatMap((session) => (session ? Effect.succeed(session) : Effect.die("session missing"))))
+    const title = yield* SessionTitle.Service
+    yield* title.generateForFirstPrompt(session)
+
+    expect(resolvedModels).toEqual([{ id: "main", provider: "test" }])
+    expect(String(requests[0]?.model.id)).toBe("main")
+  }),
+)
+
+it.effect("falls back to the session model when small model resolution fails", () =>
+  Effect.gen(function* () {
+    requests = []
+    resolvedModels = []
+    failSmallResolve = true
+    yield* enableTitleAgent()
+    yield* seedSmallModel()
+    const sessionID = SessionV2.ID.make("ses_title_small_resolve_fail")
+    yield* insertSession(sessionID, { id: "main", providerID: "test" })
+    yield* prompt(sessionID, "Help me debug the failing build")
+
+    const store = yield* SessionStore.Service
+    const session = yield* store
+      .get(sessionID)
+      .pipe(Effect.flatMap((session) => (session ? Effect.succeed(session) : Effect.die("session missing"))))
+    const title = yield* SessionTitle.Service
+    yield* title.generateForFirstPrompt(session)
+
+    expect(resolvedModels).toEqual([
+      { id: "mini", provider: "test" },
+      { id: "main", provider: "test" },
+    ])
+    expect(String(requests[0]?.model.id)).toBe("main")
+  }),
+)
+
+it.effect("uses the catalog default provider when the session has no model", () =>
+  Effect.gen(function* () {
+    requests = []
+    resolvedModels = []
+    failSmallResolve = false
+    yield* enableTitleAgent()
+    yield* seedSmallModel()
+    const catalog = yield* Catalog.Service
+    yield* catalog.transform((catalog) => {
+      catalog.model.default.set(ProviderV2.ID.make("test"), ModelV2.ID.make("main"))
+    })
+    const sessionID = SessionV2.ID.make("ses_title_default_provider")
+    yield* insertSession(sessionID)
+    yield* prompt(sessionID, "Help me debug the failing build")
+
+    const store = yield* SessionStore.Service
+    const session = yield* store
+      .get(sessionID)
+      .pipe(Effect.flatMap((session) => (session ? Effect.succeed(session) : Effect.die("session missing"))))
+    const title = yield* SessionTitle.Service
+    yield* title.generateForFirstPrompt(session)
+
+    expect(resolvedModels).toEqual([{ id: "mini", provider: "test" }])
+    expect(String(requests[0]?.model.id)).toBe("mini")
   }),
 )
 

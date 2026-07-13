@@ -393,6 +393,30 @@ describe("CatalogV2", () => {
     }),
   )
 
+  it.effect("small model prefers picker-disabled copilot utility models", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const providerID = ProviderV2.ID.githubCopilot
+      yield* catalog.transform((catalog) => {
+        catalog.provider.update(providerID, () => {})
+        catalog.model.update(providerID, ModelV2.ID.make("mini"), (model) => {
+          model.family = ModelV2.Family.make("gpt-mini")
+          model.time.released = Date.now()
+        })
+        catalog.model.update(providerID, ModelV2.ID.make("gpt-4o-mini"), (model) => {
+          model.enabled = false
+          model.time.released = Date.now() - 1000
+        })
+        catalog.model.update(providerID, ModelV2.ID.make("gpt-5.4-nano"), (model) => {
+          model.enabled = false
+          model.time.released = Date.now() - 2000
+        })
+      })
+
+      expect((yield* catalog.model.small(providerID))?.id).toBe(ModelV2.ID.make("gpt-5.4-nano"))
+    }),
+  )
+
   it.effect("small model prefers global bedrock deployments before regional ones", () =>
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service
@@ -412,6 +436,54 @@ describe("CatalogV2", () => {
       })
 
       expect((yield* catalog.model.small(providerID))?.id).toBe(ModelV2.ID.make("global.claude-haiku"))
+    }),
+  )
+
+  it.effect("small model prefers regional bedrock deployments when global is missing", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const providerID = ProviderV2.ID.amazonBedrock
+      yield* catalog.transform((catalog) => {
+        catalog.provider.update(providerID, (provider) => {
+          provider.settings = { region: "us-west-2" }
+        })
+        catalog.model.update(providerID, ModelV2.ID.make("claude-haiku"), (model) => {
+          model.family = ModelV2.Family.make("claude-haiku")
+          model.time.released = Date.now()
+        })
+        catalog.model.update(providerID, ModelV2.ID.make("us.claude-haiku"), (model) => {
+          model.family = ModelV2.Family.make("claude-haiku")
+          model.time.released = Date.now() - 1000
+        })
+        catalog.model.update(providerID, ModelV2.ID.make("eu.claude-haiku"), (model) => {
+          model.family = ModelV2.Family.make("claude-haiku")
+          model.time.released = Date.now() + 1000
+        })
+      })
+
+      expect((yield* catalog.model.small(providerID))?.id).toBe(ModelV2.ID.make("us.claude-haiku"))
+    }),
+  )
+
+  it.effect("small model prefers unprefixed bedrock deployments when region prefixes are missing", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const providerID = ProviderV2.ID.amazonBedrock
+      yield* catalog.transform((catalog) => {
+        catalog.provider.update(providerID, (provider) => {
+          provider.settings = { region: "ap-northeast-1" }
+        })
+        catalog.model.update(providerID, ModelV2.ID.make("eu.claude-haiku"), (model) => {
+          model.family = ModelV2.Family.make("claude-haiku")
+          model.time.released = Date.now()
+        })
+        catalog.model.update(providerID, ModelV2.ID.make("claude-haiku"), (model) => {
+          model.family = ModelV2.Family.make("claude-haiku")
+          model.time.released = Date.now() - 1000
+        })
+      })
+
+      expect((yield* catalog.model.small(providerID))?.id).toBe(ModelV2.ID.make("claude-haiku"))
     }),
   )
 
