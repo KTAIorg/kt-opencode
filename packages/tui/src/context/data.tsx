@@ -384,9 +384,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
               event.data.inputID,
             ])
           message.update(event.data.sessionID, (draft, index) => {
-            message.append(
-              draft,
-              index,
+            const item: SessionMessageInfo =
               event.data.input.type === "user"
                 ? {
                     id: event.data.inputID,
@@ -399,8 +397,10 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
                     type: "synthetic",
                     ...event.data.input.data,
                     time: { created: event.created },
-                  },
-            )
+                  }
+            const position = index.get(event.data.inputID)
+            if (position === undefined) return message.append(draft, index, item)
+            draft[position] = item
           })
           break
         case "session.instructions.updated":
@@ -927,6 +927,28 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             const messages = store.session.message[sessionID]
             const position = messageIndex.get(sessionID)?.get(messageID)
             return position === undefined ? undefined : messages?.[position]
+          },
+          optimistic: {
+            add(sessionID: string, item: Extract<SessionMessageInfo, { type: "user" }>) {
+              if (!store.session.input[sessionID]?.includes(item.id))
+                setStore("session", "input", sessionID, [...(store.session.input[sessionID] ?? []), item.id])
+              message.update(sessionID, (draft, index) => message.append(draft, index, item))
+            },
+            remove(sessionID: string, messageID: string) {
+              setStore(
+                "session",
+                "input",
+                sessionID,
+                (store.session.input[sessionID] ?? []).filter((id) => id !== messageID),
+              )
+              message.update(sessionID, (draft, index) => {
+                const position = index.get(messageID)
+                if (position === undefined) return
+                draft.splice(position, 1)
+                index.clear()
+                draft.forEach((item, itemIndex) => index.set(item.id, itemIndex))
+              })
+            },
           },
           async refresh(sessionID: string) {
             const messages = (await sdk.api.message.list({ sessionID, limit: 200, order: "desc" })).data.toReversed()

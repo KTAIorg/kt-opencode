@@ -53,6 +53,7 @@ import { readLocalAttachment } from "./local-attachment"
 import { useData } from "../../context/data"
 import { useLocation } from "../../context/location"
 import { contextUsage } from "../../util/session"
+import { SessionMessage } from "@opencode-ai/core/session/message"
 
 registerOpencodeSpinner()
 
@@ -1003,8 +1004,10 @@ export function Prompt(props: PromptProps) {
 
     // Capture mode before it gets reset
     const currentMode = store.mode
+    const submittedPrompt = structuredClone(unwrap(store.prompt))
     const editorSelection = editorContext()
     const pendingEditorSelection = editorSelection && editor.labelState() === "pending" ? editorSelection : undefined
+    let cleared = false
 
     if (store.mode === "shell") {
       move.startSubmit()
@@ -1097,31 +1100,53 @@ export function Prompt(props: PromptProps) {
           return false
         }
       }
+      const messageID = SessionMessage.ID.create()
+      data.session.message.optimistic.add(sessionID, {
+        id: messageID,
+        type: "user",
+        text: inputText,
+        time: { created: Date.now() },
+      })
+      history.append({
+        ...submittedPrompt,
+        mode: currentMode,
+      })
+      input.extmarks.clear()
+      setStore("prompt", emptyPrompt())
+      setStore("extmarkToPart", new Map())
+      props.onSubmit?.()
+      input.clear()
+      cleared = true
+
       const error = await sdk.api.session
         .prompt({
           sessionID,
+          id: messageID,
           text: inputText,
-          files: store.prompt.files,
-          agents: store.prompt.agents,
+          files: submittedPrompt.files,
+          agents: submittedPrompt.agents,
         })
         .then(
           () => undefined,
           (error) => error,
         )
       if (error) {
+        data.session.message.optimistic.remove(sessionID, messageID)
         toast.show({ title: "Failed to send prompt", message: errorMessage(error), variant: "error" })
         return false
       }
       if (pendingEditorSelection) editor.markSelectionSent()
     }
-    history.append({
-      ...store.prompt,
-      mode: currentMode,
-    })
-    input.extmarks.clear()
-    setStore("prompt", emptyPrompt())
-    setStore("extmarkToPart", new Map())
-    props.onSubmit?.()
+    if (!cleared) {
+      history.append({
+        ...submittedPrompt,
+        mode: currentMode,
+      })
+      input.extmarks.clear()
+      setStore("prompt", emptyPrompt())
+      setStore("extmarkToPart", new Map())
+      props.onSubmit?.()
+    }
 
     // temporary hack to make sure the message is sent
     if (!props.sessionID) {
@@ -1133,7 +1158,7 @@ export function Prompt(props: PromptProps) {
         })
       }, 50)
     }
-    input.clear()
+    if (!cleared) input.clear()
     if (finishMoveProgress) move.finishSubmit()
     return true
   }

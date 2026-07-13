@@ -653,6 +653,75 @@ test("completes exploration when a queued prompt is promoted", async () => {
   }
 })
 
+test("shows optimistic prompts immediately and reconciles admission", async () => {
+  const events = createEventStream()
+  const sessionID = "session-optimistic"
+  const calls = createFetch((url) => {
+    if (url.pathname === `/api/session/${sessionID}/message`) return json({ data: [], cursor: {} })
+  }, events)
+  let data!: ReturnType<typeof useData>
+
+  function Probe() {
+    data = useData()
+    return <box />
+  }
+
+  const app = await testRender(() => (
+    <TestTuiContexts>
+      <SDKProvider client={createClient(calls.fetch)} api={createApi(calls.fetch)}>
+        <ProjectProvider>
+          <DataProvider>
+            <Probe />
+          </DataProvider>
+        </ProjectProvider>
+      </SDKProvider>
+    </TestTuiContexts>
+  ))
+
+  try {
+    const messageID = SessionMessage.ID.create()
+    data.session.message.optimistic.add(sessionID, {
+      id: messageID,
+      type: "user",
+      text: "Steer now",
+      time: { created: 1 },
+    })
+
+    const optimistic = data.session.message.get(sessionID, messageID)
+    expect(optimistic?.type).toBe("user")
+    expect(optimistic?.type === "user" ? optimistic.text : undefined).toBe("Steer now")
+    expect(data.session.input.has(sessionID, messageID)).toBe(true)
+
+    emitEvent(events, {
+      id: EventV2.ID.create(),
+      created: 2,
+      type: "session.input.admitted",
+      durable: durable(sessionID),
+      data: {
+        sessionID,
+        inputID: messageID,
+        input: { type: "user", data: { text: "Steer now", metadata: { admitted: true } }, delivery: "steer" },
+      },
+    })
+
+    await wait(() => data.session.message.get(sessionID, messageID)?.metadata?.admitted === true)
+    expect(data.session.message.list(sessionID)).toHaveLength(1)
+
+    const failedID = SessionMessage.ID.create()
+    data.session.message.optimistic.add(sessionID, {
+      id: failedID,
+      type: "user",
+      text: "Fails",
+      time: { created: 3 },
+    })
+    data.session.message.optimistic.remove(sessionID, failedID)
+    expect(data.session.message.get(sessionID, failedID)).toBeUndefined()
+    expect(data.session.input.has(sessionID, failedID)).toBe(false)
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
 test("removes committed revert messages from local state", async () => {
   const events = createEventStream()
   const sessionID = "session-revert"
