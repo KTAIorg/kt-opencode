@@ -17,6 +17,8 @@ import { Token } from "../util/token"
 const DEFAULT_BUFFER = 20_000
 const DEFAULT_KEEP_TOKENS = 8_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
+const COMPACTION_CHUNK_TOKENS = 32_000
+const SUMMARY_OUTPUT_TOKENS = 4_096
 const SUMMARY_TEMPLATE = `Output exactly the Markdown structure shown inside <template> and keep the section order unchanged. Do not include the <template> tags in your response.
 <template>
 ## Objective
@@ -80,7 +82,8 @@ type Plan = {
   readonly sessionID: SessionSchema.ID
   readonly model: Model
   readonly reason: SessionMessage.Compaction["reason"]
-  readonly prompt: string
+  readonly previousSummary?: string
+  readonly context: readonly string[]
   readonly recent: string
   readonly inputID?: SessionMessage.ID
 }
@@ -199,6 +202,14 @@ export const buildPrompt = (input: { readonly previousSummary?: string; readonly
     ...input.context,
   ].join("\n\n")
 
+const chunkContext = (context: readonly string[]) => {
+  const value = context.filter(Boolean).join("\n\n")
+  const size = COMPACTION_CHUNK_TOKENS * 4
+  return Array.from({ length: Math.ceil(value.length / size) }, (_, index) =>
+    value.slice(index * size, (index + 1) * size),
+  )
+}
+
 const planContent = (messages: readonly SessionMessage.Info[], tokens: number) => {
   const selected = select(messages, tokens)
   if (!selected) return
@@ -208,10 +219,8 @@ const planContent = (messages: readonly SessionMessage.Info[], tokens: number) =
   const previousRecent = previousSummary?.type === "compaction" ? previousSummary.recent : ""
   const summarizeRecent = !previousRecent && !selected.head
   return {
-    prompt: buildPrompt({
-      previousSummary: previousSummary?.type === "compaction" ? previousSummary.summary : undefined,
-      context: summarizeRecent ? [selected.recent] : [previousRecent, selected.head].filter(Boolean),
-    }),
+    previousSummary: previousSummary?.type === "compaction" ? previousSummary.summary : undefined,
+    context: chunkContext(summarizeRecent ? [selected.recent] : [previousRecent, selected.head]),
     recent: summarizeRecent ? "" : selected.recent,
   }
 }
@@ -235,62 +244,67 @@ const make = (dependencies: Dependencies) => {
       inputID: plan.inputID,
     })
 
-    const chunks: string[] = []
-    let failure: SessionError.Error | undefined
-    yield* dependencies.llm
-      .stream(
-        LLM.request({
-          model: plan.model,
-          messages: [Message.user(plan.prompt)],
-          tools: [],
-        }),
-      )
-      .pipe(
-        Stream.runForEach((event) => {
-          if (LLMEvent.is.providerError(event))
-            failure = {
-              type: event.classification === "context-overflow" ? "provider.invalid-request" : "provider.error",
-              message: event.message,
-            }
-          if (LLMEvent.is.textDelta(event)) {
-            chunks.push(event.text)
-            return dependencies.events.publish(SessionEvent.Compaction.Delta, {
-              sessionID: plan.sessionID,
-              text: event.text,
-            })
-          }
-          return Effect.void
-        }),
-        Effect.catchTag("LLM.Error", (error) =>
-          Effect.sync(() => {
-            failure = toSessionError(error)
+    let summary = plan.previousSummary
+    for (const [index, context] of plan.context.entries()) {
+      const chunks: string[] = []
+      let failure: SessionError.Error | undefined
+      const publish = index === plan.context.length - 1
+      yield* dependencies.llm
+        .stream(
+          LLM.request({
+            model: plan.model,
+            messages: [Message.user(buildPrompt({ previousSummary: summary, context: [context] }))],
+            tools: [],
+            generation: { maxTokens: SUMMARY_OUTPUT_TOKENS },
           }),
-        ),
-        Effect.onInterrupt(() =>
-          plan.reason === "auto"
-            ? failed({
-                sessionID: plan.sessionID,
-                reason: plan.reason,
-                error: { type: "compaction.interrupted", message: "Compaction was interrupted" },
-                inputID: plan.inputID,
-              }).pipe(Effect.asVoid)
-            : Effect.void,
-        ),
-      )
-    const summary = chunks.join("")
-    if (failure || !summary.trim()) {
-      const error = failure ?? { type: "compaction.failed" as const, message: "Compaction produced no summary" }
-      return yield* failed({
-        sessionID: plan.sessionID,
-        reason: plan.reason,
-        error,
-        inputID: plan.inputID,
-      })
+        )
+        .pipe(
+          Stream.runForEach((event) => {
+            if (LLMEvent.is.providerError(event))
+              failure = {
+                type: event.classification === "context-overflow" ? "provider.invalid-request" : "provider.error",
+                message: event.message,
+              }
+            if (LLMEvent.is.textDelta(event)) {
+              chunks.push(event.text)
+              if (publish)
+                return dependencies.events.publish(SessionEvent.Compaction.Delta, {
+                  sessionID: plan.sessionID,
+                  text: event.text,
+                })
+            }
+            return Effect.void
+          }),
+          Effect.catchTag("LLM.Error", (error) =>
+            Effect.sync(() => {
+              failure = toSessionError(error)
+            }),
+          ),
+          Effect.onInterrupt(() =>
+            plan.reason === "auto"
+              ? failed({
+                  sessionID: plan.sessionID,
+                  reason: plan.reason,
+                  error: { type: "compaction.interrupted", message: "Compaction was interrupted" },
+                  inputID: plan.inputID,
+                }).pipe(Effect.asVoid)
+              : Effect.void,
+          ),
+        )
+      const next = chunks.join("")
+      if (failure || !next.trim())
+        return yield* failed({
+          sessionID: plan.sessionID,
+          reason: plan.reason,
+          error: failure ?? { type: "compaction.failed", message: "Compaction produced no summary" },
+          inputID: plan.inputID,
+        })
+      summary = next
     }
     yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
       sessionID: plan.sessionID,
       reason: plan.reason,
-      text: summary,
+      text: summary ?? "",
       recent: plan.recent,
     })
     return { status: "completed" as const }
