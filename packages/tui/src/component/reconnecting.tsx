@@ -1,11 +1,52 @@
 import type { Service } from "@opencode-ai/client/effect"
-import { Show } from "solid-js"
+import { createSignal, onCleanup, Show } from "solid-js"
+import { Keymap } from "../context/keymap"
 import { useTheme } from "../context/theme"
+import { errorMessage } from "../util/error"
 import { Spinner } from "./spinner"
 
-export function Reconnecting(props: { status?: Service.Status }) {
+const restartCommand = "service.restart"
+
+export function Reconnecting(props: { status?: Service.Status; restart?: (signal?: AbortSignal) => Promise<void> }) {
   const theme = useTheme().theme
-  const copy = () => reconnectingCopy(props.status)
+  const shortcuts = Keymap.useShortcuts()
+  const [restarting, setRestarting] = createSignal(false)
+  const [failure, setFailure] = createSignal<string>()
+  let controller: AbortController | undefined
+  const copy = () =>
+    restarting()
+      ? { loading: true, message: "Restarting background service..." }
+      : reconnectingCopy(props.status, shortcuts.get(restartCommand))
+
+  Keymap.createLayer(() => ({
+    mode: "global",
+    priority: 1000,
+    commands: [
+      {
+        id: restartCommand,
+        bind: "r",
+        title: "Restart service",
+        enabled: props.status?.type === "unresponsive" && !!props.restart,
+        run: () => {
+          if (!props.restart || restarting()) return
+          controller = new AbortController()
+          setFailure(undefined)
+          setRestarting(true)
+          void props
+            .restart(controller.signal)
+            .then(
+              () => setFailure(undefined),
+              (error) => {
+                setFailure(errorMessage(error))
+                setRestarting(false)
+              },
+            )
+        },
+      },
+    ],
+  }))
+
+  onCleanup(() => controller?.abort())
 
   return (
     <box
@@ -37,12 +78,19 @@ export function Reconnecting(props: { status?: Service.Status }) {
             )}
           </Show>
         </Show>
+        <Show when={failure()}>
+          {(message) => (
+            <text fg={theme.error} wrapMode="word">
+              {message()}
+            </text>
+          )}
+        </Show>
       </box>
     </box>
   )
 }
 
-export function reconnectingCopy(status?: Service.Status) {
+export function reconnectingCopy(status?: Service.Status, restart = "r") {
   if (status?.type === "starting")
     return {
       loading: true,
@@ -59,7 +107,7 @@ export function reconnectingCopy(status?: Service.Status) {
     return {
       loading: false,
       message: "Background service is not responding",
-      action: "Run `opencode service restart` to recover it.",
+      action: `[${restart}] Restart service`,
     }
   return { loading: true, message: "Waiting for background service..." }
 }

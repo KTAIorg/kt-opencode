@@ -42,6 +42,7 @@ framework.
 | Lifecycle shell           | Implemented; the owner binds and registers before application boot    |
 | Failed-state latching     | Implemented; deterministic boot failure stays bound and actionable    |
 | Recovery diagnostics      | Implemented; the TUI shows status instead of transport internals      |
+| Explicit recovery         | Implemented; restart can replace an unchanged unresponsive owner      |
 | Cross-platform validation | macOS runtime verified; Linux and Windows run in the unit-test matrix |
 
 ## Context
@@ -453,13 +454,14 @@ After a bounded diagnostic threshold, the client may show:
 
 ```text
 The background service owns the service lock but is not responding.
-Run `opencode service restart` to recover it.
+[r] Restart service
 ```
 
-Only explicit `service restart` may perform destructive recovery. It verifies
-the complete registration and process instance before signaling, waits for
-graceful exit, re-checks identity before escalation, and refuses to kill a
-process it cannot positively identify.
+Only explicit `service restart` or the TUI restart action may perform
+destructive recovery. It verifies that the complete registration is unchanged
+before signaling, waits for graceful exit, and re-checks registration before
+escalation. This deliberately accepts the narrow risk that a stale PID was
+reused by an unrelated process; automatic reconnect never takes that risk.
 
 Automatic frozen-owner recovery is deferred.
 
@@ -504,8 +506,11 @@ Automatic frozen-owner recovery is deferred.
 
 1. Health fails, but the process still holds the service lock.
 2. Contenders fail lock acquisition and exit.
-3. Clients wait and eventually show explicit recovery guidance.
-4. No TUI kills the owner automatically.
+3. Clients wait and the TUI offers explicit restart.
+4. The user presses `r`, or runs `opencode service restart`.
+5. Restart rechecks the complete registration before each signal.
+6. Once the process exits, normal election starts one replacement.
+7. No TUI kills the owner automatically.
 
 ## TDD Verification
 
@@ -609,6 +614,8 @@ was the observed incident cost.
 - Registration corruption cannot produce two owners.
 - A deleted registration heals without restarting the owner or any client.
 - An unresponsive owner is not killed without an explicit recovery command.
+- Explicit restart replaces an unchanged unresponsive owner and returns only
+  when the replacement is ready.
 - Raw transport defects never escape to the terminal.
 
 ## Follow-ups
@@ -617,7 +624,8 @@ was the observed incident cost.
 - Application protocol compatibility and automatic local TUI re-exec.
 - Durable execution recovery for provider attempts and tools.
 - Shell, sub-agent, permission, question, and background-job continuity.
-- Automatic recovery for a positively identified frozen owner.
+- Automatic recovery for a positively identified frozen owner without the
+  explicit-restart PID-reuse tradeoff.
 - Cold-boot concurrency limits and interaction-prioritized location loading.
 - A steward or socket-handoff architecture if zero-downtime replacement becomes
   a real requirement.

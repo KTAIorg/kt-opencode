@@ -140,7 +140,7 @@ export type TuiInput = {
   server: {
     endpoint: Service.Endpoint
     reconnect?: (onStatus: (status: Service.Status) => void, signal: AbortSignal) => Promise<Service.Endpoint>
-    reload?: () => Promise<void>
+    reload?: (signal?: AbortSignal) => Promise<void>
   }
   args: Args
   config: Config.Interface
@@ -1121,7 +1121,7 @@ function App(props: { pair?: DialogPairCredentials }) {
         <StartupLoading ready={plugins.ready} />
       </Show>
       <Show when={showReconnecting()}>
-        <Reconnecting status={client.connection.service()} />
+        <Reconnecting status={client.connection.service()} restart={client.reload} />
       </Show>
     </box>
   )

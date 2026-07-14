@@ -17,7 +17,7 @@ export type Args = {
 export type Resolved = {
   readonly endpoint: Service.Endpoint
   readonly reconnect?: (onStatus: (status: Service.Status) => void, signal: AbortSignal) => Promise<Service.Endpoint>
-  readonly reload?: () => Promise<void>
+  readonly reload?: (signal?: AbortSignal) => Promise<void>
 }
 
 export const resolve = Effect.fn("cli.server.resolve")(function* (args: Args) {
@@ -53,13 +53,8 @@ export const resolve = Effect.fn("cli.server.resolve")(function* (args: Args) {
       Effect.runPromise(Service.start({ ...reconnectOptions, onStatus }).pipe(Effect.provide(NodeFileSystem.layer)), {
         signal,
       }),
-    reload: () =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          yield* Service.stop(options, { targetVersion: options.version })
-          yield* Service.start(options)
-        }).pipe(Effect.provide(NodeFileSystem.layer)),
-      ),
+    reload: (signal?: AbortSignal) =>
+      Effect.runPromise(Service.restart(options).pipe(Effect.asVoid, Effect.provide(NodeFileSystem.layer)), { signal }),
   } satisfies Resolved
 })
 

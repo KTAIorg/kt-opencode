@@ -11,8 +11,14 @@ const processes: Bun.Subprocess[] = []
 const directories: string[] = []
 
 afterEach(async () => {
-  processes.forEach((process) => process.kill("SIGTERM"))
-  await Promise.all(processes.splice(0).map((process) => process.exited))
+  await Promise.all(
+    processes.splice(0).map(async (process) => {
+      process.kill("SIGTERM")
+      const exited = await Promise.race([process.exited.then(() => true), Bun.sleep(1_000).then(() => false)])
+      if (!exited) process.kill("SIGKILL")
+      await process.exited
+    }),
+  )
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
 })
 
@@ -87,6 +93,124 @@ test("requests graceful replacement of the exact service instance", async () => 
   await run(Service.stop({ file: registration }, { targetVersion: "next" }))
   await process.exited
   expect(await Bun.file(registration + ".stop").json()).toEqual({ instanceID: info.id, targetVersion: "next" })
+})
+
+test("explicit restart replaces an unresponsive registered process", async () => {
+  const directory = await temp()
+  const registration = join(directory, "service.json")
+  const existing = spawn(registration, "unresponsive")
+  await waitForFile(registration)
+
+  const endpoint = await run(
+    Service.restart({
+      file: registration,
+      version: "test",
+      command: [process.execPath, fixture, registration, "ready"],
+    }),
+  )
+  await existing.exited
+  const info = await Bun.file(registration).json()
+
+  try {
+    expect(endpoint.url).toBe(info.url)
+    expect(info.pid).not.toBe(existing.pid)
+    expect(await health(endpoint.url)).toMatchObject({ healthy: true, version: "test", pid: info.pid })
+  } finally {
+    await run(Service.stop({ file: registration }))
+  }
+}, 15_000)
+
+test("restart recovers when a healthy owner stops responding during shutdown", async () => {
+  const directory = await temp()
+  const registration = join(directory, "service.json")
+  const existing = spawn(registration, "drop-stop")
+  await waitForFile(registration)
+
+  const endpoint = await run(
+    Service.restart({
+      file: registration,
+      version: "test",
+      command: [process.execPath, fixture, registration, "ready"],
+    }),
+  )
+  await existing.exited
+  const info = await Bun.file(registration).json()
+
+  try {
+    expect(endpoint.url).toBe(info.url)
+    expect(info.pid).not.toBe(existing.pid)
+  } finally {
+    await run(Service.stop({ file: registration }))
+  }
+}, 15_000)
+
+test("restart fails when a responsive owner rejects shutdown", async () => {
+  const directory = await temp()
+  const registration = join(directory, "service.json")
+  const existing = spawn(registration, "reject-stop")
+  await waitForFile(registration)
+
+  await expect(run(Service.restart({ file: registration, version: "test" }))).rejects.toThrow(
+    "Background service rejected restart",
+  )
+  expect(existing.exitCode).toBe(null)
+})
+
+test("ordinary stop never signals an unresponsive registered process", async () => {
+  const directory = await temp()
+  const registration = join(directory, "service.json")
+  const existing = spawn(registration, "unresponsive")
+  await waitForFile(registration)
+
+  await run(Service.stop({ file: registration }))
+
+  expect(existing.exitCode).toBe(null)
+})
+
+test.skipIf(process.platform === "win32")(
+  "restart escalates when an unresponsive process ignores SIGTERM",
+  async () => {
+    const directory = await temp()
+    const registration = join(directory, "service.json")
+    const existing = spawn(registration, "unresponsive-stubborn")
+    await waitForFile(registration)
+
+    const endpoint = await run(
+      Service.restart({
+        file: registration,
+        version: "test",
+        command: [process.execPath, fixture, registration, "ready"],
+      }),
+    )
+    await existing.exited
+    const info = await Bun.file(registration).json()
+
+    try {
+      expect(endpoint.url).toBe(info.url)
+      expect(existing.signalCode).toBe("SIGKILL")
+    } finally {
+      await run(Service.stop({ file: registration }))
+    }
+  },
+  20_000,
+)
+
+test("restart does not signal a process after registration changes", async () => {
+  const directory = await temp()
+  const registration = join(directory, "service.json")
+  const existing = spawn(registration, "unresponsive-slow")
+  await waitForFile(registration)
+  const restarting = run(
+    Service.restart({ file: registration, version: "test", command: [] }),
+  )
+
+  await waitForFile(registration + ".health-request")
+  const replacement = spawn(registration, "ready")
+  await waitForRegistration(registration, replacement.pid)
+  const endpoint = await restarting
+
+  expect(existing.exitCode).toBe(null)
+  expect(endpoint.url).toBe((await Bun.file(registration).json()).url)
 })
 
 test("does not spawn contenders while an incompatible service rejects replacement", async () => {
@@ -239,6 +363,17 @@ async function waitForFile(file: string) {
     await Bun.sleep(5)
   }
   throw new Error(`Timed out waiting for ${file}`)
+}
+
+async function waitForRegistration(file: string, pid: number) {
+  for (let attempt = 0; attempt < 600; attempt++) {
+    const info = await Bun.file(file)
+      .json()
+      .catch(() => undefined)
+    if (info?.pid === pid) return
+    await Bun.sleep(5)
+  }
+  throw new Error(`Timed out waiting for registration from ${pid}`)
 }
 
 async function health(url: string) {

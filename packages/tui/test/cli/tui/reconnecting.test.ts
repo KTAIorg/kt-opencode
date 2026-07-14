@@ -25,7 +25,7 @@ test("describes service status without transport diagnostics", () => {
   expect(reconnectingCopy({ type: "unresponsive" })).toEqual({
     loading: false,
     message: "Background service is not responding",
-    action: "Run `opencode service restart` to recover it.",
+    action: "[r] Restart service",
   })
   expect(JSON.stringify(reconnectingCopy())).not.toMatch(/Attempt|ECONNREFUSED|Event stream disconnected/)
 })

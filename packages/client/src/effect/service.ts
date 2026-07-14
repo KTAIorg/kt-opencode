@@ -199,6 +199,22 @@ export const stop = Effect.fn("service.stop")(function* (options: Options = {}, 
   if (existing !== undefined) yield* kill(existing, options, metadata.targetVersion)
 })
 
+// Explicit recovery path: unlike stop(), restart may terminate an unchanged
+// registered process that no longer answers authenticated health checks.
+export const restart = Effect.fn("service.restart")(function* (options: StartOptions = {}) {
+  const existing = yield* registered(options.file, true)
+  if (existing.service !== undefined) {
+    const result = yield* kill(existing.service, options, options.version)
+    if (result === "rejected") return yield* Effect.fail(new Error("Background service rejected restart"))
+    if (result === "changed") {
+      const current = yield* read(options.file)
+      if (current !== undefined && same(current, existing.info))
+        yield* terminate(existing.info, read(options.file), true)
+    }
+  } else if (existing.info !== undefined) yield* terminate(existing.info, read(options.file), true)
+  return yield* start(options)
+})
+
 function fallback() {
   const state = process.env["XDG_STATE_HOME"] ?? join(homedir(), ".local", "state")
   return join(state, "opencode", "service.json")
@@ -217,6 +233,7 @@ export const Info = Schema.Struct({
   password: Schema.optional(Schema.String),
 })
 export type Info = typeof Info.Type
+const same = Schema.toEquivalence(Info)
 
 const decode = Schema.decodeUnknownEffect(Schema.fromJsonString(Info))
 const decodeHealth = Schema.decodeUnknownOption(ServiceStatus.Health)
@@ -305,27 +322,34 @@ const stopped = Effect.fnUntraced(function* (pid: number) {
   return yield* Effect.fail(new Error(`Server process ${pid} is still running`))
 })
 
-function same(left: Info, right: Info) {
-  return left.id === right.id && left.version === right.version && left.url === right.url && left.pid === right.pid
-}
+const terminate = Effect.fnUntraced(function* (
+  info: Info,
+  current: Effect.Effect<Info | undefined, never, FileSystem.FileSystem>,
+  graceful: boolean,
+) {
+  if (graceful) {
+    const owner = yield* current
+    if (owner === undefined || !same(owner, info)) return "changed" as const
+    yield* signal(info.pid, "SIGTERM")
+  }
+  const done = yield* stopped(info.pid).pipe(Effect.retry(poll), Effect.option)
+  if (Option.isSome(done)) return "stopped" as const
+
+  const latest = yield* current
+  if (latest === undefined || !same(latest, info)) return "changed" as const
+  yield* signal(info.pid, "SIGKILL")
+  yield* stopped(info.pid).pipe(Effect.retry(poll))
+  return "stopped" as const
+})
 
 const kill = Effect.fnUntraced(function* (service: LocalService, options: Options, targetVersion?: string) {
   const requested = yield* requestStop(service, targetVersion)
-  if (requested === "rejected") return
-  if (requested === "unsupported") {
-    // A stale registration may point at a reused PID. Authenticate again
-    // immediately before the legacy signal fallback.
-    const current = yield* find(options)
-    if (current === undefined || !same(current.info, service.info)) return
-    yield* signal(service.info.pid, "SIGTERM")
-  }
-  const done = yield* stopped(service.info.pid).pipe(Effect.retry(poll), Effect.option)
-  if (Option.isSome(done)) return
-
-  const latest = yield* find(options)
-  if (latest === undefined || !same(latest.info, service.info)) return
-  yield* signal(service.info.pid, "SIGKILL")
-  yield* stopped(service.info.pid).pipe(Effect.retry(poll))
+  if (requested === "rejected") return "rejected" as const
+  return yield* terminate(
+    service.info,
+    registered(options.file, true).pipe(Effect.map((result) => result.service?.info)),
+    requested === "unsupported",
+  )
 })
 
 const decodeStopResponse = Schema.decodeUnknownOption(ServiceStatus.StopResponse)

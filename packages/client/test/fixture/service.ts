@@ -1,4 +1,4 @@
-import { appendFile, rename, writeFile } from "node:fs/promises"
+import { appendFile, rename, rm, writeFile } from "node:fs/promises"
 
 const [registration, mode, delay] = process.argv.slice(2)
 if (registration === undefined || mode === undefined) throw new Error("Missing service fixture arguments")
@@ -8,6 +8,35 @@ if (mode === "record-start") {
   process.exit(1)
 }
 if (mode === "signal") process.kill(process.pid, process.platform === "win32" ? "SIGTERM" : "SIGKILL")
+if (mode === "unresponsive" || mode === "unresponsive-stubborn" || mode === "unresponsive-slow") {
+  const stalled =
+    mode === "unresponsive-slow"
+      ? Bun.serve({
+          port: 0,
+          fetch: () => {
+            void writeFile(registration + ".health-request", "")
+            return new Promise<Response>(() => {})
+          },
+        })
+      : undefined
+  await writeFile(
+    registration,
+    JSON.stringify({
+      id: crypto.randomUUID(),
+      version: "test",
+      url: stalled?.url.toString() ?? "http://127.0.0.1:1",
+      pid: process.pid,
+      password: "secret",
+    }),
+    { mode: 0o600 },
+  )
+  process.on("SIGTERM", async () => {
+    if (mode === "unresponsive-stubborn") return
+    await rm(registration, { force: true })
+    process.exit()
+  })
+  await new Promise(() => {})
+}
 
 if (mode === "delayed" || mode === "delayed-failed" || mode === "coordinated") {
   await appendFile(registration + ".starts", process.pid + "\n")
@@ -22,6 +51,7 @@ if (mode === "delayed" || mode === "delayed-failed" || mode === "coordinated") {
 }
 
 let requests = 0
+let stopDropped = false
 const version = mode === "old" || mode === "reject-stop" ? "old" : "test"
 const id = crypto.randomUUID()
 const server = Bun.serve({
@@ -32,6 +62,10 @@ const server = Bun.serve({
       await writeFile(registration + ".stop-attempt", "")
       return Response.json({ accepted: false })
     }
+    if (pathname === "/api/service/stop" && mode === "drop-stop") {
+      stopDropped = true
+      return new Promise<Response>(() => {})
+    }
     if (pathname === "/api/service/stop" && mode === "graceful") {
       const body = await request.json()
       if (typeof body !== "object" || body === null || body.instanceID !== id) return Response.json({ accepted: false })
@@ -40,6 +74,7 @@ const server = Bun.serve({
       return Response.json({ accepted: true })
     }
     if (pathname !== "/api/health") return new Response(null, { status: 404 })
+    if (stopDropped) return new Promise<Response>(() => {})
     requests += 1
     if (mode === "modern" && requests === 1) {
       await writeFile(registration + ".first-request", "")
@@ -63,7 +98,7 @@ const server = Bun.serve({
         },
         { status: 503 },
       )
-    if (mode === "starting" || mode === "graceful" || mode === "reject-stop")
+    if (mode === "starting" || mode === "graceful" || mode === "reject-stop" || mode === "drop-stop")
       return Response.json({ healthy: true, version, pid: process.pid, instanceID: id, status: { type: "ready" } })
     return Response.json({ healthy: true, version, pid: process.pid })
   },
@@ -81,8 +116,9 @@ await writeFile(
 )
 await rename(registration + ".tmp", registration)
 
-function shutdown() {
+async function shutdown() {
   server.stop(true)
+  await rm(registration, { force: true })
   process.exit()
 }
 process.on("SIGTERM", shutdown)

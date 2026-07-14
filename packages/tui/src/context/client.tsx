@@ -28,7 +28,7 @@ export const { use: useClient, provider: ClientProvider } = createSimpleContext(
     api: OpenCodeClient
     reconnect?: (onStatus: (status: Service.Status) => void, signal: AbortSignal) => Promise<{ api: OpenCodeClient }>
     // Stops and starts the managed service; present only in service mode.
-    reload?: () => Promise<void>
+    reload?: (signal?: AbortSignal) => Promise<void>
   }) => {
     const log = useLog({ component: "client" })
     const abort = new AbortController()
