@@ -53,6 +53,9 @@ export const Plugin = define({
             catalog.provider.update(providerID, (provider) => {
               if (item.name !== undefined) provider.name = item.name
               if (item.api !== undefined) provider.api = { ...item.api }
+              if (item.package !== undefined || item.settings !== undefined) {
+                provider.api = configuredApi(provider.api, item.package, item.settings)
+              }
               if (item.request !== undefined) {
                 Object.assign(provider.request.headers, item.request.headers)
                 Object.assign(provider.request.body, item.request.body)
@@ -63,6 +66,16 @@ export const Plugin = define({
                 if (config.family !== undefined) model.family = config.family
                 if (config.name !== undefined) model.name = config.name
                 if (config.api !== undefined) model.api = { ...model.api, ...config.api }
+                if (config.package !== undefined || config.settings !== undefined) {
+                  model.api = {
+                    ...configuredApi(
+                      config.api === undefined ? catalog.provider.get(providerID)!.provider.api : model.api,
+                      config.package,
+                      config.settings,
+                    ),
+                    id: model.api.id,
+                  }
+                }
                 if (config.capabilities !== undefined) {
                   model.capabilities = {
                     tools: config.capabilities.tools,
@@ -111,3 +124,25 @@ export const Plugin = define({
     )
   }),
 })
+
+function configuredApi(api: ProviderV2.MutableApi, packageName?: string, settings?: Record<string, unknown>) {
+  const merged = { ...api.settings, ...settings }
+  const baseURL = typeof merged.baseURL === "string" ? merged.baseURL : api.url
+  if (packageName?.startsWith("aisdk:")) {
+    return {
+      type: "aisdk" as const,
+      package: packageName.slice("aisdk:".length),
+      ...(baseURL === undefined ? {} : { url: baseURL }),
+      settings: merged,
+    }
+  }
+  if (packageName !== undefined) {
+    return {
+      type: "native" as const,
+      package: packageName,
+      ...(baseURL === undefined ? {} : { url: baseURL }),
+      settings: merged,
+    }
+  }
+  return { ...api, ...(baseURL === undefined ? {} : { url: baseURL }), settings: merged }
+}

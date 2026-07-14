@@ -55,6 +55,76 @@ function request(headers: Record<string, string>, variant?: string) {
 const decode = Schema.decodeUnknownSync(Config.Info)
 
 describe("ConfigProviderPlugin.Plugin", () => {
+  it.effect("loads documented native provider packages", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const providerID = ProviderV2.ID.make("custom")
+      const modelID = ModelV2.ID.make("chat")
+      const config = Config.Service.of({
+        entries: () =>
+          Effect.succeed([
+            new Config.Document({
+              type: "document",
+              info: decode({
+                providers: {
+                  custom: {
+                    package: "@opencode-ai/llm/providers/openai-compatible",
+                    settings: { baseURL: "https://example.test/v1" },
+                    models: { chat: { name: "Chat" } },
+                  },
+                },
+              }),
+            }),
+          ]),
+      })
+
+      yield* addPlugin(config)
+
+      expect(required(yield* catalog.model.get(providerID, modelID)).api).toEqual({
+        id: modelID,
+        type: "native",
+        package: "@opencode-ai/llm/providers/openai-compatible",
+        url: "https://example.test/v1",
+        settings: { baseURL: "https://example.test/v1" },
+      })
+    }),
+  )
+
+  it.effect("loads documented aisdk provider packages", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Catalog.Service
+      const providerID = ProviderV2.ID.make("custom")
+      const modelID = ModelV2.ID.make("chat")
+      const config = Config.Service.of({
+        entries: () =>
+          Effect.succeed([
+            new Config.Document({
+              type: "document",
+              info: decode({
+                providers: {
+                  custom: {
+                    package: "aisdk:@ai-sdk/openai-compatible",
+                    settings: { baseURL: "https://example.test/v1" },
+                    models: { chat: { name: "Chat" } },
+                  },
+                },
+              }),
+            }),
+          ]),
+      })
+
+      yield* addPlugin(config)
+
+      expect(required(yield* catalog.model.get(providerID, modelID)).api).toEqual({
+        id: modelID,
+        type: "aisdk",
+        package: "@ai-sdk/openai-compatible",
+        url: "https://example.test/v1",
+        settings: { baseURL: "https://example.test/v1" },
+      })
+    }),
+  )
+
   it.effect("keeps configured model variant bodies unchanged", () =>
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service

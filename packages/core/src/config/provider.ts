@@ -47,6 +47,8 @@ const ModelApi = Schema.Union([
 class Model extends Schema.Class<Model>("ConfigV2.Model")({
   family: ModelV2.Family.pipe(Schema.optional),
   name: Schema.String.pipe(Schema.optional),
+  package: Schema.String.pipe(Schema.optional),
+  settings: Schema.Record(Schema.String, Schema.Unknown).pipe(Schema.optional),
   api: ModelApi.pipe(Schema.optional),
   capabilities: ModelV2.Capabilities.pipe(Schema.optional),
   request: Schema.Struct({
@@ -65,6 +67,8 @@ class Model extends Schema.Class<Model>("ConfigV2.Model")({
 export class Info extends Schema.Class<Info>("ConfigV2.Provider")({
   name: Schema.String.pipe(Schema.optional),
   env: Schema.String.pipe(Schema.Array, Schema.optional),
+  package: Schema.String.pipe(Schema.optional),
+  settings: Schema.Record(Schema.String, Schema.Unknown).pipe(Schema.optional),
   api: ProviderV2.Api.pipe(Schema.optional),
   request: Request.pipe(Schema.optional),
   models: Schema.Record(Schema.String, Model).pipe(Schema.optional),
