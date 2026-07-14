@@ -2,6 +2,7 @@ import { AISDK } from "@opencode-ai/core/aisdk"
 import type { LanguageModelV3 } from "@ai-sdk/provider"
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
+import { Integration } from "@opencode-ai/core/integration"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { PluginHost } from "@opencode-ai/core/plugin/host"
@@ -33,6 +34,28 @@ function fakeSelectorSdk(calls: string[]) {
 }
 
 describe("XAIPlugin", () => {
+  it.effect("registers browser OAuth, device OAuth, and API key methods", () =>
+    Effect.gen(function* () {
+      yield* addPlugin()
+      const integrations = yield* Integration.Service
+      const integration = yield* integrations.get(Integration.ID.make("xai"))
+      expect(integration?.name).toBe("xAI")
+      expect(integration?.methods).toEqual([
+        {
+          id: Integration.MethodID.make("browser"),
+          type: "oauth",
+          label: "xAI Grok OAuth (SuperGrok Subscription)",
+        },
+        {
+          id: Integration.MethodID.make("device"),
+          type: "oauth",
+          label: "xAI Grok OAuth (Headless / Remote / VPS)",
+        },
+        { type: "key", label: "Manually enter API Key" },
+      ])
+    }),
+  )
+
   it.effect("creates an xAI SDK only for @ai-sdk/xai", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
