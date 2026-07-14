@@ -1036,6 +1036,8 @@ export const dict = {
 
   "app.server.unreachable": "{{server}} sunucusuna ulaşılamadı",
   "app.server.retrying": "Otomatik olarak tekrar deneniyor...",
+  "app.server.status.reconnecting": "{{server}} sunucusuna yeniden bağlanılıyor...",
+  "app.server.status.disconnected": "{{server}} sunucusuna bağlanılamadı",
   "app.server.otherServers": "Diğer sunucular",
   "dialog.server.add.usernamePlaceholder": "kullanıcı adı",
   "dialog.server.add.passwordPlaceholder": "parola",

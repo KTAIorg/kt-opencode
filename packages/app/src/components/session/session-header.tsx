@@ -251,9 +251,9 @@ export function SessionHeader() {
   })
   const serverStatusLabel = createMemo(() => {
     if (serverStatus() === "disconnected") {
-      return language.t("app.server.unreachable", { server: serverName(serverSDK().server) })
+      return language.t("app.server.status.disconnected", { server: serverName(serverSDK().server) })
     }
-    return language.t("app.server.retrying")
+    return language.t("app.server.status.reconnecting", { server: serverName(serverSDK().server) })
   })
   const v2ActionsState = createMemo<SessionHeaderV2ActionsState>(() => ({
     serverStatus: isDesktop() ? serverStatus() : undefined,

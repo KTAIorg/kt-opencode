@@ -333,6 +333,8 @@ export const dict = {
 
   "app.server.unreachable": "Не вдалося досягти {{server}}",
   "app.server.retrying": "Автоматичне повторення...",
+  "app.server.status.reconnecting": "Повторне підключення до {{server}}...",
+  "app.server.status.disconnected": "Не вдалося підключитися до {{server}}",
   "app.server.otherServers": "Інші сервери",
 
   "dialog.server.title": "Сервери",

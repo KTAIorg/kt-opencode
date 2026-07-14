@@ -953,6 +953,8 @@ export const dict = {
 
   "app.server.unreachable": "Não foi possível conectar a {{server}}",
   "app.server.retrying": "Tentando novamente automaticamente...",
+  "app.server.status.reconnecting": "Reconectando a {{server}}...",
+  "app.server.status.disconnected": "Não foi possível conectar a {{server}}",
   "app.server.otherServers": "Outros servidores",
   "dialog.server.add.usernamePlaceholder": "nome de usuário",
   "dialog.server.add.passwordPlaceholder": "senha",

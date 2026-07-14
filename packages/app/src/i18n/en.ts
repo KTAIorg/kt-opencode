@@ -332,6 +332,8 @@ export const dict = {
 
   "app.server.unreachable": "Could not reach {{server}}",
   "app.server.retrying": "Retrying automatically...",
+  "app.server.status.reconnecting": "Reconnecting to {{server}}...",
+  "app.server.status.disconnected": "Couldn't connect to {{server}}",
   "app.server.otherServers": "Other servers",
 
   "dialog.server.title": "Servers",
