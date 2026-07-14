@@ -4,6 +4,7 @@ import type {
   IntegrationConnectOauthOutput,
   IntegrationInfo,
   IntegrationOAuthMethod,
+  WebSearchProvider,
 } from "@opencode-ai/client"
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useClipboard } from "../context/clipboard"
@@ -29,7 +30,6 @@ const INTEGRATION_PRIORITY: Record<string, number> = {
 type ConnectMethod = Exclude<IntegrationInfo["methods"][number], { type: "env" }>
 type IntegrationAttempt = IntegrationConnectOauthOutput["data"]
 type OnIntegrationConnected = (providerID?: string) => void
-type WebSearchProvider = { id: string; name: string }
 
 export function integrationOptions(list: IntegrationInfo[]) {
   return list.toSorted(
@@ -67,6 +67,7 @@ export function DialogIntegration(
   const options = createMemo(() => {
     const providers = data.location.websearch.list() ?? []
     const providersByID = new Map(providers.map((provider) => [provider.id, provider]))
+    const selectedProvider = data.location.websearch.provider()
     const integrations = integrationOptions(data.location.integration.list() ?? []).filter(
       (integration) => props.integrationID === undefined || integration.id === props.integrationID,
     )
@@ -74,31 +75,30 @@ export function DialogIntegration(
     return [
       ...integrations.map((integration) => {
         const methods = connectMethods(integration)
-        const connected = integration.connections.length > 0
         const provider = providersByID.get(integration.id)
-        const selected = data.location.websearch.provider() === provider?.id
         const credentials = credentialConnections(integration)
+        let category = "Services"
+        if (integration.id in INTEGRATION_PRIORITY) category = "Popular"
+        if (provider) category = "Web search"
         return {
           title: integration.name,
           value: integration.id,
           description: methods.length === 0 ? "Environment only" : undefined,
           footer:
-            [connectionSummary(integration), selected ? "Web search default" : undefined]
+            [connectionSummary(integration), selectedProvider === provider?.id ? "Web search default" : undefined]
               .filter((value) => value !== undefined && value.length > 0)
               .join(" · ") || undefined,
-          category: provider ? "Web search" : integration.id in INTEGRATION_PRIORITY ? "Popular" : "Services",
+          category,
           disabled: methods.length === 0 && !provider,
-          gutter: connected ? () => <text fg={theme.success}>✓</text> : undefined,
+          gutter: integration.connections.length > 0 ? () => <text fg={theme.success}>✓</text> : undefined,
           onSelect: () => {
             if (props.connectionOnly) {
-              return credentials.length
-                ? manageConnections(integration, methods, dialog, props.onConnected)
-                : selectMethod(integration, methods, dialog, props.onConnected)
+              if (credentials.length) return manageConnections(integration, methods, dialog, props.onConnected)
+              return selectMethod(integration, methods, dialog, props.onConnected)
             }
             if (provider) return manageWebSearch(provider, dialog, integration, methods)
-            return credentials.length
-              ? manageConnections(integration, methods, dialog, props.onConnected)
-              : selectMethod(integration, methods, dialog, props.onConnected)
+            if (credentials.length) return manageConnections(integration, methods, dialog, props.onConnected)
+            return selectMethod(integration, methods, dialog, props.onConnected)
           },
         }
       }),
@@ -107,7 +107,7 @@ export function DialogIntegration(
         .map((provider) => ({
           title: provider.name,
           value: provider.id,
-          footer: data.location.websearch.provider() === provider.id ? "Web search default" : undefined,
+          footer: selectedProvider === provider.id ? "Web search default" : undefined,
           category: "Web search",
           onSelect: () => manageWebSearch(provider, dialog),
         })),
@@ -146,10 +146,10 @@ function manageWebSearch(
           location: location(data),
         })
         .then(async () => {
-          await Promise.all([
-            ...(integration ? [data.location.integration.refresh()] : []),
-            data.location.websearch.refresh(),
-          ])
+          const refreshes = integration
+            ? [data.location.integration.refresh(), data.location.websearch.refresh()]
+            : [data.location.websearch.refresh()]
+          await Promise.all(refreshes)
           toast.show({ variant: "success", message: `${provider.name} is now the web search default` })
           dialog.clear()
         })
@@ -171,10 +171,10 @@ function manageWebSearch(
                 {
                   title: credentials.length ? "Manage connections" : "Connect",
                   value: "connect",
-                  onSelect: () =>
-                    credentials.length
-                      ? manageConnections(integration, methods, dialog)
-                      : selectMethod(integration, methods, dialog),
+                  onSelect: () => {
+                    if (credentials.length) return manageConnections(integration, methods, dialog)
+                    return selectMethod(integration, methods, dialog)
+                  },
                 },
               ]
             : []),

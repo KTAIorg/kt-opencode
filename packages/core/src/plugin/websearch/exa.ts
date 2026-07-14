@@ -7,12 +7,12 @@ import { WebSearchMcp } from "./mcp"
 
 export const endpoint = "https://mcp.exa.ai/mcp"
 
-const Input = Schema.Struct({
+const McpInput = Schema.Struct({
   query: Schema.String,
   numResults: Schema.Number.pipe(Schema.optional),
 })
 
-const Output = Schema.Struct({
+const McpOutput = Schema.Struct({
   content: Schema.Array(
     Schema.Struct({
       type: Schema.Literal("text"),
@@ -43,21 +43,18 @@ export const Plugin = define<HttpClient.HttpClient | Scope.Scope>({
           const credential = connection ? yield* ctx.integration.connection.resolve(connection) : undefined
           const url = new URL(endpoint)
           if (credential?.type === "key") url.searchParams.set("exaApiKey", credential.key)
-          return yield* WebSearchMcp.call(
+          const result = yield* WebSearchMcp.call(
             http,
             url.toString(),
             "web_search_exa",
-            { input: Input, output: Output },
+            { input: McpInput, output: McpOutput },
             { query: input.query, numResults: 8 },
-          ).pipe(
-            Effect.map((result) => {
-              const content = result?.content.find((item) => item.text)
-              return {
-                text: content?.text ?? "",
-                ...(content?._meta ? { metadata: content._meta } : {}),
-              }
-            }),
           )
+          const content = result?.content.find((item) => item.text)
+          return {
+            text: content?.text ?? "",
+            ...(content?._meta ? { metadata: content._meta } : {}),
+          }
         }),
     })
   }),

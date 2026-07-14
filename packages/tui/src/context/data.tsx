@@ -26,6 +26,7 @@ import type {
   ShellInfo,
   SkillInfo,
   OpenCodeEvent,
+  WebSearchProvider,
 } from "@opencode-ai/client"
 import type { Plugin } from "@opencode-ai/plugin/v2/tui"
 import { createStore, produce, reconcile } from "solid-js/store"
@@ -54,7 +55,7 @@ type LocationData = {
   model?: ModelInfo[]
   provider?: ProviderV2Info[]
   reference?: ReferenceInfo[]
-  websearch?: { id: string; name: string }[]
+  websearch?: WebSearchProvider[]
   websearchSelected?: string | null
   // Currently running shell commands for this location, keyed by shell id. Entries are removed
   // once the command exits or is deleted, so this only ever holds in-flight shells.
@@ -1113,10 +1114,10 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
             return store.location[locationKey(location ?? defaultLocation())]?.websearchSelected ?? undefined
           },
           async refresh(ref?: LocationRef) {
-            const location = { location: locationQuery(ref ?? defaultLocation()) }
+            const input = { location: locationQuery(ref ?? defaultLocation()) }
             const [providers, selected] = await Promise.all([
-              client.api.websearch.provider.list(location),
-              client.api.websearch.provider.selected(location),
+              client.api.websearch.provider.list(input),
+              client.api.websearch.provider.selected(input),
             ])
             const key = locationKey(providers.location)
             setStore("location", key, {

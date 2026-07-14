@@ -8,14 +8,14 @@ import { WebSearchMcp } from "./mcp"
 
 export const endpoint = "https://search.parallel.ai/mcp"
 
-const Input = Schema.Struct({
+const McpInput = Schema.Struct({
   objective: Schema.String,
   search_queries: Schema.Array(Schema.String),
   session_id: Schema.String.check(Schema.isMaxLength(100)).pipe(Schema.optional),
   model_name: Schema.String.check(Schema.isMaxLength(100)).pipe(Schema.optional),
 })
 
-const Metadata = Schema.Struct({
+const SearchResponse = Schema.Struct({
   search_id: Schema.String,
   results: Schema.Array(
     Schema.Struct({
@@ -44,9 +44,9 @@ const Metadata = Schema.Struct({
   ).pipe(Schema.optional),
   session_id: Schema.String,
 })
-const Output = Schema.Struct({
+const McpOutput = Schema.Struct({
   content: Schema.Array(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
-  structuredContent: Metadata,
+  structuredContent: SearchResponse,
 })
 
 export const Plugin = define<HttpClient.HttpClient | Scope.Scope>({
@@ -68,11 +68,11 @@ export const Plugin = define<HttpClient.HttpClient | Scope.Scope>({
         Effect.gen(function* () {
           const connection = yield* ctx.integration.connection.active("parallel")
           const credential = connection ? yield* ctx.integration.connection.resolve(connection) : undefined
-          return yield* WebSearchMcp.call(
+          const result = yield* WebSearchMcp.call(
             http,
             endpoint,
             "web_search",
-            { input: Input, output: Output },
+            { input: McpInput, output: McpOutput },
             {
               objective: input.query,
               search_queries: [input.query],
@@ -82,15 +82,12 @@ export const Plugin = define<HttpClient.HttpClient | Scope.Scope>({
               "User-Agent": `opencode/${InstallationVersion}`,
               ...(credential?.type === "key" ? { Authorization: `Bearer ${credential.key}` } : {}),
             },
-          ).pipe(
-            Effect.map((result) => {
-              const content = result?.content.find((item) => item.text)
-              return {
-                text: content?.text ?? "",
-                ...(result ? { metadata: result.structuredContent } : {}),
-              }
-            }),
           )
+          const content = result?.content.find((item) => item.text)
+          return {
+            text: content?.text ?? "",
+            ...(result ? { metadata: result.structuredContent } : {}),
+          }
         }),
     })
   }),

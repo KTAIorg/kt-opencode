@@ -25,14 +25,6 @@ export const parseResponse = <F extends Schema.Struct.Fields>(body: string, resu
   })
 }
 
-const Request = <F extends Schema.Struct.Fields>(args: Schema.Struct<F>) =>
-  Schema.Struct({
-    jsonrpc: Schema.Literal("2.0"),
-    id: Schema.Literal(1),
-    method: Schema.Literal("tools/call"),
-    params: Schema.Struct({ name: Schema.String, arguments: args }),
-  })
-
 export const call = <F extends Schema.Struct.Fields, R extends Schema.Struct.Fields>(
   http: HttpClient.HttpClient,
   url: string,
@@ -45,7 +37,14 @@ export const call = <F extends Schema.Struct.Fields, R extends Schema.Struct.Fie
     const request = yield* HttpClientRequest.post(url).pipe(
       HttpClientRequest.accept("application/json, text/event-stream"),
       HttpClientRequest.setHeaders(headers),
-      HttpClientRequest.schemaBodyJson(Request(schema.input))({
+      HttpClientRequest.schemaBodyJson(
+        Schema.Struct({
+          jsonrpc: Schema.Literal("2.0"),
+          id: Schema.Literal(1),
+          method: Schema.Literal("tools/call"),
+          params: Schema.Struct({ name: Schema.String, arguments: schema.input }),
+        }),
+      )({
         jsonrpc: "2.0" as const,
         id: 1 as const,
         method: "tools/call" as const,

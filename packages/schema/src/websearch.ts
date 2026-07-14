@@ -18,6 +18,7 @@ export const Input = Schema.Struct({
   query: Schema.String,
   providerID: ID.pipe(optional),
 }).annotate({ identifier: "WebSearch.Input" })
+export type ProviderInput = Pick<Input, "query">
 
 export interface ProviderOutput extends Schema.Schema.Type<typeof ProviderOutput> {}
 export const ProviderOutput = Schema.Struct({

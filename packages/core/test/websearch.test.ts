@@ -33,7 +33,7 @@ const register = (id: string) =>
   Effect.gen(function* () {
     const websearch = yield* WebSearch.Service
     const providerID = WebSearch.ID.make(id)
-    const calls: { input: Pick<WebSearch.Input, "query">; sessionID?: string }[] = []
+    const calls: { input: WebSearch.ProviderInput; sessionID?: string }[] = []
     yield* websearch.register({
       id: providerID,
       name: id.toUpperCase(),

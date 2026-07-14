@@ -24,6 +24,7 @@ export const Event = WebSearch.Event
 
 export const Input = WebSearch.Input
 export type Input = WebSearch.Input
+export type ProviderInput = WebSearch.ProviderInput
 
 export const ProviderOutput = WebSearch.ProviderOutput
 export type ProviderOutput = WebSearch.ProviderOutput
@@ -33,7 +34,7 @@ export type Result = WebSearch.Result
 
 export interface ProviderImplementation extends Provider {
   readonly execute: (
-    input: Pick<Input, "query">,
+    input: WebSearch.ProviderInput,
     context: { readonly sessionID?: string },
   ) => Effect.Effect<ProviderOutput, unknown>
 }
@@ -144,7 +145,7 @@ const layer = Layer.effect(
 
     const ask = Effect.fn("WebSearch.ask")(function* (providers: Map<ID, ProviderImplementation>, sessionID: string) {
       if (providers.size === 0) return yield* new ProviderRequiredError()
-      const state = yield* forms
+      const response = yield* forms
         .ask({
           sessionID,
           title: "Choose a web search provider",
@@ -167,8 +168,8 @@ const layer = Layer.effect(
           ],
         })
         .pipe(Effect.orDie)
-      if (state.status === "cancelled") return yield* new CancelledError()
-      const answer = state.answer.provider
+      if (response.status === "cancelled") return yield* new CancelledError()
+      const answer = response.answer.provider
       if (typeof answer !== "string") return yield* new ProviderRequiredError()
       return yield* requireProvider(providers, ID.make(answer))
     })
@@ -207,9 +208,10 @@ const layer = Layer.effect(
     return Service.of({
       register: (provider) => state.transform((draft) => draft.register(provider)),
       list: Effect.fn("WebSearch.list")(function* () {
-        return Array.from(state.get().providers.values(), (provider) => ({ id: provider.id, name: provider.name })).toSorted(
-          (a, b) => a.name.localeCompare(b.name),
-        )
+        return Array.from(state.get().providers.values(), (provider) => ({
+          id: provider.id,
+          name: provider.name,
+        })).toSorted((a, b) => a.name.localeCompare(b.name))
       }),
       selected,
       select: Effect.fn("WebSearch.select")(function* (providerID) {

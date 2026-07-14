@@ -5,7 +5,7 @@ export interface WebSearchDefinition {
   readonly id: string
   readonly name: string
   readonly execute: (
-    input: Pick<WebSearch.Input, "query">,
+    input: WebSearch.ProviderInput,
     context: { readonly sessionID?: string; readonly signal: AbortSignal },
   ) => Promise<WebSearch.ProviderOutput>
 }
