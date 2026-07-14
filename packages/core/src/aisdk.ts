@@ -32,6 +32,7 @@ import {
   ToolResultValue,
   TimeoutError,
   classifyApiFailure,
+  extractApiFailureCode,
   isLLMError,
   type LLMError,
   type ContentPart,
@@ -711,7 +712,13 @@ const headerRetryAfterMs = (headers: Record<string, string> | undefined) => {
 // network-level failure (connect refused, reset, DNS), not an API rejection.
 function llmError(error: unknown): LLMError {
   if (isLLMError(error)) return error
-  if (error instanceof ChunkTimeoutError) return new TimeoutError({ message: error.message })
+  const cause = error instanceof Error ? error.cause : undefined
+  if (
+    error instanceof ChunkTimeoutError ||
+    (error instanceof Error && error.name === "TimeoutError") ||
+    (cause instanceof Error && cause.name === "TimeoutError")
+  )
+    return new TimeoutError({ message: error instanceof Error ? error.message : "Request timed out" })
   if (APICallError.isInstance(error)) {
     if (error.statusCode === undefined) {
       return new ConnectionError({ message: error.message, url: RequestExecutor.redactUrl(error.url) })
@@ -720,6 +727,7 @@ function llmError(error: unknown): LLMError {
     return classifyApiFailure({
       message: error.message,
       status: error.statusCode,
+      code: extractApiFailureCode(error.data) ?? extractApiFailureCode(error.responseBody),
       retryAfterMs: headerRetryAfterMs(error.responseHeaders),
       requestID: error.responseHeaders?.["x-request-id"] ?? error.responseHeaders?.["request-id"],
       http: new HttpContext({

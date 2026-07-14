@@ -16,7 +16,7 @@ import {
   TimeoutError,
   type LLMError,
 } from "../schema"
-import { classifyApiFailure } from "../provider-error"
+import { classifyApiFailure, extractApiFailureCode } from "../provider-error"
 
 export interface Interface {
   readonly execute: (
@@ -228,6 +228,7 @@ const statusError =
       return yield* classifyApiFailure({
         status: response.status,
         message: providerMessage(response.status, details),
+        code: extractApiFailureCode(body),
         retryAfterMs: retryAfter,
         rateLimit,
         requestID: requestId(headers),

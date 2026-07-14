@@ -290,6 +290,25 @@ describe("RequestExecutor", () => {
     ),
   )
 
+  it.effect("classifies provider codes before truncating diagnostics", () =>
+    Effect.gen(function* () {
+      const executor = yield* RequestExecutor.Service
+      const error = yield* executor.execute(request).pipe(Effect.flip)
+
+      expectLLMError(error)
+      expect(error).toMatchObject({ _tag: "LLM.QuotaExceeded", code: "billing_error" })
+      expect(errorHttp(error)?.bodyTruncated).toBe(true)
+    }).pipe(
+      Effect.provide(
+        responsesLayer([
+          new Response(JSON.stringify({ error: { code: "billing_error", detail: "x".repeat(20_000) } }), {
+            status: 400,
+          }),
+        ]),
+      ),
+    ),
+  )
+
   it.effect("redacts common secret fields in response bodies", () =>
     Effect.gen(function* () {
       const executor = yield* RequestExecutor.Service

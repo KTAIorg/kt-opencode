@@ -14,6 +14,7 @@ import {
   QuotaExceeded,
   RateLimit,
   ServerError,
+  TimeoutError,
   isLLMError,
   type LLMError,
 } from "./schema"
@@ -106,14 +107,16 @@ function rateLimit(input: ApiFailure, common: CommonFields) {
   return new RateLimit({ ...common, retryAfterMs: input.retryAfterMs, rateLimit: input.rateLimit })
 }
 
-const providerCode = (body: string) => {
-  const decoded = Option.getOrUndefined(decodeBodyJson(body))
+export const extractApiFailureCode = (input: unknown): string | undefined => {
+  const decoded =
+    typeof input === "string" ? Option.getOrUndefined(decodeBodyJson(input)) : input
   if (typeof decoded !== "object" || decoded === null) return undefined
-  const error = (decoded as Record<string, unknown>).error
-  if (typeof error !== "object" || error === null) return undefined
-  const fields = error as Record<string, unknown>
-  if (typeof fields.code === "string") return fields.code
-  if (typeof fields.type === "string") return fields.type
+  const nested = (decoded as Record<string, unknown>).error
+  const fields = typeof nested === "object" && nested !== null ? nested : decoded
+  const code = (fields as Record<string, unknown>).code
+  if (typeof code === "string" || typeof code === "number") return String(code)
+  const type = (fields as Record<string, unknown>).type
+  if (typeof type === "string") return type
   return undefined
 }
 
@@ -128,7 +131,7 @@ const providerCode = (body: string) => {
  */
 export const classifyApiFailure = (input: ApiFailure): LLMError => {
   const body = input.http?.body ?? ""
-  const code = input.code ?? providerCode(body)
+  const code = input.code ?? extractApiFailureCode(body)
   const common: CommonFields = {
     message: input.message,
     status: input.status,
@@ -145,6 +148,7 @@ export const classifyApiFailure = (input: ApiFailure): LLMError => {
       (body.length > 0 && isContextOverflow(body)))
   )
     return new ContextOverflow(common)
+  if (input.status === 408) return new TimeoutError({ message: input.message, http: input.http })
   if (CONTENT_POLICY_TEXT.test(body.length > 0 ? body : input.message)) return new ContentPolicy(common)
   if (code !== undefined && QUOTA_CODES.has(code)) return new QuotaExceeded(common)
   if (input.status === 401) return new Authentication(common)

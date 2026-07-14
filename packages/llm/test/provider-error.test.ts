@@ -18,4 +18,16 @@ describe("provider error classification", () => {
       }),
     ).toMatchObject({ _tag: "LLM.QuotaExceeded", code: "billing_error" })
   })
+
+  test("classifies HTTP request timeouts", () => {
+    expect(classifyApiFailure({ message: "Request timed out", status: 408 })).toMatchObject({
+      _tag: "LLM.TimeoutError",
+    })
+  })
+
+  test("retains the Cerebras no-body overflow heuristic", () => {
+    expect(classifyApiFailure({ message: "413 status code (no body)", status: 413 })).toMatchObject({
+      _tag: "LLM.ContextOverflow",
+    })
+  })
 })

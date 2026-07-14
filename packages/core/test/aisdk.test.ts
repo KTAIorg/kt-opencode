@@ -1,4 +1,4 @@
-import { APICallError, type LanguageModelV3CallOptions } from "@ai-sdk/provider"
+import { APICallError, type LanguageModelV3, type LanguageModelV3CallOptions } from "@ai-sdk/provider"
 import { AISDK } from "@opencode-ai/core/aisdk"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
@@ -18,6 +18,19 @@ const model = (packageName: string, settings: Record<string, unknown> = {}) =>
     settings,
     limit: { context: 100, output: 20 },
   })
+
+const failingLanguage = (error: unknown): LanguageModelV3 => ({
+  specificationVersion: "v3",
+  provider: "test-provider",
+  modelId: "api-model",
+  supportedUrls: {},
+  doGenerate: async () => {
+    throw error
+  },
+  doStream: async () => {
+    throw error
+  },
+})
 
 it.effect("keys language models by package and flattened overlays", () =>
   Effect.gen(function* () {
@@ -128,24 +141,15 @@ it.effect("redacts and classifies AI SDK API failures", () =>
       requestBodyValues: { apiKey: "request-secret" },
       statusCode: 400,
       responseHeaders: { "x-api-key": "header-secret" },
-      responseBody: JSON.stringify({ error: { code: "billing_error", api_key: "body-secret" } }),
+      responseBody: JSON.stringify({
+        error: { code: "billing_error", api_key: "body-secret", detail: "x".repeat(20_000) },
+      }),
     })
     yield* aisdk.hook.sdk((event) => {
       event.sdk = {}
     })
     yield* aisdk.hook.language((event) => {
-      event.language = {
-        specificationVersion: "v3",
-        provider: "test-provider",
-        modelId: "api-model",
-        supportedUrls: {},
-        doGenerate: async () => {
-          throw apiError
-        },
-        doStream: async () => {
-          throw apiError
-        },
-      }
+      event.language = failingLanguage(apiError)
     })
 
     const resolved = yield* aisdk.model(model("@ai-sdk/openai"))
@@ -164,5 +168,27 @@ it.effect("redacts and classifies AI SDK API failures", () =>
       },
     })
     expect("http" in error ? error.http?.body : undefined).not.toContain("body-secret")
+    expect("http" in error ? error.http?.bodyTruncated : undefined).toBe(true)
+  }),
+)
+
+it.effect("classifies AI SDK request timeouts", () =>
+  Effect.gen(function* () {
+    const aisdk = yield* AISDK.Service
+    yield* aisdk.hook.sdk((event) => {
+      event.sdk = {}
+    })
+    yield* aisdk.hook.language((event) => {
+      event.language = failingLanguage(new DOMException("The operation timed out", "TimeoutError"))
+    })
+
+    const resolved = yield* aisdk.model(model("@ai-sdk/openai"))
+    const request = LLM.request({ model: resolved, prompt: "Hello" })
+    const prepared = yield* LLMClient.prepare<LanguageModelV3CallOptions>(request)
+    const error = yield* resolved.route
+      .streamPrepared(prepared.body, request, { http: { execute: () => Effect.die("unused") } })
+      .pipe(Stream.runDrain, Effect.flip)
+
+    expect(error).toMatchObject({ _tag: "LLM.TimeoutError", message: "The operation timed out" })
   }),
 )
