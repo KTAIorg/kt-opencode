@@ -9,9 +9,11 @@ import { SessionSchema } from "../session/schema"
 import { ToolOutputStore } from "../tool-output-store"
 import { Wildcard } from "../util/wildcard"
 import { ExecuteTool } from "./execute"
-import { definition, permission, registrationEntries, RegistrationError, settle, type AnyTool } from "./tool"
+import { Tool } from "./tool"
+import { definition, permission, registrationEntries, RegistrationError, type AnyTool } from "./tool"
 import { Tools } from "./tools"
 import { ToolHooks } from "./hooks"
+import { ToolExecutionSimulation } from "./execution-simulation"
 import { makeLocationNode } from "../effect/app-node"
 import { SessionError } from "@opencode-ai/schema/session-error"
 import { toSessionError } from "../session/to-session-error"
@@ -76,29 +78,30 @@ const registryLayer = Layer.effect(
         input: input.call.input,
       }
       yield* toolHooks.runBefore(beforeEvent)
-      const pending = yield* settle(
+      const context: Tool.Context = {
+        sessionID: input.sessionID,
+        agent: input.agent,
+        messageID: input.messageID,
+        callID: input.call.id,
+        progress: (update) =>
+          input.progress?.({
+            structured: update.structured,
+            content: (update.content ?? []).map((part) =>
+              part.type === "text"
+                ? { type: "text" as const, text: part.text }
+                : {
+                    type: "file" as const,
+                    uri: `data:${part.mime};base64,${part.data}`,
+                    mime: part.mime,
+                    name: part.name,
+                  },
+            ),
+          }) ?? Effect.void,
+      }
+      const pending = yield* ToolExecutionSimulation.settle(
         tool,
         { ...input.call, input: beforeEvent.input },
-        {
-          sessionID: input.sessionID,
-          agent: input.agent,
-          messageID: input.messageID,
-          callID: input.call.id,
-          progress: (update) =>
-            input.progress?.({
-              structured: update.structured,
-              content: (update.content ?? []).map((part) =>
-                part.type === "text"
-                  ? { type: "text" as const, text: part.text }
-                  : {
-                      type: "file" as const,
-                      uri: `data:${part.mime};base64,${part.data}`,
-                      mime: part.mime,
-                      name: part.name,
-                    },
-              ),
-            }) ?? Effect.void,
-        },
+        context,
       ).pipe(
         Effect.map((output) => ({ output })),
         Effect.catchTag("LLM.ToolFailure", (failure) =>

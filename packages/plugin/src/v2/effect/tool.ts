@@ -4,7 +4,7 @@ import { Agent } from "@opencode-ai/schema/agent"
 import type { LLM } from "@opencode-ai/schema/llm"
 import { Session } from "@opencode-ai/schema/session"
 import { SessionMessage } from "@opencode-ai/schema/session-message"
-import { Effect, JsonSchema, Schema, type Scope } from "effect"
+import { Effect, JsonSchema, Schema } from "effect"
 import type { Hooks, Transform } from "./registration.js"
 
 export interface Context {
@@ -40,10 +40,15 @@ type ToolResultValue =
   | { readonly type: "error"; readonly value: unknown }
   | { readonly type: "content"; readonly value: ReadonlyArray<LLM.ToolContent> }
 
-type ToolOutput = {
+export type SettledOutput = {
   readonly structured: unknown
   readonly content: ReadonlyArray<LLM.ToolContent>
 }
+
+export type SettlementInterceptor = (
+  input: unknown,
+  passthrough: Effect.Effect<SettledOutput, Failure>,
+) => Effect.Effect<SettledOutput, Failure>
 
 declare const TypeId: unique symbol
 
@@ -113,7 +118,11 @@ type DynamicConfig = {
 type Runtime = {
   readonly permission?: string
   readonly definition: (name: string) => ToolDefinition
-  readonly settle: (call: ToolCall, context: Context) => Effect.Effect<ToolOutput, Failure>
+  readonly settle: (
+    call: ToolCall,
+    context: Context,
+    interceptor?: SettlementInterceptor,
+  ) => Effect.Effect<SettledOutput, Failure>
 }
 
 const runtimes = new WeakMap<AnyTool, Runtime>()
@@ -149,11 +158,11 @@ function makeTyped<
       definitions.set(name, definition)
       return definition
     },
-    settle: (call, context) =>
+    settle: (call, context, interceptor) =>
       Schema.decodeUnknownEffect(config.input)(call.input).pipe(
         Effect.mapError((error) => new Failure({ message: `Invalid tool input: ${error.message}` })),
-        Effect.flatMap((input) =>
-          config.execute(input, context).pipe(
+        Effect.flatMap((input) => {
+          const passthrough = Effect.suspend(() => config.execute(input, context)).pipe(
             Effect.flatMap((output) =>
               Schema.encodeEffect(config.output)(output).pipe(
                 Effect.flatMap((output) => {
@@ -177,8 +186,9 @@ function makeTyped<
                 config.toModelOutput?.({ input, output }).map(toModelContent) ??
                 (typeof output === "string" ? [{ type: "text" as const, text: output }] : []),
             })),
-          ),
-        ),
+          )
+          return interceptor?.(input, passthrough) ?? passthrough
+        }),
       ),
   })
   return tool
@@ -200,10 +210,11 @@ function makeDynamic(config: DynamicConfig): AnyTool {
       definitions.set(name, definition)
       return definition
     },
-    settle: (call, context) =>
-      config
-        .execute(call.input, context)
-        .pipe(Effect.map((output) => ({ structured: output.structured, content: output.content.map(toModelContent) }))),
+    settle: (call, context, interceptor) => {
+      const passthrough = Effect.suspend(() => config.execute(call.input, context))
+        .pipe(Effect.map((output) => ({ structured: output.structured, content: output.content.map(toModelContent) })))
+      return interceptor?.(call.input, passthrough) ?? passthrough
+    },
   })
   return tool
 }
@@ -241,7 +252,8 @@ export const withPermission = <Input extends SchemaType<any>, Output extends Sch
 
 export const permission = (tool: AnyTool, name: string) => runtimeOf(tool).permission ?? name
 export const definition = (name: string, tool: AnyTool) => runtimeOf(tool).definition(name)
-export const settle = (tool: AnyTool, call: ToolCall, context: Context) => runtimeOf(tool).settle(call, context)
+export const settle = (tool: AnyTool, call: ToolCall, context: Context, interceptor?: SettlementInterceptor) =>
+  runtimeOf(tool).settle(call, context, interceptor)
 
 function runtimeOf(tool: AnyTool) {
   const runtime = runtimes.get(tool)
@@ -272,7 +284,7 @@ export interface ToolExecuteAfterEvent {
   readonly callID: string
   readonly input: unknown
   result: ToolResultValue
-  output?: ToolOutput
+  output?: SettledOutput
   outputPaths?: ReadonlyArray<string>
 }
 

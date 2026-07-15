@@ -7,6 +7,7 @@ import { SessionV2 } from "@opencode-ai/core/session"
 import { SessionMessage } from "@opencode-ai/core/session/message"
 import { ToolOutputStore } from "@opencode-ai/core/tool-output-store"
 import { ToolRegistry } from "@opencode-ai/core/tool/registry"
+import { ToolExecutionSimulation } from "@opencode-ai/core/tool/execution-simulation"
 import { executeTool, settleTool, toolDefinitions } from "./lib/tool"
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schema, SchemaGetter, SchemaIssue, Scope } from "effect"
 import { testEffect } from "./lib/effect"
@@ -62,6 +63,91 @@ const constant = (text: string) =>
   })
 
 describe("ToolRegistry", () => {
+  it.effect("intercepts validated input and passes unhandled tools through", () =>
+    Effect.gen(function* () {
+      const service = yield* ToolRegistry.Service
+      const inputs: unknown[] = []
+      let executions = 0
+      const probe = Tool.make({
+        description: "Probe execution",
+        input: Schema.Struct({
+          text: Schema.String,
+          format: Schema.Literals(["text", "markdown"]).pipe(
+            Schema.withDecodingDefault(Effect.succeed("markdown" as const)),
+          ),
+        }),
+        output: Schema.Struct({ text: Schema.String }),
+        execute: ({ text }) =>
+          Effect.sync(() => {
+            executions++
+            return { text }
+          }),
+        toModelOutput: ({ output }) => [{ type: "text", text: output.text }],
+      })
+      yield* service.register({ intercepted: probe, passthrough: probe }, { codemode: false })
+      const simulationScope = yield* Scope.fork(yield* Scope.Scope)
+      yield* ToolExecutionSimulation.intercept("intercepted", ({ input }) =>
+        Effect.sync(() => {
+          inputs.push(input)
+          return {
+            structured: { text: "simulated" },
+            content: [{ type: "text", text: "simulated" }],
+          }
+        }),
+      ).pipe(Scope.provide(simulationScope))
+      const materialized = yield* service.materialize()
+
+      const intercepted = yield* materialized.settle({
+        sessionID,
+        ...identity,
+        call: {
+          type: "tool-call",
+          id: "call-intercepted",
+          name: "intercepted",
+          input: { text: "ignored" },
+        },
+      })
+      const passed = yield* materialized.settle({
+        sessionID,
+        ...identity,
+        call: {
+          type: "tool-call",
+          id: "call-passthrough",
+          name: "passthrough",
+          input: { text: "real", format: "text" },
+        },
+      })
+      const invalid = yield* materialized.settle({
+        sessionID,
+        ...identity,
+        call: {
+          type: "tool-call",
+          id: "call-invalid",
+          name: "intercepted",
+          input: {},
+        },
+      })
+      yield* Scope.close(simulationScope, Exit.void)
+      const restored = yield* materialized.settle({
+        sessionID,
+        ...identity,
+        call: {
+          type: "tool-call",
+          id: "call-restored",
+          name: "intercepted",
+          input: { text: "restored", format: "text" },
+        },
+      })
+
+      expect(inputs).toEqual([{ text: "ignored", format: "markdown" }])
+      expect(intercepted.result).toEqual({ type: "text", value: "simulated" })
+      expect(passed.result).toEqual({ type: "text", value: "real" })
+      expect(invalid.result).toMatchObject({ type: "error", value: expect.stringContaining("Invalid tool input") })
+      expect(restored.result).toEqual({ type: "text", value: "restored" })
+      expect(executions).toBe(2)
+    }),
+  )
+
   it.effect("filters disabled tools with edit aliases and ordered wildcard precedence", () =>
     Effect.gen(function* () {
       const service = yield* ToolRegistry.Service
@@ -384,6 +470,13 @@ describe("ToolRegistry", () => {
           execute: ({ text }) => Effect.sync(() => executed.push(`new:${text}`)).pipe(Effect.as({ text })),
         }),
       })
+      const simulationScope = yield* Scope.fork(yield* Scope.Scope)
+      yield* ToolExecutionSimulation.intercept("echo", () =>
+        Effect.succeed({
+          structured: { text: "simulated" },
+          content: [{ type: "text", text: "simulated" }],
+        }),
+      ).pipe(Scope.provide(simulationScope))
 
       const settlement = yield* materialized.settle({
         ...call("execute"),
@@ -396,6 +489,18 @@ describe("ToolRegistry", () => {
       })
 
       expect(settlement.result).toMatchObject({ type: "text" })
+      expect(executed).toEqual([])
+
+      yield* Scope.close(simulationScope, Exit.void)
+      yield* materialized.settle({
+        ...call("execute"),
+        call: {
+          type: "tool-call",
+          id: "call-execute-restored",
+          name: "execute",
+          input: { code: 'return await tools.echo({ text: "request" })' },
+        },
+      })
       expect(executed).toEqual(["old:request"])
     }),
   )

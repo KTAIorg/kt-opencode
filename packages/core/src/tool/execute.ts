@@ -3,7 +3,8 @@ export * as ExecuteTool from "./execute"
 import { CodeMode, Tool, toolError } from "@opencode-ai/codemode"
 import { ToolOutput } from "@opencode-ai/llm"
 import { Effect, Ref, Schema } from "effect"
-import { definition, make, settle, type AnyTool } from "./tool"
+import { definition, make, type AnyTool } from "./tool"
+import { ToolExecutionSimulation } from "./execution-simulation"
 
 const ExecuteFile = Schema.Struct({
   data: Schema.String,
@@ -111,7 +112,7 @@ export const create = (registrations: ReadonlyMap<string, Registration>) => {
           (name, registration, input) =>
             Effect.gen(function* () {
               const index = yield* Ref.getAndUpdate(callIndex, (index) => index + 1)
-              const output = yield* settle(
+              const output = yield* ToolExecutionSimulation.settle(
                 registration.tool,
                 { type: "tool-call", id: context.callID, name, input },
                 {
