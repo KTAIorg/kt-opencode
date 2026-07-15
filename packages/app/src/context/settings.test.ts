@@ -3,44 +3,25 @@ import {
   isAppUpgrade,
   layoutTransitionState,
   maximumSunsetTimeout,
-  migrateSettings,
   newLayoutDesignsDefault,
   nextSunsetCheckDelay,
   resolveNewLayoutDesigns,
   shouldDisplayTabsToast,
   shouldEnableNewLayout,
+  shouldEnableFeatureVisibility,
 } from "./settings"
 
 describe("feature visibility", () => {
-  test("enables features once for profiles created before the visibility defaults", () => {
-    expect(
-      migrateSettings({
-        general: {
-          showFileTree: false,
-          showSearch: false,
-          showStatus: false,
-          showCustomAgents: false,
-        },
-      }),
-    ).toEqual({
-      general: {
-        showFileTree: true,
-        showSearch: true,
-        showStatus: true,
-        showCustomAgents: true,
-        featureVisibilityInitialized: true,
-      },
-    })
+  test("enables features for profiles with persisted settings", () => {
+    expect(shouldEnableFeatureVisibility("{}", undefined)).toBe(true)
   })
 
-  test("preserves preferences after the visibility defaults are initialized", () => {
-    const value = {
-      general: {
-        showFileTree: false,
-        featureVisibilityInitialized: true,
-      },
-    }
-    expect(migrateSettings(value)).toBe(value)
+  test("enables features for profiles with a recorded app version", () => {
+    expect(shouldEnableFeatureVisibility(null, "1.18.1")).toBe(true)
+  })
+
+  test("keeps features hidden for new profiles", () => {
+    expect(shouldEnableFeatureVisibility(null, undefined)).toBe(false)
   })
 })
 

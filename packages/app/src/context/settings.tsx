@@ -63,25 +63,11 @@ export const newLayoutDesignsDefault = true
 export const oldInterfaceSunset = new Date(2026, 8, 14)
 const newLayoutDesignsUpgradeCutoff = "1.17.19"
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-export function migrateSettings(value: unknown) {
-  if (!isRecord(value)) return value
-  const general = isRecord(value.general) ? value.general : {}
-  if (general.featureVisibilityInitialized === true) return value
-  return {
-    ...value,
-    general: {
-      ...general,
-      showFileTree: true,
-      showSearch: true,
-      showStatus: true,
-      showCustomAgents: true,
-      featureVisibilityInitialized: true,
-    },
-  }
+export function shouldEnableFeatureVisibility(
+  settings: string | Promise<string> | null,
+  previousVersion: string | undefined,
+) {
+  return settings !== null || previousVersion !== undefined
 }
 
 function compareVersions(a: string, b: string) {
@@ -242,10 +228,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
   gate: false,
   init: () => {
     const platform = usePlatform()
-    const [store, setStore, _, ready] = persisted(
-      { key: "settings.v3", migrate: migrateSettings },
-      createStore<Settings>(defaultSettings),
-    )
+    const [store, setStore, settingsInit, ready] = persisted("settings.v3", createStore<Settings>(defaultSettings))
     const [launch, setLaunch, , launchReady] = persisted(
       "app-version.v1",
       createStore<{ version?: string }>({ version: undefined }),
@@ -354,8 +337,8 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     })
 
     createEffect(() => {
-      if (!ready() || platform.platform === "desktop") return
-      initializeFeatureVisibility(false)
+      if (!ready() || !launchState.classified || platform.platform === "desktop") return
+      initializeFeatureVisibility(shouldEnableFeatureVisibility(settingsInit, launchState.previous))
     })
 
     createEffect(() => {
