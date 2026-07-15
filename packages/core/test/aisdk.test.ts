@@ -163,13 +163,13 @@ it.effect("redacts and classifies AI SDK API failures", () =>
   Effect.gen(function* () {
     const aisdk = yield* AISDK.Service
     const apiError = new APICallError({
-      message: "Billing failed",
+      message: "Quota exceeded",
       url: "https://provider.test/v1?key=url-secret",
       requestBodyValues: { apiKey: "request-secret" },
       statusCode: 400,
       responseHeaders: { "x-api-key": "header-secret" },
       responseBody: JSON.stringify({
-        error: { code: "billing_error", api_key: "body-secret", detail: "x".repeat(20_000) },
+        error: { code: "insufficient_quota", api_key: "body-secret", detail: "x".repeat(20_000) },
       }),
     })
     yield* aisdk.hook.sdk((event) => {
@@ -188,7 +188,7 @@ it.effect("redacts and classifies AI SDK API failures", () =>
 
     expect(error).toMatchObject({
       _tag: "LLM.QuotaExceeded",
-      code: "billing_error",
+      code: "insufficient_quota",
       http: {
         request: { url: "https://provider.test/v1?key=%3Credacted%3E" },
         response: { headers: { "x-api-key": "<redacted>" } },

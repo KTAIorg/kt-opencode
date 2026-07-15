@@ -13,10 +13,15 @@ describe("provider error classification", () => {
         status: 400,
         http: new HttpContext({
           request: new HttpRequestDetails({ method: "POST", url: "https://provider.test", headers: {} }),
-          body: JSON.stringify({ error: { code: "billing_error" } }),
+          body: JSON.stringify({ error: { code: "insufficient_quota" } }),
         }),
       }),
-    ).toMatchObject({ _tag: "LLM.QuotaExceeded", code: "billing_error" })
+    ).toMatchObject({ _tag: "LLM.QuotaExceeded", code: "insufficient_quota" })
+  })
+
+  test("classifies only V1 structured quota codes", () => {
+    expect(classifyApiFailure({ message: "Failed", status: 400, code: "billing_error" })._tag).toBe("LLM.BadRequest")
+    expect(classifyApiFailure({ message: "Quota exceeded", status: 429 })._tag).toBe("LLM.RateLimit")
   })
 
   test("classifies HTTP request timeouts", () => {

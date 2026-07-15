@@ -52,7 +52,7 @@ export const isContextOverflowFailure = (failure: unknown) =>
 
 const decodeJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
 const OVERFLOW_CODES = new Set(["context_length_exceeded", "model_context_window_exceeded"])
-const QUOTA_CODES = new Set(["insufficient_quota", "usage_not_included", "billing_error"])
+const QUOTA_CODES = new Set(["insufficient_quota", "usage_not_included"])
 const CONTENT_POLICY_CODES = new Set([
   "content_filter",
   "content_policy_error",
@@ -76,7 +76,6 @@ const INVALID_REQUEST_CODES = new Set([
   "validationexception",
 ])
 const RATE_LIMIT_TEXT = /rate increased too quickly|rate[-_\s]?limit|too[_\s]?many[_\s]?requests/i
-const QUOTA_TEXT = /insufficient[-_\s]?quota|quota[-_\s]?exceeded/i
 
 export interface ApiFailure {
   readonly message: string
@@ -144,8 +143,7 @@ export const classifyApiFailure = (input: ApiFailure): LLMError => {
     return new ContextOverflow(common)
   if (input.status === 408) return new TimeoutError({ message: input.message, http: input.http })
   if (clientScoped && normalizedCodes.some((code) => CONTENT_POLICY_CODES.has(code))) return new ContentPolicy(common)
-  if (normalizedCodes.some((code) => QUOTA_CODES.has(code)) || (input.status === 429 && QUOTA_TEXT.test(text)))
-    return new QuotaExceeded(common)
+  if (normalizedCodes.some((code) => QUOTA_CODES.has(code))) return new QuotaExceeded(common)
   if (input.status === 401 || normalizedCodes.includes("authentication_error")) return new Authentication(common)
   if (input.status === 403 || normalizedCodes.includes("permission_error")) return new PermissionDenied(common)
   if (input.status === 404 || normalizedCodes.includes("not_found_error")) return new NotFound(common)

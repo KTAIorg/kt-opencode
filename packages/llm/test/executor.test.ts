@@ -329,12 +329,12 @@ describe("RequestExecutor", () => {
       const error = yield* executor.execute(request).pipe(Effect.flip)
 
       expectLLMError(error)
-      expect(error).toMatchObject({ _tag: "LLM.QuotaExceeded", code: "billing_error" })
+      expect(error).toMatchObject({ _tag: "LLM.QuotaExceeded", code: "insufficient_quota" })
       expect(errorHttp(error)?.bodyTruncated).toBe(true)
     }).pipe(
       Effect.provide(
         responsesLayer([
-          new Response(JSON.stringify({ error: { code: "billing_error", detail: "x".repeat(20_000) } }), {
+          new Response(JSON.stringify({ error: { code: "insufficient_quota", detail: "x".repeat(20_000) } }), {
             status: 400,
           }),
         ]),
