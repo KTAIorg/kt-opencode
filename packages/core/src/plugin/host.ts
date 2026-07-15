@@ -317,6 +317,13 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
               add: (name, tool, options) => {
                 registrations.push({ name, tool, ...(options ? { options } : {}) })
               },
+              addDynamic: (name, config, options) => {
+                registrations.push({
+                  name,
+                  tool: Tool.make(config),
+                  ...(options ? { options } : {}),
+                })
+              },
             }),
           )
           yield* Effect.forEach(

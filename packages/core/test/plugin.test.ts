@@ -274,6 +274,42 @@ describe("PluginV2", () => {
     }),
   )
 
+  it.effect("registers dynamic Effect tools through the host context", () =>
+    Effect.gen(function* () {
+      const plugins = yield* PluginV2.Service
+      const registry = yield* ToolRegistry.Service
+      const plugin = EffectPlugin.define({
+        id: "dynamic-tool-plugin",
+        effect: (ctx) =>
+          ctx.tool
+            .transform((draft) =>
+              draft.addDynamic(
+                "dynamic_tool",
+                {
+                  description: "Dynamic plugin tool",
+                  jsonSchema: {
+                    type: "object",
+                    properties: { value: { type: "string" } },
+                    required: ["value"],
+                    additionalProperties: false,
+                  },
+                  execute: (input) =>
+                    Effect.succeed({
+                      structured: input,
+                      content: [{ type: "text", text: "dynamic output" }],
+                    }),
+                },
+                { codemode: false },
+              ),
+            )
+            .pipe(Effect.orDie),
+      })
+
+      yield* plugins.activate([versioned(plugin)])
+      expect((yield* registry.materialize()).definitions.map((tool) => tool.name)).toContain("dynamic_tool")
+    }),
+  )
+
   it.effect("groups tool names and routes codemode registrations through execute", () =>
     Effect.gen(function* () {
       const plugins = yield* PluginV2.Service

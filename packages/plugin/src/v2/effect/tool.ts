@@ -103,7 +103,7 @@ export type DynamicOutput = {
  * time (MCP servers, plugin manifests). Input is passed through as `unknown`;
  * `execute` returns the already-projected structured value and model content.
  */
-type DynamicConfig = {
+export type DynamicConfig = {
   readonly description: string
   readonly jsonSchema: JsonSchema.JsonSchema
   readonly outputSchema?: JsonSchema.JsonSchema
@@ -284,6 +284,8 @@ export interface RegisterOptions {
 
 export interface ToolDraft {
   add(name: string, tool: AnyTool, options?: RegisterOptions): void
+  /** Registers a dynamic Effect tool without importing the host's Tool module. */
+  addDynamic(name: string, config: DynamicConfig, options?: RegisterOptions): void
 }
 
 export interface ToolHooks {

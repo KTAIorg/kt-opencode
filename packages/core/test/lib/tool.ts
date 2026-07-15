@@ -59,6 +59,9 @@ export const registerToolPlugin = <R>(plugin: {
               add: (name, tool, options) => {
                 registrations.push({ name, tool, ...(options ? { options } : {}) })
               },
+              addDynamic: (name, config, options) => {
+                registrations.push({ name, tool: Tool.make(config), ...(options ? { options } : {}) })
+              },
             })
             yield* Effect.forEach(
               registrations,
