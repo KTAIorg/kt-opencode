@@ -1624,6 +1624,10 @@ export type Config = {
      */
     primary_tools?: Array<string>
     /**
+     * Maximum subagent nesting depth. Defaults to 1.
+     */
+    subagent_depth?: number
+    /**
      * Continue the agent loop when a tool call is denied
      */
     continue_loop_on_deny?: boolean

@@ -313,6 +313,89 @@ describe("tool.task", () => {
     ),
   )
 
+  it.live("prevents subagents from launching subagents by default", () =>
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const { chat, assistant } = yield* seed()
+        const child = yield* sessions.create({ parentID: chat.id, title: "child" })
+        const nested = yield* sessions.updateMessage({
+          ...assistant,
+          id: MessageID.ascending(),
+          parentID: MessageID.ascending(),
+          sessionID: child.id,
+        })
+        const tool = yield* TaskTool
+        const def = yield* tool.init()
+        let asked = false
+
+        const exit = yield* def
+          .execute(
+            {
+              description: "inspect bug",
+              prompt: "look into the cache key path",
+              subagent_type: "general",
+            },
+            {
+              sessionID: child.id,
+              messageID: nested.id,
+              agent: "general",
+              abort: new AbortController().signal,
+              extra: { promptOps: stubOps() },
+              messages: [],
+              metadata: () => Effect.void,
+              ask: () => Effect.sync(() => (asked = true)),
+            },
+          )
+          .pipe(Effect.exit)
+
+        expect(exit._tag).toBe("Failure")
+        expect(asked).toBe(false)
+        expect(yield* sessions.children(child.id)).toHaveLength(0)
+      }),
+    ),
+  )
+
+  it.live("allows nested subagents up to the configured depth", () =>
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          const sessions = yield* Session.Service
+          const { chat, assistant } = yield* seed()
+          const child = yield* sessions.create({ parentID: chat.id, title: "child" })
+          const nested = yield* sessions.updateMessage({
+            ...assistant,
+            id: MessageID.ascending(),
+            parentID: MessageID.ascending(),
+            sessionID: child.id,
+          })
+          const tool = yield* TaskTool
+          const def = yield* tool.init()
+
+          const result = yield* def.execute(
+            {
+              description: "inspect bug",
+              prompt: "look into the cache key path",
+              subagent_type: "general",
+            },
+            {
+              sessionID: child.id,
+              messageID: nested.id,
+              agent: "general",
+              abort: new AbortController().signal,
+              extra: { promptOps: stubOps() },
+              messages: [],
+              metadata: () => Effect.void,
+              ask: () => Effect.void,
+            },
+          )
+
+          expect((yield* sessions.get(result.metadata.sessionId)).parentID).toBe(child.id)
+        }),
+      { config: { experimental: { subagent_depth: 2 } } },
+    ),
+  )
+
   it.live("execute shapes child permissions for task, todowrite, and primary tools", () =>
     provideTmpdirInstance(
       () =>

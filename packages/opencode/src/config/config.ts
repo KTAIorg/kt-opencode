@@ -1044,6 +1044,12 @@ export namespace Config {
             .array(z.string())
             .optional()
             .describe("Tools that should only be available to primary agents."),
+          subagent_depth: z
+            .number()
+            .int()
+            .min(0)
+            .optional()
+            .describe("Maximum subagent nesting depth. Defaults to 1."),
           continue_loop_on_deny: z.boolean().optional().describe("Continue the agent loop when a tool call is denied"),
           mcp_timeout: z
             .number()
