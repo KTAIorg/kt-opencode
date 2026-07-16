@@ -52,7 +52,7 @@ function Mcp(props: { context: Plugin.Context }) {
 function View(props: { context: Plugin.Context }) {
   const { themeV2, mode, setMode } = useTheme()
   const dimensions = useTerminalDimensions()
-  const modeLabel = createMemo(() => (mode() === "dark" ? "Light mode" : "Dark mode"))
+  const modeLabel = createMemo(() => (mode() === "dark" ? "Switch to light" : "Switch to dark"))
   const mcpWidth = createMemo(() => {
     const list = props.context.data.location.mcp.server.list(props.context.location) ?? []
     if (list.length === 0) return 0
