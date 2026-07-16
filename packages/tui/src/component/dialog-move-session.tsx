@@ -328,24 +328,24 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
           showError() ? (
             <box paddingLeft={4} paddingRight={4} paddingTop={1}>
               <text fg={theme.error} attributes={TextAttributes.BOLD}>
-                Could not load project directories
+                Could not load directories
               </text>
               <text fg={theme.textMuted}>{errorMessage(loadError())}</text>
               <text fg={theme.textMuted}>Close and reopen Move session to try again.</text>
             </box>
           ) : directories.loading || loadedProject.loading ? (
             <box paddingLeft={4} paddingRight={4} paddingTop={1}>
-              <text fg={theme.textMuted}>Loading project directories…</text>
+              <text fg={theme.textMuted}>Loading directories…</text>
             </box>
           ) : (
             <box paddingLeft={4} paddingRight={4} paddingTop={1}>
-              <text fg={theme.textMuted}>No project directories available</text>
+              <text fg={theme.textMuted}>No directories available</text>
             </box>
           )
         }
         noMatchView={
           <box paddingLeft={4} paddingRight={4} paddingTop={1}>
-            <text fg={theme.textMuted}>No project directories found</text>
+            <text fg={theme.textMuted}>No directories found</text>
           </box>
         }
         locked={showError() || directories.loading || loadedProject.loading || Boolean(removing())}
