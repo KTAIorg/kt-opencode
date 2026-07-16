@@ -57,7 +57,7 @@ export function ShellTab(props: { sessionID: string }) {
       {
         id: "composer.shell.up",
         title: "Previous shell",
-        group: "Composer",
+        group: "Activity",
         bind: "up",
         run() {
           const list = entries()
@@ -68,7 +68,7 @@ export function ShellTab(props: { sessionID: string }) {
       {
         id: "composer.shell.down",
         title: "Next shell",
-        group: "Composer",
+        group: "Activity",
         bind: "down",
         run() {
           const list = entries()
@@ -79,7 +79,7 @@ export function ShellTab(props: { sessionID: string }) {
       {
         id: "composer.shell.kill",
         title: "Kill shell command",
-        group: "Composer",
+        group: "Activity",
         bind: "ctrl+d",
         run() {
           const entry = selectedEntry()

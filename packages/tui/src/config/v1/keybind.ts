@@ -97,7 +97,7 @@ export const Definitions = {
   session_background: keybind("ctrl+b", "Background blocking session tools"),
   session_compact: keybind("<leader>c", "Compact the session"),
   session_queued_prompts: keybind("<leader>q", "Manage queued prompts"),
-  session_child_first: keybind("down,<leader>down", "Toggle subagent picker"),
+  session_child_first: keybind("down,<leader>down", "Show or hide activity"),
   session_child_cycle: keybind("right", "Go to next child session"),
   session_child_cycle_reverse: keybind("left", "Go to previous child session"),
   session_parent: keybind("up", "Go to parent session"),

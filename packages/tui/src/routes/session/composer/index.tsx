@@ -93,13 +93,13 @@ export function Composer(props: ComposerProps) {
     mode: "composer",
     enabled: () => props.open,
     commands: [
-      { bind: "left", title: "Previous tab", group: "Composer", run: () => switchTab(-1) },
-      { bind: "right", title: "Next tab", group: "Composer", run: () => switchTab(1) },
-      { bind: "escape", title: "Close composer", group: "Composer", run: close },
+      { bind: "left", title: "Previous tab", group: "Activity", run: () => switchTab(-1) },
+      { bind: "right", title: "Next tab", group: "Activity", run: () => switchTab(1) },
+      { bind: "escape", title: "Close activity", group: "Activity", run: close },
       {
         bind: "<leader>down",
-        title: "Toggle composer",
-        group: "Composer",
+        title: "Hide activity",
+        group: "Activity",
         run: close,
       },
     ],

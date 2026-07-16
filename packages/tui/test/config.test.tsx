@@ -86,7 +86,7 @@ test("resolves a session move keybind", () => {
   expect(config.keybinds.get("session.move")).toMatchObject([{ key: "ctrl+o" }])
 })
 
-test("opens the subagent picker with down", () => {
+test("opens activity with down", () => {
   const config = resolve({}, { terminalSuspend: true })
 
   expect(config.keybinds.get("session.child.first")).toMatchObject([{ key: "down,<leader>down" }])

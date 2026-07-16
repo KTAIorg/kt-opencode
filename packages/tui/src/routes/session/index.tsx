@@ -740,7 +740,7 @@ export function Session() {
       },
     },
     {
-      title: "Toggle subagent picker",
+      title: composer.open || !!session()?.parentID ? "Hide activity" : "Show activity",
       name: "session.child.first",
       category: "Session",
       run: () => {

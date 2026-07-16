@@ -150,7 +150,7 @@ export function SubagentsTab(props: { sessionID: string }) {
       {
         id: "composer.subagent.up",
         title: "Previous subagent",
-        group: "Composer",
+        group: "Activity",
         bind: "up",
         run() {
           const list = entries()
@@ -161,7 +161,7 @@ export function SubagentsTab(props: { sessionID: string }) {
       {
         id: "composer.subagent.down",
         title: "Next subagent",
-        group: "Composer",
+        group: "Activity",
         bind: "down",
         run() {
           const list = entries()
@@ -172,7 +172,7 @@ export function SubagentsTab(props: { sessionID: string }) {
       {
         id: "composer.subagent.select",
         title: "Navigate to subagent",
-        group: "Composer",
+        group: "Activity",
         bind: "return",
         run() {
           const entry = entries()[store.selected]
@@ -182,7 +182,7 @@ export function SubagentsTab(props: { sessionID: string }) {
       {
         id: "composer.subagent.interrupt",
         title: "Interrupt subagent",
-        group: "Composer",
+        group: "Activity",
         bind: "ctrl+d",
         run() {
           const entry = selectedEntry()
