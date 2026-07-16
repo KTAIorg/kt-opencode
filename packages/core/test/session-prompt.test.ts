@@ -156,13 +156,16 @@ describe("SessionV2.prompt", () => {
     }),
   )
 
-  it.effect("delegates interruption without requiring a recorded Session", () =>
+  it.effect("rejects interruption for an unknown Session", () =>
     Effect.gen(function* () {
       const session = yield* SessionV2.Service
       interruptCalls.length = 0
+      const missing = SessionV2.ID.make("ses_missing")
 
-      yield* session.interrupt(SessionV2.ID.make("ses_missing"))
-      expect(interruptCalls).toEqual([SessionV2.ID.make("ses_missing")])
+      expect(yield* session.interrupt(missing).pipe(Effect.flip)).toEqual(
+        new SessionV2.NotFoundError({ sessionID: missing }),
+      )
+      expect(interruptCalls).toEqual([])
     }),
   )
 

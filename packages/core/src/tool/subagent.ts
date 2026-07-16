@@ -188,7 +188,13 @@ export const Plugin = {
                   yield* runtime.session.prompt({ sessionID: child.id, text: input.prompt, resume: false })
                   yield* runtime.session.resume(child.id)
                   return yield* latestAssistantText(child.id)
-                }).pipe(Effect.onInterrupt(() => runtime.session.interrupt(child.id)))
+                }).pipe(
+                  Effect.onInterrupt(() =>
+                    runtime.session
+                      .interrupt(child.id)
+                      .pipe(Effect.catchTag("Session.NotFoundError", () => Effect.void)),
+                  ),
+                )
 
                 const info = yield* runtime.job.start({
                   id: child.id,
@@ -208,13 +214,21 @@ export const Plugin = {
                   }
                 }
 
-                const result = yield* runtime.job.block({ id: child.id, sessionID: context.sessionID }).pipe(
-                  Effect.onInterrupt(() =>
-                    Effect.all([runtime.session.interrupt(child.id), runtime.job.cancel(child.id)], {
-                      discard: true,
-                    }),
-                  ),
-                )
+                const result = yield* runtime.job
+                  .block({ id: child.id, sessionID: context.sessionID })
+                  .pipe(
+                    Effect.onInterrupt(() =>
+                      Effect.all(
+                        [
+                          runtime.session
+                            .interrupt(child.id)
+                            .pipe(Effect.catchTag("Session.NotFoundError", () => Effect.void)),
+                          runtime.job.cancel(child.id),
+                        ],
+                        { discard: true },
+                      ),
+                    ),
+                  )
                 if (result?.type === "backgrounded") {
                   yield* notifyWhenDone(context.sessionID, child.id, agent.name, input.description)
                   return {
