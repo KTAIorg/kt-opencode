@@ -638,7 +638,7 @@ test("loads and reads MCP resources", async () => {
   )
 })
 
-test("disconnects and reconnects MCP servers at runtime", async () => {
+test("adds, disconnects, and reconnects MCP servers at runtime", async () => {
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
@@ -646,15 +646,44 @@ test("disconnects and reconnects MCP servers at runtime", async () => {
           const service = yield* MCP.Service
 
           expect((yield* service.servers())[0]?.status).toEqual({ status: "disabled" })
-          yield* service.connect("resources")
-          expect((yield* service.servers())[0]?.status).toEqual({ status: "connected" })
+          yield* service.add(
+            "dynamic",
+            new ConfigMCP.Local({
+              type: "local",
+              command: [process.execPath, path.join(import.meta.dir, "fixture/mcp-output-schema.ts")],
+            }),
+          )
+          expect((yield* service.servers()).find((server) => server.name === "dynamic")?.status).toEqual({
+            status: "connected",
+          })
 
-          yield* service.disconnect("resources")
-          expect((yield* service.servers())[0]?.status).toEqual({ status: "disabled" })
+          yield* service.add(
+            "dynamic",
+            new ConfigMCP.Local({
+              type: "local",
+              command: [process.execPath, path.join(import.meta.dir, "fixture/mcp-output-schema.ts")],
+              disabled: true,
+            }),
+          )
+          expect((yield* service.servers()).find((server) => server.name === "dynamic")?.status).toEqual({
+            status: "disabled",
+          })
           expect(yield* service.tools()).toEqual([])
 
-          yield* service.connect("resources")
-          expect((yield* service.servers())[0]?.status).toEqual({ status: "connected" })
+          yield* service.connect("dynamic")
+          expect((yield* service.servers()).find((server) => server.name === "dynamic")?.status).toEqual({
+            status: "connected",
+          })
+          yield* service.disconnect("dynamic")
+          expect((yield* service.servers()).find((server) => server.name === "dynamic")?.status).toEqual({
+            status: "disabled",
+          })
+          expect(yield* service.tools()).toEqual([])
+
+          yield* service.connect("dynamic")
+          expect((yield* service.servers()).find((server) => server.name === "dynamic")?.status).toEqual({
+            status: "connected",
+          })
         }).pipe(
           Effect.provide(
             resourceMcpLayer(

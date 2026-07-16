@@ -127,6 +127,7 @@ const URL_ELICITATION_FIELD_KEY = "elicitation"
 
 export interface Interface {
   readonly servers: () => Effect.Effect<ServerInfo[]>
+  readonly add: (server: ServerName | string, config: typeof ConfigMCP.Server.Type) => Effect.Effect<void>
   readonly connect: (server: ServerName | string) => Effect.Effect<void, NotFoundError>
   readonly disconnect: (server: ServerName | string) => Effect.Effect<void, NotFoundError>
   readonly tools: () => Effect.Effect<Tool[]>
@@ -185,14 +186,9 @@ export const layer = Layer.effect(
 
     // Register every remote server as an OAuth integration so credentials live in the global store
     // rather than in committed config. Servers that connect anonymously simply never use the method.
-    const registrations: Array<{
-      readonly name: ServerName
-      readonly remote: typeof ConfigMCP.Remote.Type
-      readonly integrationID: Integration.ID
-      readonly methodID: Integration.MethodID
-    }> = []
-    for (const [name, entry] of runtime) {
-      if (entry.config.type !== "remote" || entry.config.oauth === false) continue
+    const owned = new Set<Integration.ID>()
+    const register = Effect.fnUntraced(function* (name: ServerName, entry: ServerEntry) {
+      if (entry.config.type !== "remote" || entry.config.oauth === false) return
       const remote = entry.config
       // Key identity on name + url, not url alone: two configs for the same url under different names are
       // distinct logical servers that may hold different accounts, so they must not share a credential row.
@@ -202,27 +198,24 @@ export const layer = Layer.effect(
           .update(name + "\u0000" + remote.url)
           .digest("hex")
           .slice(0, 16)
-      entry.integrationID = Integration.ID.make(suffix)
-      registrations.push({
-        name,
-        remote,
-        integrationID: entry.integrationID,
-        methodID: Integration.MethodID.make(suffix),
-      })
-    }
-    if (registrations.length > 0)
-      yield* integration.transform((draft) => {
-        for (const reg of registrations) {
-          draft.update(reg.integrationID, (ref) => {
-            ref.name = reg.name
+      const integrationID = Integration.ID.make(suffix)
+      entry.integrationID = integrationID
+      owned.add(integrationID)
+      const methodID = Integration.MethodID.make(suffix)
+      yield* integration
+        .transform((draft) => {
+          draft.update(integrationID, (ref) => {
+            ref.name = name
           })
           draft.method.update({
-            integrationID: reg.integrationID,
-            method: { id: reg.methodID, type: "oauth", label: reg.name },
-            authorize: () => MCPOAuth.authorize({ name: reg.name, config: reg.remote, methodID: reg.methodID }),
+            integrationID,
+            method: { id: methodID, type: "oauth", label: name },
+            authorize: () => MCPOAuth.authorize({ name, config: remote, methodID }),
           })
-        }
-      })
+        })
+        .pipe(Scope.provide(root))
+    })
+    yield* Effect.forEach(runtime, ([name, entry]) => register(name, entry), { discard: true })
 
     const requireServer = Effect.fnUntraced(function* (server: ServerName | string) {
       const name = ServerName.make(server)
@@ -511,6 +504,18 @@ export const layer = Layer.effect(
         yield* events.publish(McpEvent.StatusChanged, { server: name }).pipe(Effect.ignore)
       }).pipe(Effect.ensuring(Deferred.succeed(entry.startup, undefined)))
 
+    const stopServer = Effect.fnUntraced(function* (name: ServerName, entry: ServerEntry) {
+      const scope = entry.scope
+      entry.scope = undefined
+      entry.client = undefined
+      entry.tools = undefined
+      entry.prompts = undefined
+      if (scope) yield* Scope.close(scope, Exit.void)
+      yield* events.publish(McpEvent.ToolsChanged, { server: name }).pipe(Effect.ignore)
+      yield* events.publish(McpEvent.ResourcesChanged, { server: name }).pipe(Effect.ignore)
+      yield* events.publish(Command.Event.Updated, {}).pipe(Effect.ignore)
+    })
+
     // Disabled servers settle their startup immediately so queries never block on them.
     for (const [name, entry] of runtime) {
       if (entry.config.disabled) {
@@ -523,21 +528,13 @@ export const layer = Layer.effect(
 
     // Bring a server online (or back to needs_auth) when its integration's credential changes, so an
     // OAuth login takes effect without a restart. Only fires for the integrations we registered.
-    const owned = new Set(registrations.map((reg) => reg.integrationID))
     const reconnect = (integrationID: Integration.ID) =>
       Effect.gen(function* () {
         const match = Array.from(runtime).find(([, entry]) => entry.integrationID === integrationID)
         if (!match) return
         const [name, entry] = match
         if (entry.status.status === "disabled") return
-        if (entry.scope) {
-          yield* Scope.close(entry.scope, Exit.void)
-          entry.scope = undefined
-          entry.client = undefined
-          entry.tools = undefined
-          entry.prompts = undefined
-          yield* events.publish(Command.Event.Updated, {}).pipe(Effect.ignore)
-        }
+        if (entry.scope) yield* stopServer(name, entry)
         yield* startServer(name, entry)
       })
     fork(
@@ -564,33 +561,41 @@ export const layer = Layer.effect(
           }),
         )
       }),
+      add: Effect.fn("MCP.add")(function* (server, config) {
+        const name = ServerName.make(server)
+        const previous = runtime.get(name)
+        if (previous) {
+          yield* stopServer(name, previous)
+          if (previous.integrationID) {
+            const integrationID = previous.integrationID
+            owned.delete(integrationID)
+            yield* integration.transform((draft) => draft.remove(integrationID)).pipe(Scope.provide(root))
+          }
+        }
+        const entry: ServerEntry = {
+          config: { ...config, timeout: { ...timeout, ...config.timeout } },
+          status: { status: "pending" },
+          startup: Deferred.makeUnsafe<void>(),
+        }
+        runtime.set(name, entry)
+        yield* register(name, entry)
+        if (config.disabled) {
+          entry.status = { status: "disabled" }
+          Deferred.doneUnsafe(entry.startup, Exit.void)
+          yield* events.publish(McpEvent.StatusChanged, { server: name }).pipe(Effect.ignore)
+          return
+        }
+        yield* startServer(name, entry)
+      }),
       connect: Effect.fn("MCP.connect")(function* (server) {
         const target = yield* requireServer(server)
-        if (target.entry.scope) {
-          const scope = target.entry.scope
-          target.entry.scope = undefined
-          target.entry.client = undefined
-          target.entry.tools = undefined
-          target.entry.prompts = undefined
-          yield* Scope.close(scope, Exit.void)
-          yield* events.publish(McpEvent.ToolsChanged, { server: target.name }).pipe(Effect.ignore)
-          yield* events.publish(McpEvent.ResourcesChanged, { server: target.name }).pipe(Effect.ignore)
-          yield* events.publish(Command.Event.Updated, {}).pipe(Effect.ignore)
-        }
+        if (target.entry.scope) yield* stopServer(target.name, target.entry)
         yield* startServer(target.name, target.entry)
       }),
       disconnect: Effect.fn("MCP.disconnect")(function* (server) {
         const target = yield* requireServer(server)
-        const scope = target.entry.scope
-        target.entry.scope = undefined
-        target.entry.client = undefined
-        target.entry.tools = undefined
-        target.entry.prompts = undefined
-        if (scope) yield* Scope.close(scope, Exit.void)
+        yield* stopServer(target.name, target.entry)
         target.entry.status = { status: "disabled" }
-        yield* events.publish(McpEvent.ToolsChanged, { server: target.name }).pipe(Effect.ignore)
-        yield* events.publish(McpEvent.ResourcesChanged, { server: target.name }).pipe(Effect.ignore)
-        yield* events.publish(Command.Event.Updated, {}).pipe(Effect.ignore)
         yield* events.publish(McpEvent.StatusChanged, { server: target.name }).pipe(Effect.ignore)
       }),
       tools: Effect.fn("MCP.tools")(function* () {
