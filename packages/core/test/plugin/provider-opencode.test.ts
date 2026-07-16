@@ -1,6 +1,6 @@
 import { describe, expect } from "bun:test"
 import { Money } from "@opencode-ai/schema/money"
-import { Effect } from "effect"
+import { Effect, Fiber, Stream } from "effect"
 import { Catalog } from "@opencode-ai/core/catalog"
 import { Credential } from "@opencode-ai/core/credential"
 import { EventV2 } from "@opencode-ai/core/event"
@@ -29,20 +29,6 @@ const addPlugin = Effect.fn(function* () {
 function required<T>(value: T | undefined): T {
   if (value === undefined) throw new Error("Expected value")
   return value
-}
-
-function eventually<A>(
-  effect: Effect.Effect<A>,
-  predicate: (value: A) => boolean,
-  remaining = 1000,
-): Effect.Effect<A, Error> {
-  return Effect.gen(function* () {
-    const value = yield* effect
-    if (predicate(value)) return value
-    if (remaining === 0) return yield* Effect.fail(new Error("Timed out waiting for value"))
-    yield* Effect.promise(() => Bun.sleep(1))
-    return yield* eventually(effect, predicate, remaining - 1)
-  })
 }
 
 function withEnv<A, E, R>(vars: Record<string, string | undefined>, effect: () => Effect.Effect<A, E, R>) {
@@ -124,16 +110,22 @@ describe("OpencodePlugin", () => {
         Effect.gen(function* () {
           yield* addPlugin()
           const integrations = yield* Integration.Service
+          const events = yield* EventV2.Service
           const integrationID = Integration.ID.make("opencode")
+          const updated = yield* events.subscribe(Integration.Event.ConnectionUpdated).pipe(
+            Stream.filter((event) => event.data.integrationID === integrationID),
+            Stream.runHead,
+            Effect.forkScoped({ startImmediately: true }),
+          )
           const attempt = yield* integrations.oauth.connect({
             integrationID,
             methodID: Integration.MethodID.make("device"),
             inputs: { server: `${server.url.origin}/console///?ignored=true#ignored` },
           })
           expect(attempt.url).toBe(`${server.url.origin}/verify`)
-          yield* eventually(
-            integrations.oauth.status({ integrationID, attemptID: attempt.attemptID }),
-            (status) => status.status === "complete",
+          yield* Fiber.join(updated)
+          expect((yield* integrations.oauth.status({ integrationID, attemptID: attempt.attemptID })).status).toBe(
+            "complete",
           )
 
           expect(requests).toContain("POST /console/auth/device/code")
