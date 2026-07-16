@@ -703,9 +703,11 @@ function Prompt<const T extends Record<string, string>>(props: {
               <box
                 paddingLeft={1}
                 paddingRight={1}
-                backgroundColor={themeV2.background.action.primary(
-                  option === store.selected ? "focused" : "default",
-                )}
+                backgroundColor={
+                  option === store.selected
+                    ? themeV2.background.action.primary("focused")
+                    : themeV2.background.action.secondary()
+                }
                 onMouseOver={() => setStore("selected", option)}
                 onMouseUp={() => {
                   setStore("selected", option)
@@ -713,9 +715,11 @@ function Prompt<const T extends Record<string, string>>(props: {
                 }}
               >
                 <text
-                  fg={themeV2.text.action.primary(
-                    option === store.selected ? "focused" : "default",
-                  )}
+                  fg={
+                    option === store.selected
+                      ? themeV2.text.action.primary("focused")
+                      : themeV2.text.action.secondary()
+                  }
                 >
                   {props.options[option]}
                 </text>
