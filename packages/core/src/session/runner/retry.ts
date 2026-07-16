@@ -17,6 +17,7 @@ export class RetryableFailure extends Data.TaggedError("SessionRunner.RetryableF
 }> {}
 
 export function isRetryable(error: LLMError) {
+  if ("retryable" in error && error.retryable !== undefined) return error.retryable
   switch (error._tag) {
     case "LLM.RateLimit":
     case "LLM.ServerError":
@@ -24,6 +25,7 @@ export function isRetryable(error: LLMError) {
     case "LLM.TimeoutError":
       return true
     case "LLM.Authentication":
+    case "LLM.Aborted":
     case "LLM.PermissionDenied":
     case "LLM.NotFound":
     case "LLM.QuotaExceeded":

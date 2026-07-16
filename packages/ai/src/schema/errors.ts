@@ -43,6 +43,7 @@ const apiFailureFields = {
   message: Schema.String,
   status: Schema.optional(Schema.Number),
   code: Schema.optional(Schema.String),
+  retryable: Schema.optional(Schema.Boolean),
   requestID: Schema.optional(Schema.String),
   http: Schema.optional(HttpContext),
   providerMetadata: Schema.optional(ProviderMetadata),
@@ -118,8 +119,14 @@ export class ConnectionError extends Schema.TaggedErrorClass<ConnectionError>()(
 /** The request or stream read timed out before the provider answered. */
 export class TimeoutError extends Schema.TaggedErrorClass<TimeoutError>()("LLM.TimeoutError", {
   message: Schema.String,
+  retryable: Schema.optional(Schema.Boolean),
   url: Schema.optional(Schema.String),
   http: Schema.optional(HttpContext),
+}) {}
+
+/** The request was deliberately cancelled by its caller. */
+export class Aborted extends Schema.TaggedErrorClass<Aborted>()("LLM.Aborted", {
+  message: Schema.String,
 }) {}
 
 /**
@@ -158,6 +165,7 @@ const members = [
   APIError,
   ConnectionError,
   TimeoutError,
+  Aborted,
   MalformedResponse,
   NoRoute,
 ] as const

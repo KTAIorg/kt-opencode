@@ -1,10 +1,14 @@
 import {
   APICallError,
   InvalidResponseDataError,
+  LoadSettingError,
   type LanguageModelV3,
   type LanguageModelV3CallOptions,
   type LanguageModelV3StreamPart,
 } from "@ai-sdk/provider"
+import { GatewayInternalServerError, GatewayModelNotFoundError, GatewayResponseError } from "@ai-sdk/gateway"
+import { AiGatewayDoesNotExist, AiGatewayUnauthorizedError } from "ai-gateway-provider"
+import { GitLabError } from "gitlab-ai-provider"
 import { AISDK } from "@opencode-ai/core/aisdk"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
@@ -366,6 +370,185 @@ it.effect("respects non-retryable unclassified AI SDK failures", () =>
     )
 
     expect(error).toMatchObject({ _tag: "LLM.APIError", message: "Provider adapter rejected the request" })
+  }),
+)
+
+it.effect("preserves retry hints on status-bearing AI SDK failures", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(
+      failingLanguage(
+        new APICallError({
+          message: "Conflict",
+          url: "https://provider.test/v1",
+          requestBodyValues: {},
+          statusCode: 409,
+          isRetryable: true,
+        }),
+      ),
+    )
+
+    expect(error).toMatchObject({ _tag: "LLM.BadRequest", status: 409, retryable: true })
+  }),
+)
+
+it.effect("preserves non-retryable hints on status-bearing AI SDK failures", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(
+      failingLanguage(
+        new APICallError({
+          message: "Do not retry",
+          url: "https://provider.test/v1",
+          requestBodyValues: {},
+          statusCode: 503,
+          isRetryable: false,
+        }),
+      ),
+    )
+
+    expect(error).toMatchObject({ _tag: "LLM.ServerError", status: 503, retryable: false })
+  }),
+)
+
+it.effect("classifies raw AI SDK connection failures", () =>
+  Effect.gen(function* () {
+    const reset = yield* streamFailure(
+      failingLanguage(Object.assign(new Error("Connection reset by server"), { code: "ECONNRESET" })),
+    )
+
+    expect(reset).toMatchObject({ _tag: "LLM.ConnectionError", kind: "ECONNRESET" })
+  }),
+)
+
+it.effect("finds recognized transport codes behind wrapper codes", () =>
+  Effect.gen(function* () {
+    const cause = Object.assign(new Error("Connection reset by server"), { code: "ECONNRESET" })
+    const error = yield* streamFailure(
+      failingLanguage(Object.assign(new Error("Provider wrapper", { cause }), { code: "ERR_PROVIDER" })),
+    )
+
+    expect(error).toMatchObject({ _tag: "LLM.ConnectionError", kind: "ECONNRESET" })
+  }),
+)
+
+it.effect("classifies raw AI SDK timeout failures", () =>
+  Effect.gen(function* () {
+    const timeout = yield* streamFailure(
+      failingLanguage(Object.assign(new Error("Connection timed out"), { code: "ETIMEDOUT" })),
+    )
+
+    expect(timeout).toMatchObject({ _tag: "LLM.TimeoutError" })
+  }),
+)
+
+it.effect("classifies AI SDK abort failures", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(failingLanguage(new DOMException("Cancelled", "AbortError")))
+
+    expect(error).toMatchObject({ _tag: "LLM.Aborted", message: "Cancelled" })
+  }),
+)
+
+it.effect("classifies AI SDK setting failures as invalid configuration", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(failingLanguage(new LoadSettingError({ message: "Region is required" })))
+
+    expect(error).toMatchObject({ _tag: "LLM.BadRequest", message: "Region is required" })
+  }),
+)
+
+it.effect("classifies AI Gateway server failures", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(failingLanguage(new GatewayInternalServerError()), "@ai-sdk/gateway")
+
+    expect(error).toMatchObject({ _tag: "LLM.ServerError", code: "internal_server_error" })
+  }),
+)
+
+it.effect("classifies AI Gateway model failures", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(failingLanguage(new GatewayModelNotFoundError()), "@ai-sdk/gateway")
+
+    expect(error).toMatchObject({ _tag: "LLM.NotFound", code: "model_not_found" })
+  }),
+)
+
+it.effect("classifies malformed AI Gateway error responses as server failures", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(failingLanguage(new GatewayResponseError()), "@ai-sdk/gateway")
+
+    expect(error).toMatchObject({ _tag: "LLM.ServerError", code: "response_error" })
+  }),
+)
+
+it.effect("unwraps AI SDK retry failures", () =>
+  Effect.gen(function* () {
+    const lastError = new APICallError({
+      message: "Overloaded",
+      url: "https://provider.test/v1",
+      requestBodyValues: {},
+      statusCode: 503,
+    })
+    const error = yield* streamFailure(
+      failingLanguage(Object.assign(new Error("Failed after retries"), { name: "AI_RetryError", lastError })),
+    )
+
+    expect(error).toMatchObject({ _tag: "LLM.ServerError", status: 503 })
+  }),
+)
+
+it.effect("classifies AI SDK input download failures", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(
+      failingLanguage(
+        Object.assign(new Error("Could not download input"), { name: "AI_DownloadError", statusCode: 404 }),
+      ),
+    )
+
+    expect(error).toMatchObject({ _tag: "LLM.BadRequest" })
+  }),
+)
+
+it.effect("classifies community gateway authentication failures", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(
+      failingLanguage(new AiGatewayUnauthorizedError("Unauthorized")),
+      "ai-gateway-provider",
+    )
+
+    expect(error).toMatchObject({ _tag: "LLM.Authentication" })
+  }),
+)
+
+it.effect("classifies missing community gateways", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(
+      failingLanguage(new AiGatewayDoesNotExist("Gateway does not exist")),
+      "ai-gateway-provider",
+    )
+
+    expect(error).toMatchObject({ _tag: "LLM.NotFound" })
+  }),
+)
+
+it.effect("classifies GitLab provider failures by status", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(
+      failingLanguage(Object.assign(new Error("Unavailable"), { name: "GitLabError", statusCode: 503 })),
+      "gitlab-ai-provider",
+    )
+
+    expect(error).toMatchObject({ _tag: "LLM.ServerError", status: 503 })
+  }),
+)
+
+it.effect("classifies statusless GitLab credential failures", () =>
+  Effect.gen(function* () {
+    const error = yield* streamFailure(
+      failingLanguage(new GitLabError({ message: "GitLab access token is required" })),
+      "gitlab-ai-provider",
+    )
+
+    expect(error).toMatchObject({ _tag: "LLM.Authentication" })
   }),
 )
 

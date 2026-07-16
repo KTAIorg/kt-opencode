@@ -19,9 +19,91 @@ describe("provider error classification", () => {
     ).toMatchObject({ _tag: "LLM.QuotaExceeded", code: "insufficient_quota" })
   })
 
-  test("classifies only V1 structured quota codes", () => {
-    expect(classifyApiFailure({ message: "Failed", status: 400, code: "billing_error" })._tag).toBe("LLM.BadRequest")
+  test("classifies structured quota and billing codes", () => {
+    expect(classifyApiFailure({ message: "Failed", status: 400, code: "billing_error" })._tag).toBe(
+      "LLM.QuotaExceeded",
+    )
     expect(classifyApiFailure({ message: "Quota exceeded", status: 429 })._tag).toBe("LLM.RateLimit")
+  })
+
+  test("classifies known provider error types", () => {
+    const cases = [
+      ["billing_error", "LLM.QuotaExceeded"],
+      ["insufficient_quota", "LLM.QuotaExceeded"],
+      ["quota_exceeded", "LLM.QuotaExceeded"],
+      ["serviceQuotaExceededException", "LLM.QuotaExceeded"],
+      ["usage_not_included", "LLM.QuotaExceeded"],
+      ["authentication_error", "LLM.Authentication"],
+      ["invalid_api_key", "LLM.Authentication"],
+      ["UNAUTHENTICATED", "LLM.Authentication"],
+      ["accessDeniedException", "LLM.PermissionDenied"],
+      ["permission_denied", "LLM.PermissionDenied"],
+      ["permission_error", "LLM.PermissionDenied"],
+      ["model_not_found", "LLM.NotFound"],
+      ["not_found_error", "LLM.NotFound"],
+      ["resourceNotFoundException", "LLM.NotFound"],
+      ["CANCELLED", "LLM.Aborted"],
+      ["rate_limit_error", "LLM.RateLimit"],
+      ["rate_limit_exceeded", "LLM.RateLimit"],
+      ["RESOURCE_EXHAUSTED", "LLM.RateLimit"],
+      ["throttlingException", "LLM.RateLimit"],
+      ["too_many_requests", "LLM.RateLimit"],
+      ["FreeUsageLimitError", "LLM.RateLimit"],
+      ["GoUsageLimitError", "LLM.RateLimit"],
+      ["websocket_connection_limit_reached", "LLM.RateLimit"],
+      ["timeout_error", "LLM.TimeoutError"],
+      ["deadline_exceeded", "LLM.TimeoutError"],
+      ["modelTimeoutException", "LLM.TimeoutError"],
+      ["internal_server_error", "LLM.ServerError"],
+      ["ABORTED", "LLM.ServerError"],
+      ["DATA_LOSS", "LLM.ServerError"],
+      ["modelNotReadyException", "LLM.ServerError"],
+      ["overloaded_error", "LLM.ServerError"],
+      ["response_error", "LLM.ServerError"],
+      ["serviceUnavailableException", "LLM.ServerError"],
+      ["bad_request", "LLM.BadRequest"],
+      ["ALREADY_EXISTS", "LLM.BadRequest"],
+      ["FAILED_PRECONDITION", "LLM.BadRequest"],
+      ["INVALID_ARGUMENT", "LLM.BadRequest"],
+      ["invalid_request_error", "LLM.BadRequest"],
+      ["OUT_OF_RANGE", "LLM.BadRequest"],
+      ["validationException", "LLM.BadRequest"],
+      ["UNIMPLEMENTED", "LLM.BadRequest"],
+    ] as const
+
+    expect(cases.map(([code]) => classifyApiFailure({ message: "Failed", code })._tag)).toEqual(
+      cases.map(([, tag]) => tag),
+    )
+  })
+
+  test("extracts Google status strings", () => {
+    expect(
+      classifyApiFailure({
+        message: JSON.stringify({ error: { code: 429, message: "Slow down", status: "RESOURCE_EXHAUSTED" } }),
+      }),
+    ).toMatchObject({ _tag: "LLM.RateLimit" })
+  })
+
+  test("preserves explicit retry hints without losing error meaning", () => {
+    expect(classifyApiFailure({ message: "Conflict", status: 409, retryable: true })).toMatchObject({
+      _tag: "LLM.BadRequest",
+      retryable: true,
+    })
+    expect(classifyApiFailure({ message: "Missing", status: 404, retryable: true })).toMatchObject({
+      _tag: "LLM.NotFound",
+      retryable: true,
+    })
+    expect(classifyApiFailure({ message: "Unauthorized", status: 401, retryable: true })).toMatchObject({
+      _tag: "LLM.Authentication",
+    })
+    const invalid = classifyApiFailure({
+      message: "Too large",
+      status: 500,
+      code: "request_too_large",
+      retryable: true,
+    })
+    expect(invalid).toMatchObject({ _tag: "LLM.BadRequest" })
+    expect("retryable" in invalid ? invalid.retryable : undefined).toBeUndefined()
   })
 
   test("classifies HTTP request timeouts", () => {
@@ -122,12 +204,12 @@ describe("provider error classification", () => {
     )
   })
 
-  test("classifies V1 overloaded provider codes", () => {
+  test("classifies exhausted and unavailable provider codes", () => {
     expect(
       ['{"code":"resource_exhausted"}', '{"code":"service_unavailable"}'].map(
         (message) => classifyApiFailure({ message })._tag,
       ),
-    ).toEqual(["LLM.ServerError", "LLM.ServerError"])
+    ).toEqual(["LLM.RateLimit", "LLM.ServerError"])
   })
 
   test("classifies nested provider codes when a top-level code is also present", () => {

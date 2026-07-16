@@ -29,6 +29,8 @@ export function toSessionError(cause: unknown): SessionError.Error {
         return { type: "provider.transport", message: cause.message }
       case "LLM.TimeoutError":
         return { type: "provider.timeout", message: cause.message }
+      case "LLM.Aborted":
+        return { type: "aborted", message: cause.message }
       case "LLM.ServerError":
         return { type: "provider.internal", message: cause.message }
       case "LLM.MalformedResponse":

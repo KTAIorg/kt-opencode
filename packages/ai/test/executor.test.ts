@@ -122,19 +122,19 @@ describe("RequestExecutor", () => {
     }),
   )
 
-  it.effect("classifies provider overloads hidden behind HTTP 400", () =>
+  it.effect("classifies provider transient errors hidden behind HTTP 400", () =>
     Effect.gen(function* () {
-      const classify = (body: string) =>
+      const classify = (body: string, tag: "LLM.RateLimit" | "LLM.ServerError") =>
         Effect.gen(function* () {
           const executor = yield* RequestExecutor.Service
           const error = yield* executor.execute(request).pipe(Effect.flip)
 
           expectLLMError(error)
-          expect(error).toMatchObject({ _tag: "LLM.ServerError" })
+          expect(error).toMatchObject({ _tag: tag })
         }).pipe(Effect.provide(responsesLayer([new Response(body, { status: 400 })])))
 
-      yield* classify('{"code":"resource_exhausted"}')
-      yield* classify('{"code":"service_unavailable"}')
+      yield* classify('{"code":"resource_exhausted"}', "LLM.RateLimit")
+      yield* classify('{"code":"service_unavailable"}', "LLM.ServerError")
     }),
   )
 

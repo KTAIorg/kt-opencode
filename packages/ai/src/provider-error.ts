@@ -1,5 +1,6 @@
 import { Option, Schema } from "effect"
 import {
+  Aborted,
   APIError,
   Authentication,
   BadRequest,
@@ -52,29 +53,72 @@ export const isContextOverflowFailure = (failure: unknown) =>
 
 const decodeJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
 const OVERFLOW_CODES = new Set(["context_length_exceeded", "model_context_window_exceeded"])
-const QUOTA_CODES = new Set(["insufficient_quota", "usage_not_included"])
+const QUOTA_CODES = new Set([
+  "billing_error",
+  "insufficient_quota",
+  "quota_exceeded",
+  "servicequotaexceededexception",
+  "usage_not_included",
+])
+const AUTHENTICATION_CODES = new Set(["authentication_error", "invalid_api_key", "unauthenticated", "unauthorized"])
+const PERMISSION_CODES = new Set([
+  "access_denied",
+  "accessdeniedexception",
+  "forbidden",
+  "permission_denied",
+  "permission_error",
+])
+const NOT_FOUND_CODES = new Set([
+  "deploymentnotfound",
+  "model_not_found",
+  "not_found",
+  "not_found_error",
+  "resourcenotfoundexception",
+])
 const CONTENT_POLICY_CODES = new Set([
   "content_filter",
   "content_policy_error",
   "content_policy_violation",
   "responsibleaipolicyviolation",
 ])
+const RATE_LIMIT_CODES = new Set([
+  "freeusagelimiterror",
+  "gousagelimiterror",
+  "rate_limit_error",
+  "rate_limit_exceeded",
+  "resource_exhausted",
+  "throttlingexception",
+  "too_many_requests",
+  "websocket_connection_limit_reached",
+])
 const SERVER_CODES = new Set([
   "api_error",
   "internal_error",
+  "internal_server_error",
   "internalserverexception",
+  "aborted",
+  "data_loss",
+  "modelerrorexception",
+  "modelnotreadyexception",
   "modelstreamerrorexception",
   "overloaded_error",
   "server_error",
   "server_is_overloaded",
+  "response_error",
   "serviceunavailableexception",
 ])
+const TIMEOUT_CODES = new Set(["deadline_exceeded", "modeltimeoutexception", "timeout_error"])
 const INVALID_REQUEST_CODES = new Set([
   "invalid_prompt",
-  "invalid_request_error",
+  "failed_precondition",
+  "already_exists",
+  "invalid_argument",
+  "out_of_range",
   "request_too_large",
+  "unimplemented",
   "validationexception",
 ])
+const GENERIC_INVALID_REQUEST_CODES = new Set(["bad_request", "invalid_request_error"])
 const RATE_LIMIT_TEXT = /rate increased too quickly|rate[-_\s]?limit|too[_\s]?many[_\s]?requests/i
 
 export interface ApiFailure {
@@ -82,6 +126,8 @@ export interface ApiFailure {
   readonly status?: number | undefined
   /** Provider machine-readable error code or type string (e.g. `context_length_exceeded`, `overloaded_error`). */
   readonly code?: string | undefined
+  /** An adapter's explicit retry decision for otherwise ambiguous failures. */
+  readonly retryable?: boolean | undefined
   readonly retryAfterMs?: number | undefined
   readonly rateLimit?: HttpRateLimitDetails | undefined
   readonly requestID?: string | undefined
@@ -132,6 +178,7 @@ export const classifyApiFailure = (input: ApiFailure): LLMError => {
     http: input.http,
     providerMetadata: input.providerMetadata,
   }
+  const hinted = input.retryable === undefined ? common : { ...common, retryable: input.retryable }
   const clientScoped = input.status === undefined || (input.status >= 400 && input.status < 500)
 
   if (
@@ -139,37 +186,42 @@ export const classifyApiFailure = (input: ApiFailure): LLMError => {
     (normalizedCodes.some((code) => OVERFLOW_CODES.has(code)) || isContextOverflow(text))
   )
     return new ContextOverflow(common)
-  if (input.status === 408) return new TimeoutError({ message: input.message, http: input.http })
+  if (normalizedCodes.includes("cancelled")) return new Aborted({ message: input.message })
   if (clientScoped && normalizedCodes.some((code) => CONTENT_POLICY_CODES.has(code))) return new ContentPolicy(common)
   if (normalizedCodes.some((code) => QUOTA_CODES.has(code))) return new QuotaExceeded(common)
-  if (input.status === 401 || normalizedCodes.includes("authentication_error")) return new Authentication(common)
-  if (input.status === 403 || normalizedCodes.includes("permission_error")) return new PermissionDenied(common)
-  if (normalizedCodes.includes("not_found_error")) return new NotFound(common)
+  if (normalizedCodes.some((code) => AUTHENTICATION_CODES.has(code))) return new Authentication(common)
+  if (normalizedCodes.some((code) => PERMISSION_CODES.has(code))) return new PermissionDenied(common)
+  if (normalizedCodes.some((code) => NOT_FOUND_CODES.has(code))) return new NotFound(hinted)
   if (
-    normalizedCodes.some(
-      (code) => code.includes("rate_limit") || code === "too_many_requests" || code === "throttlingexception",
-    ) ||
+    normalizedCodes.some((code) => RATE_LIMIT_CODES.has(code) || code.includes("rate_limit")) ||
     RATE_LIMIT_TEXT.test(text)
   )
-    return rateLimit(input, common)
+    return rateLimit(input, hinted)
+  if (normalizedCodes.some((code) => TIMEOUT_CODES.has(code)))
+    return new TimeoutError({ message: input.message, http: input.http, retryable: input.retryable })
   if (
     normalizedCodes.some(
       (code) => SERVER_CODES.has(code) || code.includes("exhausted") || code.includes("unavailable"),
     )
   )
-    return serverError(input, common)
-  if (input.status === 404) return new NotFound(common)
+    return serverError(input, hinted)
   if (normalizedCodes.some((code) => INVALID_REQUEST_CODES.has(code))) return new BadRequest(common)
-  if (input.status === 429) return rateLimit(input, common)
-  if (input.status !== undefined && input.status >= 500) return serverError(input, common)
+  if (input.status === 401) return new Authentication(common)
+  if (input.status === 403) return new PermissionDenied(common)
+  if (input.status === 408)
+    return new TimeoutError({ message: input.message, http: input.http, retryable: input.retryable })
+  if (input.status === 404) return new NotFound(hinted)
+  if (input.status === 429) return rateLimit(input, hinted)
+  if (input.status !== undefined && input.status >= 500) return serverError(input, hinted)
   if (
     input.status === 400 ||
     input.status === 409 ||
     input.status === 413 ||
     input.status === 422
   )
-    return new BadRequest(common)
-  return new APIError(common)
+    return new BadRequest(hinted)
+  if (normalizedCodes.some((code) => GENERIC_INVALID_REQUEST_CODES.has(code))) return new BadRequest(common)
+  return new APIError(hinted)
 }
 
 function providerCodes(value: unknown) {
@@ -186,6 +238,7 @@ function providerCodes(value: unknown) {
   return [
     error?.code,
     error?.type,
+    error?.status,
     innerError?.code,
     responseError?.code,
     responseError?.type,

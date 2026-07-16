@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  Aborted,
   APIError,
   Authentication,
   BadRequest,
@@ -38,6 +39,7 @@ describe("toSessionError", () => {
     expect(toSessionError(new ContextOverflow({ message: "too long" })).type).toBe("provider.context-overflow")
     expect(toSessionError(new ConnectionError({ message: "reset" })).type).toBe("provider.transport")
     expect(toSessionError(new TimeoutError({ message: "timed out" })).type).toBe("provider.timeout")
+    expect(toSessionError(new Aborted({ message: "cancelled" })).type).toBe("aborted")
     expect(toSessionError(new ServerError({ message: "internal", status: 500 })).type).toBe("provider.internal")
     expect(toSessionError(new MalformedResponse({ message: "output" })).type).toBe("provider.invalid-output")
     expect(toSessionError(new BadRequest({ message: "request" })).type).toBe("provider.invalid-request")
@@ -78,6 +80,7 @@ describe("toSessionError", () => {
     ]
     const ineligible = [
       new Authentication({ message: "auth" }),
+      new Aborted({ message: "cancelled" }),
       new PermissionDenied({ message: "forbidden" }),
       new NotFound({ message: "missing" }),
       new QuotaExceeded({ message: "quota" }),
@@ -95,5 +98,17 @@ describe("toSessionError", () => {
 
     expect(eligible.map(SessionRunnerRetry.isRetryable)).toEqual([true, true, true, true])
     expect(ineligible.map(SessionRunnerRetry.isRetryable)).toEqual(ineligible.map(() => false))
+  })
+
+  test("honors explicit retry hints on otherwise non-retryable API failures", () => {
+    expect(SessionRunnerRetry.isRetryable(new BadRequest({ message: "conflict", status: 409, retryable: true }))).toBe(
+      true,
+    )
+    expect(SessionRunnerRetry.isRetryable(new NotFound({ message: "eventual model", status: 404, retryable: true }))).toBe(
+      true,
+    )
+    expect(SessionRunnerRetry.isRetryable(new ServerError({ message: "do not retry", status: 503, retryable: false }))).toBe(
+      false,
+    )
   })
 })

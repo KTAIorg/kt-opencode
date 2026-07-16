@@ -15,6 +15,7 @@ import type {
   SharedV3ProviderOptions,
 } from "@ai-sdk/provider"
 import {
+  Aborted,
   APIError,
   Authentication,
   BadRequest,
@@ -762,10 +763,20 @@ const headerRetryAfterMs = (headers: Record<string, string> | undefined) => {
 function llmError(error: unknown): LLMError {
   if (isLLMError(error)) return error
   const cause = error instanceof Error ? error.cause : undefined
+  const failures = [error, cause]
+  const timeout = failures
+    .map((failure) => ({ failure, code: machineCode(failure) }))
+    .find((failure) => failure.code !== undefined && TRANSPORT_TIMEOUT_CODES.has(failure.code))
+  const connection = failures
+    .map((failure) => ({ failure, code: machineCode(failure) }))
+    .find((failure) => failure.code !== undefined && TRANSPORT_CONNECTION_CODES.has(failure.code))
+  if (failures.some((failure) => failure instanceof Error && failure.name === "AbortError"))
+    return new Aborted({ message: errorMessage(error) })
   if (
     error instanceof ChunkTimeoutError ||
     (error instanceof Error && error.name === "TimeoutError") ||
-    (cause instanceof Error && cause.name === "TimeoutError")
+    (cause instanceof Error && cause.name === "TimeoutError") ||
+    timeout !== undefined
   )
     return new TimeoutError({ message: error instanceof Error ? error.message : "Request timed out" })
   if (APICallError.isInstance(error)) {
@@ -774,7 +785,7 @@ function llmError(error: unknown): LLMError {
     if (error.statusCode !== undefined && error.statusCode < 400 && malformed)
       return new MalformedResponse({ message: malformed.message })
     if (error.statusCode === undefined) {
-      if (code) return classifyApiFailure({ message: error.message, code })
+      if (code) return classifyApiFailure({ message: error.message, code, retryable: error.isRetryable })
       return error.isRetryable
         ? new ConnectionError({ message: error.message, url: RequestExecutor.redactUrl(error.url) })
         : new APIError({ message: error.message })
@@ -784,6 +795,7 @@ function llmError(error: unknown): LLMError {
       message: error.message,
       status: error.statusCode,
       code,
+      retryable: error.isRetryable,
       retryAfterMs: headerRetryAfterMs(error.responseHeaders),
       requestID: error.responseHeaders?.["x-request-id"] ?? error.responseHeaders?.["request-id"],
       http: new HttpContext({
@@ -796,11 +808,24 @@ function llmError(error: unknown): LLMError {
       }),
     })
   }
+  if (
+    connection !== undefined ||
+    failures.some(
+      (failure) => failure instanceof Error && (failure.name === "ResponseAborted" || failure.name === "ZlibError"),
+    )
+  )
+    return new ConnectionError({
+      message: errorMessage(connection?.failure ?? error),
+      kind:
+        connection?.code ??
+        (errorName(error) === "ResponseAborted" || errorName(cause) === "ResponseAborted"
+          ? "ResponseAborted"
+          : "ZlibError"),
+    })
   const malformed = [error, cause].find(isMalformedError)
   if (malformed) return new MalformedResponse({ message: malformed.message })
-  if (LoadAPIKeyError.isInstance(error) || LoadSettingError.isInstance(error)) {
-    return new Authentication({ message: error.message })
-  }
+  if (LoadAPIKeyError.isInstance(error)) return new Authentication({ message: error.message })
+  if (LoadSettingError.isInstance(error)) return new BadRequest({ message: error.message })
   if (NoSuchModelError.isInstance(error)) return new NotFound({ message: error.message })
   if (
     InvalidPromptError.isInstance(error) ||
@@ -809,9 +834,107 @@ function llmError(error: unknown): LLMError {
   ) {
     return new BadRequest({ message: error.message })
   }
+  const name = errorName(error)
+  const className = constructorName(error)
+  if (name === "AI_RetryError") {
+    const lastError = field(error, "lastError")
+    if (lastError !== undefined && lastError !== error) return llmError(lastError)
+  }
+  if (name === "AI_DownloadError") {
+    const status = field(error, "statusCode")
+    if (status === 408 || status === 504) return new TimeoutError({ message: errorMessage(error) })
+    if (status === 429) return classifyApiFailure({ message: errorMessage(error), status })
+    if (typeof status === "number" && status >= 500)
+      return classifyApiFailure({ message: errorMessage(error), status })
+    return new BadRequest({ message: errorMessage(error) })
+  }
+  if (name && LOCAL_BAD_REQUEST_ERRORS.has(name)) return new BadRequest({ message: errorMessage(error) })
+  if (name && LOCAL_MALFORMED_ERRORS.has(name)) return new MalformedResponse({ message: errorMessage(error) })
+  if (className === "AiGatewayUnauthorizedError") return new Authentication({ message: errorMessage(error) })
+  if (className === "AiGatewayDoesNotExist") return new NotFound({ message: errorMessage(error) })
+  if (name === "GitLabError") {
+    const status = field(error, "statusCode")
+    if (typeof status === "number")
+      return classifyApiFailure({ message: errorMessage(error), status, code: extractApiFailureCode(error) })
+    return GITLAB_AUTH_ERROR.test(errorMessage(error))
+      ? new Authentication({ message: errorMessage(error) })
+      : new BadRequest({ message: errorMessage(error) })
+  }
   const code = extractApiFailureCode(error)
-  if (code) return classifyApiFailure({ message: apiFailureMessage(error), code })
+  if (code) {
+    const status = field(error, "statusCode")
+    return classifyApiFailure({
+      message: apiFailureMessage(error),
+      code,
+      status: typeof status === "number" ? status : undefined,
+    })
+  }
   return new APIError({ message: error instanceof Error ? error.message : String(error) })
+}
+
+const TRANSPORT_TIMEOUT_CODES = new Set([
+  "ETIMEDOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+])
+const TRANSPORT_CONNECTION_CODES = new Set([
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EPIPE",
+  "UND_ERR_SOCKET",
+  "Z_BUF_ERROR",
+  "Z_DATA_ERROR",
+  "Z_MEM_ERROR",
+  "Z_NEED_DICT",
+  "Z_STREAM_ERROR",
+  "Z_VERSION_ERROR",
+])
+const LOCAL_BAD_REQUEST_ERRORS = new Set([
+  "AI_InvalidDataContentError",
+  "AI_InvalidMessageRoleError",
+  "AI_MessageConversionError",
+  "AI_TooManyEmbeddingValuesForCallError",
+  "AI_UnsupportedModelVersionError",
+])
+const LOCAL_MALFORMED_ERRORS = new Set([
+  "AI_InvalidStreamPartError",
+  "AI_NoImageGeneratedError",
+  "AI_NoObjectGeneratedError",
+  "AI_NoOutputGeneratedError",
+  "AI_NoSpeechGeneratedError",
+  "AI_NoTranscriptGeneratedError",
+  "AI_NoVideoGeneratedError",
+  "AI_UIMessageStreamError",
+])
+const GITLAB_AUTH_ERROR = /auth|credential|oauth|access token|token.*(?:missing|required|provided)/i
+
+function field(error: unknown, name: string) {
+  return typeof error === "object" && error !== null ? Reflect.get(error, name) : undefined
+}
+
+function errorName(error: unknown) {
+  const name = field(error, "name")
+  return typeof name === "string" ? name : undefined
+}
+
+function constructorName(error: unknown) {
+  const constructor = field(error, "constructor")
+  if (typeof constructor !== "function") return undefined
+  return constructor.name
+}
+
+function machineCode(error: unknown) {
+  const code = field(error, "code")
+  return typeof code === "string" ? code.toUpperCase() : undefined
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function isMalformedError(error: unknown): error is Error {
