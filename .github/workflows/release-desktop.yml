@@ -1,0 +1,117 @@
+# Action baseline verified 2026-07-17 from each action's official GitHub release.
+name: Release · Desktop Installers
+
+run-name: >-
+  ${{ github.event_name == 'pull_request'
+      && format('Release | PR #{0} | {1}', github.event.pull_request.number, github.event.pull_request.title)
+      || github.event_name == 'workflow_dispatch'
+      && format('Release | Manual | {0}', github.sha)
+      || format('Release | main | {0}', github.event.head_commit.message) }}
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare desktop bundle
+        working-directory: packages/desktop
+        run: bun ./scripts/prepare.ts
+        env:
+          OPENCODE_CHANNEL: prod
+
+      - name: Build desktop application
+        working-directory: packages/desktop
+        run: bun run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          OPENCODE_CHANNEL: prod
+
+      - name: Package unsigned Windows installer
+        working-directory: packages/desktop
+        run: bunx electron-builder --win --publish never --config electron-builder.config.ts
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          KTAI_UNSIGNED_BUILD: "1"
+          OPENCODE_CHANNEL: prod
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ktai-desktop-windows-x64
+          path: packages/desktop/dist/*.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS PKG (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare desktop bundle
+        working-directory: packages/desktop
+        run: bun ./scripts/prepare.ts
+        env:
+          OPENCODE_CHANNEL: prod
+
+      - name: Build desktop application
+        working-directory: packages/desktop
+        run: bun run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          OPENCODE_CHANNEL: prod
+
+      - name: Package unsigned macOS PKG
+        working-directory: packages/desktop
+        run: bun run package:mac:pkg:unsigned
+        env:
+          OPENCODE_CHANNEL: prod
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ktai-desktop-macos-${{ matrix.arch }}
+          path: |
+            packages/desktop/dist/*.pkg
+            packages/desktop/dist/*.dmg
+            packages/desktop/dist/*.zip
+          if-no-files-found: error
