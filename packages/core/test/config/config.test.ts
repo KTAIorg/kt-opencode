@@ -98,6 +98,40 @@ const provider = {
 }
 
 describe("Config", () => {
+  it.live("publishes updates for changed files inside config directories", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          const global = path.join(tmp.path, "global")
+          yield* Effect.promise(() => fs.mkdir(path.join(global, "commands"), { recursive: true }))
+          const updates = yield* PubSub.unbounded<Watcher.Update>()
+          const watcher = Layer.succeed(
+            Watcher.Service,
+            Watcher.Service.of({ subscribe: () => Stream.fromPubSub(updates) }),
+          )
+
+          return yield* Effect.gen(function* () {
+            const events = yield* EventV2.Service
+            const changed = yield* events
+              .subscribe(ConfigSchema.Event.Updated)
+              .pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped)
+            yield* Effect.sleep("10 millis")
+
+            yield* PubSub.publish(updates, {
+              type: "update",
+              path: path.join(global, "commands", "review.md"),
+            } satisfies Watcher.Update)
+
+            expect(yield* Fiber.join(changed).pipe(Effect.timeout("1 second"))).toHaveLength(1)
+          }).pipe(Effect.provide(testLayer(tmp.path, global, undefined, undefined, watcher)))
+        }),
+      ),
+    ),
+  )
+
   it.live("reloads external config and publishes directory updates", () =>
     Effect.acquireRelease(
       Effect.promise(() => tmpdir()),
