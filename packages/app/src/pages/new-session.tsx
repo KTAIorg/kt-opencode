@@ -25,7 +25,7 @@ import { createPromptInputController, createPromptProjectControls } from "@/page
 import { useSessionKey } from "@/pages/session/session-layout"
 import { useComposerCommands } from "@/pages/session/use-composer-commands"
 import { NEW_SESSION_CONTENT_WIDTH } from "@/pages/session/new-session-layout"
-import { PromptWorkspaceSelector } from "@/components/prompt-workspace-selector"
+import { PromptGitStatus, PromptWorkspaceSelector } from "@/components/prompt-workspace-selector"
 import { useTitlebarRightMount } from "@/components/titlebar"
 import { useCommand } from "@/context/command"
 import { useProviders } from "@/hooks/use-providers"
@@ -162,7 +162,7 @@ export default function NewSessionPage() {
                     </div>
                   }
                 >
-                  <div class="flex flex-col" classList={{ "gap-8": showWorkspaceBar(), "gap-3": !showWorkspaceBar() }}>
+                  <div class="flex flex-col gap-8">
                     <PromptInput
                       controls={inputController()}
                       variant="new-session"
@@ -180,17 +180,21 @@ export default function NewSessionPage() {
                     />
                     <Show when={projectController.selected()}>
                       <div
-                        class="flex min-h-7 min-w-0 items-center gap-0 text-v2-text-text-faint"
-                        classList={{
-                          "flex-col justify-center sm:flex-row": showWorkspaceBar(),
-                          "justify-start": !showWorkspaceBar(),
-                        }}
+                        class="flex min-h-7 min-w-0 flex-col items-center justify-center gap-0 text-v2-text-text-faint sm:flex-row"
                       >
                         <PromptProjectSelector
                           controller={projectController}
-                          placement={showWorkspaceBar() ? "bottom" : "bottom-start"}
+                          placement="bottom"
                         />
-                        <Show when={showWorkspaceBar()}>
+                        <Show
+                          when={showWorkspaceBar()}
+                          fallback={
+                            <PromptGitStatus
+                              branch={selectedBranch()}
+                              noGit={sync().project?.vcs !== "git"}
+                            />
+                          }
+                        >
                           <PromptWorkspaceSelector
                             value={newSessionWorktree()}
                             projectRoot={projectRoot()}
