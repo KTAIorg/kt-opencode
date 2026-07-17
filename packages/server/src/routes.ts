@@ -17,7 +17,7 @@ import { SessionRestart } from "@opencode-ai/core/session/execution/restart"
 import { PluginRuntime } from "@opencode-ai/core/plugin/runtime"
 import { SdkPlugins } from "@opencode-ai/core/plugin/sdk"
 import { ToolOutputStore } from "@opencode-ai/core/tool-output-store"
-import { HttpRouter, HttpServer } from "effect/unstable/http"
+import { HttpMiddleware, HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Context, Effect, Layer, Option } from "effect"
 import { Api } from "./api"
@@ -30,6 +30,7 @@ import { layer } from "./location"
 import { formLocationLayer } from "./middleware/form-location"
 import { sessionLocationLayer } from "./middleware/session-location"
 import { ServerInfo } from "./server-info"
+import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "./cors"
 
 const applicationServices = LayerNode.group([
   Database.node,
@@ -51,12 +52,17 @@ const applicationServices = LayerNode.group([
   SessionRestart.node,
 ])
 
-export function createRoutes(password?: string, serviceURLs: () => ReadonlyArray<string> = () => []) {
+export function createRoutes(
+  password?: string,
+  serviceURLs: () => ReadonlyArray<string> = () => [],
+  corsOptions?: CorsOptions,
+) {
   return makeRoutes(
     password
       ? ServerAuth.Config.configLayer({ username: "opencode", password: Option.some(password) })
       : ServerAuth.Config.layer,
     serviceURLs,
+    corsOptions,
   )
 }
 
@@ -67,6 +73,7 @@ export function createEmbeddedRoutes() {
 function makeRoutes<AuthError, AuthServices>(
   auth: Layer.Layer<ServerAuth.Config, AuthError, AuthServices>,
   serviceURLs: () => ReadonlyArray<string> = () => [],
+  corsOptions?: CorsOptions,
 ) {
   const pluginRuntimeCell = PluginRuntime.makeCell()
   const replacements: LayerNode.Replacements = [
@@ -95,7 +102,7 @@ function makeRoutes<AuthError, AuthServices>(
         Layer.succeedContext(Context.pick(PermissionSaved.Service, Project.Service)(context)),
         ServerInfo.layer(serviceURLs),
       )
-      return HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(
+      const apiRoutes = HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(
         Layer.provide(handlers.pipe(Layer.provide(services))),
         Layer.provide(formLocationLayer),
         Layer.provide(sessionLocationLayer),
@@ -108,9 +115,38 @@ function makeRoutes<AuthError, AuthServices>(
         Layer.provideMerge(services),
         Layer.provideMerge(HttpRouter.layer),
       )
+      return Layer.merge(apiRoutes, apiNotFoundRoute(corsOptions)).pipe(
+        Layer.provide(cors(corsOptions)),
+        Layer.provide(Layer.succeed(CorsConfig)(corsOptions)),
+      )
     }),
   )
 }
+
+const cors = (options?: CorsOptions) =>
+  HttpRouter.middleware(
+    HttpMiddleware.cors({
+      allowedOrigins: (origin) => isAllowedCorsOrigin(origin, options),
+      maxAge: 86_400,
+    }),
+    { global: true },
+  )
+
+const apiNotFoundRoute = (options?: CorsOptions) =>
+  HttpRouter.use((router) =>
+    router.add("*", "/api/*", (request) => {
+      const response = HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })
+      const origin = request.headers.origin
+      if (!origin || !isAllowedCorsOrigin(origin, options)) return Effect.succeed(response)
+      return Effect.succeed(
+        HttpServerResponse.setHeader(
+          HttpServerResponse.setHeader(response, "access-control-allow-origin", origin),
+          "vary",
+          "Origin",
+        ),
+      )
+    }),
+  )
 
 function simulateEnabled() {
   return !!process.env.OPENCODE_SIMULATE
