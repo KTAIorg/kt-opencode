@@ -70,19 +70,26 @@ const resolveResource = (document: Document, resource: SchemaResource): SchemaRe
   return next(resource, new Set())
 }
 
+// OpenAPI 3.1 allows keywords as siblings of `$ref`, so a schema's own declarations
+// are inspected before following the reference.
 const isHidden = (
   document: Document,
   resource: SchemaResource,
   direction: SchemaDirection,
   seen: ReadonlySet<object> = new Set(),
 ): boolean => {
-  const resolved = resolveResource(document, resource)
-  if (!isRecord(resolved.value) || seen.has(resolved.value)) return false
-  if (own(resolved.value, hiddenKeyword[direction]) === true) return true
-  const nextSeen = new Set([...seen, resolved.value])
-  return asArray(own(resolved.value, "allOf")).some((item) =>
-    isHidden(document, { ...resolved, value: item }, direction, nextSeen),
-  )
+  if (!isRecord(resource.value) || seen.has(resource.value)) return false
+  if (own(resource.value, hiddenKeyword[direction]) === true) return true
+  const nextSeen = new Set([...seen, resource.value])
+  if (
+    asArray(own(resource.value, "allOf")).some((item) =>
+      isHidden(document, { ...resource, value: item }, direction, nextSeen),
+    )
+  ) {
+    return true
+  }
+  const target = resolveResource(document, resource)
+  return target.value !== resource.value && isHidden(document, target, direction, nextSeen)
 }
 
 // Hidden property names declared by a schema itself or inherited through `$ref` and
@@ -93,19 +100,20 @@ const hiddenNames = (
   direction: SchemaDirection,
   seen: ReadonlySet<object> = new Set(),
 ): ReadonlySet<string> => {
-  const resolved = resolveResource(document, resource)
-  if (!isRecord(resolved.value) || seen.has(resolved.value)) return new Set()
-  const nextSeen = new Set([...seen, resolved.value])
-  const properties = own(resolved.value, "properties")
+  if (!isRecord(resource.value) || seen.has(resource.value)) return new Set()
+  const nextSeen = new Set([...seen, resource.value])
+  const properties = own(resource.value, "properties")
   const declared = isRecord(properties)
     ? Object.entries(properties)
-        .filter(([, property]) => isHidden(document, { ...resolved, value: property }, direction))
+        .filter(([, property]) => isHidden(document, { ...resource, value: property }, direction))
         .map(([name]) => name)
     : []
-  const inherited = asArray(own(resolved.value, "allOf")).flatMap((item) => [
-    ...hiddenNames(document, { ...resolved, value: item }, direction, nextSeen),
+  const composed = asArray(own(resource.value, "allOf")).flatMap((item) => [
+    ...hiddenNames(document, { ...resource, value: item }, direction, nextSeen),
   ])
-  return new Set([...declared, ...inherited])
+  const target = resolveResource(document, resource)
+  const referenced = target.value === resource.value ? [] : hiddenNames(document, target, direction, nextSeen)
+  return new Set([...declared, ...composed, ...referenced])
 }
 
 const nestedSchemas = new Set([

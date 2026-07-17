@@ -472,6 +472,133 @@ describe("OpenAPI.fromSpec", () => {
     expect(inputTypeScript(tool)).toBe("{ name: string }")
   })
 
+  test("honors declarations that are siblings of a $ref", () => {
+    const tool = toolAt(
+      OpenAPI.fromSpec({
+        baseUrl,
+        spec: {
+          openapi: "3.1.0",
+          paths: {
+            "/test": {
+              post: {
+                operationId: "test",
+                responses: { 200: { description: "Success" } },
+                requestBody: {
+                  required: true,
+                  content: {
+                    "application/json": {
+                      schema: {
+                        type: "object",
+                        additionalProperties: false,
+                        required: ["record"],
+                        properties: {
+                          record: {
+                            $ref: "#/components/schemas/Base",
+                            properties: { extra: { type: "string", readOnly: true }, note: { type: "string" } },
+                            required: ["extra", "note", "id"],
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          components: {
+            schemas: {
+              Base: {
+                type: "object",
+                required: ["id", "name"],
+                properties: { id: { type: "string", readOnly: true }, name: { type: "string" } },
+              },
+            },
+          },
+        },
+      }).tools,
+      "test",
+    )
+    if (!Tool.isDefinition(tool) || !isRecord(tool.input)) throw new Error("test was not generated")
+    const properties = isRecord(tool.input.properties) ? tool.input.properties : {}
+    const record = isRecord(properties.record) ? properties.record : {}
+    const definitions = isRecord(tool.input.$defs) ? tool.input.$defs : {}
+    const base = isRecord(definitions.Base) ? definitions.Base : {}
+
+    expect(Object.keys(isRecord(record.properties) ? record.properties : {})).toEqual(["note"])
+    expect(record.required).toEqual(["note"])
+    expect(Object.keys(isRecord(base.properties) ? base.properties : {})).toEqual(["name"])
+    expect(base.required).toEqual(["name"])
+  })
+
+  test("projects cyclic component references without hanging", () => {
+    const tool = toolAt(
+      OpenAPI.fromSpec({
+        baseUrl,
+        spec: {
+          openapi: "3.1.0",
+          paths: {
+            "/test": {
+              post: {
+                operationId: "test",
+                responses: { 200: { description: "Success" } },
+                requestBody: {
+                  required: true,
+                  content: { "application/json": { schema: { $ref: "#/components/schemas/Node" } } },
+                },
+              },
+            },
+          },
+          components: {
+            schemas: {
+              Node: {
+                type: "object",
+                required: ["id", "name", "child"],
+                properties: {
+                  id: { type: "string", readOnly: true },
+                  name: { type: "string" },
+                  child: { $ref: "#/components/schemas/Node" },
+                },
+              },
+            },
+          },
+        },
+      }).tools,
+      "test",
+    )
+    if (!Tool.isDefinition(tool) || !isRecord(tool.input)) throw new Error("test was not generated")
+    const definitions = isRecord(tool.input.$defs) ? tool.input.$defs : {}
+    const node = isRecord(definitions.Node) ? definitions.Node : {}
+
+    expect(Object.keys(isRecord(node.properties) ? node.properties : {})).toEqual(["name", "child"])
+    expect(node.required).toEqual(["name", "child"])
+  })
+
+  test("projects directional annotations inside parameter schemas", () => {
+    const tool = toolAt(
+      OpenAPI.fromSpec({
+        baseUrl,
+        spec: singleOperation({
+          parameters: [
+            {
+              name: "filter",
+              in: "query",
+              required: true,
+              schema: {
+                type: "object",
+                required: ["state", "id"],
+                properties: { state: { type: "string" }, id: { type: "string", readOnly: true } },
+              },
+            },
+          ],
+        }),
+      }).tools,
+      "test",
+    )
+    if (!Tool.isDefinition(tool)) throw new Error("test was not generated")
+
+    expect(inputTypeScript(tool)).toBe("{ filter: { state: string } }")
+  })
+
   test("ignores inherited directional annotations", () => {
     const inherited: Record<string, unknown> = { type: "string" }
     Object.setPrototypeOf(inherited, { readOnly: true })
