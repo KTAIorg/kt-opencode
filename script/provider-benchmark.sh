@@ -139,6 +139,19 @@ disk() {
   du -sx --block-size=1 "$ROOT" | awk '{print $1}'
 }
 
+clear_caches() {
+  rm -rf "$ROOT"
+  "${SUDO[@]}" sync
+  if "${SUDO[@]}" sh -c 'echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null; then
+    printf 'BENCH_CACHE\tguest_page_cache\tdropped\n'
+  else
+    printf 'BENCH_CACHE\tguest_page_cache\tunavailable\n'
+  fi
+  printf 'BENCH_CACHE\tworkspace\tfresh\n'
+  printf 'BENCH_CACHE\tbun\tempty\n'
+  printf 'BENCH_CACHE\tturbo\tempty\n'
+}
+
 cleanup() {
   local status=$?
   if [[ "$KEEP_ROOT" != "true" ]]; then
@@ -154,7 +167,7 @@ if ! phase prepare prepare; then
   exit 1
 fi
 
-rm -rf "$ROOT"
+phase cache_clear clear_caches
 mkdir -p "$ROOT/bun/bin" "$ROOT/home" "$ROOT/bun-cache"
 export HOME="$ROOT/home"
 export BUN_INSTALL="$ROOT/bun"
