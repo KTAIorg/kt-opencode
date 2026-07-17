@@ -82,6 +82,35 @@ describe("HttpApi CORS", () => {
     }),
   )
 
+  it.live("adds CORS headers to not found responses", () =>
+    Effect.gen(function* () {
+      const handler = HttpRouter.toWebHandler(
+        HttpApiApp.createRoutes().pipe(
+          Layer.provide(
+            ConfigProvider.layer(
+              ConfigProvider.fromUnknown({
+                OPENCODE_DISABLE_EMBEDDED_WEB_UI: "true",
+              }),
+            ),
+          ),
+        ),
+        { disableLogger: true },
+      ).handler
+      const response = yield* Effect.promise(() =>
+        handler(
+          new Request(new URL("/api/health", "http://localhost"), {
+            method: "POST",
+            headers: { origin: "https://app.opencode.ai" },
+          }),
+          HttpApiApp.context,
+        ),
+      )
+
+      expect(response.status).toBe(404)
+      expect(response.headers.get("access-control-allow-origin")).toBe("https://app.opencode.ai")
+    }),
+  )
+
   it.live("uses custom CORS origins passed to the server", () =>
     Effect.gen(function* () {
       const listener = yield* Effect.acquireRelease(

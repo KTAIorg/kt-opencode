@@ -190,16 +190,44 @@ const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effe
   Layer.provide(authOnlyRouterLayer),
 )
 
-const uiRoute = HttpRouter.use((router) =>
+const uiRoute = (corsOptions?: CorsOptions) => HttpRouter.use((router) =>
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const client = yield* HttpClient.HttpClient
     const flags = yield* RuntimeFlags.Service
     yield* router.add("*", "/*", (request) =>
-      serveUIEffect(request, { fs, client, disableEmbeddedWebUi: flags.disableEmbeddedWebUi }),
+      serveUIEffect(request, { fs, client, disableEmbeddedWebUi: flags.disableEmbeddedWebUi }).pipe(
+        Effect.map((response) => withNotFoundCors(response, request.headers.origin, corsOptions)),
+      ),
     )
   }),
 ).pipe(Layer.provide(authOnlyRouterLayer))
+
+const apiNotFoundRoute = (corsOptions?: CorsOptions) =>
+  HttpRouter.use((router) =>
+    router.add("*", "/api/*", (request) =>
+      Effect.succeed(
+        withNotFoundCors(
+          HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 }),
+          request.headers.origin,
+          corsOptions,
+        ),
+      ),
+    ),
+  )
+
+function withNotFoundCors(
+  response: HttpServerResponse.HttpServerResponse,
+  origin: string | undefined,
+  opts?: CorsOptions,
+) {
+  if (response.status !== 404 || !origin || !isAllowedCorsOrigin(origin, opts)) return response
+  const vary = response.headers["vary"]
+  const next = HttpServerResponse.setHeader(response, "access-control-allow-origin", origin)
+  if (!vary) return HttpServerResponse.setHeader(next, "vary", "Origin")
+  if (vary.split(",").some((value) => value.trim().toLowerCase() === "origin")) return next
+  return HttpServerResponse.setHeader(next, "vary", `${vary}, Origin`)
+}
 
 type RouteRequirements =
   | HttpRouter.HttpRouter
@@ -278,7 +306,8 @@ export function createRoutes(
     instanceRoutes,
     serverRoutes,
     docRoute,
-    uiRoute,
+    apiNotFoundRoute(corsOptions),
+    uiRoute(corsOptions),
   ).pipe(
     Layer.provide([
       errorLayer,
