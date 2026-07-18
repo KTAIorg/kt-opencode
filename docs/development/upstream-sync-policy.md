@@ -37,6 +37,7 @@
 - `main` 每次成功构建使用 `<major>.<minor>.<workflow run number>`，并自动创建 GitHub Pre-release。
 - 安装包文件名必须包含 KTAI 产品版本。
 - Release 必须包含 Windows x64、macOS Intel、macOS Apple Silicon 安装包和 `SHA256SUMS`。
+- Release 创建成功后，自动创建或更新同版本测试需求 Issue，关联合并 PR、Closing Issues、安装包和 `KT主系统 Issue 看板` 的 `KT测试组` 模块。
 
 KTAI 发布 Tag 使用：
 
