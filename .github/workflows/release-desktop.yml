@@ -1,0 +1,291 @@
+# Action baseline verified 2026-07-18 from each action's official GitHub release.
+name: Release · Desktop Installers
+
+run-name: >-
+  ${{ github.event_name == 'pull_request'
+      && format('Release | PR #{0} | {1}', github.event.pull_request.number, github.event.pull_request.title)
+      || github.event_name == 'workflow_dispatch'
+      && format('Release | Manual | {0}', github.sha)
+      || format('Release | main | {0}', github.event.head_commit.message) }}
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-version:
+    name: Resolve Version
+    runs-on: ubuntu-24.04
+    outputs:
+      ktai-version: ${{ steps.version.outputs.ktai_version }}
+      upstream-version: ${{ steps.version.outputs.upstream_version }}
+      release-tag: ${{ steps.version.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Resolve KTAI and upstream versions
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ktai_base="$(tr -d '[:space:]' < KTAI_VERSION)"
+          upstream_version="$(jq -r '.version' packages/desktop/package.json)"
+
+          if [[ ! "$ktai_base" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            echo "KTAI_VERSION must contain major.minor, got: $ktai_base" >&2
+            exit 1
+          fi
+
+          if [[ ! "$upstream_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid upstream version: $upstream_version" >&2
+            exit 1
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            ktai_version="0.0.${GITHUB_RUN_NUMBER}"
+            release_tag=""
+          else
+            ktai_version="${ktai_base}.${GITHUB_RUN_NUMBER}"
+            release_tag="ktai-v${ktai_version}-opencode-v${upstream_version}"
+          fi
+
+          echo "ktai_version=$ktai_version" >> "$GITHUB_OUTPUT"
+          echo "upstream_version=$upstream_version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "KTAI version: $ktai_version"
+          echo "OpenCode version: $upstream_version"
+          [[ -z "$release_tag" ]] || echo "Release tag: $release_tag"
+
+  build-windows:
+    name: Build Windows Installer
+    needs: resolve-version
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare desktop bundle
+        working-directory: packages/desktop
+        run: bun ./scripts/prepare.ts
+        env:
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - name: Build desktop application
+        working-directory: packages/desktop
+        run: bun run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - name: Package unsigned Windows installer
+        working-directory: packages/desktop
+        run: bunx electron-builder --win --publish never --config electron-builder.config.ts
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          KTAI_UNSIGNED_BUILD: "1"
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-windows-x64
+          path: packages/desktop/dist/*.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS PKG (${{ matrix.arch }})
+    needs: resolve-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare desktop bundle
+        working-directory: packages/desktop
+        run: bun ./scripts/prepare.ts
+        env:
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - name: Build desktop application
+        working-directory: packages/desktop
+        run: bun run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - name: Package unsigned macOS PKG
+        working-directory: packages/desktop
+        run: bun run package:mac:pkg:unsigned
+        env:
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-macos-${{ matrix.arch }}
+          path: |
+            packages/desktop/dist/*.pkg
+            packages/desktop/dist/*.dmg
+            packages/desktop/dist/*.zip
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Pre-release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - resolve-version
+      - build-windows
+      - build-macos
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-windows-x64
+          path: release-assets/windows-x64
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-macos-x64
+          path: release-assets/macos-x64
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-macos-arm64
+          path: release-assets/macos-arm64
+
+      - name: Prepare release assets and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets-flat
+          while IFS= read -r -d '' asset; do
+            destination="release-assets-flat/$(basename "$asset")"
+            if [[ -e "$destination" ]]; then
+              echo "Duplicate release asset name: $(basename "$asset")" >&2
+              exit 1
+            fi
+            cp "$asset" "$destination"
+          done < <(find release-assets -type f -print0)
+          (
+            cd release-assets-flat
+            sha256sum ./* > SHA256SUMS
+          )
+          find release-assets-flat -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF_NOTES'
+          ## 构建信息
+
+          - KTAI 版本：`${{ needs.resolve-version.outputs.ktai-version }}`
+          - OpenCode 上游版本：`${{ needs.resolve-version.outputs.upstream-version }}`
+          - 源 Commit：`${{ github.sha }}`
+          - 构建 Run：`${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
+
+          ## 安装包
+
+          - Windows x64：未签名 EXE
+          - macOS Intel：未签名 PKG、DMG、ZIP
+          - macOS Apple Silicon：未签名 PKG、DMG、ZIP
+          - `SHA256SUMS`：全部 Release 资产的 SHA256 校验值
+
+          ## 安全提示
+
+          当前构建未进行 Windows 代码签名、Apple Developer ID 签名或 macOS 公证，仅用于内部测试。安装时可能出现操作系统安全提示。
+          EOF_NOTES
+
+      - name: Publish versioned GitHub pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.resolve-version.outputs.release-tag }}
+          RELEASE_TITLE: KTAI OpenCode ${{ needs.resolve-version.outputs.ktai-version }} (OpenCode ${{ needs.resolve-version.outputs.upstream-version }})
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find release-assets-flat -maxdepth 1 -type f | sort)
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+            gh release edit "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md \
+              --prerelease
+            exit 0
+          fi
+
+          gh release create "$RELEASE_TAG" "${assets[@]}" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TITLE" \
+            --notes-file release-notes.md \
+            --prerelease
+
+  create-test-issue:
+    name: Create Release Test Issue
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - resolve-version
+      - publish-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Create or update release test issue
+        env:
+          ISSUE_TOKEN: ${{ github.token }}
+          PROJECT_TOKEN: ${{ secrets.KT_PROJECTS_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-version.outputs.release-tag }}
+          KTAI_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+          UPSTREAM_VERSION: ${{ needs.resolve-version.outputs.upstream-version }}
+          RELEASE_COMMIT_SHA: ${{ github.sha }}
+          TEST_ASSIGNEE: 080618lxj
+        run: bun scripts/create-release-test-issue.mjs

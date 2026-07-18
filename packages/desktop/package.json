@@ -4,10 +4,9 @@
   "version": "1.18.3",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://opencode.ai",
+  "homepage": "https://ktapi.cc",
   "author": {
-    "name": "OpenCode",
-    "email": "hello@opencode.ai"
+    "name": "KTAI"
   },
   "scripts": {
     "typecheck": "tsgo -b",
@@ -18,6 +17,7 @@
     "preview": "electron-vite preview",
     "package": "electron-builder --config electron-builder.config.ts",
     "package:mac": "electron-builder --mac --config electron-builder.config.ts",
+    "package:mac:pkg:unsigned": "KTAI_UNSIGNED_BUILD=1 CSC_IDENTITY_AUTO_DISCOVERY=false bun run package:mac && bun ./scripts/create-mac-pkg.ts",
     "package:win": "electron-builder --win --config electron-builder.config.ts",
     "package:linux": "electron-builder --linux --config electron-builder.config.ts",
     "native:build": "bun install --cwd native"

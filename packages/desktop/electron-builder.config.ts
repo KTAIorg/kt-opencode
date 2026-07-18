@@ -18,6 +18,7 @@ const legacyDesktopEntryFpm = `${legacyDesktopEntry}=/usr/share/applications/ope
 async function signWindows(configuration: { path: string }) {
   if (process.platform !== "win32") return
   if (process.env.GITHUB_ACTIONS !== "true") return
+  if (process.env.KTAI_UNSIGNED_BUILD === "1") return
 
   await execFileAsync(
     "pwsh",
@@ -32,14 +33,16 @@ const channel = (() => {
   return "dev"
 })()
 
+const unsigned = process.env.KTAI_UNSIGNED_BUILD === "1"
+
 const APP_IDS = {
-  dev: "ai.opencode.desktop.dev",
-  beta: "ai.opencode.desktop.beta",
-  prod: "ai.opencode.desktop",
+  dev: "cc.ktapi.desktop.dev",
+  beta: "cc.ktapi.desktop.beta",
+  prod: "cc.ktapi.desktop",
 } as const
 
 const getBase = (appId: string): Configuration => ({
-  artifactName: "opencode-desktop-${os}-${arch}.${ext}",
+  artifactName: "ktai-desktop-${version}-${os}-${arch}.${ext}",
   directories: {
     output: "dist",
     buildResources: "resources",
@@ -67,15 +70,16 @@ const getBase = (appId: string): Configuration => ({
     gatekeeperAssess: false,
     entitlements: "resources/entitlements.plist",
     entitlementsInherit: "resources/entitlements.plist",
-    notarize: true,
+    notarize: !unsigned,
+    identity: unsigned ? null : undefined,
     target: ["dmg", "zip"],
   },
   dmg: {
-    sign: true,
+    sign: !unsigned,
   },
   protocols: {
-    name: "OpenCode",
-    schemes: ["opencode"],
+    name: "KTAI",
+    schemes: ["ktai"],
   },
   win: {
     icon: `resources/icons/icon.ico`,
@@ -115,29 +119,29 @@ function getConfig() {
       return {
         ...base,
         appId,
-        productName: "OpenCode Dev",
-        rpm: { packageName: "opencode-dev" },
+        productName: "KTAI Dev",
+        rpm: { packageName: "ktai-dev" },
       }
     }
     case "beta": {
       return {
         ...base,
         appId,
-        productName: "OpenCode Beta",
-        protocols: { name: "OpenCode Beta", schemes: ["opencode"] },
-        publish: { provider: "github", owner: "anomalyco", repo: "opencode-beta", channel: "latest" },
-        rpm: { packageName: "opencode-beta" },
+        productName: "KTAI Beta",
+        protocols: { name: "KTAI Beta", schemes: ["ktai"] },
+        publish: { provider: "github", owner: "KTAIorg", repo: "kt-opencode", channel: "beta" },
+        rpm: { packageName: "ktai-beta" },
       }
     }
     case "prod": {
       return {
         ...base,
         appId,
-        productName: "OpenCode",
-        protocols: { name: "OpenCode", schemes: ["opencode"] },
-        publish: { provider: "github", owner: "anomalyco", repo: "opencode", channel: "latest" },
+        productName: "KTAI",
+        protocols: { name: "KTAI", schemes: ["ktai"] },
+        publish: { provider: "github", owner: "KTAIorg", repo: "kt-opencode", channel: "latest" },
         deb: { fpm: [legacyDesktopEntryFpm] },
-        rpm: { packageName: "opencode", fpm: [legacyDesktopEntryFpm] },
+        rpm: { packageName: "ktai", fpm: [legacyDesktopEntryFpm] },
       }
     }
   }
