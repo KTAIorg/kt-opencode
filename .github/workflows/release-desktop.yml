@@ -169,7 +169,7 @@ jobs:
           if-no-files-found: error
 
   publish-release:
-    name: Publish GitHub Pre-release
+    name: Publish GitHub Release
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:
       - resolve-version
@@ -236,7 +236,7 @@ jobs:
           当前构建未进行 Windows 代码签名、Apple Developer ID 签名或 macOS 公证，仅用于内部测试。安装时可能出现操作系统安全提示。
           EOF_NOTES
 
-      - name: Publish versioned GitHub pre-release
+      - name: Publish versioned GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -252,7 +252,8 @@ jobs:
             gh release edit "$RELEASE_TAG" \
               --title "$RELEASE_TITLE" \
               --notes-file release-notes.md \
-              --prerelease
+              --prerelease=false \
+              --latest
             exit 0
           fi
 
@@ -260,7 +261,7 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$RELEASE_TITLE" \
             --notes-file release-notes.md \
-            --prerelease
+            --latest
 
   create-test-issue:
     name: Create Release Test Issue

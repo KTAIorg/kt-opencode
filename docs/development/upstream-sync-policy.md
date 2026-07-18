@@ -34,7 +34,7 @@
 
 - `KTAI_VERSION` 保存 KTAI 产品的 `major.minor` 基线。
 - PR 构建使用 `0.0.<workflow run number>`，只上传 Actions Artifact，不创建 GitHub Release。
-- `main` 每次成功构建使用 `<major>.<minor>.<workflow run number>`，并自动创建 GitHub Pre-release。
+- `main` 每次成功构建使用 `<major>.<minor>.<workflow run number>`，并自动创建 GitHub 正式 Release 且标记为 Latest。
 - 安装包文件名必须包含 KTAI 产品版本。
 - Release 必须包含 Windows x64、macOS Intel、macOS Apple Silicon 安装包和 `SHA256SUMS`。
 - Release 创建成功后，自动创建或更新同版本测试需求 Issue，关联合并 PR、Closing Issues、安装包和 `KT主系统 Issue 看板` 的 `KT测试组` 模块。
@@ -51,7 +51,7 @@ ktai-v<产品版本>-opencode-v<上游版本>
 ktai-v1.0.2-opencode-v1.18.3
 ```
 
-禁止创建与 OpenCode 官方冲突的裸 `vX.Y.Z` Tag。当前安装包未签名，因此自动发布为 Pre-release；完成签名、公证和测试门禁后再建立稳定 Release 流程。
+禁止创建与 OpenCode 官方冲突的裸 `vX.Y.Z` Tag。`main` 只发布正式 Release；当前安装包未签名，Release Notes 必须明确标注 Windows 代码签名、Apple Developer ID 签名和 macOS 公证风险。
 
 ## 同步频率
 
