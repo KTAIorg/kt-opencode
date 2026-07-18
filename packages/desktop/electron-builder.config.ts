@@ -42,7 +42,7 @@ const APP_IDS = {
 } as const
 
 const getBase = (appId: string): Configuration => ({
-  artifactName: "ktai-desktop-${os}-${arch}.${ext}",
+  artifactName: "ktai-desktop-${version}-${os}-${arch}.${ext}",
   directories: {
     output: "dist",
     buildResources: "resources",

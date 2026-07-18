@@ -30,7 +30,13 @@
 5. 运行 Provider 测试、类型检查和 Windows/macOS 构建。
 6. 通过 PR 合入 `main`，禁止直接推送。
 
-## 版本命名
+## 版本与 Release
+
+- `KTAI_VERSION` 保存 KTAI 产品的 `major.minor` 基线。
+- PR 构建使用 `0.0.<workflow run number>`，只上传 Actions Artifact，不创建 GitHub Release。
+- `main` 每次成功构建使用 `<major>.<minor>.<workflow run number>`，并自动创建 GitHub Pre-release。
+- 安装包文件名必须包含 KTAI 产品版本。
+- Release 必须包含 Windows x64、macOS Intel、macOS Apple Silicon 安装包和 `SHA256SUMS`。
 
 KTAI 发布 Tag 使用：
 
@@ -38,7 +44,13 @@ KTAI 发布 Tag 使用：
 ktai-v<产品版本>-opencode-v<上游版本>
 ```
 
-禁止创建与 OpenCode 官方冲突的裸 `vX.Y.Z` Tag。
+例如：
+
+```text
+ktai-v1.0.2-opencode-v1.18.3
+```
+
+禁止创建与 OpenCode 官方冲突的裸 `vX.Y.Z` Tag。当前安装包未签名，因此自动发布为 Pre-release；完成签名、公证和测试门禁后再建立稳定 Release 流程。
 
 ## 同步频率
 
