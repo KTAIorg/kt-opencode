@@ -16,7 +16,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-builder --config electron-builder.config.ts",
-    "package:mac": "electron-builder --mac --config electron-builder.config.ts",
+    "package:mac": "electron-builder --mac --publish never --config electron-builder.config.ts",
     "package:mac:pkg:unsigned": "KTAI_UNSIGNED_BUILD=1 CSC_IDENTITY_AUTO_DISCOVERY=false bun run package:mac && bun ./scripts/create-mac-pkg.ts",
     "package:win": "electron-builder --win --config electron-builder.config.ts",
     "package:linux": "electron-builder --linux --config electron-builder.config.ts",
