@@ -159,3 +159,20 @@ const table = sqliteTable("session", {
 - Keep delivery vocabulary explicit. Prompts steer by default and promote at the next safe provider-turn boundary while the current drain requires continuation. An explicit `queue` input remains pending until the Session would otherwise become idle; promote one queued input at that boundary, then reevaluate continuation before promoting another. Promoting any new user input resets the selected agent's provider-turn allowance; a batch of steers resets it once.
 - Keep EventV2 replay owner claims separate from clustered Session execution ownership.
 - Keep the System Context algebra, registry, and built-ins in `src/system-context`; keep Context Source producers with their observed domains, and keep Session History selection plus Context Epoch persistence Session-owned.
+
+## Cursor Cloud specific instructions
+
+Requires **Bun 1.3.14** (see `CONTRIBUTING.md`); `bun` is preinstalled on the VM and symlinked into `/usr/local/bin`, so it is on `PATH` in non-login shells too. The startup update script runs `bun install` (which also runs the `fix-node-pty` postinstall + husky). Node 22 is present for the SolidStart cloud apps.
+
+Standard commands (see `CONTRIBUTING.md` / root `package.json` scripts):
+
+- Lint: `bun lint` (oxlint). It reports many `warnings` but should have `0 errors`.
+- Typecheck: `bun typecheck` per package dir, e.g. `cd packages/opencode && bun typecheck`. Never run `tsc` directly.
+- Test: run from a package dir (never repo root, which errors on purpose), e.g. `cd packages/opencode && bun test test/util/`.
+- Run the agent: `bun dev serve --port 4096` (headless HTTP API server), `bun dev:web` (web UI dev server on port 3000, targets the backend at `localhost:4096`), or `bun dev .` (interactive TUI — run inside tmux, not as a blocking foreground shell; see `packages/opencode/AGENTS.md`). The headless server also serves the built web UI at `/app`.
+
+Non-obvious caveats:
+
+- `cd packages/opencode && bun typecheck` currently fails with one **pre-existing** error in `src/plugin/ktai.ts` (`modalities.input` widened to `string[]`), unrelated to environment setup. Do not treat it as a setup regression.
+- Real agent responses need a valid LLM provider credential. Set `OPENAI_API_KEY` (auto-detected as the `openai` provider) or authenticate via `opencode auth`. Without credentials the server, sessions, and shell/tool execution still work — only the model turn fails with a provider auth error.
+- The bundled KTAI plugin (`packages/opencode/src/plugin/ktai.ts`) registers a `ktai` provider and can become the auto-selected default model (hits `ktapi.cc`, needs `KTAI_API_KEY`). When calling `POST /session/{id}/message`, put the model in the nested `model` object (`{"model":{"providerID":"openai","modelID":"..."},"parts":[...]}`) — a top-level `providerID`/`modelID` is ignored and the default (ktai) is used instead.
