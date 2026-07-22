@@ -41,17 +41,23 @@ KTAI opencode 目前是上游 `v1.18.3` 的最小补丁 fork（见 `docs/develop
 L4 展示   kt-desktop（会话/窗口） + opencode web UI（自托管）
    │
 L3 编排   kt-billing（套餐 / 订阅 / 周期扣费 / 免费额度 / 超额 / 账单 / 分层定价）
+   │       kt-growth（权益规则引擎 + New API 静默开通 provision）
    │
 L2 账本   kt-identity entitlement_ledger（唯一事实源，不新建）
    │
-L1 计量   new-api（AI token → quota）  ← 即现有 KTAI Provider（ktapi.cc）
+L1 计量   new-api = ktapi.cc（AI token → quota；模型执行 + 计量 + 配额）
+   │          ▲ free-model-hub（免费模型统一注册表）注册进 new-api，对 opencode 透明
 ```
 
 **核心边界原则**（沿用各仓库 contract）：
 
 - 身份事实源 = KT Identity；业务只认 `kt_account_id`（token `sub`）。
 - 余额/账本事实源 = KT Identity ledger；kt-billing 不存余额、不算 token、不收款。
-- AI 计量事实源 = new-api；opencode 本地只做成本展示。
+- AI 计量事实源 = new-api；opencode 本地只做成本展示（不作为计费依据）。
+- **opencode 的唯一 AI 门 = new-api（ktapi.cc）**：所有模型（含 free-model-hub 免费模型）都从 ktapi.cc 出；
+  opencode **不直接对接** free-model-hub，也**不经过** `kt-ai-api-gateway`（后者是旧桌面翻译/chatGpt/workflow 的产品入口，与 opencode 无关）。
+- **零账号自动开通**：用户不手动注册 new-api、不复制 key；由 `kt-growth` 的 `provision` adapter 消费
+  identity `user.registered` 事件，**幂等静默开通** new-api account+token（`Ensure()`）。
 - kt-desktop 只执行平台决策（`kt-desktop/adr/0001`）。
 
 ## 4. 部署拓扑
@@ -180,24 +186,32 @@ opencode agent 调 LLM
 ```
 
 - 单位统一：`$1 = 500k quota`（`kt-billing`）。
+- **零账号自动开通**（`kt-growth/internal/provision/provision.go`）：用户不手动注册 new-api、不复制 key。
+  `Ensure(ktUserID)` 幂等静默开号——按 `ktUserID` 派生 new-api 用户名 → CreateUser/ResetPassword →
+  CreateTokenForUser → 存映射 `{ktUserID, username, userID, APIToken}`；由 identity `user.registered` 事件触发。
+- **provider 凭据 = 该账号的 new-api APIToken**（kt-growth 静默开通铸出，绑定 `kt_account_id`），
+  **不是**共享静态 `KTAI_API_KEY`；由宿主 kt-desktop 注入本地 daemon（见 §6.1）。
 - opencode 侧：
-  - **计量**：继续走 KTAI Provider（new-api），V2 里以 `catalog.transform` 动态注入模型目录（见 §8）。
-  - **余额/额度展示**：读 `identity /ledger/balance`（与会话 `kt_account_id` 绑定）。
+  - **计量**：走 KTAI Provider（new-api / ktapi.cc）；模型目录也从 ktapi.cc 出（free-model-hub 在上游、透明）。
+  - **余额/额度展示**：读 `identity /account/ledger/balance`（与会话 `kt_account_id` 绑定）——**不本地反推成本**。
   - **套餐/账单页**：读 `kt-billing`。
-  - 本地成本估算仅供 UI，不作为计费事实源；注意本地 `$/M token` 与网关侧口径统一。
+  - **去掉本地定价换算**：不再复刻 new-api 的 ratio/price 计费数学；V2 模型 schema 的 `cost` 字段填 0/占位，仅满足类型，不作为计费依据。
 - 额度校验位置（待定）：本地 daemon 直连 identity/new-api 校验，还是经我们服务器中转（利于跨端 quota 互通与防刷）。
 
 ## 8. KTAI Provider 移植到 V2（已定方案，独立于外部仓库，可先做）
 
+范围收敛（结合 §7 决策）：**只保留“连 ktapi.cc + 抓模型目录”，去掉定价/成本换算逻辑**。
+
 | V1（现状） | V2 落点 |
 |---|---|
 | `packages/opencode/src/plugin/ktai.ts` 的 `config` hook 注 `config.provider.ktai` | 新建 `packages/core/src/plugin/provider/ktai.ts`，用 `ctx.catalog.transform` 动态注模型 |
-| `auth:{provider,methods:[{type:"api"}]}` | 改用 `ctx.integration.transform` 注册 `key` + `env:["KTAI_API_KEY"]` |
+| `auth:{provider,methods:[{type:"api"}]}` | 改用 `ctx.integration.transform` 注册 `key` + `env:["KTAI_API_KEY"]`（**M2 开发/回退**；M4 换成宿主注入的 per-account new-api token） |
 | 在 `opencode/internalPlugins()` 注册 | 在 `packages/core/src/plugin/provider.ts` 的 `ProviderPlugins` 数组注册 |
-| model 字段 `tool_call/modalities/cost/release_date` | 映射到 V2 catalog：`capabilities.tools/input/output`、`cost:[{input,output,cache}]`、`time.released` |
+| model 能力 `tool_call/modalities/release_date` | 映射到 V2 catalog：`capabilities.tools/input/output`、`time.released` |
+| model **定价** `quota_type/model_ratio/model_price/completion_ratio → $` | **删除**；`cost` 填 0/占位（计费在平台侧，见 §7） |
 
-拉取 `ktapi.cc/api/pricing` 的动态目录逻辑基本复用。顺带修复 V1 遗留的 `ktai.ts` 类型错误
-（`modalities.input` 被推断为 `string[]`，V1 期卡 pre-push typecheck）。
+- 模型目录来源：`ktapi.cc/api/pricing`（或 new-api `/v1/models`）**只取模型列表 + 能力标签**（Vision/Files/Reasoning/Tools/上下文），不取价格。free-model-hub 在 new-api 上游、对 opencode 透明。
+- 旧 `ktai.ts` 的 pricing 数学（`models()`/`providerModel()` 里 ratio 换算）不再移植；顺带消除 V1 遗留类型错误（`modalities.input` 被推断为 `string[]`，V1 期卡 pre-push typecheck）。
 
 ## 9. V2 基线与交付策略
 
@@ -220,11 +234,13 @@ opencode agent 调 LLM
 ## 11. 开放问题（待确认）
 
 1. 会话语义：opencode 会话按“项目/工作目录”还是“KT workspace”为主键？（本文默认前者）
-2. ~~daemon 凭据模型~~（已定案，见 §6.1）：宿主 kt-desktop 单点登录，opencode 复用其内存 Bearer；
-   daemon 由宿主注入**短期派生凭据**，opencode 不自带登录页。
+2. ~~daemon 凭据模型~~（已定案，见 §6.1/§7）：宿主 kt-desktop 单点登录，opencode 复用其内存 Bearer；
+   daemon 由宿主注入的凭据即该账号 new-api APIToken（kt-growth 静默开通），opencode 不自带登录页。
 3. 额度校验位置：本地 daemon 直连 vs 服务器中转。
 4. web UI 自托管形态：纯静态 CDN vs 由某个网关服务托管（影响与 daemon 的同源/代理策略）。
 5. 桌面打包冻结的时机：M2 后即冻结，还是保留到 M6。
+6. ~~模型目录来源~~（已定案，见 §3/§8）：唯一 AI 门 = new-api（ktapi.cc）；free-model-hub 注册进 new-api、
+   对 opencode 透明；opencode 不直连 free-model-hub，也不经过 kt-ai-api-gateway。
 
 ## 12. 参考（源契约位置）
 
@@ -233,6 +249,11 @@ opencode agent 调 LLM
   `kt-identity/docs/integration/kt-identity-integration-guide.md`、
   `kt-identity/docs/api/post-login-session-handoff-contract.md`。
 - KT Billing：`kt-billing/README.md`、`kt-billing/contracts/billing-api.md`、`kt-billing-blueprint/`。
+- New API 静默开通：`kt-growth/internal/provision/provision.go`、
+  `kt-growth/docs/prd/growth-loop-v1.md`（§4.2 事件流、§5 静默开通）、
+  `kt-growth/docs/decisions/0001-supersede-newapi-provisioner.md`。
+- AI 门层次：`KTAIorg/new-api`（= ktapi.cc，LLM 执行/计量）、`KTAIorg/free-model-hub`（免费模型注册表，上游）、
+  `KTAIorg/kt-ai-api-gateway`（旧桌面翻译/chatGpt/workflow 产品入口，opencode 不经过）。
 - kt-desktop：`kt-desktop/electron/main/view.ts`、`kt-desktop/src/view/customSession/CustomSession.vue`、
   `kt-desktop/contracts/{host-capability-report,host-policy-execution,plugin-resolve-client}.md`、
   `kt-desktop/adr/0001-desktop-executes-platform-decisions.md`、
