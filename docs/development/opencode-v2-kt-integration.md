@@ -142,8 +142,31 @@ kt-desktop 登录(KT Identity, Bearer, sub=kt_account_id)
 `/auth/login`、`/auth/telegram/{start,poll}`、`/auth/introspect`、`/authz/{can,batch,permissions}`、
 `/account/me`、`/account/sessions`、`/account/ledger/balance`。
 
-待定：daemon 是自己 `introspect` Bearer，还是由 desktop 在 spawn 时下发短期派生凭据（推荐后者 + 定期刷新，
-避免长期 Bearer 落到本地 daemon 环境）。
+### 6.1 单点登录：复用 kt-desktop 的 KT 登录态（不二次登录）
+
+kt-desktop 的 `feat/identity-only-login` 分支已实现 KT Identity 登录并常驻登录态，opencode 会话
+**必须复用它，不能再弹一次登录**：
+
+- `kt-desktop/src/libs/identityAuth.ts`：登录只打 `login.ktyun.cc/identity/v1/auth/login`，
+  Bearer **只存渲染进程内存**（`runtimeIdentityToken`，不落 localStorage/URL），已封装
+  `account/me`、`account/ledger/balance`、`getIdentityToken()`。
+- `kt-desktop/src/libs/apiAuth.ts`：`getApiAuthHeaders()` 从内存取 token，统一发 `Authorization: Bearer`；
+  401 走 `handleApiUnauthorized` 重登。
+
+融合规则（宿主单点登录，opencode 复用）：
+
+1. **opencode web UI 增加“宿主注入认证”模式**：嵌入 kt-desktop 时不走应用内 KT 登录，而是经
+   **preload IPC 桥**向宿主索取当前 `getIdentityToken()`，并订阅 token 刷新事件；登录页在嵌入模式隐藏。
+2. **daemon 凭据由宿主注入短期派生凭据**（定案：不把长期 Bearer 落到本地 daemon）。daemon 用它做
+   `introspect`/`authz`/`ledger` 与 new-api 计量，全部落在同一 `kt_account_id`。
+3. **单一事实源 + 刷新**：kt-desktop 是唯一登录处；401/过期由它 `handleApiUnauthorized` 重登一次，
+   再经桥把新 token 推给 opencode 会话与 daemon。opencode 永不独立登录。
+4. 符合登录交接契约：Desktop = Bearer 面；token 不进 URL / 长期 localStorage；桥传内存态。
+
+两边改动：
+- **opencode（本仓）**：新增 external/injected-auth 接缝——KT 身份来自宿主而非应用内登录。
+- **kt-desktop**：在 `identityAuth`/preload 暴露 `getIdentityToken()` + token-changed 事件给 opencode
+  BrowserView；spawn opencode daemon 时注入短期凭据。桌面侧 KT 登录基于 `feat/identity-only-login`，不重造。
 
 ## 7. 计费 / 计量数据流
 
@@ -197,7 +220,8 @@ opencode agent 调 LLM
 ## 11. 开放问题（待确认）
 
 1. 会话语义：opencode 会话按“项目/工作目录”还是“KT workspace”为主键？（本文默认前者）
-2. daemon 凭据模型：直接注入 Bearer vs desktop 下发短期派生凭据（本文倾向后者）。
+2. ~~daemon 凭据模型~~（已定案，见 §6.1）：宿主 kt-desktop 单点登录，opencode 复用其内存 Bearer；
+   daemon 由宿主注入**短期派生凭据**，opencode 不自带登录页。
 3. 额度校验位置：本地 daemon 直连 vs 服务器中转。
 4. web UI 自托管形态：纯静态 CDN vs 由某个网关服务托管（影响与 daemon 的同源/代理策略）。
 5. 桌面打包冻结的时机：M2 后即冻结，还是保留到 M6。
@@ -213,3 +237,5 @@ opencode agent 调 LLM
   `kt-desktop/contracts/{host-capability-report,host-policy-execution,plugin-resolve-client}.md`、
   `kt-desktop/adr/0001-desktop-executes-platform-decisions.md`、
   `kt-desktop/docs/plan/enterprise-plugin-platform-client.md`。
+- kt-desktop KT 登录（单点登录基线）：分支 `feat/identity-only-login`，
+  `kt-desktop/src/libs/identityAuth.ts`、`kt-desktop/src/libs/apiAuth.ts`。
