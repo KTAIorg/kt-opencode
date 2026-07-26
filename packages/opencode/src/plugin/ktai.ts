@@ -1,4 +1,14 @@
 import type { Config, Hooks } from "@opencode-ai/plugin"
+import { OAUTH_DUMMY_KEY } from "@/auth"
+import {
+  identityBaseUrl,
+  identityLoginInstructions,
+  KT_IDENTITY_REFRESH_MARKER,
+  passwordLogin,
+  pollTelegramLogin,
+  sessionExpiresAt,
+  startTelegramLogin,
+} from "./ktai-identity"
 
 export const KTAI_PRICING_URL = "https://ktapi.cc/api/pricing"
 
@@ -101,6 +111,9 @@ function providerModel(model: RawModel) {
   const tags = model.tags ?? ""
   const image = /(?:^|,)Vision(?:,|$)/i.test(tags)
   const pdf = /(?:^|,)Files(?:,|$)/i.test(tags)
+  const input: Array<"text" | "image" | "pdf"> = ["text"]
+  if (image) input.push("image")
+  if (pdf) input.push("pdf")
   return {
     name: model.name ?? label(model.id),
     family: "ktai",
@@ -112,8 +125,8 @@ function providerModel(model: RawModel) {
     cost: { input: model.input, output: model.output },
     limit: { context: model.context ?? context(tags), output: DEFAULT_OUTPUT },
     modalities: {
-      input: ["text", ...(image ? (["image"] as const) : []), ...(pdf ? (["pdf"] as const) : [])],
-      output: ["text"] as const,
+      input,
+      output: ["text"] as Array<"text">,
     },
   }
 }
@@ -136,6 +149,8 @@ async function load() {
 }
 
 export async function KTAIProviderPlugin(): Promise<Hooks> {
+  const baseUrl = identityBaseUrl()
+
   return {
     config: async (config) => {
       const provider = await load().catch(() => createKTAIProviderConfig(fallback))
@@ -152,7 +167,111 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
     },
     auth: {
       provider: "ktai",
-      methods: [{ type: "api", label: "KTAI API key" }],
+      // Identity Bearer is NOT a NewAPI API key. While NewAPI ensure/exchange is
+      // pending, keep using KTAI_API_KEY / pasted API key for ktapi.cc calls.
+      async loader(getAuth) {
+        const auth = await getAuth()
+        if (!auth) return {}
+        if (auth.type === "oauth" && auth.refresh === KT_IDENTITY_REFRESH_MARKER) {
+          return { apiKey: process.env.KTAI_API_KEY || OAUTH_DUMMY_KEY }
+        }
+        return {}
+      },
+      methods: [
+        {
+          type: "oauth",
+          label: "KT Identity (Telegram)",
+          async authorize() {
+            const challenge = await startTelegramLogin({ baseUrl })
+            return {
+              url: challenge.telegram.qrUrl,
+              instructions: `Open Telegram @${challenge.telegram.botUsername} and confirm login code ${challenge.displayCode}.`,
+              method: "auto" as const,
+              async callback() {
+                try {
+                  const session = await pollTelegramLogin({
+                    challengeId: challenge.challengeId,
+                    baseUrl,
+                  })
+                  return {
+                    type: "success" as const,
+                    refresh: KT_IDENTITY_REFRESH_MARKER,
+                    access: session.token,
+                    expires: sessionExpiresAt(session),
+                    accountId: session.account.id,
+                  }
+                } catch {
+                  return { type: "failed" as const }
+                }
+              },
+            }
+          },
+        },
+        {
+          type: "oauth",
+          label: "KT Identity (password)",
+          prompts: [
+            {
+              type: "text" as const,
+              key: "loginName",
+              message: "KT login name",
+              placeholder: "account / email / username",
+            },
+            {
+              type: "text" as const,
+              key: "password",
+              message: "KT password",
+              placeholder: "password",
+            },
+          ],
+          async authorize(inputs) {
+            const loginName = inputs?.loginName?.trim() ?? ""
+            const password = inputs?.password ?? ""
+            if (!loginName || !password) {
+              return {
+                url: `${baseUrl}/web`,
+                instructions: "Login name and password are required.",
+                method: "auto" as const,
+                async callback() {
+                  return { type: "failed" as const }
+                },
+              }
+            }
+
+            try {
+              const session = await passwordLogin({ loginName, password, baseUrl })
+              return {
+                url: `${baseUrl}/home`,
+                instructions: identityLoginInstructions(session),
+                method: "auto" as const,
+                async callback() {
+                  return {
+                    type: "success" as const,
+                    refresh: KT_IDENTITY_REFRESH_MARKER,
+                    access: session.token,
+                    expires: sessionExpiresAt(session),
+                    accountId: session.account.id,
+                  }
+                },
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "KT Identity password login failed"
+              return {
+                url: `${baseUrl}/web`,
+                instructions: message,
+                method: "auto" as const,
+                async callback() {
+                  return { type: "failed" as const }
+                },
+              }
+            }
+          },
+        },
+        {
+          type: "api",
+          label: "KTAI API key",
+        },
+      ],
     },
   }
 }

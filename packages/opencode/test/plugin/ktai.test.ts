@@ -23,8 +23,39 @@ test("creates KTAI models from the pricing response", () => {
   expect(provider.models?.["gpt-5.4"]?.limit?.context).toBe(400_000)
 })
 
-test("exposes KTAI API key authentication", async () => {
+test("exposes KT Identity login methods plus API key fallback", async () => {
   const hooks = await KTAIProviderPlugin()
   expect(hooks.auth?.provider).toBe("ktai")
-  expect(hooks.auth?.methods[0]?.type).toBe("api")
+  expect(hooks.auth?.methods.map((method) => method.label)).toEqual([
+    "KT Identity (Telegram)",
+    "KT Identity (password)",
+    "KTAI API key",
+  ])
+  expect(hooks.auth?.methods[0]?.type).toBe("oauth")
+  expect(hooks.auth?.methods[1]?.type).toBe("oauth")
+  expect(hooks.auth?.methods[2]?.type).toBe("api")
+  expect(typeof hooks.auth?.loader).toBe("function")
+})
+
+test("identity oauth loader does not send Identity Bearer to NewAPI", async () => {
+  const hooks = await KTAIProviderPlugin()
+  const previous = process.env.KTAI_API_KEY
+  delete process.env.KTAI_API_KEY
+  try {
+    const options = await hooks.auth!.loader!(
+      async () =>
+        ({
+          type: "oauth",
+          access: "identity-bearer",
+          refresh: "kt-identity",
+          expires: Date.now() + 60_000,
+          accountId: "acc-1",
+        }) as never,
+      {} as never,
+    )
+    expect(options.apiKey).toBe("opencode-oauth-dummy-key")
+  } finally {
+    if (previous === undefined) delete process.env.KTAI_API_KEY
+    else process.env.KTAI_API_KEY = previous
+  }
 })
