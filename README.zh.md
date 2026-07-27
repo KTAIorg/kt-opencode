@@ -115,6 +115,13 @@ OpenCode 内置两种 Agent，可用 `Tab` 键快速切换：
 
 更多配置说明请查看我们的 [**官方文档**](https://opencode.ai/docs)。
 
+### KT 团队 Wiki
+
+客户默认链路（免费 Zen → KT 充值 → 付费 KTAI）见：
+
+- [客户路径](./docs/wiki/customer-journey.md)
+- [Wiki 目录](./docs/wiki/README.md)
+
 ### 参与贡献
 
 如有兴趣贡献代码，请在提交 PR 前阅读 [贡献指南 (Contributing Docs)](./CONTRIBUTING.md)。

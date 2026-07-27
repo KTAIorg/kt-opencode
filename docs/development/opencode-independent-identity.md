@@ -90,6 +90,8 @@ NewAPI / ktapi.cc    AI 执行与计量（需要 NewAPI credential）
 
 ## 7. 客户默认链路（不是 KT Secret 共享密钥）
 
+> 团队可读版（推荐转发给小伙伴）：[客户路径 Wiki](../wiki/customer-journey.md)
+
 客户安装包 **不会** 内置 `KT_NEWAPI__PROD__KT_OPENCODE__API_KEY` 这类运营共享密钥。  
 该 Secret 仅供内部调试 / CI。
 
