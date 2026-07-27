@@ -238,9 +238,9 @@ describe("SessionStatus.Info", () => {
         reason: "free_tier_limit",
         provider: "opencode",
         title: "Free limit reached",
-        message: "Subscribe to OpenCode Go.",
+        message: "Top up on the KT AI platform.",
         label: "subscribe",
-        link: "https://opencode.ai/go",
+        link: "https://www.ktapi.cc/wallet",
       },
       next: 500,
     }

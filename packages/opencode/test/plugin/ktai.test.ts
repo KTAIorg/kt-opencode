@@ -1,8 +1,15 @@
 import { expect, test } from "bun:test"
-import { createKTAIProviderConfig, KTAIProviderPlugin } from "@/plugin/ktai"
+import {
+  catalogModels,
+  createKTAIProviderConfig,
+  KTAIProviderPlugin,
+  pickDefaultVisibleModelIDs,
+  pricingIndex,
+  pricingModels,
+} from "@/plugin/ktai"
 
-test("creates KTAI models from the pricing response", () => {
-  const provider = createKTAIProviderConfig({
+test("builds KTAI models from /v1/models catalog enriched by pricing", () => {
+  const costs = pricingIndex({
     data: [
       {
         model_name: "gpt-5.4",
@@ -16,6 +23,14 @@ test("creates KTAI models from the pricing response", () => {
       },
     ],
   })
+  const provider = createKTAIProviderConfig(
+    catalogModels(
+      {
+        data: [{ id: "gpt-5.4", object: "model", supported_endpoint_types: ["openai"] }],
+      },
+      costs,
+    ),
+  )
 
   expect(provider.api).toBe("https://ktapi.cc/v1")
   expect(provider.env).toEqual(["KTAI_API_KEY"])
@@ -23,8 +38,97 @@ test("creates KTAI models from the pricing response", () => {
   expect(provider.models?.["gpt-5.4"]?.limit?.context).toBe(400_000)
 })
 
-test("exposes KTAI API key authentication", async () => {
+test("picks a curated default-visible set from the catalog", () => {
+  const picked = pickDefaultVisibleModelIDs([
+    "gpt-5.6",
+    "gpt-5.4-mini",
+    "anthropic/claude-sonnet-4.6",
+    "anthropic/claude-opus-4.8",
+    "claude-haiku-4-5",
+    "gemini-2.5-flash",
+    "deepseek-v4-flash",
+    "kimi-k2.5",
+    "MiniMax-M2.7",
+    "gpt-4o-mini",
+    "amazon.titan-embed-text-v2:0",
+  ])
+  expect([...picked].sort()).toEqual(
+    [
+      "gpt-5.6",
+      "gpt-5.4-mini",
+      "anthropic/claude-sonnet-4.6",
+      "anthropic/claude-opus-4.8",
+      "claude-haiku-4-5",
+      "gemini-2.5-flash",
+      "deepseek-v4-flash",
+      "kimi-k2.5",
+      "MiniMax-M2.7",
+    ].sort(),
+  )
+
+  const provider = createKTAIProviderConfig(
+    [...picked, "amazon.titan-embed-text-v2:0"].map((id) => ({ id, input: 1, output: 1 })),
+  )
+  expect(provider.models?.["gpt-5.6"]?.release_date).toBeUndefined()
+  expect(provider.models?.["amazon.titan-embed-text-v2:0"]?.release_date).toBe("2020-01-01")
+})
+
+test("pricing fallback still filters to ktai + openai endpoints", () => {
+  const list = pricingModels({
+    data: [
+      {
+        model_name: "skip-me",
+        enable_groups: ["default"],
+        supported_endpoint_types: ["openai"],
+        model_price: 1,
+        quota_type: 1,
+      },
+      {
+        model_name: "gpt-5.4",
+        enable_groups: ["ktai"],
+        supported_endpoint_types: ["openai"],
+        quota_type: 0,
+        model_ratio: 2,
+        completion_ratio: 5,
+      },
+    ],
+  })
+  expect(list.map((m) => m.id)).toEqual(["gpt-5.4"])
+})
+
+test("exposes KT Identity login methods plus API key fallback", async () => {
   const hooks = await KTAIProviderPlugin()
   expect(hooks.auth?.provider).toBe("ktai")
-  expect(hooks.auth?.methods[0]?.type).toBe("api")
+  expect(hooks.auth?.methods.map((method) => method.label)).toEqual([
+    "KT Identity (Telegram)",
+    "KT Identity (password)",
+    "KTAI API key",
+  ])
+  expect(hooks.auth?.methods[0]?.type).toBe("oauth")
+  expect(hooks.auth?.methods[1]?.type).toBe("oauth")
+  expect(hooks.auth?.methods[2]?.type).toBe("api")
+  expect(typeof hooks.auth?.loader).toBe("function")
+})
+
+test("identity oauth loader does not send Identity Bearer to NewAPI", async () => {
+  const hooks = await KTAIProviderPlugin()
+  const previous = process.env.KTAI_API_KEY
+  delete process.env.KTAI_API_KEY
+  try {
+    const options = await hooks.auth!.loader!(
+      async () =>
+        ({
+          type: "oauth",
+          access: "identity-bearer",
+          refresh: "kt-identity",
+          expires: Date.now() + 60_000,
+          accountId: "acc-1",
+        }) as never,
+      {} as never,
+    )
+    expect(options.apiKey).toBe("opencode-oauth-dummy-key")
+  } finally {
+    if (previous === undefined) delete process.env.KTAI_API_KEY
+    else process.env.KTAI_API_KEY = previous
+  }
 })

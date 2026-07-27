@@ -50,9 +50,8 @@ export const dict: Record<Keys, string> = {
   "ui.sessionTurn.error.addCredits": "Legg til kreditt",
 
   "dialog.usageExceeded.freeTier.title": "Gratis grense nådd",
-  "dialog.usageExceeded.freeTier.description":
-    "Abonner på OpenCode Go for pålitelig tilgang til de beste åpen kildekode-modellene, fra $5/måned.",
-  "dialog.usageExceeded.freeTier.actionLabel": "Abonner",
+  "dialog.usageExceeded.freeTier.description": "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+  "dialog.usageExceeded.freeTier.actionLabel": "Top up",
   "dialog.usageExceeded.accountRateLimit.title": "Go-grense nådd",
   "dialog.usageExceeded.accountRateLimit.description":
     "Bruksgrense nådd. For å fortsette å bruke denne modellen nå, aktiver bruk fra din tilgjengelige saldo",

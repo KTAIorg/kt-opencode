@@ -70,9 +70,8 @@ export const dict = {
   "ui.sessionTurn.error.addCredits": "Dodaj kredyty",
 
   "dialog.usageExceeded.freeTier.title": "Osiągnięto limit darmowy",
-  "dialog.usageExceeded.freeTier.description":
-    "Subskrybuj OpenCode Go, aby uzyskać niezawodny dostęp do najlepszych modeli open source, od $5/miesiąc.",
-  "dialog.usageExceeded.freeTier.actionLabel": "Subskrybuj",
+  "dialog.usageExceeded.freeTier.description": "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+  "dialog.usageExceeded.freeTier.actionLabel": "Top up",
   "dialog.usageExceeded.accountRateLimit.title": "Osiągnięto limit Go",
   "dialog.usageExceeded.accountRateLimit.description":
     "Osiągnięto limit użycia. Aby kontynuować korzystanie z tego modelu teraz, włącz użycie z dostępnego salda",
