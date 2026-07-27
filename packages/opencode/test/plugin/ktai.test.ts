@@ -3,6 +3,7 @@ import {
   catalogModels,
   createKTAIProviderConfig,
   KTAIProviderPlugin,
+  pickDefaultVisibleModelIDs,
   pricingIndex,
   pricingModels,
 } from "@/plugin/ktai"
@@ -35,6 +36,41 @@ test("builds KTAI models from /v1/models catalog enriched by pricing", () => {
   expect(provider.env).toEqual(["KTAI_API_KEY"])
   expect(provider.models?.["gpt-5.4"]?.cost).toEqual({ input: 4, output: 20 })
   expect(provider.models?.["gpt-5.4"]?.limit?.context).toBe(400_000)
+})
+
+test("picks a curated default-visible set from the catalog", () => {
+  const picked = pickDefaultVisibleModelIDs([
+    "gpt-5.6",
+    "gpt-5.4-mini",
+    "anthropic/claude-sonnet-4.6",
+    "anthropic/claude-opus-4.8",
+    "claude-haiku-4-5",
+    "gemini-2.5-flash",
+    "deepseek-v4-flash",
+    "kimi-k2.5",
+    "MiniMax-M2.7",
+    "gpt-4o-mini",
+    "amazon.titan-embed-text-v2:0",
+  ])
+  expect([...picked].sort()).toEqual(
+    [
+      "gpt-5.6",
+      "gpt-5.4-mini",
+      "anthropic/claude-sonnet-4.6",
+      "anthropic/claude-opus-4.8",
+      "claude-haiku-4-5",
+      "gemini-2.5-flash",
+      "deepseek-v4-flash",
+      "kimi-k2.5",
+      "MiniMax-M2.7",
+    ].sort(),
+  )
+
+  const provider = createKTAIProviderConfig(
+    [...picked, "amazon.titan-embed-text-v2:0"].map((id) => ({ id, input: 1, output: 1 })),
+  )
+  expect(provider.models?.["gpt-5.6"]?.release_date).toBeUndefined()
+  expect(provider.models?.["amazon.titan-embed-text-v2:0"]?.release_date).toBe("2020-01-01")
 })
 
 test("pricing fallback still filters to ktai + openai endpoints", () => {

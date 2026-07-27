@@ -17,9 +17,51 @@ export const KTAI_MODELS_URL = "https://ktapi.cc/v1/models"
 export const KTAI_TOPUP_URL = "https://www.ktapi.cc/wallet"
 
 const API_URL = "https://ktapi.cc/v1"
-const RELEASE_DATE = "2026-03-29"
+/** Used for non-default models so OpenCode's visibility heuristic keeps them hidden until opted in. */
+const HIDDEN_RELEASE_DATE = "2020-01-01"
 const DEFAULT_CONTEXT = 131_072
 const DEFAULT_OUTPUT = 32_768
+
+/**
+ * Curated KTAI defaults shown in the model picker for new customers.
+ * Each group picks the first id that exists in the current `/v1/models` catalog.
+ * OpenCode treats missing/invalid `release_date` as visible by default.
+ */
+export const KTAI_DEFAULT_VISIBLE_PICKS: readonly (readonly string[])[] = [
+  ["gpt-5.6", "openai/gpt-5.6", "gpt-5.5", "openai/gpt-5.5"],
+  ["gpt-5.4-mini", "openai/gpt-5.4-mini", "gpt-5.4", "openai/gpt-5.4"],
+  [
+    "claude-sonnet-4.6",
+    "anthropic/claude-sonnet-4.6",
+    "claude-sonnet-4-6",
+    "claude-sonnet-4.5",
+    "anthropic/claude-sonnet-4.5",
+    "claude-sonnet-4-5",
+  ],
+  [
+    "claude-opus-4.8",
+    "anthropic/claude-opus-4.8",
+    "claude-opus-4-8",
+    "claude-opus-4.7",
+    "anthropic/claude-opus-4.7",
+    "claude-opus-4-7",
+  ],
+  ["claude-haiku-4-5", "claude-haiku-4-5@20251001"],
+  ["gemini-2.5-flash", "gemini-3-flash-preview"],
+  ["deepseek-v4-flash", "deepseek-v4-pro"],
+  ["kimi-k2.5", "kimi-k2.6", "qwen3.7-plus", "qwen3.6-plus", "qwen3-max"],
+  ["MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1"],
+]
+
+export function pickDefaultVisibleModelIDs(catalogIDs: Iterable<string>): Set<string> {
+  const available = new Set(catalogIDs)
+  const picked = new Set<string>()
+  for (const group of KTAI_DEFAULT_VISIBLE_PICKS) {
+    const hit = group.find((id) => available.has(id))
+    if (hit) picked.add(hit)
+  }
+  return picked
+}
 
 type PricingModel = {
   model_name?: unknown
@@ -55,6 +97,7 @@ type RawModel = {
   output: number
   tags?: string
   context?: number
+  defaultVisible?: boolean
 }
 
 const fallback: RawModel[] = [
@@ -182,6 +225,15 @@ function label(id: string) {
     .replace(/\b\w/g, (value) => value.toUpperCase())
 }
 
+function withDefaultVisibility(list: RawModel[]): RawModel[] {
+  const defaults = pickDefaultVisibleModelIDs(list.map((model) => model.id))
+  // If the catalog is a tiny fallback set, keep everything visible.
+  if (list.length <= defaults.size || defaults.size === 0) {
+    return list.map((model) => ({ ...model, defaultVisible: true }))
+  }
+  return list.map((model) => ({ ...model, defaultVisible: defaults.has(model.id) }))
+}
+
 function providerModel(model: RawModel) {
   const tags = model.tags ?? ""
   const image = /(?:^|,)Vision(?:,|$)/i.test(tags)
@@ -189,10 +241,13 @@ function providerModel(model: RawModel) {
   const input: Array<"text" | "image" | "pdf"> = ["text"]
   if (image) input.push("image")
   if (pdf) input.push("pdf")
+  const defaultVisible = model.defaultVisible !== false
   return {
     name: model.name ?? label(model.id),
-    family: "ktai",
-    release_date: RELEASE_DATE,
+    family: defaultVisible ? `ktai:${model.id}` : "ktai",
+    // Missing/invalid release_date => visible by default in OpenCode's model picker.
+    // Older valid dates => hidden until the customer opts in via Manage models.
+    ...(defaultVisible ? {} : { release_date: HIDDEN_RELEASE_DATE }),
     attachment: image || pdf,
     reasoning: /(?:^|,)Reasoning(?:,|$)/i.test(tags),
     temperature: true,
@@ -207,12 +262,13 @@ function providerModel(model: RawModel) {
 }
 
 export function createKTAIProviderConfig(list: RawModel[]): NonNullable<Config["provider"]>[string] {
+  const visible = withDefaultVisibility(list)
   return {
     name: "KTAI",
     api: API_URL,
     npm: "@ai-sdk/openai-compatible",
     env: ["KTAI_API_KEY"],
-    models: Object.fromEntries(list.map((model) => [model.id, providerModel(model)])),
+    models: Object.fromEntries(visible.map((model) => [model.id, providerModel(model)])),
   }
 }
 

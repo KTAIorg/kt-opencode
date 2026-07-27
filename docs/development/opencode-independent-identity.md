@@ -88,9 +88,37 @@ NewAPI / ktapi.cc    AI 执行与计量（需要 NewAPI credential）
 - **不再**弹出 OpenCode Go 订阅 / 连接 `opencode-go`。
 - 改为 KT 充值引导，CTA：`https://www.ktapi.cc/wallet`。
 
-## 7. 下一步
+## 7. 客户默认链路（不是 KT Secret 共享密钥）
 
-1. NewAPI：按 `kt_account_id` Ensure / Token Exchange（已交接）。
+客户安装包 **不会** 内置 `KT_NEWAPI__PROD__KT_OPENCODE__API_KEY` 这类运营共享密钥。  
+该 Secret 仅供内部调试 / CI。
+
+目标客户路径：
+
+```text
+1) 打开 KT OpenCode
+   └─ 先用 OpenCode Zen 免费模型（无需 KT 账号 / 无需 NewAPI key）
+
+2) 免费额度用尽
+   └─ 引导去 https://www.ktapi.cc/wallet 充值（KT 弹窗，不是 Go）
+
+3) 注册 / 登录 KT Identity
+   └─ Telegram 或密码登录（写入 auth.json，refresh=kt-identity）
+
+4) 获得个人可用的 NewAPI 凭证（目标态）
+   └─ NewAPI 按 kt_account_id Ensure / Token Exchange
+   └─ OpenCode 自动写入该账号的 API key，切换到 KTAI 付费模型
+
+5) 过渡态（Ensure 未上线前）
+   └─ 用户在 ktapi.cc 控制台自建 token，或在 OpenCode 粘贴 “KTAI API key”
+   └─ 也可用环境变量 KTAI_API_KEY（仅开发机）
+```
+
+KTAI 模型选择器默认只点亮精选编程模型（约 8–10 个）；其余仍在 Manage models 里可手动打开。
+
+## 8. 下一步
+
+1. NewAPI：按 `kt_account_id` Ensure / Token Exchange（已交接）——这是客户免粘贴 key 的关键路径。
 2. OpenCode：Ensure 就绪后，Identity 登录成功即自动写入 per-account NewAPI token，去掉对共享 `KTAI_API_KEY` 的依赖。
 3. 可选：账户页展示当前 `kt_account_id` / accountNo；`authz/can` 产品权限。
 4. V2 升级与独立桌面打包策略另开里程碑，不阻塞本身份闭环。
