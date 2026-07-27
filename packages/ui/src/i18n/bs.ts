@@ -75,9 +75,8 @@ export const dict = {
   "ui.sessionTurn.error.addCredits": "Dodaj kredite",
 
   "dialog.usageExceeded.freeTier.title": "Dostignut besplatan limit",
-  "dialog.usageExceeded.freeTier.description":
-    "Pretplatite se na OpenCode Go za pouzdan pristup najboljim open-source modelima, počevši od $5/mjesec.",
-  "dialog.usageExceeded.freeTier.actionLabel": "Pretplati se",
+  "dialog.usageExceeded.freeTier.description": "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+  "dialog.usageExceeded.freeTier.actionLabel": "Top up",
   "dialog.usageExceeded.accountRateLimit.title": "Dostignut Go limit",
   "dialog.usageExceeded.accountRateLimit.description":
     "Dostignut je limit korištenja. Da nastavite koristiti ovaj model sada, omogućite korištenje iz vašeg dostupnog stanja",

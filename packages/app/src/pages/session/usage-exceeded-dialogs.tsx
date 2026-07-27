@@ -8,21 +8,21 @@ import { useDialog } from "@opencode-ai/ui/context"
 import { DialogUsageExceeded } from "@/components/dialog-usage-exceeded"
 import { useI18n } from "@opencode-ai/ui/context"
 
-const GO_UPSELL_FREE_TIER_LAST_SEEN_AT = "go_upsell_last_seen_at"
-const GO_UPSELL_FREE_TIER_DONT_SHOW = "go_upsell_dont_show"
+const KT_TOPUP_FREE_TIER_LAST_SEEN_AT = "kt_topup_last_seen_at"
+const KT_TOPUP_FREE_TIER_DONT_SHOW = "kt_topup_dont_show"
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT = "go_upsell_account_rate_limit_last_seen_at"
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW = "go_upsell_account_rate_limit_dont_show"
-const GO_UPSELL_WINDOW = 86_400_000 // 24 hrs
-const GO_UPSELL_PROVIDERS = new Set(["opencode", "opencode-go"])
+const UPSELL_WINDOW = 86_400_000 // 24 hrs
+const FREE_TIER_PROVIDERS = new Set(["opencode", "opencode-go"])
 
-function goUpsellKeys(status: SessionStatus) {
+function upsellKeys(status: SessionStatus) {
   if (status.type !== "retry" || !status.action) return
   const { action } = status
-  if (!GO_UPSELL_PROVIDERS.has(action.provider)) return
+  if (!FREE_TIER_PROVIDERS.has(action.provider)) return
   if (action.reason === "free_tier_limit") {
     return {
-      lastSeenAt: GO_UPSELL_FREE_TIER_LAST_SEEN_AT,
-      dontShow: GO_UPSELL_FREE_TIER_DONT_SHOW,
+      lastSeenAt: KT_TOPUP_FREE_TIER_LAST_SEEN_AT,
+      dontShow: KT_TOPUP_FREE_TIER_DONT_SHOW,
     } as const
   }
   if (action.reason === "account_rate_limit") {
@@ -40,11 +40,11 @@ export function useUsageExceededDialogs() {
   const { t, locale } = useI18n()
   const isEnglish = () => locale() === "en"
 
-  const [goUpsellState, setGoUpsellState] = persisted(
-    Persist.global("go-upsell"),
+  const [upsellState, setUpsellState] = persisted(
+    Persist.global("kt-topup-upsell"),
     createStore({
-      [GO_UPSELL_FREE_TIER_LAST_SEEN_AT]: null as null | number,
-      [GO_UPSELL_FREE_TIER_DONT_SHOW]: null as null | number,
+      [KT_TOPUP_FREE_TIER_LAST_SEEN_AT]: null as null | number,
+      [KT_TOPUP_FREE_TIER_DONT_SHOW]: null as null | number,
       [GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT]: null as null | number,
       [GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW]: null as null | number,
     }),
@@ -58,12 +58,12 @@ export function useUsageExceededDialogs() {
       if (!action) return
       if (dialog.active) return
 
-      const keys = goUpsellKeys(evt.properties.status)
+      const keys = upsellKeys(evt.properties.status)
       if (!keys) return
 
-      const seen = goUpsellState[keys.lastSeenAt]
-      if (seen && Date.now() - seen < GO_UPSELL_WINDOW) return
-      if (goUpsellState[keys.dontShow]) return
+      const seen = upsellState[keys.lastSeenAt]
+      if (seen && Date.now() - seen < UPSELL_WINDOW) return
+      if (upsellState[keys.dontShow]) return
 
       if (action.reason === "free_tier_limit") {
         dialog.show(() => (
@@ -73,15 +73,9 @@ export function useUsageExceededDialogs() {
             actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.freeTier.actionLabel")}
             link={action.link}
             onClose={(dontShowAgain) => {
-              setGoUpsellState(keys.lastSeenAt, Date.now())
-              if (dontShowAgain) setGoUpsellState(keys.dontShow, Date.now())
-              else {
-                void import("../../components/dialog-connect-provider").then((x) => {
-                  const controller = x.useProviderConnectController()
-                  controller.select("opencode-go")
-                  void dialog.show(() => <x.DialogConnectProvider controller={controller} />)
-                })
-              }
+              setUpsellState(keys.lastSeenAt, Date.now())
+              if (dontShowAgain) setUpsellState(keys.dontShow, Date.now())
+              // No OpenCode Go connect dialog — CTA opens KT top-up only.
             }}
           />
         ))
@@ -93,8 +87,8 @@ export function useUsageExceededDialogs() {
             actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.accountRateLimit.actionLabel")}
             link={action.link}
             onClose={(dontShowAgain) => {
-              setGoUpsellState(keys.lastSeenAt, Date.now())
-              if (dontShowAgain) setGoUpsellState(keys.dontShow, Date.now())
+              setUpsellState(keys.lastSeenAt, Date.now())
+              if (dontShowAgain) setUpsellState(keys.dontShow, Date.now())
             }}
           />
         ))

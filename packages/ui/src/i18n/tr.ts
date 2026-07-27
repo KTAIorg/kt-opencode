@@ -77,9 +77,8 @@ export const dict = {
   "ui.sessionTurn.error.addCredits": "Kredi ekle",
 
   "dialog.usageExceeded.freeTier.title": "Ücretsiz sınıra ulaşıldı",
-  "dialog.usageExceeded.freeTier.description":
-    "En iyi açık kaynak modellere güvenilir erişim için OpenCode Go'ya abone olun. Aylık $5'tan başlar.",
-  "dialog.usageExceeded.freeTier.actionLabel": "Abone ol",
+  "dialog.usageExceeded.freeTier.description": "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+  "dialog.usageExceeded.freeTier.actionLabel": "Top up",
   "dialog.usageExceeded.accountRateLimit.title": "Go sınırına ulaşıldı",
   "dialog.usageExceeded.accountRateLimit.description":
     "Kullanım sınırına ulaşıldı. Bu modeli şimdi kullanmaya devam etmek için mevcut bakiyenizden kullanımı etkinleştirin",

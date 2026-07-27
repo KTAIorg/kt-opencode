@@ -7,8 +7,11 @@ import { isRecord } from "@/util/record"
 
 export type Err = ReturnType<NamedError["toObject"]>
 
-export const GO_UPSELL_MESSAGE = "Free usage exceeded, subscribe to Go"
-export const GO_UPSELL_URL = "https://opencode.ai/go"
+/** @deprecated Prefer KT_TOPUP_* — kept as aliases for older call sites/tests. */
+export const GO_UPSELL_MESSAGE = "Free usage exceeded. Top up on KT AI to continue with paid models."
+export const GO_UPSELL_URL = "https://www.ktapi.cc/wallet"
+export const KT_TOPUP_MESSAGE = GO_UPSELL_MESSAGE
+export const KT_TOPUP_URL = GO_UPSELL_URL
 export type RetryReason = "free_tier_limit" | "account_rate_limit" | (string & {})
 
 export type Retryable = {
@@ -75,14 +78,15 @@ export function retryable(error: Err, provider: string) {
     if (!error.data.isRetryable && !(status !== undefined && status >= 500)) return undefined
     if (error.data.responseBody?.includes("FreeUsageLimitError")) {
       return {
-        message: GO_UPSELL_MESSAGE,
+        message: KT_TOPUP_MESSAGE,
         action: {
           reason: "free_tier_limit",
           provider,
           title: "Free limit reached",
-          message: "Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.",
-          label: "subscribe",
-          link: GO_UPSELL_URL,
+          message:
+            "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+          label: "Top up",
+          link: KT_TOPUP_URL,
         },
       }
     }

@@ -74,7 +74,21 @@ NewAPI / ktapi.cc    AI 执行与计量（需要 NewAPI credential）
 
 后续若要做「从 KT 客户端一键打开 OpenCode」，只能作为体验增强，不能替代 OpenCode 自己的 Identity 登录。
 
-## 5. 下一步
+## 5. 模型列表与计费展示
+
+- **可选模型目录**：优先 `GET https://ktapi.cc/v1/models`（对应当前 NewAPI credential / 分组实际可调用集合）。
+- **价格 / 成本估算**：`GET https://ktapi.cc/api/pricing`（给目录项挂 cost）。
+- 尚无 NewAPI key 时：暂时用 public pricing 里 `enable_groups` 含 `ktai` 的条目做发现列表；有 key 后切到 `/v1/models`。
+
+## 6. 免费模型额度用完
+
+仍保留上游 OpenCode Zen 免费模型（ktapi 侧基本没有免费模型）。  
+当 Zen 返回 `FreeUsageLimitError` 时：
+
+- **不再**弹出 OpenCode Go 订阅 / 连接 `opencode-go`。
+- 改为 KT 充值引导，CTA：`https://www.ktapi.cc/wallet`。
+
+## 7. 下一步
 
 1. NewAPI：按 `kt_account_id` Ensure / Token Exchange（已交接）。
 2. OpenCode：Ensure 就绪后，Identity 登录成功即自动写入 per-account NewAPI token，去掉对共享 `KTAI_API_KEY` 的依赖。

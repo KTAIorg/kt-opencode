@@ -1,5 +1,7 @@
 import type { Config, Hooks } from "@opencode-ai/plugin"
 import { OAUTH_DUMMY_KEY } from "@/auth"
+import { Global } from "@opencode-ai/core/global"
+import path from "path"
 import {
   identityBaseUrl,
   identityLoginInstructions,
@@ -11,6 +13,8 @@ import {
 } from "./ktai-identity"
 
 export const KTAI_PRICING_URL = "https://ktapi.cc/api/pricing"
+export const KTAI_MODELS_URL = "https://ktapi.cc/v1/models"
+export const KTAI_TOPUP_URL = "https://www.ktapi.cc/wallet"
 
 const API_URL = "https://ktapi.cc/v1"
 const RELEASE_DATE = "2026-03-29"
@@ -28,6 +32,20 @@ type PricingModel = {
   model_price?: unknown
   completion_ratio?: unknown
   supported_endpoint_types?: unknown
+}
+
+type CatalogModel = {
+  id?: unknown
+  owned_by?: unknown
+  supported_endpoint_types?: unknown
+}
+
+type PricingCost = {
+  input: number
+  output: number
+  tags?: string
+  name?: string
+  context?: number
 }
 
 type RawModel = {
@@ -64,14 +82,75 @@ function context(tags?: string) {
   return Math.round(Number(match[1]) * multiplier)
 }
 
-function models(input: unknown) {
-  const rows = Array.isArray(input)
-    ? input
-    : input && typeof input === "object" && Array.isArray((input as { data?: unknown }).data)
-      ? (input as { data: unknown[] }).data
-      : []
+function rowsFrom(input: unknown): unknown[] {
+  if (Array.isArray(input)) return input
+  if (input && typeof input === "object" && Array.isArray((input as { data?: unknown }).data)) {
+    return (input as { data: unknown[] }).data
+  }
+  return []
+}
 
-  const result = rows.flatMap((value): RawModel[] => {
+function pricingCost(row: PricingModel): PricingCost | undefined {
+  const id = typeof row.model_name === "string" ? row.model_name.trim() : ""
+  if (!id) return
+  const ratio = number(row.model_ratio)
+  const price = number(row.model_price)
+  const completion = number(row.completion_ratio, 1)
+  const quota = number(row.quota_type)
+  const tags = typeof row.tags === "string" ? row.tags : undefined
+  return {
+    input: quota === 0 ? ratio * 2 : price,
+    output: quota === 0 ? ratio * completion * 2 : price,
+    tags,
+    name: typeof row.name === "string" ? row.name : undefined,
+    context: context(tags),
+  }
+}
+
+/** Build model_name → cost/metadata from the public pricing endpoint. */
+export function pricingIndex(input: unknown): Map<string, PricingCost> {
+  const index = new Map<string, PricingCost>()
+  for (const value of rowsFrom(input)) {
+    if (!value || typeof value !== "object") continue
+    const row = value as PricingModel
+    const id = typeof row.model_name === "string" ? row.model_name.trim() : ""
+    if (!id) continue
+    const cost = pricingCost(row)
+    if (cost) index.set(id, cost)
+  }
+  return index
+}
+
+/** Catalog entries from `/v1/models` (what the current credential can call). */
+export function catalogModels(input: unknown, costs: Map<string, PricingCost>): RawModel[] {
+  const result = rowsFrom(input).flatMap((value): RawModel[] => {
+    if (!value || typeof value !== "object") return []
+    const row = value as CatalogModel
+    const id = typeof row.id === "string" ? row.id.trim() : ""
+    if (!id) return []
+    const endpoints = Array.isArray(row.supported_endpoint_types) ? row.supported_endpoint_types : []
+    if (endpoints.length > 0 && !endpoints.includes("openai") && !endpoints.includes("openai-response")) return []
+    const cost = costs.get(id)
+    return [
+      {
+        id,
+        name: cost?.name,
+        input: cost?.input ?? 0,
+        output: cost?.output ?? 0,
+        tags: cost?.tags,
+        context: cost?.context ?? context(cost?.tags),
+      },
+    ]
+  })
+  return result.length ? result : fallback
+}
+
+/**
+ * Legacy pricing-only catalog (used when `/v1/models` is unavailable).
+ * Kept as a fallback so the picker is not empty before a NewAPI key is configured.
+ */
+export function pricingModels(input: unknown): RawModel[] {
+  const result = rowsFrom(input).flatMap((value): RawModel[] => {
     if (!value || typeof value !== "object") return []
     const row = value as PricingModel
     const id = typeof row.model_name === "string" ? row.model_name.trim() : ""
@@ -79,20 +158,16 @@ function models(input: unknown) {
     if (Array.isArray(row.enable_groups) && !row.enable_groups.includes("ktai")) return []
     const endpoints = Array.isArray(row.supported_endpoint_types) ? row.supported_endpoint_types : []
     if (!endpoints.includes("openai") && !endpoints.includes("openai-response")) return []
-
-    const ratio = number(row.model_ratio)
-    const price = number(row.model_price)
-    const completion = number(row.completion_ratio, 1)
-    const quota = number(row.quota_type)
-    const tags = typeof row.tags === "string" ? row.tags : undefined
+    const cost = pricingCost(row)
+    if (!cost) return []
     return [
       {
         id,
-        name: typeof row.name === "string" ? row.name : undefined,
-        input: quota === 0 ? ratio * 2 : price,
-        output: quota === 0 ? ratio * completion * 2 : price,
-        tags,
-        context: context(tags),
+        name: cost.name,
+        input: cost.input,
+        output: cost.output,
+        tags: cost.tags,
+        context: cost.context,
       },
     ]
   })
@@ -131,8 +206,7 @@ function providerModel(model: RawModel) {
   }
 }
 
-export function createKTAIProviderConfig(input: unknown): NonNullable<Config["provider"]>[string] {
-  const list = models(input)
+export function createKTAIProviderConfig(list: RawModel[]): NonNullable<Config["provider"]>[string] {
   return {
     name: "KTAI",
     api: API_URL,
@@ -142,10 +216,45 @@ export function createKTAIProviderConfig(input: unknown): NonNullable<Config["pr
   }
 }
 
+async function readStoredApiKey(): Promise<string | undefined> {
+  if (process.env.KTAI_API_KEY?.trim()) return process.env.KTAI_API_KEY.trim()
+  try {
+    const file = path.join(Global.Path.data, "auth.json")
+    const raw = await Bun.file(file).text()
+    const data = JSON.parse(raw) as Record<string, { type?: string; key?: string }>
+    const auth = data.ktai
+    if (auth?.type === "api" && typeof auth.key === "string" && auth.key.trim()) return auth.key.trim()
+  } catch {
+    // no stored key yet
+  }
+  return
+}
+
+async function fetchJson(url: string, init?: RequestInit) {
+  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(5_000) })
+  if (!response.ok) throw new Error(`${url} failed: ${response.status}`)
+  return response.json()
+}
+
 async function load() {
-  const response = await fetch(KTAI_PRICING_URL, { signal: AbortSignal.timeout(5_000) })
-  if (!response.ok) throw new Error(`KTAI pricing request failed: ${response.status}`)
-  return createKTAIProviderConfig(await response.json())
+  const pricing = await fetchJson(KTAI_PRICING_URL).catch(() => null)
+  const costs = pricing ? pricingIndex(pricing) : new Map<string, PricingCost>()
+
+  const apiKey = await readStoredApiKey()
+  if (apiKey) {
+    const catalog = await fetchJson(KTAI_MODELS_URL, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+        "User-Agent": "KTOpenCode/1.0",
+      },
+    }).catch(() => null)
+    if (catalog) return createKTAIProviderConfig(catalogModels(catalog, costs))
+  }
+
+  // Before a NewAPI key exists, keep a discovery catalog from public pricing.
+  if (pricing) return createKTAIProviderConfig(pricingModels(pricing))
+  return createKTAIProviderConfig(fallback)
 }
 
 export async function KTAIProviderPlugin(): Promise<Hooks> {

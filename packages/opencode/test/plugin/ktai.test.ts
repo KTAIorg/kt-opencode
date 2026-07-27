@@ -1,8 +1,14 @@
 import { expect, test } from "bun:test"
-import { createKTAIProviderConfig, KTAIProviderPlugin } from "@/plugin/ktai"
+import {
+  catalogModels,
+  createKTAIProviderConfig,
+  KTAIProviderPlugin,
+  pricingIndex,
+  pricingModels,
+} from "@/plugin/ktai"
 
-test("creates KTAI models from the pricing response", () => {
-  const provider = createKTAIProviderConfig({
+test("builds KTAI models from /v1/models catalog enriched by pricing", () => {
+  const costs = pricingIndex({
     data: [
       {
         model_name: "gpt-5.4",
@@ -16,11 +22,42 @@ test("creates KTAI models from the pricing response", () => {
       },
     ],
   })
+  const provider = createKTAIProviderConfig(
+    catalogModels(
+      {
+        data: [{ id: "gpt-5.4", object: "model", supported_endpoint_types: ["openai"] }],
+      },
+      costs,
+    ),
+  )
 
   expect(provider.api).toBe("https://ktapi.cc/v1")
   expect(provider.env).toEqual(["KTAI_API_KEY"])
   expect(provider.models?.["gpt-5.4"]?.cost).toEqual({ input: 4, output: 20 })
   expect(provider.models?.["gpt-5.4"]?.limit?.context).toBe(400_000)
+})
+
+test("pricing fallback still filters to ktai + openai endpoints", () => {
+  const list = pricingModels({
+    data: [
+      {
+        model_name: "skip-me",
+        enable_groups: ["default"],
+        supported_endpoint_types: ["openai"],
+        model_price: 1,
+        quota_type: 1,
+      },
+      {
+        model_name: "gpt-5.4",
+        enable_groups: ["ktai"],
+        supported_endpoint_types: ["openai"],
+        quota_type: 0,
+        model_ratio: 2,
+        completion_ratio: 5,
+      },
+    ],
+  })
+  expect(list.map((m) => m.id)).toEqual(["gpt-5.4"])
 })
 
 test("exposes KT Identity login methods plus API key fallback", async () => {

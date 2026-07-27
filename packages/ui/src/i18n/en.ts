@@ -74,8 +74,8 @@ export const dict: Record<string, string> = {
 
   "dialog.usageExceeded.freeTier.title": "Free limit reached",
   "dialog.usageExceeded.freeTier.description":
-    "Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.",
-  "dialog.usageExceeded.freeTier.actionLabel": "Subscribe",
+    "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+  "dialog.usageExceeded.freeTier.actionLabel": "Top up",
   "dialog.usageExceeded.accountRateLimit.title": "Go limit reached",
   "dialog.usageExceeded.accountRateLimit.description":
     "Usage limit reached. To continue using this model now, enable usage from your available balance",
