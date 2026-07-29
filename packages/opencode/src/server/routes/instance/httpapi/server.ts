@@ -115,6 +115,12 @@ import { corsVaryFix } from "./middleware/cors-vary"
 import { errorLayer } from "./middleware/error"
 import { fenceLayer } from "./middleware/fence"
 import { schemaErrorLayer } from "./middleware/schema-error"
+import {
+  externalIdentity,
+  fetchAccountSummary,
+  identityBaseUrl,
+  KT_IDENTITY_REFRESH_MARKER,
+} from "@/plugin/ktai-identity"
 
 export const context = Context.makeUnsafe<unknown>(new Map())
 
@@ -190,6 +196,29 @@ const docResponse = lazy(() => HttpServerResponse.jsonUnsafe(OpenApi.fromApi(Pub
 const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effect.succeed(docResponse()))).pipe(
   Layer.provide(authOnlyRouterLayer),
 )
+
+const ktaiAccountRoute = HttpRouter.use((router) =>
+  Effect.gen(function* () {
+    const auth = yield* Auth.Service
+    yield* router.add("GET", "/ktai/account", () =>
+      Effect.gen(function* () {
+        const injected = externalIdentity()
+        const stored = injected ? undefined : yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
+        const token =
+          injected?.token ??
+          (stored?.type === "oauth" && stored.refresh === KT_IDENTITY_REFRESH_MARKER ? stored.access : undefined)
+        if (!token) return HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 401 })
+
+        return yield* Effect.tryPromise(() => fetchAccountSummary(token, identityBaseUrl())).pipe(
+          Effect.match({
+            onFailure: () => HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 503 }),
+            onSuccess: (summary) => HttpServerResponse.jsonUnsafe(summary),
+          }),
+        )
+      }),
+    )
+  }),
+).pipe(Layer.provide(authOnlyRouterLayer))
 
 const uiRoute = HttpRouter.use((router) =>
   Effect.gen(function* () {
@@ -280,6 +309,7 @@ export function createRoutes(
     instanceRoutes,
     serverRoutes,
     docRoute,
+    ktaiAccountRoute,
     uiRoute,
   ).pipe(
     Layer.provide([

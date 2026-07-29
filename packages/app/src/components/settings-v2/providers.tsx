@@ -4,8 +4,9 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { showToast } from "@/utils/toast"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
-import { createMemo, type Component, For, Show } from "solid-js"
+import { createMemo, createResource, type Component, For, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { DialogConnectProvider, useProviderConnectController } from "../dialog-connect-provider"
@@ -15,6 +16,7 @@ import "./settings-v2.css"
 
 type ProviderSource = "env" | "api" | "config" | "custom"
 type ProviderItem = ReturnType<ReturnType<typeof useProviders>["connected"]>[number]
+type KTAIAccount = { account: { accountNo: string; displayName?: string }; balance: number }
 
 const PROVIDER_NOTES = [
   { match: (id: string) => id === "opencode", key: "dialog.provider.opencode.note" },
@@ -35,7 +37,20 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
   const serverSdk = useServerSDK()
   const serverSync = useServerSync()
   const providers = useProviders()
+  const platform = usePlatform()
   const providerConnect = useProviderConnectController({ onBack: props.onBack })
+  const [ktaiAccount] = createResource(() =>
+    (platform.fetch ?? fetch)(`${serverSdk().url.replace(/\/+$/, "")}/ktai/account`, {
+      headers:
+        serverSdk().server.http.username && serverSdk().server.http.password
+          ? {
+              authorization: `Basic ${btoa(`${serverSdk().server.http.username}:${serverSdk().server.http.password}`)}`,
+            }
+          : undefined,
+    })
+      .then((response) => (response.ok ? (response.json() as Promise<KTAIAccount>) : undefined))
+      .catch(() => undefined),
+  )
 
   const connect = (provider?: string) => {
     providerConnect.select(provider)
@@ -162,9 +177,18 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
                         height={PROVIDER_ICON_SIZE}
                         class="settings-v2-provider-icon shrink-0"
                       />
-                      <div class="settings-v2-provider-main">
-                        <span class="settings-v2-provider-name truncate">{item.name}</span>
-                        <Tag>{type(item)}</Tag>
+                      <div class="settings-v2-provider-copy">
+                        <div class="settings-v2-provider-main">
+                          <span class="settings-v2-provider-name truncate">{item.name}</span>
+                          <Tag>{type(item)}</Tag>
+                        </div>
+                        <Show when={item.id === "ktai" && ktaiAccount()}>
+                          {(account) => (
+                            <p class="settings-v2-provider-description">
+                              {account().account.displayName ?? account().account.accountNo} · {account().balance}
+                            </p>
+                          )}
+                        </Show>
                       </div>
                     </div>
                     <Show

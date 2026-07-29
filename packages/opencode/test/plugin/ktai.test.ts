@@ -110,6 +110,29 @@ test("exposes KT Identity login methods plus API key fallback", async () => {
   expect(typeof hooks.auth?.loader).toBe("function")
 })
 
+test("embedded injected identity exposes only the API key transition", async () => {
+  const previous = {
+    embedded: process.env.OPENCODE_EMBEDDED,
+    token: process.env.KTAI_IDENTITY_TOKEN,
+    expiresAt: process.env.KTAI_IDENTITY_EXPIRES_AT,
+  }
+  process.env.OPENCODE_EMBEDDED = "true"
+  process.env.KTAI_IDENTITY_TOKEN = "injected-identity-token"
+  process.env.KTAI_IDENTITY_EXPIRES_AT = "2099-01-01T00:00:00.000Z"
+  try {
+    const hooks = await KTAIProviderPlugin()
+    expect(hooks.auth?.methods.map((method) => method.label)).toEqual(["KTAI API key"])
+    expect(hooks.auth?.methods[0]?.type).toBe("api")
+  } finally {
+    if (previous.embedded === undefined) delete process.env.OPENCODE_EMBEDDED
+    else process.env.OPENCODE_EMBEDDED = previous.embedded
+    if (previous.token === undefined) delete process.env.KTAI_IDENTITY_TOKEN
+    else process.env.KTAI_IDENTITY_TOKEN = previous.token
+    if (previous.expiresAt === undefined) delete process.env.KTAI_IDENTITY_EXPIRES_AT
+    else process.env.KTAI_IDENTITY_EXPIRES_AT = previous.expiresAt
+  }
+})
+
 test("identity oauth loader does not send Identity Bearer to NewAPI", async () => {
   const hooks = await KTAIProviderPlugin()
   const previous = process.env.KTAI_API_KEY
