@@ -226,6 +226,7 @@ export const dict = {
     "You don’t need to paste the key again. If balance is low, top up on ktapi.cc wallet.",
   "dialog.ktAccess.switch.ack": "Got it",
   "ui.sessionTurn.error.configureKey": "Configure API key",
+  "ui.sessionTurn.error.switchModel": "Switch to KTAI",
   "ui.sessionTurn.error.authFriendly":
     "API key is invalid or expired. Configure a KTAI key in Desktop (Settings → Providers), or open the guide.",
 

@@ -244,6 +244,7 @@ export const dict = {
   "dialog.ktAccess.switch.hint": "无需再粘贴密钥。若余额不足，再去 ktapi.cc 钱包充值。",
   "dialog.ktAccess.switch.ack": "知道了",
   "ui.sessionTurn.error.configureKey": "配置 API 密钥",
+  "ui.sessionTurn.error.switchModel": "切换到 KTAI",
   "ui.sessionTurn.error.authFriendly":
     "API 密钥无效或已过期。请在 Desktop 配置 KTAI 密钥（设置 → 提供商），或打开引导。",
 

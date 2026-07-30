@@ -76,6 +76,7 @@ import { createTimelineProjection } from "./projection"
 import { MessageComment, SummaryDiff, TimelineRow, TimelineRowMap } from "./rows"
 import { filterVirtualIndexes } from "./virtual-items"
 import { SessionErrorCard } from "./session-error-card"
+import { openKtAccessGuide } from "@/components/dialog-kt-access-guide"
 
 const emptyMessages: MessageType[] = []
 const emptyParts: PartType[] = []
@@ -1208,10 +1209,33 @@ export function MessageTimeline(props: {
       }
       case "Retry": {
         const retryRow = row as Accessor<TimelineRowByTag<"Retry">>
+        const retryGuideKind = () => {
+          const status = sessionStatus()
+          if (status.type !== "retry" || !status.action) return
+          if (status.action.reason === "free_tier_limit") return "billing" as const
+          if (status.action.reason === "auth_billing") return "auth" as const
+        }
+        const guideKind = retryGuideKind()
         return (
           <TimelineRowFrame row={retryRow}>
             <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
-              <SessionRetry status={sessionStatus()} show={activeMessageID() === retryRow().userMessageID} />
+              <SessionRetry
+                status={sessionStatus()}
+                show={activeMessageID() === retryRow().userMessageID}
+                actions={
+                  guideKind ? (
+                    <Button
+                      variant="primary"
+                      size="small"
+                      onClick={() => openKtAccessGuide({ dialog, kind: guideKind })}
+                    >
+                      {guideKind === "billing"
+                        ? language.t("ui.sessionTurn.error.switchModel")
+                        : language.t("ui.sessionTurn.error.configureKey")}
+                    </Button>
+                  ) : undefined
+                }
+              />
             </div>
           </TimelineRowFrame>
         )
