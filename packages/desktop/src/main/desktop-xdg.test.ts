@@ -17,6 +17,9 @@ describe("desktop XDG isolation", () => {
       XDG_DATA_HOME: "/Users/me/.local/share",
       OPENCODE_CONFIG: "/Users/me/.config/opencode/config.json",
       OPENCODE_CONFIG_DIR: "/Users/me/.config/opencode",
+      OPENAI_API_KEY: "sk-host",
+      OPENAI_BASE_URL: "https://sub2api.example/v1",
+      KTAI_API_KEY: "sk-ktai-host",
       PATH: "/usr/bin",
     }
 
@@ -28,6 +31,10 @@ describe("desktop XDG isolation", () => {
     expect(env.XDG_STATE_HOME).toBe("/tmp/ai.opencode.desktop.dev")
     expect(env.OPENCODE_CONFIG).toBeUndefined()
     expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
+    expect(env.OPENAI_API_KEY).toBeUndefined()
+    expect(env.OPENAI_BASE_URL).toBeUndefined()
+    expect(env.KTAI_API_KEY).toBeUndefined()
     expect(env.PATH).toBe("/usr/bin")
   })
 })
+

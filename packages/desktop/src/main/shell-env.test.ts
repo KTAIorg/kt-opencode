@@ -34,7 +34,7 @@ describe("shell env", () => {
     expect(env.OPENCODE_CLIENT).toBe("desktop")
   })
 
-  test("sanitizeImportedEnv drops host OpenCode and XDG roots", () => {
+  test("sanitizeImportedEnv drops host OpenCode, XDG roots, and AI API keys", () => {
     const env = sanitizeImportedEnv({
       PATH: "/usr/bin",
       OPENCODE_CONFIG: "/Users/me/.config/opencode/config.json",
@@ -43,6 +43,11 @@ describe("shell env", () => {
       XDG_DATA_HOME: "/Users/me/.local/share",
       XDG_CACHE_HOME: "/Users/me/.cache",
       XDG_STATE_HOME: "/Users/me/.local/state",
+      OPENAI_API_KEY: "sk-host",
+      OPENAI_BASE_URL: "https://sub2api.example/v1",
+      KTAI_API_KEY: "sk-ktai-host",
+      ANTHROPIC_API_KEY: "sk-ant-host",
+      OPENROUTER_API_KEY: "sk-or-host",
       HOME: "/Users/me",
     })
 
@@ -52,6 +57,11 @@ describe("shell env", () => {
     expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
     expect(env.XDG_CONFIG_HOME).toBeUndefined()
     expect(env.XDG_DATA_HOME).toBeUndefined()
+    expect(env.OPENAI_API_KEY).toBeUndefined()
+    expect(env.OPENAI_BASE_URL).toBeUndefined()
+    expect(env.KTAI_API_KEY).toBeUndefined()
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined()
+    expect(env.OPENROUTER_API_KEY).toBeUndefined()
   })
 
   test("mergeShellEnv desktop XDG wins over shell XDG", () => {

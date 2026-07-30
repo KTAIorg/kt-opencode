@@ -3,8 +3,19 @@ import { userInfo } from "node:os"
 import { basename } from "node:path"
 
 const TIMEOUT = 5_000
-/** Strip host OpenCode / XDG roots from imported login-shell env (ktai-opencode pattern). */
-const BLOCKED_ENV_PATTERNS = [/^OPENCODE_/i, /^XDG_(DATA_HOME|CACHE_HOME|CONFIG_HOME|STATE_HOME)$/i]
+/**
+ * Strip host OpenCode / XDG roots from imported login-shell env (ktai-opencode pattern).
+ * Also drop host AI API keys: login-shell probe otherwise re-injects OPENAI_* / KTAI_*
+ * and bypasses Desktop's isolated auth.json under Electron userData.
+ */
+const BLOCKED_ENV_PATTERNS = [
+  /^OPENCODE_/i,
+  /^XDG_(DATA_HOME|CACHE_HOME|CONFIG_HOME|STATE_HOME)$/i,
+  /^OPENAI_(API_KEY|BASE_URL|MODEL)$/i,
+  /^KTAI_(API_KEY|IDENTITY_TOKEN|IDENTITY_EXPIRES_AT)$/i,
+  /^ANTHROPIC_API_KEY$/i,
+  /^OPENROUTER_API_KEY$/i,
+]
 
 type Probe = { type: "Loaded"; value: Record<string, string> } | { type: "Timeout" } | { type: "Unavailable" }
 type ShellEnvLogger = {
