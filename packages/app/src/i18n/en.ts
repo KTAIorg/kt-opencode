@@ -215,6 +215,16 @@ export const dict = {
   "dialog.ktAccess.saveKey": "Save API key",
   "dialog.ktAccess.openWallet": "Open ktapi.cc wallet",
   "dialog.ktAccess.dismiss": "Don’t show again",
+  "dialog.ktAccess.snooze": "Remind me later",
+  "dialog.ktAccess.switch.title": "Free quota used up — switch to KTAI",
+  "dialog.ktAccess.switch.lead":
+    "Zen free chats are exhausted. Your KTAI API key is already configured — switch to a KTAI paid model to continue.",
+  "dialog.ktAccess.switch.step1": "Open the model picker (bottom of the composer).",
+  "dialog.ktAccess.switch.step2": "Choose a model under the KTAI provider (not Zen Free).",
+  "dialog.ktAccess.switch.step3": "Send again — usage bills to your ktapi.cc balance.",
+  "dialog.ktAccess.switch.hint":
+    "You don’t need to paste the key again. If balance is low, top up on ktapi.cc wallet.",
+  "dialog.ktAccess.switch.ack": "Got it",
   "ui.sessionTurn.error.configureKey": "Configure API key",
   "ui.sessionTurn.error.authFriendly":
     "API key is invalid or expired. Configure a KTAI key in Desktop (Settings → Providers), or open the guide.",

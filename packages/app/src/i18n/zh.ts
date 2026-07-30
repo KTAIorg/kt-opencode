@@ -234,6 +234,15 @@ export const dict = {
   "dialog.ktAccess.saveKey": "保存 API 密钥",
   "dialog.ktAccess.openWallet": "打开 ktapi.cc 钱包",
   "dialog.ktAccess.dismiss": "不再显示",
+  "dialog.ktAccess.snooze": "稍后提醒",
+  "dialog.ktAccess.switch.title": "免费额度已用完 — 请切换到 KTAI",
+  "dialog.ktAccess.switch.lead":
+    "Zen 免费对话次数已用尽。本机已配置 KTAI API 密钥——请切换到 KTAI 付费模型继续。",
+  "dialog.ktAccess.switch.step1": "打开底部模型选择器。",
+  "dialog.ktAccess.switch.step2": "选择 KTAI 提供商下的付费模型（不要选 Zen Free）。",
+  "dialog.ktAccess.switch.step3": "再发送一条消息——将从 ktapi.cc 余额扣费。",
+  "dialog.ktAccess.switch.hint": "无需再粘贴密钥。若余额不足，再去 ktapi.cc 钱包充值。",
+  "dialog.ktAccess.switch.ack": "知道了",
   "ui.sessionTurn.error.configureKey": "配置 API 密钥",
   "ui.sessionTurn.error.authFriendly":
     "API 密钥无效或已过期。请在 Desktop 配置 KTAI 密钥（设置 → 提供商），或打开引导。",

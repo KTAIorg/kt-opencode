@@ -98,30 +98,43 @@ export function useUsageExceededDialogs() {
 
     const onClose = (dontShowAgain?: boolean) => {
       setUpsellState(keys.lastSeenAt, Date.now())
-      if (dontShowAgain) setUpsellState(keys.dontShow, Date.now())
+      // Soft-quota / free-tier: never permanently suppress — users still need a nudge
+      // to switch to paid KTAI. X / “稍后提醒” both snooze for UPSELL_WINDOW only.
+      if (dontShowAgain && keys.kind !== "free_tier_limit") {
+        setUpsellState(keys.dontShow, Date.now())
+      }
     }
 
+    // Pass show(onClose) so X / overlay / Escape also snooze (fixes reopen loops).
     if (keys.kind === "free_tier_limit") {
-      // Guided flow: top up on web → paste key back into Desktop.
-      dialog.show(() => <DialogKtAccessGuide kind="billing" onClose={onClose} />)
+      void dialog.show(
+        () => <DialogKtAccessGuide kind="billing" onClose={onClose} />,
+        () => onClose(false),
+      )
       return
     }
 
     if (keys.kind === "auth_billing") {
-      dialog.show(() => <DialogKtAccessGuide kind="auth" onClose={onClose} />)
+      void dialog.show(
+        () => <DialogKtAccessGuide kind="auth" onClose={onClose} />,
+        () => onClose(false),
+      )
       return
     }
 
     if (keys.kind === "account_rate_limit") {
-      dialog.show(() => (
-        <DialogUsageExceeded
-          title={isEnglish() ? action.title : t("dialog.usageExceeded.accountRateLimit.title")}
-          description={isEnglish() ? action.message : t("dialog.usageExceeded.accountRateLimit.description")}
-          actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.accountRateLimit.actionLabel")}
-          link={action.link}
-          onClose={onClose}
-        />
-      ))
+      void dialog.show(
+        () => (
+          <DialogUsageExceeded
+            title={isEnglish() ? action.title : t("dialog.usageExceeded.accountRateLimit.title")}
+            description={isEnglish() ? action.message : t("dialog.usageExceeded.accountRateLimit.description")}
+            actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.accountRateLimit.actionLabel")}
+            link={action.link}
+            onClose={onClose}
+          />
+        ),
+        () => onClose(false),
+      )
     }
   }
 
