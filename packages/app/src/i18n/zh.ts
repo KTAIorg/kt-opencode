@@ -237,7 +237,10 @@ export const dict = {
   "dialog.ktAccess.snooze": "稍后提醒",
   "dialog.ktAccess.switch.title": "免费额度已用完 — 请切换到 KTAI",
   "dialog.ktAccess.switch.lead":
-    "Zen 免费对话次数已用尽。本机已配置 KTAI API 密钥——请切换到 KTAI 付费模型继续。",
+    "Zen 免费对话次数已用尽。本机已配置 KTAI API 密钥——在下方点选一个付费模型即可继续。",
+  "dialog.ktAccess.switch.pickHint": "点选下方模型后会立即切换；然后重新发送消息（从 ktapi.cc 余额扣费）。",
+  "dialog.ktAccess.switch.empty": "当前没有可见的 KTAI 模型，请打开完整模型列表选择或管理可见模型。",
+  "dialog.ktAccess.switch.browseAll": "打开完整模型列表",
   "dialog.ktAccess.switch.step1": "打开底部模型选择器。",
   "dialog.ktAccess.switch.step2": "选择 KTAI 提供商下的付费模型（不要选 Zen Free）。",
   "dialog.ktAccess.switch.step3": "再发送一条消息——将从 ktapi.cc 余额扣费。",

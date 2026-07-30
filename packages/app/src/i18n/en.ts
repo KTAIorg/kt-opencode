@@ -218,7 +218,10 @@ export const dict = {
   "dialog.ktAccess.snooze": "Remind me later",
   "dialog.ktAccess.switch.title": "Free quota used up — switch to KTAI",
   "dialog.ktAccess.switch.lead":
-    "Zen free chats are exhausted. Your KTAI API key is already configured — switch to a KTAI paid model to continue.",
+    "Zen free chats are exhausted. Your KTAI API key is already configured — pick a paid KTAI model below to continue.",
+  "dialog.ktAccess.switch.pickHint": "Click a model to switch immediately, then send again (billed to ktapi.cc).",
+  "dialog.ktAccess.switch.empty": "No visible KTAI models yet. Open the full model list to choose or manage visibility.",
+  "dialog.ktAccess.switch.browseAll": "Open full model list",
   "dialog.ktAccess.switch.step1": "Open the model picker (bottom of the composer).",
   "dialog.ktAccess.switch.step2": "Choose a model under the KTAI provider (not Zen Free).",
   "dialog.ktAccess.switch.step3": "Send again — usage bills to your ktapi.cc balance.",

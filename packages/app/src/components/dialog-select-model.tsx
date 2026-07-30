@@ -53,7 +53,7 @@ const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { categ
   return a.items[0].provider.name.localeCompare(b.items[0].provider.name)
 }
 
-const ModelList: Component<{
+export const ModelList: Component<{
   provider?: string
   class?: string
   onSelect: () => void
