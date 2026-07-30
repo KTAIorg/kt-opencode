@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { isNushell, mergeShellEnv, parseShellEnv, resolveUserShell } from "./shell-env"
+import { isNushell, mergeShellEnv, parseShellEnv, resolveUserShell, sanitizeImportedEnv } from "./shell-env"
 
 describe("shell env", () => {
   test("parseShellEnv supports null-delimited pairs", () => {
@@ -31,6 +31,48 @@ describe("shell env", () => {
 
     expect(env.PATH).toBe("/desktop/path")
     expect(env.HOME).toBe("/tmp/home")
+    expect(env.OPENCODE_CLIENT).toBe("desktop")
+  })
+
+  test("sanitizeImportedEnv drops host OpenCode and XDG roots", () => {
+    const env = sanitizeImportedEnv({
+      PATH: "/usr/bin",
+      OPENCODE_CONFIG: "/Users/me/.config/opencode/config.json",
+      OPENCODE_CONFIG_DIR: "/Users/me/.config/opencode",
+      XDG_CONFIG_HOME: "/Users/me/.config",
+      XDG_DATA_HOME: "/Users/me/.local/share",
+      XDG_CACHE_HOME: "/Users/me/.cache",
+      XDG_STATE_HOME: "/Users/me/.local/state",
+      HOME: "/Users/me",
+    })
+
+    expect(env.PATH).toBe("/usr/bin")
+    expect(env.HOME).toBe("/Users/me")
+    expect(env.OPENCODE_CONFIG).toBeUndefined()
+    expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
+    expect(env.XDG_CONFIG_HOME).toBeUndefined()
+    expect(env.XDG_DATA_HOME).toBeUndefined()
+  })
+
+  test("mergeShellEnv desktop XDG wins over shell XDG", () => {
+    const env = mergeShellEnv(
+      {
+        XDG_CONFIG_HOME: "/Users/me/.config",
+        OPENCODE_CONFIG: "/Users/me/.config/opencode/config.json",
+        PATH: "/shell/path",
+      },
+      {
+        XDG_CONFIG_HOME: "/tmp/ai.opencode.desktop.dev",
+        XDG_DATA_HOME: "/tmp/ai.opencode.desktop.dev",
+        XDG_CACHE_HOME: "/tmp/ai.opencode.desktop.dev",
+        XDG_STATE_HOME: "/tmp/ai.opencode.desktop.dev",
+        OPENCODE_CLIENT: "desktop",
+      },
+    )
+
+    expect(env.XDG_CONFIG_HOME).toBe("/tmp/ai.opencode.desktop.dev")
+    expect(env.XDG_DATA_HOME).toBe("/tmp/ai.opencode.desktop.dev")
+    expect(env.OPENCODE_CONFIG).toBeUndefined()
     expect(env.OPENCODE_CLIENT).toBe("desktop")
   })
 

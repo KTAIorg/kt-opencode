@@ -1,5 +1,6 @@
 import * as http from "node:http"
 import * as tls from "node:tls"
+import { applyDesktopXdgIsolation, desktopXdgEnv } from "./desktop-xdg"
 
 type NodeHttpWithEnvProxy = typeof http & {
   setGlobalProxyFromEnv: () => void
@@ -84,8 +85,9 @@ function prepareSidecarEnv(password: string, userDataPath: string) {
   Object.assign(process.env, {
     OPENCODE_SERVER_USERNAME: "opencode",
     OPENCODE_SERVER_PASSWORD: password,
-    XDG_STATE_HOME: process.env.XDG_STATE_HOME ?? userDataPath,
+    ...desktopXdgEnv(userDataPath),
   })
+  applyDesktopXdgIsolation(process.env, userDataPath)
 }
 
 function ensureLoopbackNoProxy() {

@@ -18,6 +18,7 @@ Zen 自己额度耗尽时，走同一套充值引导（兜底）。
 | Zen 上游耗尽 | **兜底**：`FreeUsageLimitError` → 同一套 wallet CTA |
 | CTA | `https://www.ktapi.cc/wallet`（不是 OpenCode Go） |
 | 实现 | `packages/opencode/src/session/soft-quota.ts` + `SessionPrompt.prompt` 门禁 |
+| Desktop 数据隔离 | 四个 `XDG_*_HOME` 均指向 Electron `userData`（`ai.opencode.desktop*`），不读本机 `~/.config/opencode` |
 
 ## 流程图
 

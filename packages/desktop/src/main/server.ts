@@ -2,8 +2,9 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { app, utilityProcess } from "electron"
 import type { Details } from "electron"
+import { applyDesktopXdgIsolation, desktopXdgEnv } from "./desktop-xdg"
 import { getLogger } from "./logging"
-import { getUserShell, loadShellEnv } from "./shell-env"
+import { getUserShell, loadShellEnv, mergeShellEnv } from "./shell-env"
 import { getStore } from "./store"
 import { DEFAULT_SERVER_URL_KEY } from "./store-keys"
 
@@ -43,13 +44,18 @@ export function setDefaultServerUrl(url: string | null) {
 
 export function preferAppEnv(userDataPath: string) {
   const shell = process.platform === "win32" ? null : getUserShell()
-  Object.assign(process.env, {
-    ...(shell ? loadShellEnv(shell, getLogger()) : null),
-    OPENCODE_EXPERIMENTAL_ICON_DISCOVERY: "true",
-    OPENCODE_EXPERIMENTAL_FILEWATCHER: "true",
-    OPENCODE_CLIENT: "desktop",
-    XDG_STATE_HOME: process.env.XDG_STATE_HOME ?? userDataPath,
-  })
+  const shellEnv = shell ? loadShellEnv(shell, getLogger()) : null
+  // Shell first (sanitized), then desktop overrides win — including full XDG isolation.
+  Object.assign(
+    process.env,
+    mergeShellEnv(shellEnv, {
+      OPENCODE_EXPERIMENTAL_ICON_DISCOVERY: "true",
+      OPENCODE_EXPERIMENTAL_FILEWATCHER: "true",
+      OPENCODE_CLIENT: "desktop",
+      ...desktopXdgEnv(userDataPath),
+    }),
+  )
+  applyDesktopXdgIsolation(process.env, userDataPath)
 }
 
 export async function spawnLocalServer(
@@ -214,6 +220,8 @@ function createSidecarEnv(): Record<string, string> {
   delete env.DEBUG
   if (process.platform === "linux") delete env.LD_PRELOAD
   if (!app.isPackaged) env.OPENCODE_DISABLE_CHANNEL_DB = "1"
+  // Defense in depth: always pin sidecar XDG to Electron userData.
+  applyDesktopXdgIsolation(env, app.getPath("userData"))
   return env
 }
 
