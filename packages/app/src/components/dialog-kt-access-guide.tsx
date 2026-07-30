@@ -3,6 +3,7 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
+import { useServerSync } from "@/context/server-sync"
 import { DialogConnectProvider, useProviderConnectController } from "./dialog-connect-provider"
 
 export const KT_WALLET_URL = "https://www.ktapi.cc/wallet"
@@ -18,6 +19,7 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
   const dialog = useDialog()
   const platform = usePlatform()
   const language = useLanguage()
+  const serverSync = useServerSync()
   const kind = () => props.kind ?? "auth"
   const providerConnect = useProviderConnectController()
 
@@ -32,8 +34,12 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
 
   const pasteKey = () => {
     props.onClose?.(false)
+    // Drop stale method list (Identity options) so connect auto-opens API paste.
+    const next = { ...serverSync().data.provider_auth }
+    delete next.ktai
+    serverSync().set("provider_auth", next)
     providerConnect.select("ktai")
-    // Replace guide with the connect dialog (pre-selected KTAI).
+    // Only one method (API key) → ProviderConnection auto-selects the paste field.
     void dialog.show(() => <DialogConnectProvider controller={providerConnect} />)
   }
 

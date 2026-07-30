@@ -4,14 +4,8 @@ import { Global } from "@opencode-ai/core/global"
 import path from "path"
 import {
   externalIdentity,
-  identityBaseUrl,
-  identityLoginInstructions,
   isEmbeddedMode,
   KT_IDENTITY_REFRESH_MARKER,
-  passwordLogin,
-  pollTelegramLogin,
-  sessionExpiresAt,
-  startTelegramLogin,
   validateExternalIdentity,
 } from "./ktai-identity"
 
@@ -317,7 +311,6 @@ async function load() {
 }
 
 export async function KTAIProviderPlugin(): Promise<Hooks> {
-  const baseUrl = identityBaseUrl()
   const injectedIdentity = externalIdentity()
   const embeddedWithIdentity = isEmbeddedMode() && injectedIdentity
 
@@ -338,8 +331,9 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
     },
     auth: {
       provider: "ktai",
-      // Identity Bearer is NOT a NewAPI API key. While NewAPI ensure/exchange is
-      // pending, keep using KTAI_API_KEY / pasted API key for ktapi.cc calls.
+      // Identity Bearer is NOT a NewAPI API key. Until Identity→NewAPI key
+      // exchange ships, only offer pasted API keys (Telegram/password would
+      // "succeed" login but leave chat on Invalid token / dummy key).
       async loader(getAuth) {
         const auth = await getAuth()
         if (!auth) return {}
@@ -348,103 +342,7 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
         }
         return {}
       },
-      methods: embeddedWithIdentity
-        ? [{ type: "api" as const, label: "KTAI API key" }]
-        : [
-            {
-              type: "oauth",
-              label: "KT Identity (Telegram)",
-              async authorize() {
-                const challenge = await startTelegramLogin({ baseUrl })
-                return {
-                  url: challenge.telegram.qrUrl,
-                  instructions: `Open Telegram @${challenge.telegram.botUsername} and confirm login code ${challenge.displayCode}.`,
-                  method: "auto" as const,
-                  async callback() {
-                    try {
-                      const session = await pollTelegramLogin({
-                        challengeId: challenge.challengeId,
-                        baseUrl,
-                      })
-                      return {
-                        type: "success" as const,
-                        refresh: KT_IDENTITY_REFRESH_MARKER,
-                        access: session.token,
-                        expires: sessionExpiresAt(session),
-                        accountId: session.account.id,
-                      }
-                    } catch {
-                      return { type: "failed" as const }
-                    }
-                  },
-                }
-              },
-            },
-            {
-              type: "oauth",
-              label: "KT Identity (password)",
-              prompts: [
-                {
-                  type: "text" as const,
-                  key: "loginName",
-                  message: "KT login name",
-                  placeholder: "account / email / username",
-                },
-                {
-                  type: "text" as const,
-                  key: "password",
-                  message: "KT password",
-                  placeholder: "password",
-                },
-              ],
-              async authorize(inputs) {
-                const loginName = inputs?.loginName?.trim() ?? ""
-                const password = inputs?.password ?? ""
-                if (!loginName || !password) {
-                  return {
-                    url: `${baseUrl}/web`,
-                    instructions: "Login name and password are required.",
-                    method: "auto" as const,
-                    async callback() {
-                      return { type: "failed" as const }
-                    },
-                  }
-                }
-
-                try {
-                  const session = await passwordLogin({ loginName, password, baseUrl })
-                  return {
-                    url: `${baseUrl}/home`,
-                    instructions: identityLoginInstructions(session),
-                    method: "auto" as const,
-                    async callback() {
-                      return {
-                        type: "success" as const,
-                        refresh: KT_IDENTITY_REFRESH_MARKER,
-                        access: session.token,
-                        expires: sessionExpiresAt(session),
-                        accountId: session.account.id,
-                      }
-                    },
-                  }
-                } catch (error) {
-                  const message = error instanceof Error ? error.message : "KT Identity password login failed"
-                  return {
-                    url: `${baseUrl}/web`,
-                    instructions: message,
-                    method: "auto" as const,
-                    async callback() {
-                      return { type: "failed" as const }
-                    },
-                  }
-                }
-              },
-            },
-            {
-              type: "api",
-              label: "KTAI API key",
-            },
-          ],
+      methods: [{ type: "api" as const, label: "KTAI API key" }],
     },
   }
 }

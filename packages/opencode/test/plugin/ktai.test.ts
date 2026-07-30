@@ -96,21 +96,15 @@ test("pricing fallback still filters to ktai + openai endpoints", () => {
   expect(list.map((m) => m.id)).toEqual(["gpt-5.4"])
 })
 
-test("exposes KT Identity login methods plus API key fallback", async () => {
+test("exposes only API key until Identity→NewAPI exchange ships", async () => {
   const hooks = await KTAIProviderPlugin()
   expect(hooks.auth?.provider).toBe("ktai")
-  expect(hooks.auth?.methods.map((method) => method.label)).toEqual([
-    "KT Identity (Telegram)",
-    "KT Identity (password)",
-    "KTAI API key",
-  ])
-  expect(hooks.auth?.methods[0]?.type).toBe("oauth")
-  expect(hooks.auth?.methods[1]?.type).toBe("oauth")
-  expect(hooks.auth?.methods[2]?.type).toBe("api")
+  expect(hooks.auth?.methods.map((method) => method.label)).toEqual(["KTAI API key"])
+  expect(hooks.auth?.methods[0]?.type).toBe("api")
   expect(typeof hooks.auth?.loader).toBe("function")
 })
 
-test("embedded injected identity exposes only the API key transition", async () => {
+test("embedded injected identity still exposes only the API key transition", async () => {
   const previous = {
     embedded: process.env.OPENCODE_EMBEDDED,
     token: process.env.KTAI_IDENTITY_TOKEN,
