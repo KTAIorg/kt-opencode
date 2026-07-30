@@ -7,7 +7,7 @@
 
 - 干净 profile / 新装（避免本地已有 key、计数被污染）。
 - 客户端：KT OpenCode Desktop（优先）或同版本构建。
-- 软限额功能上线前：本清单中「B0 / 软限额」项标为 **Blocked / 待实现**；其余 B1–B4 仍可按现状回归。
+- 软限额已在服务端实现（`packages/opencode/src/session/soft-quota.ts`，阈值默认 100；测试可用 `OPENCODE_SOFT_QUOTA_LIMIT` / `OPENCODE_DISABLE_SOFT_QUOTA` / 删除 `soft-quota.json` 重置）。
 
 ## B0. 软限额 100 + 半停（主转化，必测）
 

@@ -92,7 +92,8 @@ NewAPI / ktapi.cc    AI 执行与计量（需要 NewAPI credential）
   - Zen 白嫖通道不可再发送；
   - 引导去 `https://www.ktapi.cc/wallet`（或等价 KT 入口）；
   - 已配置 KTAI API key / 个人 token 时，付费 KTAI 模型仍可发送。
-- 实现落点（待开发）：本地计数 + 发送前拦截 + 与现有 usageExceeded / wallet CTA 复用文案。
+- 实现落点：`packages/opencode/src/session/soft-quota.ts` + `SessionPrompt.prompt` 发送前拦截；成功完成一轮 Zen 免费对话后 `+1`；到限复用 `free_tier_limit` → wallet CTA。
+- 运维/测试：`OPENCODE_SOFT_QUOTA_LIMIT`、`OPENCODE_DISABLE_SOFT_QUOTA`、数据文件 `Global.Path.data/soft-quota.json`。
 
 ### 6.2 Zen 上游额度用尽（兜底）
 
@@ -139,8 +140,7 @@ KTAI 模型选择器默认只点亮精选编程模型（约 8–10 个）；其�
 
 ## 8. 下一步
 
-1. OpenCode：实现软限额 100 + 半停（计数、拦截、与 wallet CTA 复用）。
-2. NewAPI：按 `kt_account_id` Ensure / Token Exchange（已交接）——这是客户免粘贴 key 的关键路径。
-3. OpenCode：Ensure 就绪后，Identity 登录成功即自动写入 per-account NewAPI token，去掉对共享 `KTAI_API_KEY` 的依赖。
-4. 可选：账户页展示当前 `kt_account_id` / accountNo；`authz/can` 产品权限。
-5. V2 升级与独立桌面打包策略另开里程碑，不阻塞本身份闭环。
+1. NewAPI：按 `kt_account_id` Ensure / Token Exchange（已交接）——这是客户免粘贴 key 的关键路径。
+2. OpenCode：Ensure 就绪后，Identity 登录成功即自动写入 per-account NewAPI token，去掉对共享 `KTAI_API_KEY` 的依赖。
+3. 可选：账户页展示当前 `kt_account_id` / accountNo；`authz/can` 产品权限。
+4. V2 升级与独立桌面打包策略另开里程碑，不阻塞本身份闭环。

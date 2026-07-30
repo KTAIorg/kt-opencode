@@ -56,6 +56,8 @@ import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
+import { SoftQuota } from "./soft-quota"
+import { SessionRetry } from "./retry"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1054,6 +1056,32 @@ const layer = Layer.effect(
     )(function* (input: PromptInput) {
       const session = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
       yield* revert.cleanup(session)
+
+      // Soft quota half-stop: block free Zen before creating a user message.
+      // Paid providers (e.g. ktai) are never gated here.
+      const softQuotaModel = yield* Effect.gen(function* () {
+        const agentName = input.agent
+        const ag = agentName ? yield* agents.get(agentName) : yield* agents.defaultInfo()
+        if (!ag) return undefined
+        const ref = input.model ?? ag.model ?? (yield* currentModel(input.sessionID))
+        const full = yield* provider
+          .getModel(ref.providerID, ref.modelID)
+          .pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (full) return full
+        // Unknown catalog row: only treat OpenCode Zen as free by default.
+        return {
+          providerID: ref.providerID,
+          cost: { input: ref.providerID === "opencode" ? 0 : 1 },
+        }
+      }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+
+      if (SoftQuota.isZenFreeModel(softQuotaModel) && SoftQuota.exhausted()) {
+        yield* status.set(input.sessionID, SoftQuota.retryStatus(softQuotaModel?.providerID ?? "opencode"))
+        const error = new NamedError.Unknown({ message: SessionRetry.KT_TOPUP_MESSAGE })
+        yield* events.publish(Session.Event.Error, { sessionID: input.sessionID, error: error.toObject() })
+        throw error
+      }
+
       const message = yield* createUserMessage(input)
       yield* sessions.touch(input.sessionID)
 
@@ -1067,7 +1095,15 @@ const layer = Layer.effect(
       }
 
       if (input.noReply === true) return message
-      return yield* loop({ sessionID: input.sessionID })
+      const result = yield* loop({ sessionID: input.sessionID })
+      if (
+        SoftQuota.isZenFreeModel(softQuotaModel) &&
+        result.info.role === "assistant" &&
+        !result.info.error
+      ) {
+        SoftQuota.increment()
+      }
+      return result
     })
 
     const lastAssistant = Effect.fnUntraced(function* (sessionID: SessionID) {

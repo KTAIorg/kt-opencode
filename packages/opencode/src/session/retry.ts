@@ -26,6 +26,19 @@ export type Retryable = {
   }
 }
 
+/** Shared KT wallet CTA for Zen soft-quota + FreeUsageLimitError. */
+export function freeTierTopupAction(provider = "opencode"): NonNullable<Retryable["action"]> {
+  return {
+    reason: "free_tier_limit",
+    provider,
+    title: "Free limit reached",
+    message:
+      "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+    label: "Top up",
+    link: KT_TOPUP_URL,
+  }
+}
+
 export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2
 export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
@@ -79,15 +92,7 @@ export function retryable(error: Err, provider: string) {
     if (error.data.responseBody?.includes("FreeUsageLimitError")) {
       return {
         message: KT_TOPUP_MESSAGE,
-        action: {
-          reason: "free_tier_limit",
-          provider,
-          title: "Free limit reached",
-          message:
-            "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
-          label: "Top up",
-          link: KT_TOPUP_URL,
-        },
+        action: freeTierTopupAction(provider),
       }
     }
     if (error.data.responseBody?.includes("GoUsageLimitError")) {

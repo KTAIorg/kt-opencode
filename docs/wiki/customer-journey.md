@@ -13,10 +13,11 @@ Zen 自己额度耗尽时，走同一套充值引导（兜底）。
 | 项 | 决定 |
 | --- | --- |
 | 首屏强制登录 | **不做** |
-| 主转化扳机 | **本地软限额**：免费 Zen 对话 **100 次** |
+| 主转化扳机 | **本地软限额**：免费 Zen 对话 **100 次**（已实现） |
 | 到点行为 | **半停**：停 Zen 白嫖发送；已配置 KTAI key 的付费模型仍可发 |
 | Zen 上游耗尽 | **兜底**：`FreeUsageLimitError` → 同一套 wallet CTA |
 | CTA | `https://www.ktapi.cc/wallet`（不是 OpenCode Go） |
+| 实现 | `packages/opencode/src/session/soft-quota.ts` + `SessionPrompt.prompt` 门禁 |
 
 ## 流程图
 
