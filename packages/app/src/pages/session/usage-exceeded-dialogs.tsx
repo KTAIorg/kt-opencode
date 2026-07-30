@@ -11,26 +11,42 @@ import { useI18n } from "@opencode-ai/ui/context"
 
 const KT_TOPUP_FREE_TIER_LAST_SEEN_AT = "kt_topup_last_seen_at"
 const KT_TOPUP_FREE_TIER_DONT_SHOW = "kt_topup_dont_show"
+const KT_AUTH_BILLING_LAST_SEEN_AT = "kt_auth_billing_last_seen_at"
+const KT_AUTH_BILLING_DONT_SHOW = "kt_auth_billing_dont_show"
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT = "go_upsell_account_rate_limit_last_seen_at"
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW = "go_upsell_account_rate_limit_dont_show"
 const UPSELL_WINDOW = 86_400_000 // 24 hrs
-const FREE_TIER_PROVIDERS = new Set(["opencode", "opencode-go"])
+/** Providers that should surface KT wallet / register CTA. */
+const KT_CTA_PROVIDERS = new Set(["opencode", "opencode-go", "ktai", "ktapi"])
+
+function isKtCtaProvider(provider: string) {
+  return KT_CTA_PROVIDERS.has(provider) || provider.startsWith("ktai") || provider.startsWith("ktapi")
+}
 
 function upsellKeys(status: SessionStatus) {
   if (status.type !== "retry" || !status.action) return
   const { action } = status
-  if (!FREE_TIER_PROVIDERS.has(action.provider)) return
+  if (!isKtCtaProvider(action.provider) && action.reason !== "account_rate_limit") return
   if (action.reason === "free_tier_limit") {
     return {
       lastSeenAt: KT_TOPUP_FREE_TIER_LAST_SEEN_AT,
       dontShow: KT_TOPUP_FREE_TIER_DONT_SHOW,
-    } as const
+      kind: "free_tier_limit" as const,
+    }
+  }
+  if (action.reason === "auth_billing") {
+    return {
+      lastSeenAt: KT_AUTH_BILLING_LAST_SEEN_AT,
+      dontShow: KT_AUTH_BILLING_DONT_SHOW,
+      kind: "auth_billing" as const,
+    }
   }
   if (action.reason === "account_rate_limit") {
     return {
       lastSeenAt: GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT,
       dontShow: GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW,
-    } as const
+      kind: "account_rate_limit" as const,
+    }
   }
 }
 
@@ -47,6 +63,8 @@ export function useUsageExceededDialogs() {
     createStore({
       [KT_TOPUP_FREE_TIER_LAST_SEEN_AT]: null as null | number,
       [KT_TOPUP_FREE_TIER_DONT_SHOW]: null as null | number,
+      [KT_AUTH_BILLING_LAST_SEEN_AT]: null as null | number,
+      [KT_AUTH_BILLING_DONT_SHOW]: null as null | number,
       [GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT]: null as null | number,
       [GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW]: null as null | number,
     }),
@@ -66,40 +84,55 @@ export function useUsageExceededDialogs() {
     if (seen && Date.now() - seen < UPSELL_WINDOW) return
     if (upsellState[keys.dontShow]) return
 
-    if (action.reason === "free_tier_limit") {
+    const onClose = (dontShowAgain?: boolean) => {
+      setUpsellState(keys.lastSeenAt, Date.now())
+      if (dontShowAgain) setUpsellState(keys.dontShow, Date.now())
+    }
+
+    if (keys.kind === "free_tier_limit") {
       dialog.show(() => (
         <DialogUsageExceeded
           title={isEnglish() ? action.title : t("dialog.usageExceeded.freeTier.title")}
           description={isEnglish() ? action.message : t("dialog.usageExceeded.freeTier.description")}
           actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.freeTier.actionLabel")}
           link={action.link}
-          onClose={(dontShowAgain) => {
-            setUpsellState(keys.lastSeenAt, Date.now())
-            if (dontShowAgain) setUpsellState(keys.dontShow, Date.now())
-            // No OpenCode Go connect dialog — CTA opens KT top-up only.
-          }}
+          onClose={onClose}
         />
       ))
       return
     }
 
-    if (action.reason === "account_rate_limit") {
+    if (keys.kind === "auth_billing") {
+      // Prefer localized strings when present; fall back to server action copy.
+      const title = isEnglish() ? action.title : t("dialog.usageExceeded.authBilling.title")
+      const description = isEnglish() ? action.message : t("dialog.usageExceeded.authBilling.description")
+      const actionLabel = isEnglish() ? action.label : t("dialog.usageExceeded.authBilling.actionLabel")
+      dialog.show(() => (
+        <DialogUsageExceeded
+          title={title.startsWith("dialog.") ? action.title : title}
+          description={description.startsWith("dialog.") ? action.message : description}
+          actionLabel={actionLabel.startsWith("dialog.") ? action.label : actionLabel}
+          link={action.link}
+          onClose={onClose}
+        />
+      ))
+      return
+    }
+
+    if (keys.kind === "account_rate_limit") {
       dialog.show(() => (
         <DialogUsageExceeded
           title={isEnglish() ? action.title : t("dialog.usageExceeded.accountRateLimit.title")}
           description={isEnglish() ? action.message : t("dialog.usageExceeded.accountRateLimit.description")}
           actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.accountRateLimit.actionLabel")}
           link={action.link}
-          onClose={(dontShowAgain) => {
-            setUpsellState(keys.lastSeenAt, Date.now())
-            if (dontShowAgain) setUpsellState(keys.dontShow, Date.now())
-          }}
+          onClose={onClose}
         />
       ))
     }
   }
 
-  // Live events (normal path)
+  // Live events (normal path) — includes a brief retry→idle flash for non-retryable 401s.
   onCleanup(
     sdk().event.on("session.status", (evt) => {
       if (evt.properties.sessionID !== params.id) return

@@ -18,7 +18,6 @@ import { useMutation } from "@tanstack/solid-query"
 import { createVirtualizer, defaultRangeExtractor, elementScroll, type VirtualItem } from "@tanstack/solid-virtual"
 import { Accordion } from "@opencode-ai/ui/accordion"
 import { Button } from "@opencode-ai/ui/button"
-import { Card } from "@opencode-ai/ui/card"
 import {
   ContextToolGroup,
   Message,
@@ -76,6 +75,7 @@ import { observeElementOffsetReconnectAware } from "./observe-element-offset"
 import { createTimelineProjection } from "./projection"
 import { MessageComment, SummaryDiff, TimelineRow, TimelineRowMap } from "./rows"
 import { filterVirtualIndexes } from "./virtual-items"
+import { SessionErrorCard } from "./session-error-card"
 
 const emptyMessages: MessageType[] = []
 const emptyParts: PartType[] = []
@@ -1231,9 +1231,7 @@ export function MessageTimeline(props: {
         return (
           <TimelineRowFrame row={errorRow}>
             <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
-              <Card variant="error" class="error-card">
-                {errorRow().text}
-              </Card>
+              <SessionErrorCard text={errorRow().text} />
             </div>
           </TimelineRowFrame>
         )
