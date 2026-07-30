@@ -23,7 +23,18 @@ function isKtCtaProvider(provider: string) {
   return KT_CTA_PROVIDERS.has(provider) || provider.startsWith("ktai") || provider.startsWith("ktapi")
 }
 
-function upsellKeys(status: SessionStatus) {
+type UpsellKind = "free_tier_limit" | "auth_billing" | "account_rate_limit"
+type UpsellStoreKey =
+  | typeof KT_TOPUP_FREE_TIER_LAST_SEEN_AT
+  | typeof KT_TOPUP_FREE_TIER_DONT_SHOW
+  | typeof KT_AUTH_BILLING_LAST_SEEN_AT
+  | typeof KT_AUTH_BILLING_DONT_SHOW
+  | typeof GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT
+  | typeof GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW
+
+function upsellKeys(status: SessionStatus):
+  | { lastSeenAt: UpsellStoreKey; dontShow: UpsellStoreKey; kind: UpsellKind }
+  | undefined {
   if (status.type !== "retry" || !status.action) return
   const { action } = status
   if (!isKtCtaProvider(action.provider) && action.reason !== "account_rate_limit") return
@@ -31,21 +42,21 @@ function upsellKeys(status: SessionStatus) {
     return {
       lastSeenAt: KT_TOPUP_FREE_TIER_LAST_SEEN_AT,
       dontShow: KT_TOPUP_FREE_TIER_DONT_SHOW,
-      kind: "free_tier_limit" as const,
+      kind: "free_tier_limit",
     }
   }
   if (action.reason === "auth_billing") {
     return {
       lastSeenAt: KT_AUTH_BILLING_LAST_SEEN_AT,
       dontShow: KT_AUTH_BILLING_DONT_SHOW,
-      kind: "auth_billing" as const,
+      kind: "auth_billing",
     }
   }
   if (action.reason === "account_rate_limit") {
     return {
       lastSeenAt: GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT,
       dontShow: GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW,
-      kind: "account_rate_limit" as const,
+      kind: "account_rate_limit",
     }
   }
 }
