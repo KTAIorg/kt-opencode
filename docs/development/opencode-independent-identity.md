@@ -80,17 +80,33 @@ NewAPI / ktapi.cc    AI 执行与计量（需要 NewAPI credential）
 - **价格 / 成本估算**：`GET https://ktapi.cc/api/pricing`（给目录项挂 cost）。
 - 尚无 NewAPI key 时：暂时用 public pricing 里 `enable_groups` 含 `ktai` 的条目做发现列表；有 key 后切到 `/v1/models`。
 
-## 6. 免费模型额度用完
+## 6. 免费体验：软限额（主）+ Zen 耗尽（兜底）
 
 仍保留上游 OpenCode Zen 免费模型（ktapi 侧基本没有免费模型）。  
+产品口径见：[客户路径 Wiki](../wiki/customer-journey.md)。
+
+### 6.1 本地软限额（主转化，已拍板）
+
+- **不**首屏强制登录。
+- 免登录 Zen 对话累计 **100** 次后 **半停**：
+  - Zen 白嫖通道不可再发送；
+  - 引导去 `https://www.ktapi.cc/wallet`（或等价 KT 入口）；
+  - 已配置 KTAI API key / 个人 token 时，付费 KTAI 模型仍可发送。
+- 实现落点：`packages/opencode/src/session/soft-quota.ts` + `SessionPrompt.prompt` 发送前拦截；成功完成一轮 Zen 免费对话后 `+1`；到限复用 `free_tier_limit` → wallet CTA。
+- 运维/测试：`OPENCODE_SOFT_QUOTA_LIMIT`、`OPENCODE_DISABLE_SOFT_QUOTA`、数据文件 `Global.Path.data/soft-quota.json`。
+
+### 6.2 Zen 上游额度用尽（兜底）
+
 当 Zen 返回 `FreeUsageLimitError` 时：
 
 - **不再**弹出 OpenCode Go 订阅 / 连接 `opencode-go`。
 - 改为 KT 充值引导，CTA：`https://www.ktapi.cc/wallet`。
+- 与软限额共用引导口径；**不**把「Zen 自然耗尽」当作唯一转化扳机。
 
 ## 7. 客户默认链路（不是 KT Secret 共享密钥）
 
-> 团队可读版（推荐转发给小伙伴）：[客户路径 Wiki](../wiki/customer-journey.md)
+> 团队可读版（推荐转发给小伙伴）：[客户路径 Wiki](../wiki/customer-journey.md)  
+> 测试清单：[软限额与客户路径测试](../wiki/soft-quota-acceptance.md)
 
 客户安装包 **不会** 内置 `KT_NEWAPI__PROD__KT_OPENCODE__API_KEY` 这类运营共享密钥。  
 该 Secret 仅供内部调试 / CI。
@@ -101,8 +117,12 @@ NewAPI / ktapi.cc    AI 执行与计量（需要 NewAPI credential）
 1) 打开 KT OpenCode
    └─ 先用 OpenCode Zen 免费模型（无需 KT 账号 / 无需 NewAPI key）
 
-2) 免费额度用尽
-   └─ 引导去 https://www.ktapi.cc/wallet 充值（KT 弹窗，不是 Go）
+2) 本地软限额达到 100 次（主转化）
+   └─ 半停 Zen 发送，引导去 https://www.ktapi.cc/wallet
+   └─ 已有 KTAI key 则付费模型可继续
+
+2b) Zen 返回额度用尽（兜底）
+   └─ 同一套 KT 充值引导（不是 Go）
 
 3) 注册 / 登录 KT Identity
    └─ Telegram 或密码登录（写入 auth.json，refresh=kt-identity）

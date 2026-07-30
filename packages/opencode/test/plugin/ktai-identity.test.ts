@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test"
 import {
+  externalIdentity,
   identityBaseUrl,
   identityLoginInstructions,
+  isEmbeddedMode,
   KT_IDENTITY_REFRESH_MARKER,
   passwordLogin,
   pollTelegramLogin,
@@ -12,6 +14,30 @@ import {
 test("identityBaseUrl defaults and trims trailing slash", () => {
   expect(identityBaseUrl({})).toBe("https://login.ktyun.cc")
   expect(identityBaseUrl({ KT_IDENTITY_BASE_URL: "https://login.example/ " })).toBe("https://login.example")
+})
+
+test("reads valid injected identities only in embedded mode", () => {
+  expect(isEmbeddedMode({ OPENCODE_EMBEDDED: "true" })).toBe(true)
+  expect(isEmbeddedMode({ OPENCODE_EMBEDDED: "1" })).toBe(true)
+  expect(isEmbeddedMode({ OPENCODE_EMBEDDED: "false" })).toBe(false)
+  expect(
+    externalIdentity({
+      KTAI_IDENTITY_TOKEN: " injected-token ",
+      KTAI_IDENTITY_ACCOUNT_ID: " acc-1 ",
+      KTAI_IDENTITY_EXPIRES_AT: "2099-01-01T00:00:00.000Z",
+    }),
+  ).toEqual({
+    token: "injected-token",
+    accountId: "acc-1",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  })
+  expect(externalIdentity({ KTAI_IDENTITY_TOKEN: " " })).toBeUndefined()
+  expect(
+    externalIdentity({
+      KTAI_IDENTITY_TOKEN: "injected-token",
+      KTAI_IDENTITY_EXPIRES_AT: "2000-01-01T00:00:00.000Z",
+    }),
+  ).toBeUndefined()
 })
 
 test("passwordLogin posts to Identity Bearer login", async () => {

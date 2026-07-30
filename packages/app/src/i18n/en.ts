@@ -200,6 +200,39 @@ export const dict = {
   "provider.disconnect.toast.disconnected.title": "{{provider}} disconnected",
   "provider.disconnect.toast.disconnected.description": "{{provider}} models are no longer available.",
 
+  "dialog.ktAccess.auth.title": "Set up your KTAI API key",
+  "dialog.ktAccess.auth.lead":
+    "Your key is missing or invalid. Get a key on ktapi.cc, then paste it in the field below.",
+  "dialog.ktAccess.billing.title": "Top up, then paste your key here",
+  "dialog.ktAccess.billing.lead":
+    "Free quota or balance is used up. Top up on KT AI, create an API key, then paste it below.",
+  "dialog.ktAccess.step1": "On ktapi.cc: register / sign in, top up if needed, and create an API key.",
+  "dialog.ktAccess.step2": "Paste the API key into the field below and save.",
+  "dialog.ktAccess.step3": "Keep a KTAI paid model (e.g. GPT 5.4 Mini) and send again.",
+  "dialog.ktAccess.hint":
+    "Opening the website alone is not enough — Desktop only works after the key is saved here.",
+  "dialog.ktAccess.pasteKey": "Paste API key here",
+  "dialog.ktAccess.saveKey": "Save API key",
+  "dialog.ktAccess.openWallet": "Open ktapi.cc wallet",
+  "dialog.ktAccess.dismiss": "Don’t show again",
+  "dialog.ktAccess.snooze": "Remind me later",
+  "dialog.ktAccess.switch.title": "Free quota used up — switch to KTAI",
+  "dialog.ktAccess.switch.lead":
+    "Zen free chats are exhausted. Your KTAI API key is already configured — pick a paid KTAI model below to continue.",
+  "dialog.ktAccess.switch.pickHint": "Click a model to switch immediately, then send again (billed to ktapi.cc).",
+  "dialog.ktAccess.switch.empty": "No visible KTAI models yet. Open the full model list to choose or manage visibility.",
+  "dialog.ktAccess.switch.browseAll": "Open full model list",
+  "dialog.ktAccess.switch.step1": "Open the model picker (bottom of the composer).",
+  "dialog.ktAccess.switch.step2": "Choose a model under the KTAI provider (not Zen Free).",
+  "dialog.ktAccess.switch.step3": "Send again — usage bills to your ktapi.cc balance.",
+  "dialog.ktAccess.switch.hint":
+    "You don’t need to paste the key again. If balance is low, top up on ktapi.cc wallet.",
+  "dialog.ktAccess.switch.ack": "Got it",
+  "ui.sessionTurn.error.configureKey": "Configure API key",
+  "ui.sessionTurn.error.switchModel": "Switch to KTAI",
+  "ui.sessionTurn.error.authFriendly":
+    "API key is invalid or expired. Configure a KTAI key in Desktop (Settings → Providers), or open the guide.",
+
   "model.tag.free": "Free",
   "model.tag.latest": "Latest",
   "model.provider.anthropic": "Anthropic",

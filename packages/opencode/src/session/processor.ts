@@ -616,6 +616,27 @@ const layer = Layer.effect(
           yield* events.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
           return
         }
+        // KT auth/billing: rewrite raw "Invalid token" / balance errors and flash
+        // a wallet CTA via session.status (dialog), then return to idle so the
+        // user can fix the key / top up and send again.
+        const guide = SessionRetry.guidance(error, input.model.providerID)
+        if (guide?.action) {
+          ctx.assistantMessage.error = SessionRetry.withGuidanceMessage(error, guide.message)
+          yield* events.publish(Session.Event.Error, {
+            sessionID: ctx.assistantMessage.sessionID,
+            error: ctx.assistantMessage.error,
+          })
+          yield* status.set(ctx.sessionID, {
+            type: "retry",
+            attempt: 1,
+            message: guide.message,
+            action: guide.action,
+            next: Date.now(),
+          })
+          yield* status.set(ctx.sessionID, { type: "idle" })
+          return
+        }
+
         ctx.assistantMessage.error = error
         yield* events.publish(Session.Event.Error, {
           sessionID: ctx.assistantMessage.sessionID,

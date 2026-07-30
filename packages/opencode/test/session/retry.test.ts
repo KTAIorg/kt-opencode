@@ -281,6 +281,59 @@ describe("session.retry.retryable", () => {
     })
   })
 
+  test("guidance maps invalid token on ktai without making it retryable", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message: "Invalid token (request id: abc)",
+        isRetryable: false,
+        statusCode: 401,
+        responseBody: JSON.stringify({
+          error: { message: "Invalid token (request id: abc)", type: "new_api_error" },
+        }),
+        metadata: { url: "https://ktapi.cc/v1/chat/completions" },
+      }).toObject(),
+    )
+
+    expect(SessionRetry.retryable(error, "ktai")).toBeUndefined()
+    expect(SessionRetry.guidance(error, "ktai")).toEqual({
+      message: SessionRetry.KT_AUTH_MESSAGE,
+      action: {
+        reason: "auth_billing",
+        provider: "ktai",
+        title: "Sign in or top up required",
+        message: SessionRetry.KT_AUTH_MESSAGE,
+        label: "Open KT AI",
+        link: SessionRetry.KT_TOPUP_URL,
+      },
+    })
+  })
+
+  test("guidance maps insufficient balance on ktai to top-up", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message: "Insufficient balance",
+        isRetryable: false,
+        statusCode: 403,
+        responseBody: JSON.stringify({ error: { message: "insufficient balance" } }),
+      }).toObject(),
+    )
+
+    expect(SessionRetry.guidance(error, "ktai")?.action?.reason).toBe("free_tier_limit")
+    expect(SessionRetry.guidance(error, "ktai")?.action?.link).toBe(SessionRetry.KT_TOPUP_URL)
+  })
+
+  test("guidance ignores unrelated provider 401", () => {
+    const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({
+        message: "Unauthorized",
+        isRetryable: false,
+        statusCode: 401,
+      }).toObject(),
+    )
+
+    expect(SessionRetry.guidance(error, "anthropic")).toBeUndefined()
+  })
+
   test("maps Go subscription limits to workspace PAYG upsell", () => {
     const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
       new SessionV1.APIError({

@@ -40,31 +40,37 @@ test("builds KTAI models from /v1/models catalog enriched by pricing", () => {
 
 test("picks a curated default-visible set from the catalog", () => {
   const picked = pickDefaultVisibleModelIDs([
+    "kimi-k2.5",
+    "kimi-k2.6",
+    "MiniMax-M2.7",
+    "MiniMax-M3",
+    "deepseek-v4-flash",
+    "gemini-2.5-flash",
+    "gemini-3.5-flash",
     "gpt-5.6",
     "gpt-5.4-mini",
     "anthropic/claude-sonnet-4.6",
+    "claude-sonnet-5",
     "anthropic/claude-opus-4.8",
     "claude-haiku-4-5",
-    "gemini-2.5-flash",
-    "deepseek-v4-flash",
-    "kimi-k2.5",
-    "MiniMax-M2.7",
     "gpt-4o-mini",
     "amazon.titan-embed-text-v2:0",
   ])
+  // One per family, cost-friendly order priority; newest alias wins inside group.
   expect([...picked].sort()).toEqual(
     [
-      "gpt-5.6",
-      "gpt-5.4-mini",
-      "anthropic/claude-sonnet-4.6",
-      "anthropic/claude-opus-4.8",
-      "claude-haiku-4-5",
-      "gemini-2.5-flash",
+      "kimi-k2.6",
+      "MiniMax-M3",
       "deepseek-v4-flash",
-      "kimi-k2.5",
-      "MiniMax-M2.7",
+      "gemini-3.5-flash",
+      "gpt-5.6",
+      "claude-sonnet-5",
     ].sort(),
   )
+  // High-end Claude variants and GPT mini stay out of the default set.
+  expect(picked.has("anthropic/claude-opus-4.8")).toBe(false)
+  expect(picked.has("claude-haiku-4-5")).toBe(false)
+  expect(picked.has("gpt-5.4-mini")).toBe(false)
 
   const provider = createKTAIProviderConfig(
     [...picked, "amazon.titan-embed-text-v2:0"].map((id) => ({ id, input: 1, output: 1 })),
@@ -96,18 +102,35 @@ test("pricing fallback still filters to ktai + openai endpoints", () => {
   expect(list.map((m) => m.id)).toEqual(["gpt-5.4"])
 })
 
-test("exposes KT Identity login methods plus API key fallback", async () => {
+test("exposes only API key until Identity→NewAPI exchange ships", async () => {
   const hooks = await KTAIProviderPlugin()
   expect(hooks.auth?.provider).toBe("ktai")
-  expect(hooks.auth?.methods.map((method) => method.label)).toEqual([
-    "KT Identity (Telegram)",
-    "KT Identity (password)",
-    "KTAI API key",
-  ])
-  expect(hooks.auth?.methods[0]?.type).toBe("oauth")
-  expect(hooks.auth?.methods[1]?.type).toBe("oauth")
-  expect(hooks.auth?.methods[2]?.type).toBe("api")
+  expect(hooks.auth?.methods.map((method) => method.label)).toEqual(["KTAI API key"])
+  expect(hooks.auth?.methods[0]?.type).toBe("api")
   expect(typeof hooks.auth?.loader).toBe("function")
+})
+
+test("embedded injected identity still exposes only the API key transition", async () => {
+  const previous = {
+    embedded: process.env.OPENCODE_EMBEDDED,
+    token: process.env.KTAI_IDENTITY_TOKEN,
+    expiresAt: process.env.KTAI_IDENTITY_EXPIRES_AT,
+  }
+  process.env.OPENCODE_EMBEDDED = "true"
+  process.env.KTAI_IDENTITY_TOKEN = "injected-identity-token"
+  process.env.KTAI_IDENTITY_EXPIRES_AT = "2099-01-01T00:00:00.000Z"
+  try {
+    const hooks = await KTAIProviderPlugin()
+    expect(hooks.auth?.methods.map((method) => method.label)).toEqual(["KTAI API key"])
+    expect(hooks.auth?.methods[0]?.type).toBe("api")
+  } finally {
+    if (previous.embedded === undefined) delete process.env.OPENCODE_EMBEDDED
+    else process.env.OPENCODE_EMBEDDED = previous.embedded
+    if (previous.token === undefined) delete process.env.KTAI_IDENTITY_TOKEN
+    else process.env.KTAI_IDENTITY_TOKEN = previous.token
+    if (previous.expiresAt === undefined) delete process.env.KTAI_IDENTITY_EXPIRES_AT
+    else process.env.KTAI_IDENTITY_EXPIRES_AT = previous.expiresAt
+  }
 })
 
 test("identity oauth loader does not send Identity Bearer to NewAPI", async () => {

@@ -4,8 +4,9 @@ import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Tag } from "@opencode-ai/ui/tag"
 import { showToast } from "@/utils/toast"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
-import { createMemo, type Component, For, Show } from "solid-js"
+import { createMemo, createResource, type Component, For, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { DialogConnectProvider, useProviderConnectController } from "./dialog-connect-provider"
@@ -15,6 +16,7 @@ import { SettingsServerPicker, SettingsServerScope } from "./settings-server-pic
 
 type ProviderSource = "env" | "api" | "config" | "custom"
 type ProviderItem = ReturnType<ReturnType<typeof useProviders>["connected"]>[number]
+type KTAIAccount = { account: { accountNo: string; displayName?: string }; balance: number }
 
 const PROVIDER_NOTES = [
   { match: (id: string) => id === "opencode", key: "dialog.provider.opencode.note" },
@@ -41,7 +43,20 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
   const serverSDK = useServerSDK()
   const serverSync = useServerSync()
   const providers = useProviders()
+  const platform = usePlatform()
   const providerConnect = useProviderConnectController({ onBack: props.onBack })
+  const [ktaiAccount] = createResource(() =>
+    (platform.fetch ?? fetch)(`${serverSDK().url.replace(/\/+$/, "")}/ktai/account`, {
+      headers:
+        serverSDK().server.http.username && serverSDK().server.http.password
+          ? {
+              authorization: `Basic ${btoa(`${serverSDK().server.http.username}:${serverSDK().server.http.password}`)}`,
+            }
+          : undefined,
+    })
+      .then((response) => (response.ok ? (response.json() as Promise<KTAIAccount>) : undefined))
+      .catch(() => undefined),
+  )
 
   const connect = (provider?: string) => {
     providerConnect.select(provider)
@@ -166,10 +181,19 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
               <For each={connected()}>
                 {(item) => (
                   <div class="group flex flex-wrap items-center justify-between gap-4 min-h-16 py-3 border-b border-border-weak-base last:border-none">
-                    <div class="flex items-center gap-3 min-w-0">
-                      <ProviderIcon id={item.id} class="size-5 shrink-0 icon-strong-base" />
-                      <span class="text-14-medium text-text-strong truncate">{item.name}</span>
-                      <Tag>{type(item)}</Tag>
+                    <div class="flex flex-col min-w-0 gap-1">
+                      <div class="flex items-center gap-3 min-w-0">
+                        <ProviderIcon id={item.id} class="size-5 shrink-0 icon-strong-base" />
+                        <span class="text-14-medium text-text-strong truncate">{item.name}</span>
+                        <Tag>{type(item)}</Tag>
+                      </div>
+                      <Show when={item.id === "ktai" && ktaiAccount()}>
+                        {(account) => (
+                          <span class="pl-8 text-12-regular text-text-weak">
+                            {account().account.displayName ?? account().account.accountNo} · {account().balance}
+                          </span>
+                        )}
+                      </Show>
                     </div>
                     <Show
                       when={canDisconnect(item)}

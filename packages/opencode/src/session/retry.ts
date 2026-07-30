@@ -12,7 +12,10 @@ export const GO_UPSELL_MESSAGE = "Free usage exceeded. Top up on KT AI to contin
 export const GO_UPSELL_URL = "https://www.ktapi.cc/wallet"
 export const KT_TOPUP_MESSAGE = GO_UPSELL_MESSAGE
 export const KT_TOPUP_URL = GO_UPSELL_URL
-export type RetryReason = "free_tier_limit" | "account_rate_limit" | (string & {})
+/** Invalid / expired KT API key — same destination as top-up (register / wallet). */
+export const KT_AUTH_MESSAGE =
+  "API key is invalid or expired. Register or sign in on KT AI (ktapi.cc), create a valid key, or top up to continue."
+export type RetryReason = "free_tier_limit" | "account_rate_limit" | "auth_billing" | (string & {})
 
 export type Retryable = {
   message: string
@@ -24,6 +27,126 @@ export type Retryable = {
     label: string
     link?: string
   }
+}
+
+const KT_CTA_PROVIDERS = new Set(["opencode", "opencode-go", "ktai", "ktapi"])
+
+export function isKtCtaProvider(provider: string) {
+  return KT_CTA_PROVIDERS.has(provider) || provider.startsWith("ktai") || provider.startsWith("ktapi")
+}
+
+/** Shared KT wallet CTA for Zen soft-quota + FreeUsageLimitError / balance. */
+export function freeTierTopupAction(provider = "opencode"): NonNullable<Retryable["action"]> {
+  return {
+    reason: "free_tier_limit",
+    provider,
+    title: "Free limit reached",
+    message:
+      "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+    label: "Top up",
+    link: KT_TOPUP_URL,
+  }
+}
+
+/** Invalid token / unauthorized on KT providers → register or top up. */
+export function authBillingAction(provider = "ktai"): NonNullable<Retryable["action"]> {
+  return {
+    reason: "auth_billing",
+    provider,
+    title: "Sign in or top up required",
+    message: KT_AUTH_MESSAGE,
+    label: "Open KT AI",
+    link: KT_TOPUP_URL,
+  }
+}
+
+function errorText(error: Err) {
+  const parts: string[] = []
+  if (SessionV1.APIError.isInstance(error)) {
+    parts.push(error.data.message ?? "")
+    parts.push(error.data.responseBody ?? "")
+    const meta = error.data.metadata
+    if (meta) {
+      for (const value of Object.values(meta)) {
+        if (typeof value === "string") parts.push(value)
+      }
+    }
+  } else if (isRecord(error.data) && typeof error.data.message === "string") {
+    parts.push(error.data.message)
+  }
+  return parts.join("\n")
+}
+
+/**
+ * Classify KT auth / billing failures that should guide users to ktapi.cc
+ * (register, new key, or top-up) instead of dumping raw upstream text.
+ */
+export function classifyKtAccess(error: Err, provider: string): "auth" | "billing" | undefined {
+  const text = errorText(error)
+  const lower = text.toLowerCase()
+  const status = SessionV1.APIError.isInstance(error) ? error.data.statusCode : undefined
+  const hitsKtHost = /ktapi\.cc|www\.ktapi\.cc/i.test(text)
+  if (!isKtCtaProvider(provider) && !hitsKtHost) return undefined
+
+  if (lower.includes("freeusagelimiterror")) return "billing"
+  if (
+    lower.includes("insufficient") ||
+    lower.includes("balance") ||
+    lower.includes("quota") ||
+    lower.includes("credit") ||
+    lower.includes("prepayment") ||
+    lower.includes("free usage exceeded") ||
+    status === 402
+  ) {
+    return "billing"
+  }
+
+  if (
+    status === 401 ||
+    lower.includes("invalid token") ||
+    lower.includes("invalid api key") ||
+    lower.includes("invalid_api_key") ||
+    lower.includes("authentication") ||
+    lower.includes("unauthorized") ||
+    lower.includes("token expired") ||
+    lower.includes("api key is invalid")
+  ) {
+    return "auth"
+  }
+
+  return undefined
+}
+
+/**
+ * User-facing CTA for KT auth/billing failures.
+ * Separate from `retryable`: 401 must not be auto-retried, but still needs guidance.
+ */
+export function guidance(error: Err, provider: string): Retryable | undefined {
+  if (SessionV1.APIError.isInstance(error) && error.data.responseBody?.includes("FreeUsageLimitError")) {
+    return { message: KT_TOPUP_MESSAGE, action: freeTierTopupAction(provider) }
+  }
+  const kind = classifyKtAccess(error, provider)
+  if (kind === "auth") return { message: KT_AUTH_MESSAGE, action: authBillingAction(provider) }
+  if (kind === "billing") return { message: KT_TOPUP_MESSAGE, action: freeTierTopupAction(provider) }
+  return undefined
+}
+
+/** Rewrite NamedError payloads so the timeline shows friendly copy, not raw upstream text. */
+export function withGuidanceMessage(error: Err, message: string): SessionV1.APIError {
+  if (SessionV1.APIError.isInstance(error)) {
+    return new SessionV1.APIError({
+      message,
+      statusCode: error.data.statusCode,
+      isRetryable: false,
+      responseHeaders: error.data.responseHeaders,
+      responseBody: error.data.responseBody,
+      metadata: error.data.metadata,
+    }).toObject()
+  }
+  return new SessionV1.APIError({
+    message,
+    isRetryable: false,
+  }).toObject()
 }
 
 export const RETRY_INITIAL_DELAY = 2000
@@ -79,15 +202,7 @@ export function retryable(error: Err, provider: string) {
     if (error.data.responseBody?.includes("FreeUsageLimitError")) {
       return {
         message: KT_TOPUP_MESSAGE,
-        action: {
-          reason: "free_tier_limit",
-          provider,
-          title: "Free limit reached",
-          message:
-            "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
-          label: "Top up",
-          link: KT_TOPUP_URL,
-        },
+        action: freeTierTopupAction(provider),
       }
     }
     if (error.data.responseBody?.includes("GoUsageLimitError")) {

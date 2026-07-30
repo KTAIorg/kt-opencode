@@ -72,12 +72,19 @@ export const dict = {
   "ui.sessionTurn.retry.attemptLine": "{{line}} - 第 {{attempt}} 次",
   "ui.sessionTurn.retry.geminiHot": "gemini 当前过载",
   "ui.sessionTurn.error.freeUsageExceeded": "免费使用额度已用完",
-  "ui.sessionTurn.error.addCredits": "添加积分",
+  "ui.sessionTurn.error.addCredits": "去充值",
+  "ui.sessionTurn.error.authBilling":
+    "API 密钥无效或已过期。请前往 KT AI（ktapi.cc）注册/登录获取有效密钥，或充值后续费使用。",
+  "ui.sessionTurn.error.openKt": "打开 KT AI",
 
   "dialog.usageExceeded.freeTier.title": "免费额度已用完",
   "dialog.usageExceeded.freeTier.description":
     "免费模型额度已用完。请前往 KT AI 平台充值，继续使用付费模型（KTAI / ktapi.cc）。",
   "dialog.usageExceeded.freeTier.actionLabel": "去充值",
+  "dialog.usageExceeded.authBilling.title": "需要登录或充值",
+  "dialog.usageExceeded.authBilling.description":
+    "API 密钥无效或已过期，或账户余额不足。请前往 KT AI（ktapi.cc）注册/登录获取有效密钥，或充值后续费使用。",
+  "dialog.usageExceeded.authBilling.actionLabel": "打开 KT AI",
   "dialog.usageExceeded.accountRateLimit.title": "Go 额度已用完",
   "dialog.usageExceeded.accountRateLimit.description":
     "使用额度已达上限。如需现在继续使用此模型，请从可用余额中启用使用",

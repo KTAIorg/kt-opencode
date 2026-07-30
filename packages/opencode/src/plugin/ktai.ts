@@ -3,13 +3,10 @@ import { OAUTH_DUMMY_KEY } from "@/auth"
 import { Global } from "@opencode-ai/core/global"
 import path from "path"
 import {
-  identityBaseUrl,
-  identityLoginInstructions,
+  externalIdentity,
+  isEmbeddedMode,
   KT_IDENTITY_REFRESH_MARKER,
-  passwordLogin,
-  pollTelegramLogin,
-  sessionExpiresAt,
-  startTelegramLogin,
+  validateExternalIdentity,
 } from "./ktai-identity"
 
 export const KTAI_PRICING_URL = "https://ktapi.cc/api/pricing"
@@ -24,33 +21,49 @@ const DEFAULT_OUTPUT = 32_768
 
 /**
  * Curated KTAI defaults shown in the model picker for new customers.
- * Each group picks the first id that exists in the current `/v1/models` catalog.
+ * Order = product priority (cost-friendly first). Each group contributes at most
+ * ONE id: the first alias that exists in the current `/v1/models` catalog.
  * OpenCode treats missing/invalid `release_date` as visible by default.
+ *
+ * UI list order for these families lives in
+ * `packages/app/src/utils/ktai-model-order.ts` — keep the two tables aligned.
  */
 export const KTAI_DEFAULT_VISIBLE_PICKS: readonly (readonly string[])[] = [
-  ["gpt-5.6", "openai/gpt-5.6", "gpt-5.5", "openai/gpt-5.5"],
-  ["gpt-5.4-mini", "openai/gpt-5.4-mini", "gpt-5.4", "openai/gpt-5.4"],
+  // 1) Kimi — prefer K3 when NewAPI lists it; else newest K2.x
   [
+    "kimi-k3",
+    "moonshotai/kimi-k3",
+    "kimi-k2.7-code",
+    "moonshotai/kimi-k2.7-code",
+    "kimi-k2.6",
+    "moonshotai/kimi-k2.6",
+    "kimi-k2.5",
+    "moonshotai/kimi-k2.5",
+  ],
+  // 2) MiniMax
+  ["MiniMax-M3", "minimax/minimax-m3", "MiniMax-M2.7", "minimax/minimax-m2.7", "MiniMax-M2.5", "MiniMax-M2.1"],
+  // 3) DeepSeek
+  ["deepseek-v4-flash", "deepseek/deepseek-v4-flash", "deepseek-v4-pro", "deepseek/deepseek-v4-pro"],
+  // 4) Gemini — one latest flash/pro-preview line
+  [
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-pro-preview",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash",
+  ],
+  // 5) GPT — one latest flagship only (not mini + flagship together)
+  ["gpt-5.6", "openai/gpt-5.6", "gpt-5.5", "openai/gpt-5.5", "gpt-5.4", "openai/gpt-5.4", "gpt-5.4-mini"],
+  // 6) Claude — one latest Sonnet (skip default Opus/Haiku for typical customers)
+  [
+    "claude-sonnet-5",
+    "anthropic/claude-sonnet-5",
     "claude-sonnet-4.6",
     "anthropic/claude-sonnet-4.6",
     "claude-sonnet-4-6",
     "claude-sonnet-4.5",
     "anthropic/claude-sonnet-4.5",
-    "claude-sonnet-4-5",
   ],
-  [
-    "claude-opus-4.8",
-    "anthropic/claude-opus-4.8",
-    "claude-opus-4-8",
-    "claude-opus-4.7",
-    "anthropic/claude-opus-4.7",
-    "claude-opus-4-7",
-  ],
-  ["claude-haiku-4-5", "claude-haiku-4-5@20251001"],
-  ["gemini-2.5-flash", "gemini-3-flash-preview"],
-  ["deepseek-v4-flash", "deepseek-v4-pro"],
-  ["kimi-k2.5", "kimi-k2.6", "qwen3.7-plus", "qwen3.6-plus", "qwen3-max"],
-  ["MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1"],
 ]
 
 export function pickDefaultVisibleModelIDs(catalogIDs: Iterable<string>): Set<string> {
@@ -314,10 +327,12 @@ async function load() {
 }
 
 export async function KTAIProviderPlugin(): Promise<Hooks> {
-  const baseUrl = identityBaseUrl()
+  const injectedIdentity = externalIdentity()
+  const embeddedWithIdentity = isEmbeddedMode() && injectedIdentity
 
   return {
     config: async (config) => {
+      if (embeddedWithIdentity) void validateExternalIdentity(embeddedWithIdentity).catch(() => undefined)
       const provider = await load().catch(() => createKTAIProviderConfig(fallback))
       const current = config.provider?.ktai
       config.provider = {
@@ -332,8 +347,9 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
     },
     auth: {
       provider: "ktai",
-      // Identity Bearer is NOT a NewAPI API key. While NewAPI ensure/exchange is
-      // pending, keep using KTAI_API_KEY / pasted API key for ktapi.cc calls.
+      // Identity Bearer is NOT a NewAPI API key. Until Identity→NewAPI key
+      // exchange ships, only offer pasted API keys (Telegram/password would
+      // "succeed" login but leave chat on Invalid token / dummy key).
       async loader(getAuth) {
         const auth = await getAuth()
         if (!auth) return {}
@@ -342,101 +358,7 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
         }
         return {}
       },
-      methods: [
-        {
-          type: "oauth",
-          label: "KT Identity (Telegram)",
-          async authorize() {
-            const challenge = await startTelegramLogin({ baseUrl })
-            return {
-              url: challenge.telegram.qrUrl,
-              instructions: `Open Telegram @${challenge.telegram.botUsername} and confirm login code ${challenge.displayCode}.`,
-              method: "auto" as const,
-              async callback() {
-                try {
-                  const session = await pollTelegramLogin({
-                    challengeId: challenge.challengeId,
-                    baseUrl,
-                  })
-                  return {
-                    type: "success" as const,
-                    refresh: KT_IDENTITY_REFRESH_MARKER,
-                    access: session.token,
-                    expires: sessionExpiresAt(session),
-                    accountId: session.account.id,
-                  }
-                } catch {
-                  return { type: "failed" as const }
-                }
-              },
-            }
-          },
-        },
-        {
-          type: "oauth",
-          label: "KT Identity (password)",
-          prompts: [
-            {
-              type: "text" as const,
-              key: "loginName",
-              message: "KT login name",
-              placeholder: "account / email / username",
-            },
-            {
-              type: "text" as const,
-              key: "password",
-              message: "KT password",
-              placeholder: "password",
-            },
-          ],
-          async authorize(inputs) {
-            const loginName = inputs?.loginName?.trim() ?? ""
-            const password = inputs?.password ?? ""
-            if (!loginName || !password) {
-              return {
-                url: `${baseUrl}/web`,
-                instructions: "Login name and password are required.",
-                method: "auto" as const,
-                async callback() {
-                  return { type: "failed" as const }
-                },
-              }
-            }
-
-            try {
-              const session = await passwordLogin({ loginName, password, baseUrl })
-              return {
-                url: `${baseUrl}/home`,
-                instructions: identityLoginInstructions(session),
-                method: "auto" as const,
-                async callback() {
-                  return {
-                    type: "success" as const,
-                    refresh: KT_IDENTITY_REFRESH_MARKER,
-                    access: session.token,
-                    expires: sessionExpiresAt(session),
-                    accountId: session.account.id,
-                  }
-                },
-              }
-            } catch (error) {
-              const message = error instanceof Error ? error.message : "KT Identity password login failed"
-              return {
-                url: `${baseUrl}/web`,
-                instructions: message,
-                method: "auto" as const,
-                async callback() {
-                  return { type: "failed" as const }
-                },
-              }
-            }
-          },
-        },
-        {
-          type: "api",
-          label: "KTAI API key",
-        },
-      ],
+      methods: [{ type: "api" as const, label: "KTAI API key" }],
     },
   }
 }
