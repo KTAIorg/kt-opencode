@@ -117,9 +117,10 @@ OpenCode 内置两种 Agent，可用 `Tab` 键快速切换：
 
 ### KT 团队 Wiki
 
-客户默认链路（免费 Zen → KT 充值 → 付费 KTAI）见：
+客户默认链路（免登录 Zen → 软限额 100 半停 → KT 充值 → 付费 KTAI）见：
 
 - [客户路径](./docs/wiki/customer-journey.md)
+- [软限额与客户路径测试](./docs/wiki/soft-quota-acceptance.md)
 - [Wiki 目录](./docs/wiki/README.md)
 
 ### 参与贡献

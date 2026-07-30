@@ -80,17 +80,32 @@ NewAPI / ktapi.cc    AI 执行与计量（需要 NewAPI credential）
 - **价格 / 成本估算**：`GET https://ktapi.cc/api/pricing`（给目录项挂 cost）。
 - 尚无 NewAPI key 时：暂时用 public pricing 里 `enable_groups` 含 `ktai` 的条目做发现列表；有 key 后切到 `/v1/models`。
 
-## 6. 免费模型额度用完
+## 6. 免费体验：软限额（主）+ Zen 耗尽（兜底）
 
 仍保留上游 OpenCode Zen 免费模型（ktapi 侧基本没有免费模型）。  
+产品口径见：[客户路径 Wiki](../wiki/customer-journey.md)。
+
+### 6.1 本地软限额（主转化，已拍板）
+
+- **不**首屏强制登录。
+- 免登录 Zen 对话累计 **100** 次后 **半停**：
+  - Zen 白嫖通道不可再发送；
+  - 引导去 `https://www.ktapi.cc/wallet`（或等价 KT 入口）；
+  - 已配置 KTAI API key / 个人 token 时，付费 KTAI 模型仍可发送。
+- 实现落点（待开发）：本地计数 + 发送前拦截 + 与现有 usageExceeded / wallet CTA 复用文案。
+
+### 6.2 Zen 上游额度用尽（兜底）
+
 当 Zen 返回 `FreeUsageLimitError` 时：
 
 - **不再**弹出 OpenCode Go 订阅 / 连接 `opencode-go`。
 - 改为 KT 充值引导，CTA：`https://www.ktapi.cc/wallet`。
+- 与软限额共用引导口径；**不**把「Zen 自然耗尽」当作唯一转化扳机。
 
 ## 7. 客户默认链路（不是 KT Secret 共享密钥）
 
-> 团队可读版（推荐转发给小伙伴）：[客户路径 Wiki](../wiki/customer-journey.md)
+> 团队可读版（推荐转发给小伙伴）：[客户路径 Wiki](../wiki/customer-journey.md)  
+> 测试清单：[软限额与客户路径测试](../wiki/soft-quota-acceptance.md)
 
 客户安装包 **不会** 内置 `KT_NEWAPI__PROD__KT_OPENCODE__API_KEY` 这类运营共享密钥。  
 该 Secret 仅供内部调试 / CI。
@@ -101,8 +116,12 @@ NewAPI / ktapi.cc    AI 执行与计量（需要 NewAPI credential）
 1) 打开 KT OpenCode
    └─ 先用 OpenCode Zen 免费模型（无需 KT 账号 / 无需 NewAPI key）
 
-2) 免费额度用尽
-   └─ 引导去 https://www.ktapi.cc/wallet 充值（KT 弹窗，不是 Go）
+2) 本地软限额达到 100 次（主转化）
+   └─ 半停 Zen 发送，引导去 https://www.ktapi.cc/wallet
+   └─ 已有 KTAI key 则付费模型可继续
+
+2b) Zen 返回额度用尽（兜底）
+   └─ 同一套 KT 充值引导（不是 Go）
 
 3) 注册 / 登录 KT Identity
    └─ Telegram 或密码登录（写入 auth.json，refresh=kt-identity）
@@ -120,7 +139,8 @@ KTAI 模型选择器默认只点亮精选编程模型（约 8–10 个）；其�
 
 ## 8. 下一步
 
-1. NewAPI：按 `kt_account_id` Ensure / Token Exchange（已交接）——这是客户免粘贴 key 的关键路径。
-2. OpenCode：Ensure 就绪后，Identity 登录成功即自动写入 per-account NewAPI token，去掉对共享 `KTAI_API_KEY` 的依赖。
-3. 可选：账户页展示当前 `kt_account_id` / accountNo；`authz/can` 产品权限。
-4. V2 升级与独立桌面打包策略另开里程碑，不阻塞本身份闭环。
+1. OpenCode：实现软限额 100 + 半停（计数、拦截、与 wallet CTA 复用）。
+2. NewAPI：按 `kt_account_id` Ensure / Token Exchange（已交接）——这是客户免粘贴 key 的关键路径。
+3. OpenCode：Ensure 就绪后，Identity 登录成功即自动写入 per-account NewAPI token，去掉对共享 `KTAI_API_KEY` 的依赖。
+4. 可选：账户页展示当前 `kt_account_id` / accountNo；`authz/can` 产品权限。
+5. V2 升级与独立桌面打包策略另开里程碑，不阻塞本身份闭环。

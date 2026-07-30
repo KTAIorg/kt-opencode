@@ -5,17 +5,33 @@
 
 ## 一句话
 
-先白嫖 OpenCode Zen 免费模型 → 额度用完去 KT 充值 → 再用付费 KTAI 模型。
+免登录先用 Zen → **本地软限额 100 次到点半停** → 去 KT / ktapi 继续 → 付费 KTAI。  
+Zen 自己额度耗尽时，走同一套充值引导（兜底）。
+
+## 已拍板（2026-07-30）
+
+| 项 | 决定 |
+| --- | --- |
+| 首屏强制登录 | **不做** |
+| 主转化扳机 | **本地软限额**：免费 Zen 对话 **100 次** |
+| 到点行为 | **半停**：停 Zen 白嫖发送；已配置 KTAI key 的付费模型仍可发 |
+| Zen 上游耗尽 | **兜底**：`FreeUsageLimitError` → 同一套 wallet CTA |
+| CTA | `https://www.ktapi.cc/wallet`（不是 OpenCode Go） |
 
 ## 流程图
 
 ```text
 打开软件
-  → 先用 OpenCode Zen 免费模型（不用 KT 账号、不用 NewAPI key）
+  → 免登录，先用 OpenCode Zen 免费模型
+  → 本地计数：免费 Zen 成功对话次数
 
-免费额度用完
-  → 弹 KT 充值引导（https://www.ktapi.cc/wallet）
-  → 去注册 / 登录 KT、充值
+次数达到 100（主转化）
+  → 半停：Zen 不能再发
+  → 弹 KT 引导（去 wallet 充值 / 登录拿付费能力）
+  → 已有 KTAI API key → 付费模型仍可发
+
+Zen 自己返回额度用尽（兜底，可能早于或晚于 100）
+  → 同一套 KT 充值引导（https://www.ktapi.cc/wallet）
 
 然后用付费 KTAI 模型
   → 目标态：KT Identity 登录后，NewAPI 按 kt_account_id 自动 Ensure / 发个人 token
@@ -29,15 +45,26 @@
 - 默认可用 **OpenCode Zen** 免费模型。
 - **不需要** KT 账号，也 **不需要** NewAPI / KTAI API key。
 - ktapi 侧基本没有免费模型；免费体验靠 Zen。
+- **不在首屏强制登录**（避免安装后即流失）。
 
-### 2. 免费额度用完：引导充值
+### 2. 软限额 100 次：半停（主转化）
+
+- **计数范围**：免登录使用 Zen 免费模型、成功完成的对话轮次（产品实现时以「用户成功发出并得到模型响应的一轮」为准；具体埋点以实现 PR 为准）。
+- **阈值**：`100`。
+- **到点行为（半停）**：
+  - Zen / 免费白嫖通道：**不能再发送**。
+  - 弹窗引导去 KT：充值 / 登录 / 配置个人 key。
+  - 若用户已配置 **KTAI API key**（或后续 Ensure 自动写入的个人 token）：**付费 KTAI 模型仍可发送**。
+- **不是**：到点后整 App 废掉；也不是仅 toast 提醒却继续无限白嫖。
+
+### 3. Zen 上游额度用尽：兜底
 
 - 触发条件：Zen 返回免费额度用尽（`FreeUsageLimitError`）。
 - 产品行为：弹出 **KT 充值引导**（不是 OpenCode Go 订阅）。
 - CTA：[`https://www.ktapi.cc/wallet`](https://www.ktapi.cc/wallet)
-- 用户动作：注册 / 登录 KT，完成充值。
+- 与软限额共用同一套引导口径；不单独依赖「Zen 自然耗尽」做主转化（额度不透明且可能日刷）。
 
-### 3. 付费 KTAI 模型
+### 4. 付费 KTAI 模型
 
 身份与账单归属同一个 `kt_account_id`。注意：
 
@@ -71,9 +98,10 @@
 ## 模型选择器（补充）
 
 - KTAI 默认只点亮一批精选编程模型（约 8–10 个），降低首次选择成本。
-- 其余模型仍可在 **Manage models** 里手动打开。
+- 其余模型仍可在 **Manage models** 里可手动打开。
 
 ## 相关文档
 
+- 测试验收清单：[软限额与客户路径测试](./soft-quota-acceptance.md)
 - 技术细节：[KT OpenCode × KT Identity](../development/opencode-independent-identity.md)
 - Wiki 目录：[README](./README.md)
