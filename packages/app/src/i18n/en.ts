@@ -202,16 +202,17 @@ export const dict = {
 
   "dialog.ktAccess.auth.title": "Set up your KTAI API key",
   "dialog.ktAccess.auth.lead":
-    "Your key is missing or invalid. Get a key on ktapi.cc, then paste it here in one step.",
+    "Your key is missing or invalid. Get a key on ktapi.cc, then paste it in the field below.",
   "dialog.ktAccess.billing.title": "Top up, then paste your key here",
   "dialog.ktAccess.billing.lead":
-    "Free quota or balance is used up. Top up on KT AI, create an API key, then paste it here.",
+    "Free quota or balance is used up. Top up on KT AI, create an API key, then paste it below.",
   "dialog.ktAccess.step1": "On ktapi.cc: register / sign in, top up if needed, and create an API key.",
-  "dialog.ktAccess.step2": "Click “Paste API key here” — Desktop opens the paste field directly (no method picker).",
+  "dialog.ktAccess.step2": "Paste the API key into the field below and save.",
   "dialog.ktAccess.step3": "Keep a KTAI paid model (e.g. GPT 5.4 Mini) and send again.",
   "dialog.ktAccess.hint":
-    "Telegram / password login cannot configure Desktop chat yet — only a pasted API key works.",
+    "Opening the website alone is not enough — Desktop only works after the key is saved here.",
   "dialog.ktAccess.pasteKey": "Paste API key here",
+  "dialog.ktAccess.saveKey": "Save API key",
   "dialog.ktAccess.openWallet": "Open ktapi.cc wallet",
   "dialog.ktAccess.dismiss": "Don’t show again",
   "ui.sessionTurn.error.configureKey": "Configure API key",
