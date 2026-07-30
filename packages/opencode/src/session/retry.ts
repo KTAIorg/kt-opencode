@@ -132,7 +132,7 @@ export function guidance(error: Err, provider: string): Retryable | undefined {
 }
 
 /** Rewrite NamedError payloads so the timeline shows friendly copy, not raw upstream text. */
-export function withGuidanceMessage(error: Err, message: string): Err {
+export function withGuidanceMessage(error: Err, message: string): SessionV1.APIError {
   if (SessionV1.APIError.isInstance(error)) {
     return new SessionV1.APIError({
       message,
@@ -143,7 +143,10 @@ export function withGuidanceMessage(error: Err, message: string): Err {
       metadata: error.data.metadata,
     }).toObject()
   }
-  return { name: error.name || "UnknownError", data: { ...(isRecord(error.data) ? error.data : {}), message } }
+  return new SessionV1.APIError({
+    message,
+    isRetryable: false,
+  }).toObject()
 }
 
 export const RETRY_INITIAL_DELAY = 2000
