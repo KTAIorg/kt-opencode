@@ -24,6 +24,9 @@ const DEFAULT_OUTPUT = 32_768
  * Order = product priority (cost-friendly first). Each group contributes at most
  * ONE id: the first alias that exists in the current `/v1/models` catalog.
  * OpenCode treats missing/invalid `release_date` as visible by default.
+ *
+ * UI list order for these families lives in
+ * `packages/app/src/utils/ktai-model-order.ts` — keep the two tables aligned.
  */
 export const KTAI_DEFAULT_VISIBLE_PICKS: readonly (readonly string[])[] = [
   // 1) Kimi — prefer K3 when NewAPI lists it; else newest K2.x

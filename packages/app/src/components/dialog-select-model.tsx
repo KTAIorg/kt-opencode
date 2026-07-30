@@ -31,12 +31,20 @@ import { decode64 } from "@/utils/base64"
 import { handleDocumentSearchKeydown } from "@/utils/search-keydown"
 import { createEventListener } from "@solid-primitives/event-listener"
 import { matchesModelSearch } from "./dialog-select-model-search"
+import { compareKtaiModelOrder, isKtaiProviderID } from "@/utils/ktai-model-order"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
 
 type ModelState = ReturnType<typeof useLocal>["model"]
 type ModelItem = ReturnType<ModelState["list"]>[number]
+
+const compareModelItems = (a: ModelItem, b: ModelItem) => {
+  if (isKtaiProviderID(a.provider.id) && isKtaiProviderID(b.provider.id)) {
+    return compareKtaiModelOrder(a, b)
+  }
+  return a.name.localeCompare(b.name)
+}
 
 const modelKey = (model: ModelItem) => `${model.provider.id}:${model.id}`
 const manageKey = "action:manage"
@@ -79,7 +87,7 @@ export const ModelList: Component<{
       items={models}
       current={model.current()}
       filterKeys={["provider.name", "name", "id"]}
-      sortBy={(a, b) => a.name.localeCompare(b.name)}
+      sortBy={compareModelItems}
       groupBy={(x) => x.provider.name}
       sortGroupsBy={(a, b) => {
         const aProvider = a.items[0].provider.id
@@ -262,14 +270,17 @@ export function ModelSelectorPopoverV2(props: {
       ? allModels().filter((item) => matchesModelSearch(search, [item.name, item.id, item.provider.name]))
       : allModels()
 
-    return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+    return [...filtered].sort(compareModelItems)
   })
   const groups = createMemo(() => {
     const byProvider = new Map<string, ModelItem[]>()
     for (const item of models()) {
       byProvider.set(item.provider.id, [...(byProvider.get(item.provider.id) ?? []), item])
     }
-    return Array.from(byProvider, ([category, items]) => ({ category, items })).sort(sortModelGroups)
+    return Array.from(byProvider, ([category, items]) => ({
+      category,
+      items: [...items].sort(compareModelItems),
+    })).sort(sortModelGroups)
   })
   const keys = () => [...models().map(modelKey), manageKey]
   const current = () => {
@@ -345,7 +356,7 @@ export function ModelSelectorPopoverV2(props: {
   const setSearch = (value: string) => {
     const search = value.trim()
     const first = [...allModels()]
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort(compareModelItems)
       .find((item) => matchesModelSearch(search, [item.name, item.id, item.provider.name]))
     setStore({ search: value, active: first ? modelKey(first) : manageKey })
   }
