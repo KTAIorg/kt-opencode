@@ -1,7 +1,8 @@
 import { useSDK } from "@/context/sdk"
+import { useSync } from "@/context/sync"
 import { Persist, persisted } from "@/utils/persist"
 import { SessionStatus } from "@opencode-ai/sdk/v2"
-import { onCleanup } from "solid-js"
+import { createEffect, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useSessionLayout } from "./session-layout"
 import { useDialog } from "@opencode-ai/ui/context"
@@ -35,6 +36,7 @@ function upsellKeys(status: SessionStatus) {
 
 export function useUsageExceededDialogs() {
   const sdk = useSDK()
+  const sync = useSync()
   const dialog = useDialog()
   const { params } = useSessionLayout()
   const { t, locale } = useI18n()
@@ -50,49 +52,66 @@ export function useUsageExceededDialogs() {
     }),
   )
 
+  const maybeShow = (sessionID: string | undefined, status: SessionStatus | undefined) => {
+    if (!sessionID || !status) return
+    if (status.type !== "retry") return
+    const { action } = status
+    if (!action) return
+    if (dialog.active) return
+
+    const keys = upsellKeys(status)
+    if (!keys) return
+
+    const seen = upsellState[keys.lastSeenAt]
+    if (seen && Date.now() - seen < UPSELL_WINDOW) return
+    if (upsellState[keys.dontShow]) return
+
+    if (action.reason === "free_tier_limit") {
+      dialog.show(() => (
+        <DialogUsageExceeded
+          title={isEnglish() ? action.title : t("dialog.usageExceeded.freeTier.title")}
+          description={isEnglish() ? action.message : t("dialog.usageExceeded.freeTier.description")}
+          actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.freeTier.actionLabel")}
+          link={action.link}
+          onClose={(dontShowAgain) => {
+            setUpsellState(keys.lastSeenAt, Date.now())
+            if (dontShowAgain) setUpsellState(keys.dontShow, Date.now())
+            // No OpenCode Go connect dialog — CTA opens KT top-up only.
+          }}
+        />
+      ))
+      return
+    }
+
+    if (action.reason === "account_rate_limit") {
+      dialog.show(() => (
+        <DialogUsageExceeded
+          title={isEnglish() ? action.title : t("dialog.usageExceeded.accountRateLimit.title")}
+          description={isEnglish() ? action.message : t("dialog.usageExceeded.accountRateLimit.description")}
+          actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.accountRateLimit.actionLabel")}
+          link={action.link}
+          onClose={(dontShowAgain) => {
+            setUpsellState(keys.lastSeenAt, Date.now())
+            if (dontShowAgain) setUpsellState(keys.dontShow, Date.now())
+          }}
+        />
+      ))
+    }
+  }
+
+  // Live events (normal path)
   onCleanup(
     sdk().event.on("session.status", (evt) => {
       if (evt.properties.sessionID !== params.id) return
-      if (evt.properties.status.type !== "retry") return
-      const { action } = evt.properties.status
-      if (!action) return
-      if (dialog.active) return
-
-      const keys = upsellKeys(evt.properties.status)
-      if (!keys) return
-
-      const seen = upsellState[keys.lastSeenAt]
-      if (seen && Date.now() - seen < UPSELL_WINDOW) return
-      if (upsellState[keys.dontShow]) return
-
-      if (action.reason === "free_tier_limit") {
-        dialog.show(() => (
-          <DialogUsageExceeded
-            title={isEnglish() ? action.title : t("dialog.usageExceeded.freeTier.title")}
-            description={isEnglish() ? action.message : t("dialog.usageExceeded.freeTier.description")}
-            actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.freeTier.actionLabel")}
-            link={action.link}
-            onClose={(dontShowAgain) => {
-              setUpsellState(keys.lastSeenAt, Date.now())
-              if (dontShowAgain) setUpsellState(keys.dontShow, Date.now())
-              // No OpenCode Go connect dialog — CTA opens KT top-up only.
-            }}
-          />
-        ))
-      } else if (action.reason === "account_rate_limit") {
-        dialog.show(() => (
-          <DialogUsageExceeded
-            title={isEnglish() ? action.title : t("dialog.usageExceeded.accountRateLimit.title")}
-            description={isEnglish() ? action.message : t("dialog.usageExceeded.accountRateLimit.description")}
-            actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.accountRateLimit.actionLabel")}
-            link={action.link}
-            onClose={(dontShowAgain) => {
-              setUpsellState(keys.lastSeenAt, Date.now())
-              if (dontShowAgain) setUpsellState(keys.dontShow, Date.now())
-            }}
-          />
-        ))
-      }
+      maybeShow(evt.properties.sessionID, evt.properties.status)
     }),
   )
+
+  // Also react to store status: soft-quota can set retry before/without a UI turn,
+  // and createEffect catches navigations onto an already-blocked session.
+  createEffect(() => {
+    const id = params.id
+    if (!id) return
+    maybeShow(id, sync().data.session_status[id])
+  })
 }
