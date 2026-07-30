@@ -40,31 +40,37 @@ test("builds KTAI models from /v1/models catalog enriched by pricing", () => {
 
 test("picks a curated default-visible set from the catalog", () => {
   const picked = pickDefaultVisibleModelIDs([
+    "kimi-k2.5",
+    "kimi-k2.6",
+    "MiniMax-M2.7",
+    "MiniMax-M3",
+    "deepseek-v4-flash",
+    "gemini-2.5-flash",
+    "gemini-3.5-flash",
     "gpt-5.6",
     "gpt-5.4-mini",
     "anthropic/claude-sonnet-4.6",
+    "claude-sonnet-5",
     "anthropic/claude-opus-4.8",
     "claude-haiku-4-5",
-    "gemini-2.5-flash",
-    "deepseek-v4-flash",
-    "kimi-k2.5",
-    "MiniMax-M2.7",
     "gpt-4o-mini",
     "amazon.titan-embed-text-v2:0",
   ])
+  // One per family, cost-friendly order priority; newest alias wins inside group.
   expect([...picked].sort()).toEqual(
     [
-      "gpt-5.6",
-      "gpt-5.4-mini",
-      "anthropic/claude-sonnet-4.6",
-      "anthropic/claude-opus-4.8",
-      "claude-haiku-4-5",
-      "gemini-2.5-flash",
+      "kimi-k2.6",
+      "MiniMax-M3",
       "deepseek-v4-flash",
-      "kimi-k2.5",
-      "MiniMax-M2.7",
+      "gemini-3.5-flash",
+      "gpt-5.6",
+      "claude-sonnet-5",
     ].sort(),
   )
+  // High-end Claude variants and GPT mini stay out of the default set.
+  expect(picked.has("anthropic/claude-opus-4.8")).toBe(false)
+  expect(picked.has("claude-haiku-4-5")).toBe(false)
+  expect(picked.has("gpt-5.4-mini")).toBe(false)
 
   const provider = createKTAIProviderConfig(
     [...picked, "amazon.titan-embed-text-v2:0"].map((id) => ({ id, input: 1, output: 1 })),

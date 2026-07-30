@@ -21,33 +21,46 @@ const DEFAULT_OUTPUT = 32_768
 
 /**
  * Curated KTAI defaults shown in the model picker for new customers.
- * Each group picks the first id that exists in the current `/v1/models` catalog.
+ * Order = product priority (cost-friendly first). Each group contributes at most
+ * ONE id: the first alias that exists in the current `/v1/models` catalog.
  * OpenCode treats missing/invalid `release_date` as visible by default.
  */
 export const KTAI_DEFAULT_VISIBLE_PICKS: readonly (readonly string[])[] = [
-  ["gpt-5.6", "openai/gpt-5.6", "gpt-5.5", "openai/gpt-5.5"],
-  ["gpt-5.4-mini", "openai/gpt-5.4-mini", "gpt-5.4", "openai/gpt-5.4"],
+  // 1) Kimi — prefer K3 when NewAPI lists it; else newest K2.x
   [
+    "kimi-k3",
+    "moonshotai/kimi-k3",
+    "kimi-k2.7-code",
+    "moonshotai/kimi-k2.7-code",
+    "kimi-k2.6",
+    "moonshotai/kimi-k2.6",
+    "kimi-k2.5",
+    "moonshotai/kimi-k2.5",
+  ],
+  // 2) MiniMax
+  ["MiniMax-M3", "minimax/minimax-m3", "MiniMax-M2.7", "minimax/minimax-m2.7", "MiniMax-M2.5", "MiniMax-M2.1"],
+  // 3) DeepSeek
+  ["deepseek-v4-flash", "deepseek/deepseek-v4-flash", "deepseek-v4-pro", "deepseek/deepseek-v4-pro"],
+  // 4) Gemini — one latest flash/pro-preview line
+  [
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-pro-preview",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash",
+  ],
+  // 5) GPT — one latest flagship only (not mini + flagship together)
+  ["gpt-5.6", "openai/gpt-5.6", "gpt-5.5", "openai/gpt-5.5", "gpt-5.4", "openai/gpt-5.4", "gpt-5.4-mini"],
+  // 6) Claude — one latest Sonnet (skip default Opus/Haiku for typical customers)
+  [
+    "claude-sonnet-5",
+    "anthropic/claude-sonnet-5",
     "claude-sonnet-4.6",
     "anthropic/claude-sonnet-4.6",
     "claude-sonnet-4-6",
     "claude-sonnet-4.5",
     "anthropic/claude-sonnet-4.5",
-    "claude-sonnet-4-5",
   ],
-  [
-    "claude-opus-4.8",
-    "anthropic/claude-opus-4.8",
-    "claude-opus-4-8",
-    "claude-opus-4.7",
-    "anthropic/claude-opus-4.7",
-    "claude-opus-4-7",
-  ],
-  ["claude-haiku-4-5", "claude-haiku-4-5@20251001"],
-  ["gemini-2.5-flash", "gemini-3-flash-preview"],
-  ["deepseek-v4-flash", "deepseek-v4-pro"],
-  ["kimi-k2.5", "kimi-k2.6", "qwen3.7-plus", "qwen3.6-plus", "qwen3-max"],
-  ["MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1"],
 ]
 
 export function pickDefaultVisibleModelIDs(catalogIDs: Iterable<string>): Set<string> {
