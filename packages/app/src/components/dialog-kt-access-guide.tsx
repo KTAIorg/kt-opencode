@@ -29,10 +29,15 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
   const local = useLocal()
   const providers = useProviders()
   const kind = () => props.kind ?? "auth"
-  const ktaiConnected = () =>
-    providers.connected().some((p) => p.id === "ktai" || p.id === "ktapi" || p.id.startsWith("ktai"))
+  /** Real credential — not the config-only discovery catalog (always present without a key). */
+  const ktaiHasCredential = () =>
+    providers.connected().some((p) => {
+      if (!(p.id === "ktai" || p.id === "ktapi" || p.id.startsWith("ktai"))) return false
+      if (p.source === "api" || p.source === "env") return true
+      return Boolean(p.key)
+    })
   /** Soft-quota with an existing key → pick a paid KTAI model in-dialog (not text-only steps). */
-  const switchMode = () => kind() === "billing" && ktaiConnected()
+  const switchMode = () => kind() === "billing" && ktaiHasCredential()
   const ktaiModelCount = createMemo(
     () =>
       local.model
