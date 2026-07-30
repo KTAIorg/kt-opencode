@@ -222,6 +222,21 @@ export const dict = {
   "provider.disconnect.toast.disconnected.title": "{{provider}} 已断开连接",
   "provider.disconnect.toast.disconnected.description": "{{provider}} 模型已不再可用。",
 
+  "dialog.ktAccess.auth.title": "配置你的 KTAI API 密钥",
+  "dialog.ktAccess.auth.lead": "当前密钥无效或未配置。按下面步骤操作——不要只打开网站却不把密钥粘贴回 Desktop。",
+  "dialog.ktAccess.billing.title": "充值后，请把密钥粘贴回 Desktop",
+  "dialog.ktAccess.billing.lead": "免费额度或余额不足。在 KT AI 充值并拿到 API 密钥后，回到 Desktop 粘贴配置。",
+  "dialog.ktAccess.step1": "在 ktapi.cc：注册/登录，按需充值，并创建 API 密钥。",
+  "dialog.ktAccess.step2": "回到 Desktop：点「在本机粘贴 API 密钥」，选择 KTAI → KTAI API key，粘贴密钥。",
+  "dialog.ktAccess.step3": "模型保持 KTAI 付费模型（如 GPT 5.4 Mini），再发送一条消息。",
+  "dialog.ktAccess.hint": "只打开网站不够——必须把密钥粘贴进 Desktop 才能继续对话。",
+  "dialog.ktAccess.pasteKey": "在本机粘贴 API 密钥",
+  "dialog.ktAccess.openWallet": "打开 ktapi.cc 钱包",
+  "dialog.ktAccess.dismiss": "不再显示",
+  "ui.sessionTurn.error.configureKey": "配置 API 密钥",
+  "ui.sessionTurn.error.authFriendly":
+    "API 密钥无效或已过期。请在 Desktop 配置 KTAI 密钥（设置 → 提供商），或打开引导。",
+
   "model.tag.free": "免费",
   "model.tag.latest": "最新",
   "model.provider.anthropic": "Anthropic",

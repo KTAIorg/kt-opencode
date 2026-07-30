@@ -1,10 +1,9 @@
 import { Button } from "@opencode-ai/ui/button"
 import { Card } from "@opencode-ai/ui/card"
-import { useI18n } from "@opencode-ai/ui/context"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Show } from "solid-js"
-import { usePlatform } from "@/context/platform"
-
-const KT_WALLET_URL = "https://www.ktapi.cc/wallet"
+import { useLanguage } from "@/context/language"
+import { openKtAccessGuide } from "@/components/dialog-kt-access-guide"
 
 export function classifySessionErrorCta(text: string): "auth" | "billing" | undefined {
   const lower = text.toLowerCase()
@@ -13,7 +12,9 @@ export function classifySessionErrorCta(text: string): "auth" | "billing" | unde
     lower.includes("invalid token") ||
     lower.includes("sign in or top up") ||
     lower.includes("密钥无效") ||
-    lower.includes("金鑰無效")
+    lower.includes("金鑰無效") ||
+    lower.includes("configure a ktai") ||
+    lower.includes("配置 ktai")
   ) {
     return "auth"
   }
@@ -23,6 +24,7 @@ export function classifySessionErrorCta(text: string): "auth" | "billing" | unde
     lower.includes("ktapi.cc/wallet") ||
     lower.includes("余额不足") ||
     lower.includes("餘額不足") ||
+    lower.includes("top up on kt") ||
     lower.includes("免费") ||
     lower.includes("免費")
   ) {
@@ -32,23 +34,30 @@ export function classifySessionErrorCta(text: string): "auth" | "billing" | unde
 }
 
 export function SessionErrorCard(props: { text: string }) {
-  const platform = usePlatform()
-  const { t } = useI18n()
+  const dialog = useDialog()
+  const language = useLanguage()
   const kind = () => classifySessionErrorCta(props.text)
+  const displayText = () => {
+    const k = kind()
+    if (k === "auth" && /invalid token/i.test(props.text)) {
+      return language.t("ui.sessionTurn.error.authFriendly")
+    }
+    return props.text
+  }
 
   return (
     <Card variant="error" class="error-card">
       <div class="flex flex-col gap-3">
-        <div>{props.text}</div>
+        <div>{displayText()}</div>
         <Show when={kind()}>
           {(k) => (
             <div class="flex justify-end">
               <Button
                 variant="primary"
                 size="small"
-                onClick={() => platform.openLink(KT_WALLET_URL)}
+                onClick={() => openKtAccessGuide({ dialog, kind: k() })}
               >
-                {k() === "auth" ? t("ui.sessionTurn.error.openKt") : t("ui.sessionTurn.error.addCredits")}
+                {language.t("ui.sessionTurn.error.configureKey")}
               </Button>
             </div>
           )}

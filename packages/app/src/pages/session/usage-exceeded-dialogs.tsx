@@ -7,6 +7,7 @@ import { createStore } from "solid-js/store"
 import { useSessionLayout } from "./session-layout"
 import { useDialog } from "@opencode-ai/ui/context"
 import { DialogUsageExceeded } from "@/components/dialog-usage-exceeded"
+import { DialogKtAccessGuide } from "@/components/dialog-kt-access-guide"
 import { useI18n } from "@opencode-ai/ui/context"
 
 const KT_TOPUP_FREE_TIER_LAST_SEEN_AT = "kt_topup_last_seen_at"
@@ -101,32 +102,13 @@ export function useUsageExceededDialogs() {
     }
 
     if (keys.kind === "free_tier_limit") {
-      dialog.show(() => (
-        <DialogUsageExceeded
-          title={isEnglish() ? action.title : t("dialog.usageExceeded.freeTier.title")}
-          description={isEnglish() ? action.message : t("dialog.usageExceeded.freeTier.description")}
-          actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.freeTier.actionLabel")}
-          link={action.link}
-          onClose={onClose}
-        />
-      ))
+      // Guided flow: top up on web → paste key back into Desktop.
+      dialog.show(() => <DialogKtAccessGuide kind="billing" onClose={onClose} />)
       return
     }
 
     if (keys.kind === "auth_billing") {
-      // Prefer localized strings when present; fall back to server action copy.
-      const title = isEnglish() ? action.title : t("dialog.usageExceeded.authBilling.title")
-      const description = isEnglish() ? action.message : t("dialog.usageExceeded.authBilling.description")
-      const actionLabel = isEnglish() ? action.label : t("dialog.usageExceeded.authBilling.actionLabel")
-      dialog.show(() => (
-        <DialogUsageExceeded
-          title={title.startsWith("dialog.") ? action.title : title}
-          description={description.startsWith("dialog.") ? action.message : description}
-          actionLabel={actionLabel.startsWith("dialog.") ? action.label : actionLabel}
-          link={action.link}
-          onClose={onClose}
-        />
-      ))
+      dialog.show(() => <DialogKtAccessGuide kind="auth" onClose={onClose} />)
       return
     }
 

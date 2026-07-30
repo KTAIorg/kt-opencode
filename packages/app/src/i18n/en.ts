@@ -200,6 +200,23 @@ export const dict = {
   "provider.disconnect.toast.disconnected.title": "{{provider}} disconnected",
   "provider.disconnect.toast.disconnected.description": "{{provider}} models are no longer available.",
 
+  "dialog.ktAccess.auth.title": "Set up your KTAI API key",
+  "dialog.ktAccess.auth.lead":
+    "Your current key is invalid or missing. Follow the steps below — don’t just leave the app without pasting the key back.",
+  "dialog.ktAccess.billing.title": "Top up, then paste your key here",
+  "dialog.ktAccess.billing.lead":
+    "Free quota or balance is used up. After topping up on KT AI, come back and paste the API key into Desktop.",
+  "dialog.ktAccess.step1": "On ktapi.cc: register / sign in, top up if needed, and create an API key.",
+  "dialog.ktAccess.step2": "Back in Desktop: click “Paste API key here”, choose KTAI → KTAI API key, and paste it.",
+  "dialog.ktAccess.step3": "Keep the model on a KTAI paid model (e.g. GPT 5.4 Mini) and send again.",
+  "dialog.ktAccess.hint": "Opening the website alone is not enough — Desktop only works after the key is pasted here.",
+  "dialog.ktAccess.pasteKey": "Paste API key here",
+  "dialog.ktAccess.openWallet": "Open ktapi.cc wallet",
+  "dialog.ktAccess.dismiss": "Don’t show again",
+  "ui.sessionTurn.error.configureKey": "Configure API key",
+  "ui.sessionTurn.error.authFriendly":
+    "API key is invalid or expired. Configure a KTAI key in Desktop (Settings → Providers), or open the guide.",
+
   "model.tag.free": "Free",
   "model.tag.latest": "Latest",
   "model.provider.anthropic": "Anthropic",
