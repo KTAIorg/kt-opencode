@@ -323,6 +323,9 @@ jobs:
             echo "ALIBABA_CLOUD_SECURITY_TOKEN=${ALIYUN_SECURITY_TOKEN}"
           } >> "$GITHUB_ENV"
 
+      # Versioned objects stay immutable. Stable latest/* + latest.json are
+      # overwritten on every main publish so nav sites can hardcode three URLs.
+      # CopyObject is not in the OSS write policy, so latest is a second Put.
       - name: Publish installers to OSS
         env:
           RELEASE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
@@ -330,9 +333,10 @@ jobs:
           OSS_REGION: oss-us-west-1
           OSS_PUBLIC_BASE_URL: https://download.ktai.im
         run: |
-          npm install ali-oss
+          npm install --no-save ali-oss@6 @alicloud/pop-core@1.8.0
           node <<'NODE_SCRIPT'
           const OSS = require('ali-oss');
+          const crypto = require('crypto');
           const fs = require('fs');
           const path = require('path');
 
@@ -341,6 +345,13 @@ jobs:
           const region = process.env.OSS_REGION;
           const baseUrl = process.env.OSS_PUBLIC_BASE_URL;
           const prefix = 'kt-opencode-desktop';
+
+          // Nav-site contract: these keys are overwritten every release.
+          const latestAliases = [
+            { platform: 'windows-x64', ext: '.exe', alias: 'windows-x64.exe' },
+            { platform: 'macos-x64', ext: '.pkg', alias: 'macos-x64.pkg' },
+            { platform: 'macos-arm64', ext: '.pkg', alias: 'macos-arm64.pkg' },
+          ];
 
           const client = new OSS({
             region,
@@ -351,18 +362,36 @@ jobs:
             timeout: 3_600_000,
           });
 
-          async function uploadFile(localPath, objectKey) {
+          function sha256File(filePath) {
+            return new Promise((resolve, reject) => {
+              const hash = crypto.createHash('sha256');
+              const stream = fs.createReadStream(filePath);
+              stream.on('data', (chunk) => hash.update(chunk));
+              stream.on('error', reject);
+              stream.on('end', () => resolve(hash.digest('hex')));
+            });
+          }
+
+          function findOneByExt(dir, ext) {
+            if (!fs.existsSync(dir)) {
+              throw new Error(`Missing artifact directory: ${dir}`);
+            }
+            const files = fs.readdirSync(dir).filter((name) => !name.startsWith('.') && name.endsWith(ext));
+            if (files.length !== 1) {
+              throw new Error(`Expected exactly 1 *${ext} in ${dir}, found: ${files.join(', ') || '(none)'}`);
+            }
+            return files[0];
+          }
+
+          async function uploadFile(localPath, objectKey, extraHeaders = {}) {
             const stats = fs.statSync(localPath);
             const sizeMb = (stats.size / 1024 / 1024).toFixed(2);
             console.log(`Uploading ${path.basename(localPath)} (${sizeMb} MB) -> ${objectKey}`);
+            const headers = { 'x-oss-object-acl': 'public-read', ...extraHeaders };
             if (stats.size > 200 * 1024 * 1024) {
-              await client.multipartUpload(objectKey, localPath, {
-                headers: { 'x-oss-object-acl': 'public-read' },
-              });
+              await client.multipartUpload(objectKey, localPath, { headers });
             } else {
-              await client.put(objectKey, localPath, {
-                headers: { 'x-oss-object-acl': 'public-read' },
-              });
+              await client.put(objectKey, localPath, { headers });
             }
             const url = `${baseUrl}/${objectKey}`;
             console.log(`  Public URL: ${url}`);
@@ -370,6 +399,10 @@ jobs:
           }
 
           async function main() {
+            if (!version) {
+              throw new Error('RELEASE_VERSION is required');
+            }
+
             const uploads = [];
             const platforms = [
               { dir: 'release-assets/windows-x64', key: 'windows-x64' },
@@ -382,7 +415,7 @@ jobs:
                 console.log(`Skipping ${key}: directory not found`);
                 continue;
               }
-              const files = fs.readdirSync(dir).filter(f => !f.startsWith('.'));
+              const files = fs.readdirSync(dir).filter((name) => !name.startsWith('.'));
               for (const file of files) {
                 const localPath = path.join(dir, file);
                 const objectKey = `${prefix}/${version}/${key}/${file}`;
@@ -395,18 +428,141 @@ jobs:
               process.exit(1);
             }
 
-            // Write manifest for release notes
-            const manifest = { version, publicBaseUrl: baseUrl, uploads };
-            fs.writeFileSync('oss-publish-manifest.json', JSON.stringify(manifest, null, 2));
+            const downloads = {};
+            const latestUploads = [];
+            for (const { platform, ext, alias } of latestAliases) {
+              const dir = `release-assets/${platform}`;
+              const file = findOneByExt(dir, ext);
+              const localPath = path.join(dir, file);
+              const digest = await sha256File(localPath);
+              const latestKey = `${prefix}/latest/${alias}`;
+              const versionedKey = `${prefix}/${version}/${platform}/${file}`;
+              const uploaded = await uploadFile(localPath, latestKey, {
+                'Cache-Control': 'public, max-age=300',
+                'Content-Disposition': `attachment; filename="${file}"`,
+              });
+              latestUploads.push({ ...uploaded, platform, filename: file, sha256: digest });
+              downloads[platform] = {
+                url: `${baseUrl}/${latestKey}`,
+                versionedUrl: `${baseUrl}/${versionedKey}`,
+                filename: file,
+                sha256: digest,
+                size: uploaded.size,
+              };
+            }
 
-            console.log('\n✅ Done. Public download URLs:');
+            const latestJsonKey = `${prefix}/latest.json`;
+            const latestJson = {
+              name: 'kt-opencode-desktop',
+              version,
+              publishedAt: new Date().toISOString(),
+              publicBaseUrl: baseUrl,
+              downloads,
+            };
+            fs.writeFileSync('latest.json', `${JSON.stringify(latestJson, null, 2)}\n`);
+            const latestJsonUpload = await uploadFile('latest.json', latestJsonKey, {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'public, max-age=60, must-revalidate',
+            });
+
+            const refreshUrls = [
+              ...latestUploads.map((item) => item.url),
+              latestJsonUpload.url,
+            ];
+
+            const manifest = {
+              version,
+              publicBaseUrl: baseUrl,
+              uploads,
+              latest: {
+                json: latestJsonUpload.url,
+                aliases: latestUploads,
+                downloads,
+                refreshUrls,
+              },
+            };
+            fs.writeFileSync('oss-publish-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+
+            console.log('\n✅ Done. Versioned URLs:');
             for (const upload of uploads) {
               console.log(`  ${upload.url}`);
+            }
+            console.log('\nStable latest URLs:');
+            for (const url of refreshUrls) {
+              console.log(`  ${url}`);
             }
           }
 
           main().catch((error) => {
             console.error('OSS publish failed:', error?.message || error);
+            process.exit(1);
+          });
+          NODE_SCRIPT
+
+      # exe/pkg CDN TTL is 30 days, so latest aliases must be purged after overwrite.
+      - name: Refresh CDN cache for latest aliases
+        run: |
+          node <<'NODE_SCRIPT'
+          const Core = require('@alicloud/pop-core');
+          const fs = require('fs');
+
+          const manifest = JSON.parse(fs.readFileSync('oss-publish-manifest.json', 'utf8'));
+          const urls = (manifest.latest && manifest.latest.refreshUrls) || [];
+          if (urls.length === 0) {
+            console.error('No latest refresh URLs in oss-publish-manifest.json');
+            process.exit(1);
+          }
+
+          const cdn = new Core({
+            accessKeyId: process.env.ALIBABA_CLOUD_ACCESS_KEY_ID,
+            accessKeySecret: process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET,
+            securityToken: process.env.ALIBABA_CLOUD_SECURITY_TOKEN || undefined,
+            endpoint: 'https://cdn.aliyuncs.com',
+            apiVersion: '2018-05-10',
+          });
+
+          async function main() {
+            console.log('Refreshing CDN cache:\n' + urls.map((url) => `  ${url}`).join('\n'));
+            const result = await cdn.request('RefreshObjectCaches', {
+              ObjectPath: urls.join('\n'),
+              ObjectType: 'File',
+            }, { method: 'POST', timeout: 30000 });
+            console.log('CDN refresh accepted:', JSON.stringify(result));
+
+            const taskId = result.RefreshTaskId || result.TaskId;
+            if (!taskId) {
+              return;
+            }
+
+            const deadline = Date.now() + 90_000;
+            while (Date.now() < deadline) {
+              let status;
+              try {
+                status = await cdn.request('DescribeRefreshTaskById', {
+                  TaskId: taskId,
+                }, { method: 'POST', timeout: 15000 });
+              } catch (error) {
+                console.log(`CDN refresh poll skipped: ${error?.message || error}`);
+                return;
+              }
+              const tasks = status.Tasks && status.Tasks.CDNTask
+                ? [].concat(status.Tasks.CDNTask)
+                : [];
+              const states = tasks.map((task) => task.Status || task.Process || 'unknown');
+              console.log(`CDN refresh ${taskId} status: ${states.join(', ') || JSON.stringify(status)}`);
+              if (tasks.length > 0 && tasks.every((task) => /success|complete|failed|refreshfailed/i.test(String(task.Status || '')))) {
+                if (tasks.some((task) => /fail/i.test(String(task.Status || '')))) {
+                  throw new Error(`CDN refresh task failed: ${JSON.stringify(status)}`);
+                }
+                return;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+            console.log('CDN refresh still running after 90s; objects are on OSS and refresh was accepted.');
+          }
+
+          main().catch((error) => {
+            console.error('CDN refresh failed:', error?.message || error);
             process.exit(1);
           });
           NODE_SCRIPT
@@ -427,7 +583,7 @@ jobs:
           manifest = json.load(open("oss-publish-manifest.json", encoding="utf-8"))
           tag = os.environ["RELEASE_TAG"]
 
-          # Group URLs by platform
+          # Group versioned URLs by platform
           by_platform = {}
           for u in manifest["uploads"]:
               platform = u["objectKey"].split("/")[-2]
@@ -436,6 +592,22 @@ jobs:
               by_platform[platform].append(u["url"])
 
           lines = ["## CDN Downloads", ""]
+          latest = manifest.get("latest") or {}
+          downloads = latest.get("downloads") or {}
+          if downloads or latest.get("json"):
+              lines.append("### Stable latest (overwrite on each release)")
+              lines.append("")
+              if latest.get("json"):
+                  lines.append(f"- **manifest**: {latest['json']}")
+              for platform in ["windows-x64", "macos-x64", "macos-arm64"]:
+                  item = downloads.get(platform)
+                  if item:
+                      lines.append(f"- **{platform}**: {item['url']}")
+              lines.append("")
+              lines.append("导航站请硬编码以上 latest 链接，不要跟版本号改 URL。")
+              lines.append("")
+          lines.append("### This version")
+          lines.append("")
           for platform in ["windows-x64", "macos-x64", "macos-arm64"]:
               if platform in by_platform:
                   lines.append(f"- **{platform}**:")
