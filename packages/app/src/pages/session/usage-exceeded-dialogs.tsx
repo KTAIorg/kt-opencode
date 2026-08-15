@@ -1,6 +1,7 @@
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { Persist, persisted } from "@/utils/persist"
+import { findLast } from "@opencode-ai/core/util/array"
 import { SessionStatus } from "@opencode-ai/sdk/v2"
 import { createEffect, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -27,19 +28,21 @@ const KT_CTA_PROVIDERS = new Set(["opencode", "opencode-go", "ktai", "ktapi"])
  * A later send (after this window) can open the guide again.
  */
 const GUIDE_DEBOUNCE_MS = 2000
-const guideShownAt = new Map<string, number>()
+const guideShownAt = new Map<string, { at: number; episode: string }>()
 
 function takeGuideEpisode(sessionID: string, kind: string, episode = "") {
-  const key = `${sessionID}:${kind}:${episode}`
-  const at = guideShownAt.get(key)
-  if (at && Date.now() - at < GUIDE_DEBOUNCE_MS) return false
-  guideShownAt.set(key, Date.now())
+  const key = `${sessionID}:${kind}`
+  const prev = guideShownAt.get(key)
+  if (prev && prev.episode === episode && Date.now() - prev.at < GUIDE_DEBOUNCE_MS) return false
+  guideShownAt.set(key, { at: Date.now(), episode })
   return true
 }
 
 function latestFailedAssistant(messages: { id: string; role?: string; error?: { name?: string } }[] | undefined) {
-  return messages?.findLast(
-    (message) => message.role === "assistant" && message.error && message.error.name !== "MessageAbortedError",
+  if (!messages) return
+  return findLast(
+    messages,
+    (message) => message.role === "assistant" && !!message.error && message.error.name !== "MessageAbortedError",
   )
 }
 
