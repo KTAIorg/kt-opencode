@@ -3,7 +3,7 @@ import { useSync } from "@/context/sync"
 import { Persist, persisted } from "@/utils/persist"
 import { findLast } from "@opencode-ai/core/util/array"
 import { SessionStatus } from "@opencode-ai/sdk/v2"
-import { createEffect, onCleanup } from "solid-js"
+import { batch, createEffect, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useSessionLayout } from "./session-layout"
 import { useDialog } from "@opencode-ai/ui/context"
@@ -16,7 +16,7 @@ const KT_AUTH_BILLING_LAST_SEEN_AT = "kt_auth_billing_last_seen_at"
 const KT_AUTH_BILLING_DONT_SHOW = "kt_auth_billing_dont_show"
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT = "go_upsell_account_rate_limit_last_seen_at"
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW = "go_upsell_account_rate_limit_dont_show"
-/** Kept for migrate/read of older free-tier persist keys (no longer written). */
+/** Billing / free-tier snooze. Persist key stays `kt_topup_*` so older profiles keep their value. */
 const KT_TOPUP_FREE_TIER_LAST_SEEN_AT = "kt_topup_last_seen_at"
 const KT_TOPUP_FREE_TIER_DONT_SHOW = "kt_topup_dont_show"
 const UPSELL_WINDOW = 86_400_000 // 24 hrs
@@ -33,7 +33,7 @@ const guideShownAt = new Map<string, { at: number; episode: string }>()
 function takeGuideEpisode(sessionID: string, kind: string, episode = "") {
   const key = `${sessionID}:${kind}`
   const prev = guideShownAt.get(key)
-  if (prev && prev.episode === episode && Date.now() - prev.at < GUIDE_DEBOUNCE_MS) return false
+  if (prev && Date.now() - prev.at < GUIDE_DEBOUNCE_MS) return false
   guideShownAt.set(key, { at: Date.now(), episode })
   return true
 }
@@ -104,6 +104,23 @@ export function useUsageExceededDialogs() {
     }),
   )
 
+  const guideSnoozed = (kind: "auth" | "billing") => {
+    const lastSeen = kind === "auth" ? KT_AUTH_BILLING_LAST_SEEN_AT : KT_TOPUP_FREE_TIER_LAST_SEEN_AT
+    const dontShow = kind === "auth" ? KT_AUTH_BILLING_DONT_SHOW : KT_TOPUP_FREE_TIER_DONT_SHOW
+    const seen = upsellState[lastSeen]
+    if (seen && Date.now() - seen < UPSELL_WINDOW) return true
+    return Boolean(upsellState[dontShow])
+  }
+
+  const snoozeGuide = (kind: "auth" | "billing") => (dontShowAgain?: boolean) => {
+    const lastSeen = kind === "auth" ? KT_AUTH_BILLING_LAST_SEEN_AT : KT_TOPUP_FREE_TIER_LAST_SEEN_AT
+    const dontShow = kind === "auth" ? KT_AUTH_BILLING_DONT_SHOW : KT_TOPUP_FREE_TIER_DONT_SHOW
+    batch(() => {
+      setUpsellState(lastSeen, Date.now())
+      if (dontShowAgain) setUpsellState(dontShow, Date.now())
+    })
+  }
+
   const maybeShow = (sessionID: string | undefined, status: SessionStatus | undefined) => {
     if (!sessionID || !status) return
     if (status.type !== "retry") return
@@ -115,8 +132,12 @@ export function useUsageExceededDialogs() {
     if (!keys) return
 
     if (keys.kind === "free_tier_limit") {
-      if (!takeGuideEpisode(sessionID, "billing")) return
-      void dialog.show(() => <DialogKtAccessGuide kind="billing" />, undefined)
+      if (guideSnoozed("billing")) return
+      if (!takeGuideEpisode(sessionID, "billing", String(status.next))) return
+      void dialog.show(
+        () => <DialogKtAccessGuide kind="billing" onClose={snoozeGuide("billing")} />,
+        () => snoozeGuide("billing")(false),
+      )
       return
     }
 
@@ -133,10 +154,11 @@ export function useUsageExceededDialogs() {
 
     // Pass show(onClose) so X / overlay / Escape also snooze (fixes reopen loops).
     if (keys.kind === "auth_billing") {
+      if (guideSnoozed("auth")) return
       if (!takeGuideEpisode(sessionID, "auth")) return
       void dialog.show(
-        () => <DialogKtAccessGuide kind="auth" onClose={onClose} />,
-        () => onClose(false),
+        () => <DialogKtAccessGuide kind="auth" onClose={snoozeGuide("auth")} />,
+        () => snoozeGuide("auth")(false),
       )
       return
     }
@@ -163,22 +185,11 @@ export function useUsageExceededDialogs() {
     const kind = classifySessionErrorCta(sessionErrorText(error))
     if (!kind) return
     if (dialog.active) return
-    if (kind === "auth") {
-      const seen = upsellState[KT_AUTH_BILLING_LAST_SEEN_AT]
-      if (seen && Date.now() - seen < UPSELL_WINDOW) return
-      if (upsellState[KT_AUTH_BILLING_DONT_SHOW]) return
-    }
+    if (guideSnoozed(kind)) return
     if (!takeGuideEpisode(sessionID, kind, episode)) return
-    const onClose =
-      kind === "auth"
-        ? (dontShowAgain?: boolean) => {
-            setUpsellState(KT_AUTH_BILLING_LAST_SEEN_AT, Date.now())
-            if (dontShowAgain) setUpsellState(KT_AUTH_BILLING_DONT_SHOW, Date.now())
-          }
-        : undefined
     void dialog.show(
-      () => <DialogKtAccessGuide kind={kind} onClose={onClose} />,
-      onClose ? () => onClose(false) : undefined,
+      () => <DialogKtAccessGuide kind={kind} onClose={snoozeGuide(kind)} />,
+      () => snoozeGuide(kind)(false),
     )
   }
 
