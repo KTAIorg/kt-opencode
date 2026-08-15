@@ -159,3 +159,13 @@ const table = sqliteTable("session", {
 - Keep delivery vocabulary explicit. Prompts steer by default and promote at the next safe provider-turn boundary while the current drain requires continuation. An explicit `queue` input remains pending until the Session would otherwise become idle; promote one queued input at that boundary, then reevaluate continuation before promoting another. Promoting any new user input resets the selected agent's provider-turn allowance; a batch of steers resets it once.
 - Keep EventV2 replay owner claims separate from clustered Session execution ownership.
 - Keep the System Context algebra, registry, and built-ins in `src/system-context`; keep Context Source producers with their observed domains, and keep Session History selection plus Context Epoch persistence Session-owned.
+
+## Cursor Cloud specific instructions
+
+Runtime is Bun (pinned `bun@1.3.14`); the startup update script runs `bun install` from the repo root, which also runs `postinstall` (`fix-node-pty`) and installs the husky `pre-push` hook (that hook runs `bun typecheck`). Standard dev/lint/test/build commands live in `CONTRIBUTING.md` and the root `package.json`; prefer those over duplicating them.
+
+- LLM agent actions need a provider credential. The CLI/TUI/server/web UI boot and the HTTP API (config, session create/list) work with no keys, but sending a prompt to a model requires a provider (e.g. `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` env var, or `opencode auth login`). None is configured in this environment, so end-to-end LLM prompting cannot be exercised without adding a key.
+- Run the headless server from the repo root with `bun dev serve --port 4096`. Pass a directory via the `x-opencode-directory` request header when calling the API.
+- Web UI: run backend `bun dev serve --port 4096` and, from `packages/app`, `bun dev -- --port 4444`, then open `http://localhost:4444` (it targets the backend on 4096). `opencode dev web` instead proxies the hosted app, so local UI changes won't show there.
+- Tests cannot run from the repo root (guarded by `bunfig.toml`); run them per package, e.g. `cd packages/opencode && bun test`.
+- Known pre-existing test failure (not env-related): in `packages/opencode`, `test/server/httpapi-compression.test.ts` "skips > when the response body is below the 1024-byte threshold" fails because the `/config` response is ~15KB, exceeding the test's 1024-byte assumption.
