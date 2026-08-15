@@ -8,6 +8,7 @@ import { useSessionLayout } from "./session-layout"
 import { useDialog } from "@opencode-ai/ui/context"
 import { DialogUsageExceeded } from "@/components/dialog-usage-exceeded"
 import { DialogKtAccessGuide } from "@/components/dialog-kt-access-guide"
+import { classifySessionErrorCta, sessionErrorText } from "./timeline/session-error-cta"
 import { useI18n } from "@opencode-ai/ui/context"
 
 const KT_AUTH_BILLING_LAST_SEEN_AT = "kt_auth_billing_last_seen_at"
@@ -22,14 +23,18 @@ const UPSELL_WINDOW = 86_400_000 // 24 hrs
 const KT_CTA_PROVIDERS = new Set(["opencode", "opencode-go", "ktai", "ktapi"])
 
 /**
- * In-memory episode dedupe for soft-quota / free-tier dialogs.
- * Persist 24h snooze was blocking re-tests and “send again” after dismiss;
- * each soft-quota block gets a fresh `status.next`, so a new episode re-opens the guide.
+ * Dedupe retry-flash + session.error for the same send.
+ * A later send (after this window) can open the guide again.
  */
-const freeTierShownEpisodes = new Set<string>()
+const GUIDE_DEBOUNCE_MS = 2000
+const guideShownAt = new Map<string, number>()
 
-function freeTierEpisodeKey(sessionID: string, status: Extract<SessionStatus, { type: "retry" }>) {
-  return `${sessionID}:free_tier_limit:${status.next}:${status.attempt}`
+function takeGuideEpisode(sessionID: string, kind: string) {
+  const key = `${sessionID}:${kind}`
+  const at = guideShownAt.get(key)
+  if (at && Date.now() - at < GUIDE_DEBOUNCE_MS) return false
+  guideShownAt.set(key, Date.now())
+  return true
 }
 
 function isKtCtaProvider(provider: string) {
@@ -101,13 +106,8 @@ export function useUsageExceededDialogs() {
     if (!keys) return
 
     if (keys.kind === "free_tier_limit") {
-      const episode = freeTierEpisodeKey(sessionID, status)
-      if (freeTierShownEpisodes.has(episode)) return
-      freeTierShownEpisodes.add(episode)
-      void dialog.show(
-        () => <DialogKtAccessGuide kind="billing" />,
-        undefined,
-      )
+      if (!takeGuideEpisode(sessionID, "billing")) return
+      void dialog.show(() => <DialogKtAccessGuide kind="billing" />, undefined)
       return
     }
 
@@ -124,6 +124,7 @@ export function useUsageExceededDialogs() {
 
     // Pass show(onClose) so X / overlay / Escape also snooze (fixes reopen loops).
     if (keys.kind === "auth_billing") {
+      if (!takeGuideEpisode(sessionID, "auth")) return
       void dialog.show(
         () => <DialogKtAccessGuide kind="auth" onClose={onClose} />,
         () => onClose(false),
@@ -147,11 +148,41 @@ export function useUsageExceededDialogs() {
     }
   }
 
-  // Live events (normal path) — includes a brief retry→idle flash for non-retryable 401s.
+  const maybeShowFromError = (sessionID: string | undefined, error: unknown) => {
+    if (!sessionID || sessionID !== params.id) return
+    const kind = classifySessionErrorCta(sessionErrorText(error))
+    if (!kind) return
+    if (dialog.active) return
+    if (kind === "auth") {
+      const seen = upsellState[KT_AUTH_BILLING_LAST_SEEN_AT]
+      if (seen && Date.now() - seen < UPSELL_WINDOW) return
+      if (upsellState[KT_AUTH_BILLING_DONT_SHOW]) return
+    }
+    if (!takeGuideEpisode(sessionID, kind)) return
+    const onClose =
+      kind === "auth"
+        ? (dontShowAgain?: boolean) => {
+            setUpsellState(KT_AUTH_BILLING_LAST_SEEN_AT, Date.now())
+            if (dontShowAgain) setUpsellState(KT_AUTH_BILLING_DONT_SHOW, Date.now())
+          }
+        : undefined
+    void dialog.show(
+      () => <DialogKtAccessGuide kind={kind} onClose={onClose} />,
+      onClose ? () => onClose(false) : undefined,
+    )
+  }
+
+  // Live events. session.error is durable; session.status retry is a brief flash
+  // that production builds often miss because the server immediately returns to idle.
   onCleanup(
     sdk().event.on("session.status", (evt) => {
       if (evt.properties.sessionID !== params.id) return
       maybeShow(evt.properties.sessionID, evt.properties.status)
+    }),
+  )
+  onCleanup(
+    sdk().event.on("session.error", (evt) => {
+      maybeShowFromError(evt.properties.sessionID, evt.properties.error)
     }),
   )
 
