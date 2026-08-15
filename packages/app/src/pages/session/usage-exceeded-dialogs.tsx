@@ -29,12 +29,18 @@ const KT_CTA_PROVIDERS = new Set(["opencode", "opencode-go", "ktai", "ktapi"])
 const GUIDE_DEBOUNCE_MS = 2000
 const guideShownAt = new Map<string, number>()
 
-function takeGuideEpisode(sessionID: string, kind: string) {
-  const key = `${sessionID}:${kind}`
+function takeGuideEpisode(sessionID: string, kind: string, episode = "") {
+  const key = `${sessionID}:${kind}:${episode}`
   const at = guideShownAt.get(key)
   if (at && Date.now() - at < GUIDE_DEBOUNCE_MS) return false
   guideShownAt.set(key, Date.now())
   return true
+}
+
+function latestFailedAssistant(messages: { id: string; role?: string; error?: { name?: string } }[] | undefined) {
+  return messages?.findLast(
+    (message) => message.role === "assistant" && message.error && message.error.name !== "MessageAbortedError",
+  )
 }
 
 function isKtCtaProvider(provider: string) {
@@ -148,8 +154,9 @@ export function useUsageExceededDialogs() {
     }
   }
 
-  const maybeShowFromError = (sessionID: string | undefined, error: unknown) => {
-    if (!sessionID || sessionID !== params.id) return
+  const maybeShowFromError = (sessionID: string | undefined, error: unknown, episode = "") => {
+    // New-session sends often emit session.error before the route id is set.
+    if (!sessionID || (params.id && sessionID !== params.id)) return
     const kind = classifySessionErrorCta(sessionErrorText(error))
     if (!kind) return
     if (dialog.active) return
@@ -158,7 +165,7 @@ export function useUsageExceededDialogs() {
       if (seen && Date.now() - seen < UPSELL_WINDOW) return
       if (upsellState[KT_AUTH_BILLING_DONT_SHOW]) return
     }
-    if (!takeGuideEpisode(sessionID, kind)) return
+    if (!takeGuideEpisode(sessionID, kind, episode)) return
     const onClose =
       kind === "auth"
         ? (dontShowAgain?: boolean) => {
@@ -186,11 +193,13 @@ export function useUsageExceededDialogs() {
     }),
   )
 
-  // Also react to store status: soft-quota can set retry before/without a UI turn,
-  // and createEffect catches navigations onto an already-blocked session.
+  // Store is durable. New-session navigates onto the session after the live
+  // event already fired; the error card reads this same assistant.error.
   createEffect(() => {
     const id = params.id
     if (!id) return
     maybeShow(id, sync().data.session_status[id])
+    const failed = latestFailedAssistant(sync().data.message[id])
+    maybeShowFromError(id, failed?.error, failed?.id)
   })
 }
