@@ -1,6 +1,7 @@
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { Persist, persisted } from "@/utils/persist"
+import { findLast } from "@opencode-ai/core/util/array"
 import { SessionStatus } from "@opencode-ai/sdk/v2"
 import { createEffect, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -27,14 +28,22 @@ const KT_CTA_PROVIDERS = new Set(["opencode", "opencode-go", "ktai", "ktapi"])
  * A later send (after this window) can open the guide again.
  */
 const GUIDE_DEBOUNCE_MS = 2000
-const guideShownAt = new Map<string, number>()
+const guideShownAt = new Map<string, { at: number; episode: string }>()
 
-function takeGuideEpisode(sessionID: string, kind: string) {
+function takeGuideEpisode(sessionID: string, kind: string, episode = "") {
   const key = `${sessionID}:${kind}`
-  const at = guideShownAt.get(key)
-  if (at && Date.now() - at < GUIDE_DEBOUNCE_MS) return false
-  guideShownAt.set(key, Date.now())
+  const prev = guideShownAt.get(key)
+  if (prev && prev.episode === episode && Date.now() - prev.at < GUIDE_DEBOUNCE_MS) return false
+  guideShownAt.set(key, { at: Date.now(), episode })
   return true
+}
+
+function latestFailedAssistant(messages: { id: string; role?: string; error?: { name?: string } }[] | undefined) {
+  if (!messages) return
+  return findLast(
+    messages,
+    (message) => message.role === "assistant" && !!message.error && message.error.name !== "MessageAbortedError",
+  )
 }
 
 function isKtCtaProvider(provider: string) {
@@ -148,8 +157,9 @@ export function useUsageExceededDialogs() {
     }
   }
 
-  const maybeShowFromError = (sessionID: string | undefined, error: unknown) => {
-    if (!sessionID || sessionID !== params.id) return
+  const maybeShowFromError = (sessionID: string | undefined, error: unknown, episode = "") => {
+    // New-session sends often emit session.error before the route id is set.
+    if (!sessionID || (params.id && sessionID !== params.id)) return
     const kind = classifySessionErrorCta(sessionErrorText(error))
     if (!kind) return
     if (dialog.active) return
@@ -158,7 +168,7 @@ export function useUsageExceededDialogs() {
       if (seen && Date.now() - seen < UPSELL_WINDOW) return
       if (upsellState[KT_AUTH_BILLING_DONT_SHOW]) return
     }
-    if (!takeGuideEpisode(sessionID, kind)) return
+    if (!takeGuideEpisode(sessionID, kind, episode)) return
     const onClose =
       kind === "auth"
         ? (dontShowAgain?: boolean) => {
@@ -186,11 +196,13 @@ export function useUsageExceededDialogs() {
     }),
   )
 
-  // Also react to store status: soft-quota can set retry before/without a UI turn,
-  // and createEffect catches navigations onto an already-blocked session.
+  // Store is durable. New-session navigates onto the session after the live
+  // event already fired; the error card reads this same assistant.error.
   createEffect(() => {
     const id = params.id
     if (!id) return
     maybeShow(id, sync().data.session_status[id])
+    const failed = latestFailedAssistant(sync().data.message[id])
+    maybeShowFromError(id, failed?.error, failed?.id)
   })
 }
