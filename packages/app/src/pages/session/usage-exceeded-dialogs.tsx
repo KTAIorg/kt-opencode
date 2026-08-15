@@ -114,16 +114,11 @@ export function useUsageExceededDialogs() {
     return Boolean(upsellState[dontShow])
   }
 
-  // One dismiss stops both auto-guides: free-tier retry and invalid-key error
-  // often land together, and 稍后提醒 must not immediately open the other kind.
-  const snoozeGuide = (dontShowAgain?: boolean) => {
-    const now = Date.now()
-    setUpsellState(KT_AUTH_BILLING_LAST_SEEN_AT, now)
-    setUpsellState(KT_TOPUP_FREE_TIER_LAST_SEEN_AT, now)
-    if (dontShowAgain) {
-      setUpsellState(KT_AUTH_BILLING_DONT_SHOW, now)
-      setUpsellState(KT_TOPUP_FREE_TIER_DONT_SHOW, now)
-    }
+  const snoozeGuide = (kind: "auth" | "billing") => (dontShowAgain?: boolean) => {
+    const lastSeen = kind === "auth" ? KT_AUTH_BILLING_LAST_SEEN_AT : KT_TOPUP_FREE_TIER_LAST_SEEN_AT
+    const dontShow = kind === "auth" ? KT_AUTH_BILLING_DONT_SHOW : KT_TOPUP_FREE_TIER_DONT_SHOW
+    setUpsellState(lastSeen, Date.now())
+    if (dontShowAgain) setUpsellState(dontShow, Date.now())
   }
 
   const maybeShow = (sessionID: string | undefined, status: SessionStatus | undefined) => {
@@ -141,8 +136,8 @@ export function useUsageExceededDialogs() {
       const episode = status.type === "retry" ? String(status.next) : ""
       if (!takeGuideEpisode(sessionID, "billing", episode)) return
       void dialog.show(
-        () => <DialogKtAccessGuide kind="billing" onClose={snoozeGuide} />,
-        () => snoozeGuide(false),
+        () => <DialogKtAccessGuide kind="billing" onClose={snoozeGuide("billing")} />,
+        () => snoozeGuide("billing")(false),
       )
       return
     }
@@ -163,8 +158,8 @@ export function useUsageExceededDialogs() {
       if (guideSnoozed("auth")) return
       if (!takeGuideEpisode(sessionID, "auth")) return
       void dialog.show(
-        () => <DialogKtAccessGuide kind="auth" onClose={snoozeGuide} />,
-        () => snoozeGuide(false),
+        () => <DialogKtAccessGuide kind="auth" onClose={snoozeGuide("auth")} />,
+        () => snoozeGuide("auth")(false),
       )
       return
     }
@@ -194,8 +189,8 @@ export function useUsageExceededDialogs() {
     if (guideSnoozed(kind)) return
     if (!takeGuideEpisode(sessionID, kind, episode)) return
     void dialog.show(
-      () => <DialogKtAccessGuide kind={kind} onClose={snoozeGuide} />,
-      () => snoozeGuide(false),
+      () => <DialogKtAccessGuide kind={kind} onClose={snoozeGuide(kind)} />,
+      () => snoozeGuide(kind)(false),
     )
   }
 
