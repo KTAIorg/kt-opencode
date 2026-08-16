@@ -280,7 +280,7 @@ function providerModel(model: RawModel) {
 export function createKTAIProviderConfig(list: RawModel[]): NonNullable<Config["provider"]>[string] {
   const visible = withDefaultVisibility(list)
   return {
-    name: "KT",
+    name: "Kito",
     api: API_URL,
     npm: "@ai-sdk/openai-compatible",
     env: ["KTAI_API_KEY"],
@@ -363,12 +363,12 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
       methods: [
         {
           type: "oauth" as const,
-          label: "KT Identity (Telegram)",
+          label: "Telegram",
           async authorize() {
             const challenge = await startTelegramLogin()
             return {
               url: challenge.telegram.qrUrl,
-              instructions: `Open Telegram and confirm KT OpenCode login. Code: ${challenge.displayCode}`,
+              instructions: `Open Telegram and confirm Kito login. Code: ${challenge.displayCode}`,
               method: "auto" as const,
               async callback() {
                 const session = await pollTelegramLogin({ challengeId: challenge.challengeId })
@@ -384,7 +384,7 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
             }
           },
         },
-        { type: "api" as const, label: "KT API key" },
+        { type: "api" as const, label: "Kito API key" },
       ],
     },
   }

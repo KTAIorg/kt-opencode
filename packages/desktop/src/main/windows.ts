@@ -177,7 +177,7 @@ export function createMainWindow(id: string = randomUUID()) {
     height: state.height,
     show: false,
     autoHideMenuBar: true,
-    title: "KT OpenCode",
+    title: "Kito",
     icon: iconPath(),
     backgroundColor: backgroundColor ?? defaultBackgroundColor(),
     ...(process.platform === "darwin"
@@ -372,7 +372,7 @@ function wireWindowRecovery(win: BrowserWindow, name: string) {
 
     if (!isMainFrame || errorCode === -3) return
     void show(
-      "KT OpenCode failed to load",
+      "Kito failed to load",
       [`Window: ${name}`, `URL: ${validatedURL}`, `Error: ${errorCode} ${errorDescription}`].join("\n"),
       false,
     )
@@ -393,7 +393,7 @@ function wireWindowRecovery(win: BrowserWindow, name: string) {
       "error",
     )
     void show(
-      "KT OpenCode window terminated unexpectedly",
+      "Kito window terminated unexpectedly",
       [`Window: ${name}`, `Reason: ${details.reason}`, `Code: ${details.exitCode ?? "<unknown>"}`].join("\n"),
       false,
     )
@@ -401,7 +401,7 @@ function wireWindowRecovery(win: BrowserWindow, name: string) {
   win.on("unresponsive", () => {
     writeLog("window", "renderer unresponsive", { window: name, currentURL: win.webContents.getURL() }, "error")
     sampler.start()
-    void show("KT OpenCode is not responding", "You can relaunch the app, open the logs, or keep waiting.", true)
+    void show("Kito is not responding", "You can relaunch the app, open the logs, or keep waiting.", true)
   })
   win.on("responsive", () => {
     writeLog("window", "renderer responsive", { window: name, currentURL: win.webContents.getURL() }, "error")

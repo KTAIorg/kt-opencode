@@ -95,8 +95,8 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
         showToast({
           variant: "success",
           icon: "circle-check",
-          title: language.t("provider.connect.toast.connected.title", { provider: "KT" }),
-          description: language.t("provider.connect.toast.connected.description", { provider: "KT" }),
+          title: language.t("provider.connect.toast.connected.title", { provider: "Kito" }),
+          description: language.t("provider.connect.toast.connected.description", { provider: "Kito" }),
         })
       })
       .catch((err: unknown) => {
@@ -132,7 +132,7 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
               <TextField
                 autofocus
                 type="text"
-                label={language.t("provider.connect.apiKey.label", { provider: "KT" })}
+                label={language.t("provider.connect.apiKey.label", { provider: "Kito" })}
                 placeholder={language.t("provider.connect.apiKey.placeholder")}
                 name="apiKey"
                 value={form.value}

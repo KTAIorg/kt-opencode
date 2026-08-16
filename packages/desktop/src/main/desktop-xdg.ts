@@ -1,5 +1,5 @@
 /**
- * Isolate KT OpenCode Desktop from the host OpenCode CLI profile.
+ * Isolate Kito Desktop from the host OpenCode CLI profile.
  *
  * Same approach as ktai-opencode: point all XDG roots at Electron userData
  * so config/models/sessions never read ~/.config/opencode or ~/.local/share/opencode.
