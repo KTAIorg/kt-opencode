@@ -28,7 +28,7 @@ import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
-import { isCustomerFacingProvider } from "@/utils/kt-settlement"
+import { customerFacingProviderName, isCustomerFacingProvider } from "@/utils/kt-settlement"
 
 export function useProviderConnectController(options: { onBack?: () => void } = {}) {
   const [store, setStore] = createStore({ selected: undefined as string | undefined })
@@ -181,9 +181,13 @@ function ProviderConnection(props: {
     timer.current = undefined
   })
 
-  const provider = createMemo(
-    () => providers.all().get(props.provider) ?? serverSync().data.provider.all.get(props.provider)!,
-  )
+  const provider = createMemo(() => {
+    const raw = providers.all().get(props.provider) ?? serverSync().data.provider.all.get(props.provider)
+    if (!raw) return raw
+    const name = customerFacingProviderName(raw.id, raw.name)
+    if (name === raw.name) return raw
+    return { ...raw, name }
+  })
   const fallback = createMemo<ProviderAuthMethod[]>(() => [
     {
       type: "api" as const,

@@ -3,7 +3,14 @@ import { decode64 } from "@/utils/base64"
 import { useParams } from "@solidjs/router"
 import { Iterable, pipe } from "effect"
 import type { Accessor } from "solid-js"
+import { customerFacingProviderName } from "@/utils/kt-settlement"
 import { selectProviderCatalog } from "./provider-catalog"
+
+function withCustomerFacingName<T extends { id: string; name: string }>(provider: T) {
+  const name = customerFacingProviderName(provider.id, provider.name)
+  if (name === provider.name) return provider
+  return { ...provider, name }
+}
 
 export const popularProviders = ["ktai"]
 const popularProviderSet = new Set(popularProviders)
@@ -29,12 +36,15 @@ export function useProviders(directory?: Accessor<string | undefined>) {
     })
   }
   return {
-    all: () => providers().all,
+    all: () =>
+      new Map(
+        Array.from(providers().all, ([id, provider]) => [id, withCustomerFacingName(provider)]),
+      ),
     default: () => providers().default,
     popular: () =>
       pipe(
         providers().all,
-        Iterable.map(([, p]) => p),
+        Iterable.map(([, p]) => withCustomerFacingName(p)),
         Iterable.filter((p) => popularProviderSet.has(p.id)),
         (v) => Array.from(v),
       ),
@@ -42,7 +52,7 @@ export function useProviders(directory?: Accessor<string | undefined>) {
       const connected = new Set(providers().connected)
       return pipe(
         providers().all,
-        Iterable.map(([, p]) => p),
+        Iterable.map(([, p]) => withCustomerFacingName(p)),
         Iterable.filter((p) => connected.has(p.id)),
         (v) => Array.from(v),
       )

@@ -7,3 +7,10 @@ export function isCustomerFacingProvider(id: string) {
   if (id === "ktai" || id === "ktapi" || id === "opencode") return true
   return id.startsWith("ktai") || id.startsWith("ktapi")
 }
+
+export function customerFacingProviderName(id: string, name: string) {
+  if (id === "ktai" || id === "ktapi" || id.startsWith("ktai-") || id.startsWith("ktapi-")) return "Kito"
+  if (id !== "opencode" && !id.startsWith("opencode")) return name
+  if (!name.includes("OpenCode")) return name
+  return name.replaceAll("OpenCode", "").replace(/\s+/g, " ").trim() || "Zen"
+}
