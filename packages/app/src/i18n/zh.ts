@@ -247,6 +247,9 @@ export const dict = {
   "dialog.ktAccess.switch.step3": "再发送一条消息——将从 Kito 余额扣费。",
   "dialog.ktAccess.switch.hint": "无需再粘贴密钥。若余额不足，再去 Kito 钱包充值。",
   "dialog.ktAccess.switch.ack": "知道了",
+  "titlebar.account.signIn": "登录",
+  "titlebar.account.topUp": "充值",
+  "titlebar.account.signedIn": "{{name}} · {{balance}}",
   "ui.sessionTurn.error.configureKey": "配置 API 密钥",
   "ui.sessionTurn.error.switchModel": "切换到 Kito",
   "ui.sessionTurn.error.authFriendly":

@@ -28,6 +28,7 @@ import { tabKey, useTabs } from "@/context/tabs"
 import type { PromptSession } from "@/context/prompt"
 import "./titlebar.css"
 import { newTabTooltipKeybind } from "./command-tooltip-keybind"
+import { TitlebarAccountButton } from "./titlebar-account-button"
 
 type TauriDesktopWindow = {
   startDragging?: () => Promise<void>
@@ -681,6 +682,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
               data-tauri-drag-region
               onMouseDown={drag}
             >
+              <TitlebarAccountButton variant="legacy" />
               <div id="opencode-titlebar-right" class="flex items-center gap-1 shrink-0 justify-end" />
               <Show when={windows()}>
                 {!tauriApi() && <div class="shrink-0" style={{ width: windowsControlsWidth() }} />}
@@ -713,6 +715,7 @@ function TitlebarV2Right(props: { state: TitlebarV2RightState }) {
       <Show when={props.state.update.visible}>
         <TitlebarUpdateIconButton state={props.state.update} />
       </Show>
+      <TitlebarAccountButton variant="v2" />
       <div id="opencode-titlebar-right" class="flex shrink-0 items-center justify-end gap-0" />
     </div>
   )

@@ -10,6 +10,7 @@ import { useServerSDK } from "@/context/server-sdk"
 import { useLocal } from "@/context/local"
 import { useProviders } from "@/hooks/use-providers"
 import { showToast } from "@/utils/toast"
+import { hasKitoCredential } from "@/utils/kt-account"
 import { KT_WALLET_URL } from "@/utils/kt-settlement"
 import { ModelList } from "@/components/dialog-select-model"
 import { DialogConnectProvider, useProviderConnectController } from "@/components/dialog-connect-provider"
@@ -34,12 +35,7 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
   const kind = () => props.kind ?? "auth"
   const [showPaste, setShowPaste] = createSignal(false)
   /** Real credential — not the config-only discovery catalog (always present without a key). */
-  const ktaiHasCredential = () =>
-    providers.connected().some((p) => {
-      if (!(p.id === "ktai" || p.id === "ktapi" || p.id.startsWith("ktai"))) return false
-      if (p.source === "api" || p.source === "env") return true
-      return Boolean(p.key)
-    })
+  const ktaiHasCredential = () => hasKitoCredential(providers.connected())
   /** Soft-quota with an existing key → pick a paid KTAI model in-dialog (not text-only steps). */
   const switchMode = () => kind() === "billing" && ktaiHasCredential()
   const ktaiModelCount = createMemo(

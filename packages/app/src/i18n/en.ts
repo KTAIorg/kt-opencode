@@ -229,6 +229,9 @@ export const dict = {
   "dialog.ktAccess.switch.hint":
     "You don’t need to paste the key again. If balance is low, top up in the Kito wallet.",
   "dialog.ktAccess.switch.ack": "Got it",
+  "titlebar.account.signIn": "Sign in",
+  "titlebar.account.topUp": "Top up",
+  "titlebar.account.signedIn": "{{name}} · {{balance}}",
   "ui.sessionTurn.error.configureKey": "Configure API key",
   "ui.sessionTurn.error.switchModel": "Switch to Kito",
   "ui.sessionTurn.error.authFriendly":
