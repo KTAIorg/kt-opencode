@@ -149,7 +149,7 @@ export const dict = {
   "dialog.model.unpaid.freeModels.title": "Kito 提供的免费模型",
   "dialog.model.unpaid.addMore.title": "连接 Kito 使用付费模型",
 
-  "dialog.provider.viewAll": "查看更多提供商",
+  "dialog.provider.viewAll": "连接 Kito",
 
   "provider.connect.title": "连接 {{provider}}",
   "provider.connect.title.anthropicProMax": "使用 Claude Pro/Max 登录",
@@ -636,7 +636,7 @@ export const dict = {
   "home.sessions.group.today": "今天",
   "home.sessions.group.yesterday": "昨天",
   "home.sessions.group.older": "更早",
-  "home.providerTip": "连接 75 个以上的提供商，使用 Claude、GPT、Gemini 等其他模型",
+  "home.providerTip": "用 Telegram 登录后即可充值，使用付费模型",
 
   "session.tab.session": "会话",
   "session.tab.review": "审查",

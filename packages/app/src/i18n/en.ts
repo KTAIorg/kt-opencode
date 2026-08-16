@@ -123,7 +123,7 @@ export const dict = {
   "dialog.model.unpaid.freeModels.title": "Free models included with Kito",
   "dialog.model.unpaid.addMore.title": "Connect Kito for paid models",
 
-  "dialog.provider.viewAll": "Show more providers",
+  "dialog.provider.viewAll": "Connect Kito",
 
   "provider.connect.title": "Connect {{provider}}",
   "provider.connect.title.anthropicProMax": "Login with Claude Pro/Max",
@@ -662,7 +662,7 @@ export const dict = {
   "home.sessions.group.today": "Today",
   "home.sessions.group.yesterday": "Yesterday",
   "home.sessions.group.older": "Older",
-  "home.providerTip": "Connect to 75+ providers to use other models, including Claude, GPT, Gemini, etc",
+  "home.providerTip": "Sign in with Telegram to top up and use paid models",
 
   "session.tab.session": "Session",
   "session.tab.review": "Review",
