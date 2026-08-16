@@ -49,9 +49,9 @@ import { migrate } from "./migrate"
 import { cleanupStoreFiles } from "./store-cleanup"
 
 const APP_NAMES: Record<string, string> = {
-  dev: "KTAI Dev",
-  beta: "KTAI Beta",
-  prod: "KTAI",
+  dev: "ktapi Dev",
+  beta: "ktapi Beta",
+  prod: "ktapi",
 }
 const APP_IDS: Record<string, string> = {
   dev: "cc.ktapi.desktop.dev",
@@ -135,7 +135,7 @@ const main = Effect.gen(function* () {
     process.env.XDG_STATE_HOME = join(root, "state")
     return root
   })()
-  app.setName(app.isPackaged ? APP_NAMES[CHANNEL] : "KTAI Dev")
+  app.setName(app.isPackaged ? APP_NAMES[CHANNEL] : "ktapi Dev")
   app.setAppUserModelId(appId)
   app.setPath(
     "userData",

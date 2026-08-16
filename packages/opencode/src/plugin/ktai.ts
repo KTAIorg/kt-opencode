@@ -6,6 +6,9 @@ import {
   externalIdentity,
   isEmbeddedMode,
   KT_IDENTITY_REFRESH_MARKER,
+  pollTelegramLogin,
+  sessionExpiresAt,
+  startTelegramLogin,
   validateExternalIdentity,
 } from "./ktai-identity"
 
@@ -347,9 +350,8 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
     },
     auth: {
       provider: "ktai",
-      // Identity Bearer is NOT a NewAPI API key. Until Identity→NewAPI key
-      // exchange ships, only offer pasted API keys (Telegram/password would
-      // "succeed" login but leave chat on Invalid token / dummy key).
+      // Identity Bearer is NOT a NewAPI API key. Telegram login proves who
+      // the user is; paid calls still need a NewAPI token (Ensure or paste).
       async loader(getAuth) {
         const auth = await getAuth()
         if (!auth) return {}
@@ -358,7 +360,32 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
         }
         return {}
       },
-      methods: [{ type: "api" as const, label: "KTAI API key" }],
+      methods: [
+        {
+          type: "oauth" as const,
+          label: "KT Identity (Telegram)",
+          async authorize() {
+            const challenge = await startTelegramLogin()
+            return {
+              url: challenge.telegram.qrUrl,
+              instructions: `Open Telegram and confirm ktapi login. Code: ${challenge.displayCode}`,
+              method: "auto" as const,
+              async callback() {
+                const session = await pollTelegramLogin({ challengeId: challenge.challengeId })
+                return {
+                  type: "success" as const,
+                  provider: "ktai",
+                  refresh: KT_IDENTITY_REFRESH_MARKER,
+                  access: session.token,
+                  expires: sessionExpiresAt(session),
+                  accountId: session.account.id,
+                }
+              },
+            }
+          },
+        },
+        { type: "api" as const, label: "KTAI API key" },
+      ],
     },
   }
 }

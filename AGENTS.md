@@ -159,3 +159,11 @@ const table = sqliteTable("session", {
 - Keep delivery vocabulary explicit. Prompts steer by default and promote at the next safe provider-turn boundary while the current drain requires continuation. An explicit `queue` input remains pending until the Session would otherwise become idle; promote one queued input at that boundary, then reevaluate continuation before promoting another. Promoting any new user input resets the selected agent's provider-turn allowance; a batch of steers resets it once.
 - Keep EventV2 replay owner claims separate from clustered Session execution ownership.
 - Keep the System Context algebra, registry, and built-ins in `src/system-context`; keep Context Source producers with their observed domains, and keep Session History selection plus Context Epoch persistence Session-owned.
+
+## Cursor Cloud specific instructions
+
+- External product name is **ktapi**. Window title, desktop `productName`, and customer-facing copy should say ktapi, not OpenCode.
+- Customer settings only connect **ktai / ktapi**. Zen (`opencode`) stays as the internal free-quota channel (100 local chats), then the guide offers Telegram KT Identity login and wallet top-up.
+- Settlement application for this client: `kt-opencode` / id `2088777044511035392`. Wallet: `https://www.ktapi.cc/wallet`. Per-user deposit addresses are created lazily on recharge, keyed by `kt_account_id`.
+- KT Identity Telegram login is the first KTAI auth method. Identity Bearer is not a NewAPI key; paid calls still need Ensure or a pasted `KTAI_API_KEY`.
+- Tests cannot run from repo root. Package commands: `cd packages/opencode && bun test`, `cd packages/app && bun test`, `cd packages/desktop && bun test`.

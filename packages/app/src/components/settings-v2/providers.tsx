@@ -10,7 +10,7 @@ import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { DialogConnectProvider, useProviderConnectController } from "../dialog-connect-provider"
-import { DialogCustomProvider } from "../dialog-custom-provider"
+import { isCustomerFacingProvider } from "@/utils/kt-settlement"
 import { SettingsListV2 } from "./parts/list"
 import "./settings-v2.css"
 
@@ -60,6 +60,7 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
   const connected = createMemo(() => {
     return providers
       .connected()
+      .filter((p) => isCustomerFacingProvider(p.id))
       .filter((p) => p.id !== "opencode" || Object.values(p.models).find((m) => m.cost?.input))
   })
 
@@ -242,38 +243,7 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
               )}
             </For>
 
-            <div class="settings-v2-provider-row" data-component="custom-provider-section">
-              <div class="settings-v2-provider-lead">
-                <ProviderIcon
-                  id="synthetic"
-                  width={PROVIDER_ICON_SIZE}
-                  height={PROVIDER_ICON_SIZE}
-                  class="settings-v2-provider-icon shrink-0"
-                />
-                <div class="settings-v2-provider-copy">
-                  <div class="settings-v2-provider-main">
-                    <span class="settings-v2-provider-name">{language.t("provider.custom.title")}</span>
-                    <Tag>{language.t("settings.providers.tag.custom")}</Tag>
-                  </div>
-                  <p class="settings-v2-provider-description">{language.t("settings.providers.custom.description")}</p>
-                </div>
-              </div>
-              <ButtonV2
-                size="normal"
-                variant="neutral"
-                icon="plus"
-                onClick={() => {
-                  dialog.show(() => <DialogCustomProvider onBack={dialog.close} />)
-                }}
-              >
-                {language.t("common.connect")}
-              </ButtonV2>
-            </div>
           </SettingsListV2>
-
-          <button type="button" class="settings-v2-providers-view-all" onClick={() => connect()}>
-            {language.t("dialog.provider.viewAll")}
-          </button>
         </div>
       </div>
     </>

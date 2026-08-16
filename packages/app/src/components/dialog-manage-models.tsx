@@ -16,7 +16,7 @@ import { useLocal } from "@/context/local"
 import { popularProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { DialogConnectProvider } from "./dialog-connect-provider"
+import { DialogConnectProvider, useProviderConnectController } from "./dialog-connect-provider"
 import { decode64 } from "@/utils/base64"
 import { SettingsListV2 } from "./settings-v2/parts/list"
 import { SettingsRowV2 } from "./settings-v2/parts/row"
@@ -31,7 +31,9 @@ export const DialogManageModels: Component = () => {
   const directory = () => decode64(local.slug())
 
   const handleConnectProvider = () => {
-    void dialog.show(() => <DialogConnectProvider directory={directory} />)
+    const controller = useProviderConnectController()
+    controller.select("ktai")
+    void dialog.show(() => <DialogConnectProvider controller={controller} directory={directory} />)
   }
   const providerRank = (id: string) => popularProviders.indexOf(id)
   const providerList = (providerID: string) => local.model.list().filter((x) => x.provider.id === providerID)
@@ -123,7 +125,9 @@ export const DialogManageModelsV2: Component = () => {
   const directory = () => decode64(local.slug())
 
   const handleConnectProvider = () => {
-    void dialog.show(() => <DialogConnectProvider directory={directory} />)
+    const controller = useProviderConnectController()
+    controller.select("ktai")
+    void dialog.show(() => <DialogConnectProvider controller={controller} directory={directory} />)
   }
   const providerList = (providerID: string) => local.model.list().filter((x) => x.provider.id === providerID)
   const providerVisible = (providerID: string) =>

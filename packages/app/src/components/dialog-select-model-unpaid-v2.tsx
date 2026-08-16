@@ -150,18 +150,6 @@ export const DialogSelectModelUnpaidV2: Component<{ model?: ModelState }> = (pro
                       </button>
                     )}
                   </For>
-                  <button
-                    type="button"
-                    class="flex h-9 w-full scroll-my-3.5 flex-row items-center justify-start gap-2 rounded-[6px] px-2.5 py-2 text-left text-[13px] font-[530] leading-5 tracking-[-0.04px] text-v2-text-text-base [font-family:Inter,var(--font-family-sans)] [font-variation-settings:'slnt'_0] hover:bg-v2-overlay-simple-overlay-hover focus:bg-v2-overlay-simple-overlay-hover focus:outline-none"
-                    onClick={() => openProviders()}
-                  >
-                    <span class="flex size-4 shrink-0 items-center justify-center text-v2-icon-icon-muted">
-                      <Icon name="dot-grid" size="small" />
-                    </span>
-                    <span class="min-w-0 truncate text-left text-[13px] font-[530] leading-5 tracking-[-0.04px] text-v2-text-text-base [font-family:Inter,var(--font-family-sans)] [font-variation-settings:'slnt'_0]">
-                      {language.t("dialog.provider.viewAll")}
-                    </span>
-                  </button>
                 </div>
               </div>
             </div>

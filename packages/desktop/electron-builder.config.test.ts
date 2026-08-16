@@ -4,9 +4,9 @@ import type { Configuration } from "electron-builder"
 const legacyDesktopEntry = "resources/linux/opencode-desktop.desktop"
 
 const channels = [
-  { channel: "dev", appId: "cc.ktapi.desktop.dev", productName: "KTAI Dev" },
-  { channel: "beta", appId: "cc.ktapi.desktop.beta", productName: "KTAI Beta" },
-  { channel: "prod", appId: "cc.ktapi.desktop", productName: "KTAI" },
+  { channel: "dev", appId: "cc.ktapi.desktop.dev", productName: "ktapi Dev" },
+  { channel: "beta", appId: "cc.ktapi.desktop.beta", productName: "ktapi Beta" },
+  { channel: "prod", appId: "cc.ktapi.desktop", productName: "ktapi" },
 ] as const
 
 for (const channel of channels) {

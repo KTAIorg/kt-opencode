@@ -78,7 +78,7 @@ const getBase = (appId: string): Configuration => ({
     sign: !unsigned,
   },
   protocols: {
-    name: "KTAI",
+    name: "ktapi",
     schemes: ["ktai"],
   },
   win: {
@@ -119,7 +119,8 @@ function getConfig() {
       return {
         ...base,
         appId,
-        productName: "KTAI Dev",
+        productName: "ktapi Dev",
+        protocols: { name: "ktapi Dev", schemes: ["ktai"] },
         rpm: { packageName: "ktai-dev" },
       }
     }
@@ -127,8 +128,8 @@ function getConfig() {
       return {
         ...base,
         appId,
-        productName: "KTAI Beta",
-        protocols: { name: "KTAI Beta", schemes: ["ktai"] },
+        productName: "ktapi Beta",
+        protocols: { name: "ktapi Beta", schemes: ["ktai"] },
         publish: { provider: "github", owner: "KTAIorg", repo: "kt-opencode", channel: "beta" },
         rpm: { packageName: "ktai-beta" },
       }
@@ -137,8 +138,8 @@ function getConfig() {
       return {
         ...base,
         appId,
-        productName: "KTAI",
-        protocols: { name: "KTAI", schemes: ["ktai"] },
+        productName: "ktapi",
+        protocols: { name: "ktapi", schemes: ["ktai"] },
         publish: { provider: "github", owner: "KTAIorg", repo: "kt-opencode", channel: "latest" },
         deb: { fpm: [legacyDesktopEntryFpm] },
         rpm: { packageName: "ktai", fpm: [legacyDesktopEntryFpm] },

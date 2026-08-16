@@ -28,9 +28,7 @@ import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
-import { CustomProviderForm } from "./dialog-custom-provider"
-
-const CUSTOM_ID = "_custom"
+import { isCustomerFacingProvider } from "@/utils/kt-settlement"
 
 export function useProviderConnectController(options: { onBack?: () => void } = {}) {
   const [store, setStore] = createStore({ selected: undefined as string | undefined })
@@ -54,6 +52,7 @@ export const DialogConnectProvider: Component<{
   const back = { current: reset }
   const select = (provider?: string) => {
     back.current = reset
+    if (provider && !isCustomerFacingProvider(provider)) return
     controller.select(provider)
   }
 
@@ -74,10 +73,13 @@ export const DialogConnectProvider: Component<{
       }
     >
       <Switch>
-        <Match when={controller.selected() === CUSTOM_ID}>
-          <CustomProviderForm />
-        </Match>
-        <Match when={controller.selected() && controller.selected() !== CUSTOM_ID ? controller.selected() : undefined}>
+        <Match
+          when={
+            controller.selected() && isCustomerFacingProvider(controller.selected()!)
+              ? controller.selected()
+              : undefined
+          }
+        >
           {(provider) => (
             <ProviderConnection
               provider={provider()}
@@ -100,7 +102,6 @@ function ProviderPicker(props: { directory?: Accessor<string | undefined>; onSel
   const language = useLanguage()
   const popularGroup = () => language.t("dialog.provider.group.popular")
   const otherGroup = () => language.t("dialog.provider.group.other")
-  const customLabel = () => language.t("settings.providers.tag.custom")
   const note = (id: string) => {
     if (id === "anthropic") return language.t("dialog.provider.anthropic.note")
     if (id === "openai") return language.t("dialog.provider.openai.note")
@@ -118,13 +119,11 @@ function ProviderPicker(props: { directory?: Accessor<string | undefined>; onSel
       key={(x) => x?.id}
       items={() => {
         language.locale()
-        return [{ id: CUSTOM_ID, name: customLabel() }, ...providers.all().values()]
+        return [...providers.all().values()].filter((p) => isCustomerFacingProvider(p.id))
       }}
       filterKeys={["id", "name"]}
       groupBy={(x) => (popularProviders.includes(x.id) ? popularGroup() : otherGroup())}
       sortBy={(a, b) => {
-        if (a.id === CUSTOM_ID) return -1
-        if (b.id === CUSTOM_ID) return 1
         if (popularProviders.includes(a.id) && popularProviders.includes(b.id))
           return popularProviders.indexOf(a.id) - popularProviders.indexOf(b.id)
         return a.name.localeCompare(b.name)
@@ -146,9 +145,6 @@ function ProviderPicker(props: { directory?: Accessor<string | undefined>; onSel
           <span>{i.name}</span>
           <Show when={i.id === "opencode"}>
             <div class="text-14-regular text-text-weak">{language.t("dialog.provider.opencode.tagline")}</div>
-          </Show>
-          <Show when={i.id === CUSTOM_ID}>
-            <Tag>{language.t("settings.providers.tag.custom")}</Tag>
           </Show>
           <Show when={i.id === "opencode"}>
             <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>

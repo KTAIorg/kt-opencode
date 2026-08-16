@@ -1,4 +1,3 @@
-import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { List, type ListRef } from "@opencode-ai/ui/list"
@@ -31,7 +30,6 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
   }
 
   const connect = (provider: string) => openProviders(provider)
-  const all = () => openProviders()
 
   let listRef: ListRef | undefined
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -130,14 +128,6 @@ export const DialogSelectModelUnpaid: Component<{ model?: ModelState }> = (props
                   </div>
                 )}
               </List>
-              <Button
-                variant="ghost"
-                class="w-full justify-start px-[11px] py-3.5 gap-4.5 text-14-medium"
-                icon="dot-grid"
-                onClick={all}
-              >
-                {language.t("dialog.provider.viewAll")}
-              </Button>
             </div>
           </div>
         </div>
