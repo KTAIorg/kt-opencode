@@ -27,7 +27,9 @@ import { Link } from "@/components/link"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
+import { parseTelegramAuthorization } from "@/utils/kt-identity-login"
 import { customerFacingProviderName, isCustomerFacingProvider } from "@/utils/kt-settlement"
 
 export function useProviderConnectController(options: { onBack?: () => void } = {}) {
@@ -169,6 +171,7 @@ function ProviderConnection(props: {
   const serverSync = useServerSync()
   const serverSDK = useServerSDK()
   const language = useLanguage()
+  const platform = usePlatform()
   const providers = useProviders(props.directory)
 
   const alive = { value: true }
@@ -714,25 +717,65 @@ function ProviderConnection(props: {
       })()
     })
 
+    const identity = createMemo(() =>
+      props.provider === "ktai" || props.provider === "ktapi"
+        ? parseTelegramAuthorization({
+            url: store.authorization!.url,
+            instructions: store.authorization!.instructions,
+          })
+        : undefined,
+    )
+
     return (
-      <div class="flex flex-col gap-6">
-        <div class="text-14-regular text-text-base">
-          {language.t("provider.connect.oauth.auto.visit.prefix")}
-          <Link href={store.authorization!.url}>{language.t("provider.connect.oauth.auto.visit.link")}</Link>
-          {language.t("provider.connect.oauth.auto.visit.suffix", { provider: provider().name })}
+      <Show
+        when={identity()?.code}
+        fallback={
+          <div class="flex flex-col gap-6">
+            <div class="text-14-regular text-text-base">
+              {language.t("provider.connect.oauth.auto.visit.prefix")}
+              <Link href={store.authorization!.url}>{language.t("provider.connect.oauth.auto.visit.link")}</Link>
+              {language.t("provider.connect.oauth.auto.visit.suffix", { provider: provider().name })}
+            </div>
+            <TextField
+              label={language.t("provider.connect.oauth.auto.confirmationCode")}
+              class="font-mono"
+              value={code()}
+              readOnly
+              copyable
+            />
+            <div class="text-14-regular text-text-base flex items-center gap-4">
+              <Spinner />
+              <span>{language.t("provider.connect.status.waiting")}</span>
+            </div>
+          </div>
+        }
+      >
+        <div class="flex flex-col gap-5">
+          <div class="flex flex-col gap-2">
+            <div class="text-12-regular text-text-weak">{language.t("dialog.ktIdentity.codeLabel")}</div>
+            <div class="font-mono text-[28px] leading-none tracking-[0.18em] text-text-strong">{identity()?.code}</div>
+            <p class="text-12-regular text-text-weak">{language.t("dialog.ktIdentity.codeHint")}</p>
+          </div>
+          <Button
+            variant="primary"
+            size="large"
+            type="button"
+            onClick={() => {
+              const url = identity()?.url
+              if (url) platform.openLink(url)
+            }}
+          >
+            {identity()?.bot
+              ? language.t("dialog.ktIdentity.openTelegram", { bot: identity()!.bot! })
+              : language.t("dialog.ktIdentity.openTelegramFallback")}
+          </Button>
+          <p class="text-12-regular text-text-weak">{language.t("dialog.ktIdentity.noTelegram")}</p>
+          <div class="text-14-regular text-text-base flex items-center gap-4">
+            <Spinner />
+            <span>{language.t("dialog.ktIdentity.waiting")}</span>
+          </div>
         </div>
-        <TextField
-          label={language.t("provider.connect.oauth.auto.confirmationCode")}
-          class="font-mono"
-          value={code()}
-          readOnly
-          copyable
-        />
-        <div class="text-14-regular text-text-base flex items-center gap-4">
-          <Spinner />
-          <span>{language.t("provider.connect.status.waiting")}</span>
-        </div>
-      </div>
+      </Show>
     )
   }
 

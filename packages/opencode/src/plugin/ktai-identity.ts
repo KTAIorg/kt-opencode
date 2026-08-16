@@ -348,11 +348,25 @@ export function sessionExpiresAt(session: IdentityBearerSession) {
   return Number.isFinite(parsed) ? parsed : Date.now() + 60 * 60 * 1000
 }
 
+export function telegramAuthorizeView(challenge: TelegramChallenge) {
+  return {
+    url: challenge.telegram.qrUrl,
+    instructions: `Confirm Kito login in Telegram @${challenge.telegram.botUsername}. Code: ${challenge.displayCode}`,
+    method: "auto" as const,
+  }
+}
+
+export function parseTelegramAuthorization(input: { url: string; instructions: string }) {
+  const code = /Code:\s*(\S+)/.exec(input.instructions)?.[1]
+  const bot = /t\.me\/([^/?#]+)/.exec(input.url)?.[1]
+  return {
+    url: input.url,
+    code,
+    bot,
+  }
+}
+
 export function identityLoginInstructions(session: IdentityBearerSession) {
   const who = session.account.displayName?.trim() || session.account.accountNo
-  return [
-    `Signed in to KT Identity as ${who} (${session.account.accountNo}).`,
-    "AI calls still use NewAPI (ktapi.cc).",
-    "Until NewAPI auto-provision by kt_account_id lands, also set KTAI_API_KEY (or use “Kito API key”).",
-  ].join(" ")
+  return `Signed in to KT Identity as ${who} (${session.account.accountNo}).`
 }

@@ -10,6 +10,7 @@ import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { DialogConnectProvider, useProviderConnectController } from "../dialog-connect-provider"
+import { openKtIdentityLogin } from "../dialog-kt-identity-login"
 import { isCustomerFacingProvider } from "@/utils/kt-settlement"
 import { SettingsListV2 } from "./parts/list"
 import "./settings-v2.css"
@@ -53,6 +54,10 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
   )
 
   const connect = (provider?: string) => {
+    if (provider === "ktai" || provider === "ktapi") {
+      openKtIdentityLogin({ dialog })
+      return
+    }
     providerConnect.select(provider)
     void dialog.show(() => <DialogConnectProvider controller={providerConnect} />)
   }

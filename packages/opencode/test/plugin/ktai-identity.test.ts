@@ -5,10 +5,12 @@ import {
   identityLoginInstructions,
   isEmbeddedMode,
   KT_IDENTITY_REFRESH_MARKER,
+  parseTelegramAuthorization,
   passwordLogin,
   pollTelegramLogin,
   sessionExpiresAt,
   startTelegramLogin,
+  telegramAuthorizeView,
 } from "@/plugin/ktai-identity"
 
 test("identityBaseUrl defaults and trims trailing slash", () => {
@@ -109,6 +111,11 @@ test("startTelegramLogin and pollTelegramLogin complete a challenge", async () =
 
   const challenge = await startTelegramLogin({ baseUrl: "https://login.example" }, fetchImpl)
   expect(challenge.displayCode).toBe("AB12")
+  expect(parseTelegramAuthorization(telegramAuthorizeView(challenge))).toEqual({
+    url: "https://t.me/KTClientBot?start=ab12",
+    code: "AB12",
+    bot: "KTClientBot",
+  })
 
   const session = await pollTelegramLogin(
     { challengeId: challenge.challengeId, baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 1_000 },

@@ -103,16 +103,16 @@ test("pricing fallback still filters to ktai + openai endpoints", () => {
   expect(list.map((m) => m.id)).toEqual(["gpt-5.4"])
 })
 
-test("exposes Telegram Identity login before the API key fallback", async () => {
+test("exposes Telegram Identity login only", async () => {
   const hooks = await KTAIProviderPlugin()
   expect(hooks.auth?.provider).toBe("ktai")
-  expect(hooks.auth?.methods.map((method) => method.label)).toEqual(["Telegram", "Kito API key"])
+  expect(hooks.auth?.methods.map((method) => method.label)).toEqual(["Telegram"])
   expect(hooks.auth?.methods[0]?.type).toBe("oauth")
-  expect(hooks.auth?.methods[1]?.type).toBe("api")
+  expect(hooks.auth?.methods.some((method) => method.type === "api")).toBe(false)
   expect(typeof hooks.auth?.loader).toBe("function")
 })
 
-test("embedded injected identity still exposes Telegram login plus API key", async () => {
+test("embedded injected identity still exposes Telegram login only", async () => {
   const previous = {
     embedded: process.env.OPENCODE_EMBEDDED,
     token: process.env.KTAI_IDENTITY_TOKEN,
@@ -123,7 +123,7 @@ test("embedded injected identity still exposes Telegram login plus API key", asy
   process.env.KTAI_IDENTITY_EXPIRES_AT = "2099-01-01T00:00:00.000Z"
   try {
     const hooks = await KTAIProviderPlugin()
-    expect(hooks.auth?.methods.map((method) => method.label)).toEqual(["Telegram", "Kito API key"])
+    expect(hooks.auth?.methods.map((method) => method.label)).toEqual(["Telegram"])
     expect(hooks.auth?.methods[0]?.type).toBe("oauth")
   } finally {
     if (previous.embedded === undefined) delete process.env.OPENCODE_EMBEDDED

@@ -2,7 +2,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
 import { Show, createMemo, createResource, onCleanup, onMount } from "solid-js"
-import { DialogConnectProvider, useProviderConnectController } from "@/components/dialog-connect-provider"
+import { openKtIdentityLogin } from "@/components/dialog-kt-identity-login"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useServer } from "@/context/server"
@@ -24,7 +24,6 @@ export function TitlebarAccountButton(props: { variant: "legacy" | "v2" }) {
   const server = useServer()
   const serverSDK = useServerSDK()
   const providers = useProviders()
-  const providerConnect = useProviderConnectController()
   const connectedKey = createMemo(() =>
     providers
       .connected()
@@ -76,8 +75,7 @@ export function TitlebarAccountButton(props: { variant: "legacy" | "v2" }) {
   })
 
   const signIn = () => {
-    providerConnect.select("ktai")
-    void dialog.show(() => <DialogConnectProvider controller={providerConnect} />)
+    openKtIdentityLogin({ dialog })
   }
 
   const topUp = () => {

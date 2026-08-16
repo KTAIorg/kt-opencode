@@ -9,6 +9,7 @@ import {
   pollTelegramLogin,
   sessionExpiresAt,
   startTelegramLogin,
+  telegramAuthorizeView,
   validateExternalIdentity,
 } from "./ktai-identity"
 
@@ -367,9 +368,7 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
           async authorize() {
             const challenge = await startTelegramLogin()
             return {
-              url: challenge.telegram.qrUrl,
-              instructions: `Open Telegram and confirm Kito login. Code: ${challenge.displayCode}`,
-              method: "auto" as const,
+              ...telegramAuthorizeView(challenge),
               async callback() {
                 const session = await pollTelegramLogin({ challengeId: challenge.challengeId })
                 return {
@@ -384,7 +383,6 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
             }
           },
         },
-        { type: "api" as const, label: "Kito API key" },
       ],
     },
   }
