@@ -182,8 +182,7 @@ function ProviderConnection(props: {
   })
 
   const provider = createMemo(() => {
-    const raw = providers.all().get(props.provider) ?? serverSync().data.provider.all.get(props.provider)
-    if (!raw) return raw
+    const raw = providers.all().get(props.provider) ?? serverSync().data.provider.all.get(props.provider)!
     const name = customerFacingProviderName(raw.id, raw.name)
     if (name === raw.name) return raw
     return { ...raw, name }
