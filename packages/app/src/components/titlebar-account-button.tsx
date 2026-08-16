@@ -5,6 +5,7 @@ import { Show, createMemo, createResource, onCleanup, onMount } from "solid-js"
 import { DialogConnectProvider, useProviderConnectController } from "@/components/dialog-connect-provider"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
+import { useServer } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { useProviders } from "@/hooks/use-providers"
 import {
@@ -20,6 +21,7 @@ export function TitlebarAccountButton(props: { variant: "legacy" | "v2" }) {
   const language = useLanguage()
   const dialog = useDialog()
   const platform = usePlatform()
+  const server = useServer()
   const serverSDK = useServerSDK()
   const providers = useProviders()
   const providerConnect = useProviderConnectController()
@@ -30,12 +32,16 @@ export function TitlebarAccountButton(props: { variant: "legacy" | "v2" }) {
       .join(","),
   )
   const [account, accountActions] = createResource(
-    () => ({
-      url: serverSDK().url.replace(/\/+$/, ""),
-      username: serverSDK().server.http.username,
-      password: serverSDK().server.http.password,
-      connected: connectedKey(),
-    }),
+    () => {
+      if (!server.current) return
+      const sdk = serverSDK()
+      return {
+        url: sdk.url.replace(/\/+$/, ""),
+        username: sdk.server.http.username,
+        password: sdk.server.http.password,
+        connected: connectedKey(),
+      }
+    },
     (input) =>
       (platform.fetch ?? fetch)(`${input.url}/ktai/account`, {
         headers:
