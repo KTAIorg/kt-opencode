@@ -1,4 +1,4 @@
-/** Settlement application created for the ktapi desktop client. */
+/** Settlement application created for the KT OpenCode desktop client. */
 export const KT_SETTLEMENT_APPLICATION_ID = "2088777044511035392"
 export const KT_SETTLEMENT_APPLICATION_NAME = "kt-opencode"
 export const KT_WALLET_URL = "https://www.ktapi.cc/wallet"

@@ -353,6 +353,6 @@ export function identityLoginInstructions(session: IdentityBearerSession) {
   return [
     `Signed in to KT Identity as ${who} (${session.account.accountNo}).`,
     "AI calls still use NewAPI (ktapi.cc).",
-    "Until NewAPI auto-provision by kt_account_id lands, also set KTAI_API_KEY (or use “KTAI API key”).",
+    "Until NewAPI auto-provision by kt_account_id lands, also set KTAI_API_KEY (or use “KT API key”).",
   ].join(" ")
 }

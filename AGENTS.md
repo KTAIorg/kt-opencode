@@ -162,8 +162,8 @@ const table = sqliteTable("session", {
 
 ## Cursor Cloud specific instructions
 
-- External product name is **ktapi**. Window title, desktop `productName`, and customer-facing copy should say ktapi, not OpenCode.
-- Customer settings only connect **ktai / ktapi**. Zen (`opencode`) stays as the internal free-quota channel (100 local chats), then the guide offers Telegram KT Identity login and wallet top-up.
+- External product name is **KT OpenCode**. Window title, desktop `productName`, and customer-facing copy must say KT OpenCode. Never show `ktapi`, `ktai`, or `KTAI` as the product/provider name. Those remain internal IDs, env vars, and the `ktapi.cc` domain.
+- Customer settings only connect the internal `ktai` provider (display name **KT**). Zen (`opencode`) stays as the internal free-quota channel (100 local chats), then the guide offers Telegram KT Identity login and wallet top-up.
 - Settlement application for this client: `kt-opencode` / id `2088777044511035392`. Wallet: `https://www.ktapi.cc/wallet`. Per-user deposit addresses are created lazily on recharge, keyed by `kt_account_id`.
-- KT Identity Telegram login is the first KTAI auth method. Identity Bearer is not a NewAPI key; paid calls still need Ensure or a pasted `KTAI_API_KEY`.
+- KT Identity Telegram login is the first KT auth method. Identity Bearer is not a NewAPI key; paid calls still need Ensure or a pasted `KTAI_API_KEY`.
 - Tests cannot run from repo root. Package commands: `cd packages/opencode && bun test`, `cd packages/app && bun test`, `cd packages/desktop && bun test`.

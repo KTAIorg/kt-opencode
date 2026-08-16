@@ -95,8 +95,8 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
         showToast({
           variant: "success",
           icon: "circle-check",
-          title: language.t("provider.connect.toast.connected.title", { provider: "ktapi" }),
-          description: language.t("provider.connect.toast.connected.description", { provider: "ktapi" }),
+          title: language.t("provider.connect.toast.connected.title", { provider: "KT" }),
+          description: language.t("provider.connect.toast.connected.description", { provider: "KT" }),
         })
       })
       .catch((err: unknown) => {
@@ -132,7 +132,7 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
               <TextField
                 autofocus
                 type="text"
-                label={language.t("provider.connect.apiKey.label", { provider: "ktapi" })}
+                label={language.t("provider.connect.apiKey.label", { provider: "KT" })}
                 placeholder={language.t("provider.connect.apiKey.placeholder")}
                 name="apiKey"
                 value={form.value}
@@ -220,7 +220,7 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
   )
 }
 
-/** Open the guided connect flow for ktapi (used by error cards / CTAs). */
+/** Open the guided connect flow for KT (used by error cards / CTAs). */
 export function openKtAccessGuide(input: {
   dialog: ReturnType<typeof useDialog>
   kind?: "auth" | "billing"
