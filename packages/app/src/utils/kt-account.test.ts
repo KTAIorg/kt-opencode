@@ -17,6 +17,7 @@ test("treats ktai and ktapi ids as Kito", () => {
 test("requires a real Kito credential, not catalog-only discovery", () => {
   expect(hasKitoCredential([{ id: "ktai", source: "config" }])).toBe(false)
   expect(hasKitoCredential([{ id: "ktai", source: "api", key: "sk-test" }])).toBe(true)
+  expect(hasKitoCredential([{ id: "ktai", source: "oauth" }])).toBe(true)
   expect(hasKitoCredential([{ id: "ktai", source: "env" }])).toBe(true)
   expect(hasKitoCredential([{ id: "ktai", key: "sk-test" }])).toBe(true)
   expect(hasKitoCredential([{ id: "opencode", source: "api", key: "zen" }])).toBe(false)

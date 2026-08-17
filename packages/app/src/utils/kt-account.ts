@@ -10,7 +10,7 @@ export function isKitoProviderId(id: string) {
 export function hasKitoCredential(providers: Array<{ id: string; source?: string; key?: string }>) {
   return providers.some((provider) => {
     if (!isKitoProviderId(provider.id)) return false
-    if (provider.source === "api" || provider.source === "env") return true
+    if (provider.source === "api" || provider.source === "env" || provider.source === "oauth") return true
     return Boolean(provider.key)
   })
 }

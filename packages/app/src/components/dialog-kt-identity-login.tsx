@@ -6,6 +6,7 @@ import { Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
+import { requestKtaiEnsure } from "@/utils/kt-ensure"
 import { parseTelegramAuthorization } from "@/utils/kt-identity-login"
 import { showToast } from "@/utils/toast"
 
@@ -30,6 +31,12 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
   }
 
   const finish = async () => {
+    await requestKtaiEnsure({
+      url: serverSDK().url,
+      username: serverSDK().server.http.username,
+      password: serverSDK().server.http.password,
+      fetchImpl: platform.fetch ?? fetch,
+    }).catch(() => undefined)
     await serverSDK().client.global.dispose()
     close()
     showToast({

@@ -121,6 +121,7 @@ import {
   identityBaseUrl,
   KT_IDENTITY_REFRESH_MARKER,
 } from "@/plugin/ktai-identity"
+import { fetchDepositAddress, readManagedApiKey, syncManagedToken } from "@/plugin/ktai-newapi"
 
 export const context = Context.makeUnsafe<unknown>(new Map())
 
@@ -197,24 +198,84 @@ const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effe
   Layer.provide(authOnlyRouterLayer),
 )
 
+function identityAccess(stored: Auth.Info | undefined) {
+  const injected = externalIdentity()
+  return (
+    injected?.token ??
+    (stored?.type === "oauth" && stored.refresh === KT_IDENTITY_REFRESH_MARKER ? stored.access : undefined)
+  )
+}
+
 const ktaiAccountRoute = HttpRouter.use((router) =>
   Effect.gen(function* () {
     const auth = yield* Auth.Service
     yield* router.add("GET", "/ktai/account", () =>
       Effect.gen(function* () {
-        const injected = externalIdentity()
-        const stored = injected ? undefined : yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
-        const token =
-          injected?.token ??
-          (stored?.type === "oauth" && stored.refresh === KT_IDENTITY_REFRESH_MARKER ? stored.access : undefined)
+        const stored = yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
+        const token = identityAccess(stored)
         if (!token) return HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 401 })
 
-        return yield* Effect.tryPromise(() => fetchAccountSummary(token, identityBaseUrl())).pipe(
+        return yield* Effect.tryPromise(async () => {
+          const summary = await fetchAccountSummary(token, identityBaseUrl())
+          if (!(await readManagedApiKey())) await syncManagedToken(token).catch(() => undefined)
+          return summary
+        }).pipe(
           Effect.match({
             onFailure: () => HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 503 }),
             onSuccess: (summary) => HttpServerResponse.jsonUnsafe(summary),
           }),
         )
+      }),
+    )
+    yield* router.add("POST", "/ktai/ensure", () =>
+      Effect.gen(function* () {
+        const stored = yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
+        const token = identityAccess(stored)
+        if (!token) return HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 401 })
+        return yield* Effect.tryPromise(() => syncManagedToken(token)).pipe(
+          Effect.match({
+            onFailure: (error) =>
+              HttpServerResponse.jsonUnsafe(
+                { error: error instanceof Error ? error.message : "NewAPI ensure failed" },
+                { status: 502 },
+              ),
+            onSuccess: (result) =>
+              HttpServerResponse.jsonUnsafe({
+                ok: true,
+                updated: result.updated,
+                created: result.created,
+                keyPresent: true,
+              }),
+          }),
+        )
+      }),
+    )
+    yield* router.add("GET", "/ktai/wallet/deposit-address", () =>
+      Effect.gen(function* () {
+        const stored = yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
+        const token = identityAccess(stored)
+        if (!token) return HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 401 })
+        return yield* Effect.tryPromise(() => fetchDepositAddress(token)).pipe(
+          Effect.match({
+            onFailure: (error) =>
+              HttpServerResponse.jsonUnsafe(
+                { error: error instanceof Error ? error.message : "Deposit address is unavailable" },
+                { status: 502 },
+              ),
+            onSuccess: (address) => HttpServerResponse.jsonUnsafe(address),
+          }),
+        )
+      }),
+    )
+    yield* router.add("GET", "/ktai/credential", () =>
+      Effect.gen(function* () {
+        const stored = yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
+        const token = identityAccess(stored)
+        const key = yield* Effect.tryPromise(() => readManagedApiKey()).pipe(Effect.orElseSucceed(() => undefined))
+        return HttpServerResponse.jsonUnsafe({
+          identity: Boolean(token),
+          keyPresent: Boolean(key),
+        })
       }),
     )
   }),

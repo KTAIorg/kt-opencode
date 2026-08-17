@@ -1,6 +1,7 @@
 /** Settlement application created for the Kito desktop client. */
 export const KT_SETTLEMENT_APPLICATION_ID = "2088777044511035392"
 export const KT_SETTLEMENT_APPLICATION_NAME = "kt-opencode"
+/** Legacy NewAPI wallet URL. Kito top-up now uses the in-app Identity deposit address. */
 export const KT_WALLET_URL = "https://www.ktapi.cc/wallet"
 
 export function isCustomerFacingProvider(id: string) {

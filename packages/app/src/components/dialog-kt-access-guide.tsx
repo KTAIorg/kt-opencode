@@ -2,16 +2,13 @@ import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { Show, createMemo } from "solid-js"
-import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
 import { useLocal } from "@/context/local"
 import { useProviders } from "@/hooks/use-providers"
 import { hasKitoCredential } from "@/utils/kt-account"
-import { KT_WALLET_URL } from "@/utils/kt-settlement"
+import { openKtWallet } from "@/components/dialog-kt-wallet"
 import { ModelList } from "@/components/dialog-select-model"
 import { openKtIdentityLogin } from "@/components/dialog-kt-identity-login"
-
-export { KT_WALLET_URL }
 
 export type DialogKtAccessGuideProps = {
   /** auth = invalid token; billing = quota / balance */
@@ -22,7 +19,6 @@ export type DialogKtAccessGuideProps = {
 /** Guided KT onboarding: Telegram Identity login or wallet. */
 export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
   const dialog = useDialog()
-  const platform = usePlatform()
   const language = useLanguage()
   const local = useLocal()
   const providers = useProviders()
@@ -45,7 +41,7 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
   }
 
   const openWallet = () => {
-    platform.openLink(KT_WALLET_URL)
+    openKtWallet({ dialog, onClose: () => props.onClose?.(false) })
   }
 
   const startTelegramLogin = () => {

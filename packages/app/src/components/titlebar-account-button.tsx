@@ -15,7 +15,7 @@ import {
   titlebarAccountName,
   type KtaiAccountSummary,
 } from "@/utils/kt-account"
-import { KT_WALLET_URL } from "@/utils/kt-settlement"
+import { openKtWallet } from "@/components/dialog-kt-wallet"
 
 export function TitlebarAccountButton(props: { variant: "legacy" | "v2" }) {
   const language = useLanguage()
@@ -79,7 +79,7 @@ export function TitlebarAccountButton(props: { variant: "legacy" | "v2" }) {
   }
 
   const topUp = () => {
-    platform.openLink(KT_WALLET_URL)
+    openKtWallet({ dialog })
   }
 
   const onClick = () => {

@@ -12,9 +12,9 @@ export const GO_UPSELL_MESSAGE = "Free usage exceeded. Top up on KT AI to contin
 export const GO_UPSELL_URL = "https://www.ktapi.cc/wallet"
 export const KT_TOPUP_MESSAGE = GO_UPSELL_MESSAGE
 export const KT_TOPUP_URL = GO_UPSELL_URL
-/** Invalid / expired KT API key — same destination as top-up (register / wallet). */
+/** Invalid / expired KT API key — Identity login re-issues the managed Kito key. */
 export const KT_AUTH_MESSAGE =
-  "API key is invalid or expired. Register or sign in on KT AI (ktapi.cc), create a valid key, or top up to continue."
+  "Kito sign-in expired or the managed key is missing. Sign in with Telegram again; Kito will restore the key automatically."
 export type RetryReason = "free_tier_limit" | "account_rate_limit" | "auth_billing" | (string & {})
 
 export type Retryable = {

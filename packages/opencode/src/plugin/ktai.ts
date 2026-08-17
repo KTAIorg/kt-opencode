@@ -1,7 +1,5 @@
 import type { Config, Hooks } from "@opencode-ai/plugin"
 import { OAUTH_DUMMY_KEY } from "@/auth"
-import { Global } from "@opencode-ai/core/global"
-import path from "path"
 import {
   externalIdentity,
   isEmbeddedMode,
@@ -12,6 +10,7 @@ import {
   telegramAuthorizeView,
   validateExternalIdentity,
 } from "./ktai-identity"
+import { readManagedApiKey, syncManagedToken } from "./ktai-newapi"
 
 export const KTAI_PRICING_URL = "https://ktapi.cc/api/pricing"
 export const KTAI_MODELS_URL = "https://ktapi.cc/v1/models"
@@ -290,17 +289,7 @@ export function createKTAIProviderConfig(list: RawModel[]): NonNullable<Config["
 }
 
 async function readStoredApiKey(): Promise<string | undefined> {
-  if (process.env.KTAI_API_KEY?.trim()) return process.env.KTAI_API_KEY.trim()
-  try {
-    const file = path.join(Global.Path.data, "auth.json")
-    const raw = await Bun.file(file).text()
-    const data = JSON.parse(raw) as Record<string, { type?: string; key?: string }>
-    const auth = data.ktai
-    if (auth?.type === "api" && typeof auth.key === "string" && auth.key.trim()) return auth.key.trim()
-  } catch {
-    // no stored key yet
-  }
-  return
+  return readManagedApiKey()
 }
 
 async function fetchJson(url: string, init?: RequestInit) {
@@ -357,7 +346,8 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
         const auth = await getAuth()
         if (!auth) return {}
         if (auth.type === "oauth" && auth.refresh === KT_IDENTITY_REFRESH_MARKER) {
-          return { apiKey: process.env.KTAI_API_KEY || OAUTH_DUMMY_KEY }
+          const managed = await readManagedApiKey()
+          return { apiKey: managed || process.env.KTAI_API_KEY || OAUTH_DUMMY_KEY }
         }
         return {}
       },
@@ -371,6 +361,7 @@ export async function KTAIProviderPlugin(): Promise<Hooks> {
               ...telegramAuthorizeView(challenge),
               async callback() {
                 const session = await pollTelegramLogin({ challengeId: challenge.challengeId })
+                await syncManagedToken(session.token).catch(() => undefined)
                 return {
                   type: "success" as const,
                   provider: "ktai",
