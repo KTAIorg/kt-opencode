@@ -35,9 +35,9 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
             : undefined,
       },
     )
-    const payload = (await response.json().catch(() => undefined)) as DepositAddress & { error?: string }
+    const payload = (await response.json().catch(() => undefined)) as DepositAddress & { error?: string } | undefined
     if (!response.ok) throw new Error(payload?.error || language.t("dialog.ktWallet.error"))
-    if (!payload.address) throw new Error(language.t("dialog.ktWallet.error"))
+    if (!payload?.address) throw new Error(payload?.error || language.t("dialog.ktWallet.error"))
     return payload
   })
 
