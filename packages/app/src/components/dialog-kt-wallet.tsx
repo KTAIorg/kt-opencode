@@ -112,9 +112,10 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
     if (!current || paid()) return
     const timer = window.setInterval(() => {
       void request(`/ktai/wallet/ktpay/status/${encodeURIComponent(current.orderId)}`)
-        .then((response) => response.json().catch(() => undefined))
+        .then((response) => (response.ok ? response.json().catch(() => undefined) : undefined))
         .then((payload: { localStatus?: string; status?: string } | undefined) => {
-          if (payload?.localStatus === "success") {
+          if (!payload) return
+          if (payload.localStatus === "success") {
             setPaid(true)
             window.dispatchEvent(new Event("kito-account-refresh"))
             showToast({
@@ -124,13 +125,13 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
             })
             return
           }
-          const remote = payload?.status?.toLowerCase()
+          const remote = payload.status?.toLowerCase()
           if (remote && TERMINAL_FAILURE.has(remote)) {
             setPayError(language.t(remote === "expired" ? "dialog.ktWallet.expired" : "dialog.ktWallet.failed"))
             setOrder(undefined)
           }
         })
-    }, 2000)
+    }, 5000)
     onCleanup(() => window.clearInterval(timer))
   })
 
