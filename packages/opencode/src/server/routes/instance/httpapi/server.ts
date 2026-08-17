@@ -232,11 +232,14 @@ const ktaiAccountRoute = HttpRouter.use((router) =>
         const stored = yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
         const token = identityAccess(stored)
         if (!token) return HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 401 })
-        return yield* Effect.tryPromise(() => syncManagedToken(token)).pipe(
+        return yield* Effect.tryPromise({
+          try: () => syncManagedToken(token),
+          catch: (error) => (error instanceof Error ? error : new Error("NewAPI ensure failed")),
+        }).pipe(
           Effect.match({
             onFailure: (error) =>
               HttpServerResponse.jsonUnsafe(
-                { error: error instanceof Error ? error.message : "NewAPI ensure failed" },
+                { error: error.message },
                 { status: 502 },
               ),
             onSuccess: (result) =>
@@ -255,11 +258,14 @@ const ktaiAccountRoute = HttpRouter.use((router) =>
         const stored = yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
         const token = identityAccess(stored)
         if (!token) return HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 401 })
-        return yield* Effect.tryPromise(() => fetchDepositAddress(token)).pipe(
+        return yield* Effect.tryPromise({
+          try: () => fetchDepositAddress(token),
+          catch: (error) => (error instanceof Error ? error : new Error("Deposit address is unavailable")),
+        }).pipe(
           Effect.match({
             onFailure: (error) =>
               HttpServerResponse.jsonUnsafe(
-                { error: error instanceof Error ? error.message : "Deposit address is unavailable" },
+                { error: error.message },
                 { status: 502 },
               ),
             onSuccess: (address) => HttpServerResponse.jsonUnsafe(address),
