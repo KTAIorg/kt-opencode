@@ -67,9 +67,11 @@ export function TitlebarAccountButton(props: { variant: "legacy" | "v2" }) {
   onMount(() => {
     const refresh = () => void accountActions.refetch()
     window.addEventListener("focus", refresh)
+    window.addEventListener("kito-account-refresh", refresh)
     document.addEventListener("visibilitychange", refresh)
     onCleanup(() => {
       window.removeEventListener("focus", refresh)
+      window.removeEventListener("kito-account-refresh", refresh)
       document.removeEventListener("visibilitychange", refresh)
     })
   })

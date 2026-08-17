@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test"
-import { ensureManagedToken, fetchDepositAddress, KTAI_MANAGED_TOKEN_NAME } from "@/plugin/ktai-newapi"
+import {
+  createKtpayOrder,
+  ensureManagedToken,
+  fetchDepositAddress,
+  fetchKtpayInfo,
+  fetchKtpayStatus,
+  KTAI_MANAGED_TOKEN_NAME,
+} from "@/plugin/ktai-newapi"
 
 test("uses dedicated token ensure when NewAPI has the route", async () => {
   const calls: string[] = []
@@ -86,4 +93,77 @@ test("reads deposit address from the Identity-gated NewAPI route", async () => {
     },
   })
   expect(address).toEqual({ chain: "tron", asset: "USDT", address: "TExampleAddress" })
+})
+
+test("reads KTPay info from the Identity-gated NewAPI route", async () => {
+  const info = await fetchKtpayInfo("identity-bearer", {
+    baseUrl: "https://newapi.test",
+    fetchImpl: async (input) => {
+      expect(String(input)).toBe("https://newapi.test/api/iam/ktpay/info")
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            enabled: true,
+            methods: [{ name: "支付宝", type: "alipay" }],
+            min_topup: 1,
+            max_topup: 500,
+            amount_options: [10, 50],
+          },
+        }),
+        { status: 200 },
+      )
+    },
+  })
+  expect(info).toEqual({
+    enabled: true,
+    methods: [{ name: "支付宝", type: "alipay" }],
+    minTopup: 1,
+    maxTopup: 500,
+    amountOptions: [10, 50],
+    appId: undefined,
+    defaultLang: undefined,
+    sdkUrl: undefined,
+  })
+})
+
+test("creates a KTPay cashier order through the Identity route", async () => {
+  const order = await createKtpayOrder("identity-bearer", {
+    amount: 10,
+    method: "wechat_pay",
+    baseUrl: "https://newapi.test",
+    fetchImpl: async (input, init) => {
+      expect(String(input)).toBe("https://newapi.test/api/iam/ktpay/pay")
+      expect(init?.method).toBe("POST")
+      expect(JSON.parse(String(init?.body))).toEqual({ amount: 10, method: "wechat_pay" })
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { order_id: "ord_1", cashier_url: "https://ktpay.test/c/1", amount: 10, requested: 10, status: "pending" },
+        }),
+        { status: 200 },
+      )
+    },
+  })
+  expect(order).toEqual({
+    orderId: "ord_1",
+    cashierUrl: "https://ktpay.test/c/1",
+    amount: 10,
+    requested: 10,
+    status: "pending",
+  })
+})
+
+test("reads KTPay status from the Identity-gated NewAPI route", async () => {
+  const status = await fetchKtpayStatus("identity-bearer", "ord_1", {
+    baseUrl: "https://newapi.test",
+    fetchImpl: async (input) => {
+      expect(String(input)).toBe("https://newapi.test/api/iam/ktpay/status/ord_1")
+      return new Response(
+        JSON.stringify({ success: true, data: { order_id: "ord_1", status: "paid", local_status: "success", settled: true } }),
+        { status: 200 },
+      )
+    },
+  })
+  expect(status).toEqual({ orderId: "ord_1", status: "paid", localStatus: "success", settled: true })
 })

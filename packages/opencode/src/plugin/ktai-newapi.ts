@@ -19,6 +19,37 @@ export type DepositAddress = {
   address: string
 }
 
+export type KtpayMethod = {
+  name: string
+  type: string
+}
+
+export type KtpayInfo = {
+  enabled: boolean
+  methods: KtpayMethod[]
+  minTopup: number
+  maxTopup: number
+  amountOptions: number[]
+  appId?: string
+  defaultLang?: string
+  sdkUrl?: string
+}
+
+export type KtpayOrder = {
+  orderId: string
+  cashierUrl: string
+  amount: number
+  requested: number
+  status: string
+}
+
+export type KtpayStatus = {
+  orderId: string
+  status: string
+  localStatus: string
+  settled: boolean
+}
+
 type JsonRecord = Record<string, unknown>
 
 function newapiBaseUrl(env: NodeJS.ProcessEnv = process.env) {
@@ -42,6 +73,18 @@ async function readJson(response: Response): Promise<unknown> {
 
 function asRecord(value: unknown): JsonRecord | undefined {
   return value && typeof value === "object" ? (value as JsonRecord) : undefined
+}
+
+function numberField(value: unknown, ...keys: string[]): number | undefined {
+  const record = asRecord(value)
+  if (!record) return
+  for (const key of keys) {
+    const item = record[key]
+    if (typeof item === "number" && Number.isFinite(item)) return item
+    if (typeof item === "string" && item.trim() && Number.isFinite(Number(item))) return Number(item)
+  }
+  if (record.data) return numberField(record.data, ...keys)
+  return
 }
 
 function stringField(value: unknown, ...keys: string[]): string | undefined {
@@ -277,6 +320,109 @@ export async function fetchDepositAddress(
     }
   }
   throw new Error(last)
+}
+
+async function fetchIamJson(
+  identityToken: string,
+  paths: string[],
+  input: { method?: string; body?: unknown; baseUrl?: string; fetchImpl?: FetchLike } = {},
+): Promise<unknown> {
+  const baseUrl = input.baseUrl ?? newapiBaseUrl()
+  const fetchImpl = input.fetchImpl ?? fetch
+  let last = "KTPay API is not available yet"
+  for (const pathName of paths) {
+    const response = await fetchImpl(`${baseUrl}${pathName}`, {
+      method: input.method ?? "GET",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${identityToken}`,
+        ...(input.body ? { "content-type": "application/json" } : {}),
+      },
+      body: input.body ? JSON.stringify(input.body) : undefined,
+      signal: AbortSignal.timeout(15_000),
+    })
+    const payload = await readJson(response)
+    if (response.status === 404 || typeof payload === "string") {
+      last = stringField(payload, "message", "error") ?? last
+      continue
+    }
+    if (!response.ok || asRecord(payload)?.success === false) {
+      throw new Error(stringField(payload, "message", "error", "data") ?? `KTPay request failed (${response.status})`)
+    }
+    return payload
+  }
+  throw new Error(last)
+}
+
+export async function fetchKtpayInfo(
+  identityToken: string,
+  input: { baseUrl?: string; fetchImpl?: FetchLike } = {},
+): Promise<KtpayInfo> {
+  const payload = await fetchIamJson(identityToken, ["/api/iam/ktpay/info", "/wallet/v1/ktpay/info"], input)
+  const record = asRecord(payload)
+  const data = asRecord(record?.data) ?? record
+  const methods = Array.isArray(data?.methods)
+    ? data.methods.flatMap((row) => {
+        const item = asRecord(row)
+        const type = typeof item?.type === "string" ? item.type.trim() : ""
+        if (!type) return []
+        return [{ name: typeof item?.name === "string" && item.name.trim() ? item.name.trim() : type, type }]
+      })
+    : []
+  const amountOptions = Array.isArray(data?.amount_options)
+    ? data.amount_options.filter((item): item is number => typeof item === "number" && Number.isFinite(item))
+    : []
+  return {
+    enabled: data?.enabled === true,
+    methods,
+    minTopup: numberField(data, "min_topup") ?? 1,
+    maxTopup: numberField(data, "max_topup") ?? 500,
+    amountOptions,
+    appId: stringField(data, "app_id"),
+    defaultLang: stringField(data, "default_lang"),
+    sdkUrl: stringField(data, "sdk_url"),
+  }
+}
+
+export async function createKtpayOrder(
+  identityToken: string,
+  input: { amount: number; method: string; baseUrl?: string; fetchImpl?: FetchLike },
+): Promise<KtpayOrder> {
+  const payload = await fetchIamJson(identityToken, ["/api/iam/ktpay/pay", "/wallet/v1/ktpay/pay"], {
+    method: "POST",
+    body: { amount: input.amount, method: input.method },
+    baseUrl: input.baseUrl,
+    fetchImpl: input.fetchImpl,
+  })
+  const orderId = stringField(payload, "order_id")
+  const cashierUrl = stringField(payload, "cashier_url")
+  if (!orderId || !cashierUrl) throw new Error("KTPay did not return a cashier order")
+  return {
+    orderId,
+    cashierUrl,
+    amount: numberField(payload, "amount") ?? input.amount,
+    requested: numberField(payload, "requested") ?? input.amount,
+    status: stringField(payload, "status") ?? "pending",
+  }
+}
+
+export async function fetchKtpayStatus(
+  identityToken: string,
+  orderId: string,
+  input: { baseUrl?: string; fetchImpl?: FetchLike } = {},
+): Promise<KtpayStatus> {
+  const encoded = encodeURIComponent(orderId)
+  const payload = await fetchIamJson(
+    identityToken,
+    [`/api/iam/ktpay/status/${encoded}`, `/wallet/v1/ktpay/status/${encoded}`],
+    input,
+  )
+  return {
+    orderId: stringField(payload, "order_id") ?? orderId,
+    status: stringField(payload, "status") ?? "",
+    localStatus: stringField(payload, "local_status") ?? "",
+    settled: asRecord(payload)?.settled === true || asRecord(asRecord(payload)?.data)?.settled === true,
+  }
 }
 
 export async function syncManagedToken(identityToken: string, input: { baseUrl?: string; fetchImpl?: FetchLike } = {}) {

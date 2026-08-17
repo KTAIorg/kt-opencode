@@ -1,6 +1,6 @@
 import { Config as EffectConfig, Context, Effect, Layer } from "effect"
 import { HttpApiBuilder, OpenApi } from "effect/unstable/httpapi"
-import { HttpClient, HttpMiddleware, HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http"
+import { HttpClient, HttpMiddleware, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import * as Observability from "@opencode-ai/core/observability"
@@ -121,7 +121,14 @@ import {
   identityBaseUrl,
   KT_IDENTITY_REFRESH_MARKER,
 } from "@/plugin/ktai-identity"
-import { fetchDepositAddress, readManagedApiKey, syncManagedToken } from "@/plugin/ktai-newapi"
+import {
+  createKtpayOrder,
+  fetchDepositAddress,
+  fetchKtpayInfo,
+  fetchKtpayStatus,
+  readManagedApiKey,
+  syncManagedToken,
+} from "@/plugin/ktai-newapi"
 
 export const context = Context.makeUnsafe<unknown>(new Map())
 
@@ -269,6 +276,78 @@ const ktaiAccountRoute = HttpRouter.use((router) =>
                 { status: 502 },
               ),
             onSuccess: (address) => HttpServerResponse.jsonUnsafe(address),
+          }),
+        )
+      }),
+    )
+    yield* router.add("GET", "/ktai/wallet/ktpay/info", () =>
+      Effect.gen(function* () {
+        const stored = yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
+        const token = identityAccess(stored)
+        if (!token) return HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 401 })
+        return yield* Effect.tryPromise({
+          try: () => fetchKtpayInfo(token),
+          catch: (error) => (error instanceof Error ? error : new Error("KTPay is unavailable")),
+        }).pipe(
+          Effect.match({
+            onFailure: (error) => HttpServerResponse.jsonUnsafe({ error: error.message }, { status: 502 }),
+            onSuccess: (info) => HttpServerResponse.jsonUnsafe(info),
+          }),
+        )
+      }),
+    )
+    yield* router.add("POST", "/ktai/wallet/ktpay/pay", () =>
+      Effect.gen(function* () {
+        const stored = yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
+        const token = identityAccess(stored)
+        if (!token) return HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 401 })
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const text = yield* Effect.orDie(request.text)
+        const parsed = yield* Effect.try({
+          try: () => (text.trim() ? (JSON.parse(text) as unknown) : {}),
+          catch: () => new Error("invalid request body"),
+        }).pipe(
+          Effect.match({
+            onFailure: () => undefined,
+            onSuccess: (value) => value,
+          }),
+        )
+        if (parsed === undefined) {
+          return HttpServerResponse.jsonUnsafe({ error: "invalid request body" }, { status: 400 })
+        }
+        const body = parsed && typeof parsed === "object" ? (parsed as { amount?: unknown; method?: unknown }) : {}
+        const amount = typeof body.amount === "number" ? body.amount : Number(body.amount)
+        const method = typeof body.method === "string" ? body.method.trim() : ""
+        if (!Number.isFinite(amount) || amount <= 0 || !method) {
+          return HttpServerResponse.jsonUnsafe({ error: "amount and method are required" }, { status: 400 })
+        }
+        return yield* Effect.tryPromise({
+          try: () => createKtpayOrder(token, { amount, method }),
+          catch: (error) => (error instanceof Error ? error : new Error("KTPay order failed")),
+        }).pipe(
+          Effect.match({
+            onFailure: (error) => HttpServerResponse.jsonUnsafe({ error: error.message }, { status: 502 }),
+            onSuccess: (order) => HttpServerResponse.jsonUnsafe(order),
+          }),
+        )
+      }),
+    )
+    yield* router.add("GET", "/ktai/wallet/ktpay/status/:order_id", () =>
+      Effect.gen(function* () {
+        const stored = yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
+        const token = identityAccess(stored)
+        if (!token) return HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 401 })
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const url = new URL(request.url, "http://localhost")
+        const orderId = decodeURIComponent(url.pathname.split("/").pop() ?? "")
+        if (!orderId) return HttpServerResponse.jsonUnsafe({ error: "order_id is required" }, { status: 400 })
+        return yield* Effect.tryPromise({
+          try: () => fetchKtpayStatus(token, orderId),
+          catch: (error) => (error instanceof Error ? error : new Error("KTPay status failed")),
+        }).pipe(
+          Effect.match({
+            onFailure: (error) => HttpServerResponse.jsonUnsafe({ error: error.message }, { status: 502 }),
+            onSuccess: (status) => HttpServerResponse.jsonUnsafe(status),
           }),
         )
       }),
