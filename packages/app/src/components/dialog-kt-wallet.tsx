@@ -104,6 +104,13 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
     },
   )
 
+  const visibleAddress = createMemo(() => {
+    if (address.loading || address.error) return
+    const row = address()
+    if (!row || !addressLooksLikeNetwork(network(), row.address)) return
+    return row
+  })
+
   const amounts = createMemo(() => {
     const options = info()?.amountOptions?.filter((item) => Number.isFinite(item) && item > 0) ?? []
     return options.length ? options : DEFAULT_AMOUNTS
@@ -166,7 +173,7 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   })
 
   const copy = async () => {
-    const value = address()?.address
+    const value = visibleAddress()?.address
     if (!value) return
     await navigator.clipboard.writeText(value)
     setCopied(true)
@@ -370,7 +377,7 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
               {address.error instanceof Error ? address.error.message : language.t("dialog.ktWallet.error")}
             </p>
           </Show>
-          <Show when={address()}>
+          <Show when={visibleAddress()}>
             {(current) => (
               <div class="flex flex-col items-center gap-3">
                 <img
