@@ -283,14 +283,26 @@ export async function ensureManagedToken(
   return ensureViaSession(identityToken, baseUrl, fetchImpl)
 }
 
+export function normalizeDepositChain(value?: string) {
+  const chain = value?.trim().toLowerCase() ?? ""
+  if (chain === "eth" || chain === "erc20" || chain === "ethereum") return "ethereum"
+  if (chain === "trx" || chain === "trc20" || chain === "tron" || chain === "") return "tron"
+  return chain
+}
+
+export function assetsForChain(chain: string) {
+  if (normalizeDepositChain(chain) === "ethereum") return ["USDT", "USDC"]
+  return ["USDT"]
+}
+
 export async function fetchDepositAddress(
   identityToken: string,
   input: { chain?: string; asset?: string; baseUrl?: string; fetchImpl?: FetchLike } = {},
 ): Promise<DepositAddress> {
   const baseUrl = input.baseUrl ?? newapiBaseUrl()
   const fetchImpl = input.fetchImpl ?? fetch
-  const chain = input.chain ?? "tron"
-  const asset = input.asset ?? "USDT"
+  const chain = normalizeDepositChain(input.chain)
+  const asset = input.asset?.trim().toUpperCase() || assetsForChain(chain)[0]
   const query = new URLSearchParams({ chain, asset })
   const paths = [`/api/iam/deposit-address?${query}`, `/wallet/v1/deposit-address?${query}`]
   let last = "Deposit address API is not available yet"

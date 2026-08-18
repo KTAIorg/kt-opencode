@@ -6,6 +6,7 @@ import {
   fetchKtpayInfo,
   fetchKtpayStatus,
   KTAI_MANAGED_TOKEN_NAME,
+  normalizeDepositChain,
 } from "@/plugin/ktai-newapi"
 
 test("uses dedicated token ensure when NewAPI has the route", async () => {
@@ -81,6 +82,13 @@ test("skips HTML wallet pages until the Identity deposit route exists", async ()
   expect(failed).toBe(true)
 })
 
+test("normalizes deposit chain aliases onto Casio names", () => {
+  expect(normalizeDepositChain("TRC20")).toBe("tron")
+  expect(normalizeDepositChain("erc20")).toBe("ethereum")
+  expect(normalizeDepositChain("ETH")).toBe("ethereum")
+  expect(normalizeDepositChain()).toBe("tron")
+})
+
 test("reads deposit address from the Identity-gated NewAPI route", async () => {
   const address = await fetchDepositAddress("identity-bearer", {
     baseUrl: "https://newapi.test",
@@ -93,6 +101,25 @@ test("reads deposit address from the Identity-gated NewAPI route", async () => {
     },
   })
   expect(address).toEqual({ chain: "tron", asset: "USDT", address: "TExampleAddress" })
+})
+
+test("requests one Ethereum address for ERC20 USDT and USDC", async () => {
+  const address = await fetchDepositAddress("identity-bearer", {
+    chain: "erc20",
+    asset: "USDC",
+    baseUrl: "https://newapi.test",
+    fetchImpl: async (input) => {
+      expect(String(input)).toBe("https://newapi.test/api/iam/deposit-address?chain=ethereum&asset=USDC")
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { chain: "ethereum", asset: "USDC", address: "0xExampleAddress", assets: ["USDT", "USDC"] },
+        }),
+        { status: 200 },
+      )
+    },
+  })
+  expect(address).toEqual({ chain: "ethereum", asset: "USDC", address: "0xExampleAddress" })
 })
 
 test("reads KTPay info from the Identity-gated NewAPI route", async () => {

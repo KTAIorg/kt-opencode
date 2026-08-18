@@ -15,6 +15,12 @@ export type DepositAddress = {
 }
 
 type WalletTab = "fiat" | "crypto"
+type CryptoNetwork = "tron" | "ethereum"
+
+const CRYPTO_NETWORKS: { id: CryptoNetwork; label: "dialog.ktWallet.networkTrc20" | "dialog.ktWallet.networkErc20" }[] = [
+  { id: "tron", label: "dialog.ktWallet.networkTrc20" },
+  { id: "ethereum", label: "dialog.ktWallet.networkErc20" },
+]
 
 type KtpayInfo = {
   enabled: boolean
@@ -36,6 +42,15 @@ function qrUrl(address: string) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(address)}`
 }
 
+function acceptedAssets(network: CryptoNetwork) {
+  return network === "ethereum" ? ["USDT", "USDC"] : ["USDT"]
+}
+
+function addressLooksLikeNetwork(network: CryptoNetwork, address: string) {
+  if (network === "ethereum") return address.toLowerCase().startsWith("0x")
+  return address.startsWith("T")
+}
+
 function normalizeMethod(type: string) {
   const value = type.startsWith("ktpay_") ? type.slice("ktpay_".length) : type
   if (value === "wechat" || value === "wxpay") return "wechat_pay"
@@ -48,6 +63,7 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   const platform = usePlatform()
   const serverSDK = useServerSDK()
   const [tab, setTab] = createSignal<WalletTab>("fiat")
+  const [network, setNetwork] = createSignal<CryptoNetwork>("tron")
   const [copied, setCopied] = createSignal(false)
   const [amount, setAmount] = createSignal(10)
   const [custom, setCustom] = createSignal("")
@@ -74,12 +90,16 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   })
 
   const [address] = createResource(
-    () => (tab() === "crypto" ? "crypto" : undefined),
-    async () => {
-      const response = await request("/ktai/wallet/deposit-address")
+    () => (tab() === "crypto" ? network() : undefined),
+    async (selected) => {
+      const query = new URLSearchParams({ chain: selected, asset: "USDT" })
+      const response = await request(`/ktai/wallet/deposit-address?${query}`)
       const payload = (await response.json().catch(() => undefined)) as DepositAddress & { error?: string } | undefined
       if (!response.ok) throw new Error(payload?.error || language.t("dialog.ktWallet.error"))
       if (!payload?.address) throw new Error(payload?.error || language.t("dialog.ktWallet.error"))
+      if (!addressLooksLikeNetwork(selected, payload.address)) {
+        throw new Error(language.t("dialog.ktWallet.networkMismatch"))
+      }
       return payload
     },
   )
@@ -139,6 +159,11 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
     props.onClose?.()
     dialog.close()
   }
+
+  createEffect(() => {
+    network()
+    setCopied(false)
+  })
 
   const copy = async () => {
     const value = address()?.address
@@ -298,6 +323,42 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
         </Show>
 
         <Show when={tab() === "crypto"}>
+          <div class="flex flex-col gap-3">
+            <div class="flex gap-1 rounded-lg bg-background-stronger p-1">
+              <For each={CRYPTO_NETWORKS}>
+                {(item) => (
+                  <button
+                    type="button"
+                    class="flex-1 rounded-md px-3 py-1.5 text-13-regular"
+                    classList={{
+                      "bg-background-base text-text-strong": network() === item.id,
+                      "text-text-weak": network() !== item.id,
+                    }}
+                    onClick={() => setNetwork(item.id)}
+                  >
+                    {language.t(item.label)}
+                  </button>
+                )}
+              </For>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <For each={acceptedAssets(network())}>
+                {(asset) => (
+                  <span class="rounded-full border border-border-weak-base px-2 py-0.5 text-12-regular text-text-strong">
+                    {asset}
+                  </span>
+                )}
+              </For>
+              <span class="text-12-regular text-text-weak">
+                {network() === "ethereum"
+                  ? language.t("dialog.ktWallet.networkEthereum")
+                  : language.t("dialog.ktWallet.networkTron")}
+              </span>
+            </div>
+            <p class="text-12-regular text-text-weak">
+              {network() === "ethereum" ? language.t("dialog.ktWallet.hintErc20") : language.t("dialog.ktWallet.hintTrc20")}
+            </p>
+          </div>
           <Show when={address.loading}>
             <div class="flex items-center gap-3 text-14-regular text-text-base">
               <Spinner />
@@ -319,10 +380,9 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
                   height={220}
                   class="rounded-md bg-white p-2"
                 />
-                <div class="text-12-regular text-text-weak">
-                  {current().chain.toUpperCase()} · {current().asset}
+                <div class="w-full break-all rounded-md bg-background-stronger px-3 py-2 font-mono text-13-regular text-text-strong">
+                  {current().address}
                 </div>
-                <div class="w-full break-all font-mono text-13-regular text-text-strong">{current().address}</div>
                 <p class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.hint")}</p>
                 <div class="flex w-full justify-end gap-2">
                   <Button variant="ghost" size="large" type="button" onClick={close}>

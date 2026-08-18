@@ -265,8 +265,12 @@ const ktaiAccountRoute = HttpRouter.use((router) =>
         const stored = yield* auth.get("ktai").pipe(Effect.orElseSucceed(() => undefined))
         const token = identityAccess(stored)
         if (!token) return HttpServerResponse.jsonUnsafe({ error: "KT Identity is unavailable" }, { status: 401 })
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const url = new URL(request.url, "http://localhost")
+        const chain = url.searchParams.get("chain") ?? undefined
+        const asset = url.searchParams.get("asset") ?? undefined
         return yield* Effect.tryPromise({
-          try: () => fetchDepositAddress(token),
+          try: () => fetchDepositAddress(token, { chain, asset }),
           catch: (error) => (error instanceof Error ? error : new Error("Deposit address is unavailable")),
         }).pipe(
           Effect.match({
