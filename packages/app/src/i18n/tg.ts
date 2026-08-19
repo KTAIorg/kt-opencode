@@ -1,5 +1,5 @@
 export const dict = {
-  "desktop.menu.app": "OpenCode",
+  "desktop.menu.app": "Kito",
   "desktop.menu.file": "Файл",
   "desktop.menu.edit": "Таҳрир",
   "desktop.menu.view": "Намоиш",
@@ -896,7 +896,7 @@ export const dict = {
   "debugBar.direction.tip": "Бе тағир додани забони интихобшуда самти тарҳбандии пурраи барномаро маҷбур кунед",
   "debugBar.direction.ltr": "LTR",
   "debugBar.direction.rtl": "RTL",
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name.desktop": "Kito",
   "settings.section.desktop": "Мизи корӣ",
   "settings.section.server": "Сервер",
   "settings.tab.general": "Генерал",

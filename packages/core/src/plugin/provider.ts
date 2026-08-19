@@ -14,6 +14,7 @@ import { GitLabPlugin } from "./provider/gitlab.js"
 import { GoogleVertexPlugin } from "./provider/google-vertex.js"
 import { GroqPlugin } from "./provider/groq.js"
 import { KiloPlugin } from "./provider/kilo.js"
+import { KtaiPlugin } from "./provider/ktai.js"
 import { LLMGatewayPlugin } from "./provider/llmgateway.js"
 import { LMStudioPlugin } from "./provider/lmstudio.js"
 import { MistralPlugin } from "./provider/mistral.js"
@@ -50,6 +51,7 @@ export const ProviderPlugins: PluginInternal.InternalPlugin[] = [
   GoogleVertexPlugin,
   GroqPlugin,
   KiloPlugin,
+  KtaiPlugin,
   LLMGatewayPlugin,
   LMStudioPlugin,
   MistralPlugin,

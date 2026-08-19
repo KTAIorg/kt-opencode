@@ -1,5 +1,5 @@
 export const dict: Record<string, string> = {
-  "desktop.menu.app": "OpenCode",
+  "desktop.menu.app": "Kito",
   "desktop.menu.file": "ཡིག༌སྣོད",
   "desktop.menu.edit": "ཞུན༌དག",
   "desktop.menu.view": "བསམ༌འཆར",
@@ -906,7 +906,7 @@ export const dict: Record<string, string> = {
     "སེལ་འཐུ་འབད་ཡོད་པའི་སྐད་ཡིག་བསྒྱུར་བཅོས་མ་འབད་བར་ གློག་རིམ་ཆ་ཚང་སྒྲིག་བཀོད་ཁ་ཕྱོགས་བང་བཙོང་འབད།",
   "debugBar.direction.ltr": "LTR།",
   "debugBar.direction.rtl": "RTL།",
-  "app.name.desktop": "OpenCode ཌེཀསི་ཊོཔ།",
+  "app.name.desktop": "Kito",
   "settings.section.desktop": "ཌེཀསི་ཊོཔ།",
   "settings.section.server": "སར་བར།",
   "settings.tab.general": "སྤྱིར༌བཏང",

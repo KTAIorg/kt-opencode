@@ -5,17 +5,9 @@ import { Iterable, pipe } from "effect"
 import { createEffect, createMemo, type Accessor } from "solid-js"
 import { emptyProviderCatalog } from "./provider-catalog"
 import { useIntegrations } from "./use-integrations"
+import { customerFacingProviderName } from "@/utils/kt-settlement"
 
-export const popularProviders = [
-  "opencode",
-  "opencode-go",
-  "anthropic",
-  "github-copilot",
-  "openai",
-  "google",
-  "openrouter",
-  "vercel",
-]
+export const popularProviders = ["ktai", "opencode"]
 const popularProviderSet = new Set(popularProviders)
 
 export function useProviders(directory: Accessor<string | undefined>) {
@@ -58,13 +50,16 @@ export function useProviders(directory: Accessor<string | undefined>) {
       const catalog = integrations
         .list()
         .filter((integration) => popularProviderSet.has(integration.id))
-        .map((integration) => ({ id: integration.id, name: integration.name }))
+        .map((integration) => ({
+          id: integration.id,
+          name: customerFacingProviderName(integration.id, integration.name),
+        }))
       const seen = new Set(catalog.map((integration) => integration.id))
       return pipe(
         providers().all,
         Iterable.map(([, p]) => p),
         Iterable.filter((p) => popularProviderSet.has(p.id) && !seen.has(p.id)),
-        Iterable.map((p) => ({ id: p.id, name: p.name })),
+        Iterable.map((p) => ({ id: p.id, name: customerFacingProviderName(p.id, p.name) })),
         (v) => [...catalog, ...v],
       )
     },

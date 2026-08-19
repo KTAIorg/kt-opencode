@@ -13,6 +13,7 @@ import {
 import { createStore } from "solid-js/store"
 import { createVirtualizer, defaultRangeExtractor, elementScroll, type VirtualItem } from "@tanstack/solid-virtual"
 import { Card } from "@opencode-ai/ui/card"
+import { SessionErrorCard } from "./session-error-card"
 import { MessageDivider, SessionShellMessage, type UserActions } from "@opencode-ai/session-ui/message-part"
 import { DiffChanges } from "@opencode-ai/ui/diff-changes"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -1034,9 +1035,7 @@ function MessageTimelineView(
         return (
           <TimelineRowFrame row={errorRow()}>
             <div data-slot="session-turn-message-container" class={`w-full ${turnPadding()}`}>
-              <Card variant="error" class="error-card">
-                {errorRow().text}
-              </Card>
+              <SessionErrorCard text={errorRow().text} />
             </div>
           </TimelineRowFrame>
         )

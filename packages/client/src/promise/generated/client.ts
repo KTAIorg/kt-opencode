@@ -1,5 +1,15 @@
 import type {
   HealthGetOutput,
+  ServerKtaiAccountGetOutput,
+  ServerKtaiEnsureOutput,
+  ServerKtaiCredentialGetOutput,
+  ServerKtaiWalletDepositAddressInput,
+  ServerKtaiWalletDepositAddressOutput,
+  ServerKtaiWalletKtpayInfoOutput,
+  ServerKtaiWalletKtpayPayInput,
+  ServerKtaiWalletKtpayPayOutput,
+  ServerKtaiWalletKtpayStatusInput,
+  ServerKtaiWalletKtpayStatusOutput,
   ServerGetOutput,
   LocationGetInput,
   LocationGetOutput,
@@ -365,6 +375,89 @@ export function make(options: ClientOptions) {
           { method: "GET", path: `/api/health`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
           requestOptions,
         ),
+    },
+    "server.ktai": {
+      account: {
+        get: (requestOptions?: RequestOptions) =>
+          request<ServerKtaiAccountGetOutput>(
+            {
+              method: "GET",
+              path: `/ktai/account`,
+              successStatus: 200,
+              declaredStatuses: [401, 503, 400],
+              empty: false,
+            },
+            requestOptions,
+          ),
+      },
+      ensure: (requestOptions?: RequestOptions) =>
+        request<ServerKtaiEnsureOutput>(
+          {
+            method: "POST",
+            path: `/ktai/ensure`,
+            successStatus: 200,
+            declaredStatuses: [401, 503, 502, 400],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      credential: {
+        get: (requestOptions?: RequestOptions) =>
+          request<ServerKtaiCredentialGetOutput>(
+            { method: "GET", path: `/ktai/credential`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+            requestOptions,
+          ),
+      },
+      wallet: {
+        depositAddress: (input?: ServerKtaiWalletDepositAddressInput, requestOptions?: RequestOptions) =>
+          request<ServerKtaiWalletDepositAddressOutput>(
+            {
+              method: "GET",
+              path: `/ktai/wallet/deposit-address`,
+              query: { chain: input?.["chain"], asset: input?.["asset"] },
+              successStatus: 200,
+              declaredStatuses: [401, 503, 502, 400],
+              empty: false,
+            },
+            requestOptions,
+          ),
+        ktpay: {
+          info: (requestOptions?: RequestOptions) =>
+            request<ServerKtaiWalletKtpayInfoOutput>(
+              {
+                method: "GET",
+                path: `/ktai/wallet/ktpay/info`,
+                successStatus: 200,
+                declaredStatuses: [401, 503, 502, 400],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          pay: (input: ServerKtaiWalletKtpayPayInput, requestOptions?: RequestOptions) =>
+            request<ServerKtaiWalletKtpayPayOutput>(
+              {
+                method: "POST",
+                path: `/ktai/wallet/ktpay/pay`,
+                body: { amount: input["amount"], method: input["method"] },
+                successStatus: 200,
+                declaredStatuses: [401, 503, 502, 400],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          status: (input: ServerKtaiWalletKtpayStatusInput, requestOptions?: RequestOptions) =>
+            request<ServerKtaiWalletKtpayStatusOutput>(
+              {
+                method: "GET",
+                path: `/ktai/wallet/ktpay/status/${encodeURIComponent(input.order_id)}`,
+                successStatus: 200,
+                declaredStatuses: [401, 503, 502, 400],
+                empty: false,
+              },
+              requestOptions,
+            ),
+        },
+      },
     },
     server: {
       get: (requestOptions?: RequestOptions) =>

@@ -1,5 +1,5 @@
 export const dict: Record<string, string> = {
-  "desktop.menu.app": "OpenCode",
+  "desktop.menu.app": "Kito",
   "desktop.menu.file": "ගොනුව",
   "desktop.menu.edit": "සංස්කරණය කරන්න",
   "desktop.menu.view": "බලන්න",
@@ -889,7 +889,7 @@ export const dict: Record<string, string> = {
   "debugBar.direction.tip": "තෝරාගත් භාෂාව වෙනස් නොකර සම්පූර්ණ යෙදුම් පිරිසැලසුම් දිශාව බල කරන්න",
   "debugBar.direction.ltr": "LTR",
   "debugBar.direction.rtl": "RTL",
-  "app.name.desktop": "OpenCode ඩෙස්ක්ටොප්",
+  "app.name.desktop": "Kito",
   "settings.section.desktop": "ඩෙස්ක්ටොප්",
   "settings.section.server": "සේවාදායකය",
   "settings.tab.general": "ජෙනරාල්",

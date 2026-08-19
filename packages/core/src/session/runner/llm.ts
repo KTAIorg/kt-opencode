@@ -29,6 +29,7 @@ import { createLLMEventPublisher, type StepRecord } from "./publish-llm-event.js
 import { Snapshot } from "../../snapshot.js"
 import { makeLocationNode } from "@opencode-ai/util/effect/app-node"
 import { llmClient } from "../../effect/app-node-platform.js"
+import { SoftQuota } from "../../ktai/soft-quota.js"
 import { StepFailedError } from "../error.js"
 import { toSessionError } from "../to-session-error.js"
 import { SessionRunnerRetry } from "./retry.js"
@@ -273,6 +274,15 @@ const layer = Layer.effect(
       const { session, agent } = loaded
       const resolved = loaded.model
       const model = resolved.model
+      const zenFree = SoftQuota.isZenFreeModel({
+        providerID: resolved.ref.providerID,
+        cost: resolved.cost,
+      })
+      if (zenFree && SoftQuota.exhausted()) {
+        return yield* new StepFailedError({
+          error: { type: "provider.quota", message: SoftQuota.KT_TOPUP_MESSAGE },
+        })
+      }
       // Make room: history must fit the context window before the call. A pending manual
       // compaction owns this instead; the runner executes it between steps.
       const compactionInput = { session, messages: loaded.messages, model, ref: resolved.ref, cost: resolved.cost }
@@ -331,6 +341,7 @@ const layer = Layer.effect(
             ...stepUsage(finish),
             ...end,
           })
+          if (zenFree && promoted > 0) SoftQuota.increment()
         })
 
       // Concurrent writers, no lock: the provider loop and each tool fiber publish

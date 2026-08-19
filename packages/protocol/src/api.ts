@@ -32,6 +32,7 @@ import { WorktreeGroup } from "./groups/worktree.js"
 import { VcsGroup } from "./groups/vcs.js"
 import { MigrationGroup } from "./groups/migration.js"
 import { ConfigGroup } from "./groups/config.js"
+import { KtaiGroup } from "./groups/ktai.js"
 
 type LocationGroups<LocationId extends HttpApiMiddleware.AnyId> =
   | HttpApiGroup.AddMiddleware<typeof LocationGroup, LocationId>
@@ -82,6 +83,7 @@ type ApiGroups<
   Event extends HttpApiGroup.Constraint,
 > =
   | typeof HealthGroup
+  | typeof KtaiGroup
   | typeof ServerGroup
   | typeof DebugGroup
   | typeof MigrationGroup
@@ -146,6 +148,7 @@ const makeApiFromGroup = <
 > =>
   HttpApi.make("server")
     .add(HealthGroup)
+    .add(KtaiGroup)
     .add(ServerGroup)
     .add(LocationGroup.middleware(locationMiddleware))
     .add(AgentGroup.middleware(locationMiddleware))

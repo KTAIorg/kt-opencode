@@ -1,5 +1,5 @@
 export const dict = {
-  "desktop.menu.app": "OpenCode",
+  "desktop.menu.app": "Kito",
   "desktop.menu.file": "ፋይል",
   "desktop.menu.edit": "አርትዕ",
   "desktop.menu.view": "እይታ",
@@ -876,7 +876,7 @@ export const dict = {
   "debugBar.direction.tip": "የተመረጠውን ቋንቋ ሳይቀይሩ ሙሉውን የመተግበሪያ አቀማመጥ አቅጣጫ ያስገድዱ",
   "debugBar.direction.ltr": "LTR",
   "debugBar.direction.rtl": "RTL",
-  "app.name.desktop": "OpenCode ዴስክቶፕ",
+  "app.name.desktop": "Kito",
   "settings.section.desktop": "ዴስክቶፕ",
   "settings.section.server": "አገልጋይ",
   "settings.tab.general": "አጠቃላይ",

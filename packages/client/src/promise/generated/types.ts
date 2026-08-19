@@ -2,6 +2,16 @@ export type JsonValue = null | boolean | number | string | Array<JsonValue> | { 
 
 export type ServiceHealth = { healthy: true; version: string; pid: number }
 
+export type KtaiEnsure = { ok: true; updated: boolean; created: boolean; keyPresent: true }
+
+export type KtaiCredential = { identity: boolean; keyPresent: boolean }
+
+export type KtaiDepositAddress = { chain: string; asset: string; address: string }
+
+export type KtaiKtpayOrder = { orderId: string; cashierUrl: string; amount: number; requested: number; status: string }
+
+export type KtaiKtpayStatus = { orderId: string; status: string; localStatus: string; settled: boolean }
+
 export type ModelRef = { id: string; providerID: string; variant?: string }
 
 export type ProviderSettings = { [x: string]: any }
@@ -182,6 +192,24 @@ export type VcsFileStatus = {
 export type WebSearchProvider = { id: string; name: string }
 
 export type WebSearchResult = { url: string; title?: string; content?: string; time: { published?: number } }
+
+export type KtaiAccount = {
+  account: { id: string; accountNo: string; displayName?: string | undefined }
+  balance: number
+  memberSince?: string | undefined
+  joinedDays?: number | undefined
+}
+
+export type KtaiKtpayInfo = {
+  enabled: boolean
+  methods: Array<{ name: string; type: string }>
+  minTopup: number
+  maxTopup: number
+  amountOptions: Array<number>
+  appId?: string | undefined
+  defaultLang?: string | undefined
+  sdkUrl?: string | undefined
+}
 
 export type CommandInfo = {
   name: string
@@ -2128,6 +2156,22 @@ export type InvalidRequestError = {
 export const isInvalidRequestError = (value: unknown): value is InvalidRequestError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "InvalidRequestError"
 
+export type ServiceUnavailableError = {
+  readonly _tag: "ServiceUnavailableError"
+  readonly message: string
+  readonly service?: string | undefined
+}
+export const isServiceUnavailableError = (value: unknown): value is ServiceUnavailableError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ServiceUnavailableError"
+
+export type BadGatewayError = {
+  readonly _tag: "BadGatewayError"
+  readonly message: string
+  readonly service?: string | undefined
+}
+export const isBadGatewayError = (value: unknown): value is BadGatewayError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "BadGatewayError"
+
 export type AgentNotFoundError = {
   readonly _tag: "AgentNotFoundError"
   readonly agentID: string
@@ -2196,14 +2240,6 @@ export type SkillNotFoundError = {
 }
 export const isSkillNotFoundError = (value: unknown): value is SkillNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SkillNotFoundError"
-
-export type ServiceUnavailableError = {
-  readonly _tag: "ServiceUnavailableError"
-  readonly message: string
-  readonly service?: string | undefined
-}
-export const isServiceUnavailableError = (value: unknown): value is ServiceUnavailableError =>
-  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ServiceUnavailableError"
 
 export type SessionBusyError = {
   readonly _tag: "SessionBusyError"
@@ -2285,6 +2321,32 @@ export const isWorktreeError = (value: unknown): value is WorktreeError =>
   typeof value === "object" && value !== null && "name" in value && value["name"] === "WorktreeError"
 
 export type HealthGetOutput = ServiceHealth
+
+export type ServerKtaiAccountGetOutput = KtaiAccount
+
+export type ServerKtaiEnsureOutput = KtaiEnsure
+
+export type ServerKtaiCredentialGetOutput = KtaiCredential
+
+export type ServerKtaiWalletDepositAddressInput = {
+  readonly chain?: { readonly chain?: string | undefined; readonly asset?: string | undefined }["chain"]
+  readonly asset?: { readonly chain?: string | undefined; readonly asset?: string | undefined }["asset"]
+}
+
+export type ServerKtaiWalletDepositAddressOutput = KtaiDepositAddress
+
+export type ServerKtaiWalletKtpayInfoOutput = KtaiKtpayInfo
+
+export type ServerKtaiWalletKtpayPayInput = {
+  readonly amount: { readonly amount: number; readonly method: string }["amount"]
+  readonly method: { readonly amount: number; readonly method: string }["method"]
+}
+
+export type ServerKtaiWalletKtpayPayOutput = KtaiKtpayOrder
+
+export type ServerKtaiWalletKtpayStatusInput = { readonly order_id: { readonly order_id: string }["order_id"] }
+
+export type ServerKtaiWalletKtpayStatusOutput = KtaiKtpayStatus
 
 export type ServerGetOutput = { urls: Array<string> }
 

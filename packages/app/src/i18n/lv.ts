@@ -1,5 +1,5 @@
 export const dict = {
-  "desktop.menu.app": "OpenCode",
+  "desktop.menu.app": "Kito",
   "desktop.menu.file": "Fails",
   "desktop.menu.edit": "Rediģēt",
   "desktop.menu.view": "Skats",
@@ -898,7 +898,7 @@ export const dict = {
   "debugBar.direction.tip": "Piespiedu kārtā lietot pilnu lietotnes izkārtojuma virzienu, nemainot izvēlēto valodu",
   "debugBar.direction.ltr": "LTR",
   "debugBar.direction.rtl": "RTL",
-  "app.name.desktop": "OpenCode darbvirsma",
+  "app.name.desktop": "Kito",
   "settings.section.desktop": "Darbvirsma",
   "settings.section.server": "Serveris",
   "settings.tab.general": "Vispārīgi",

@@ -6,6 +6,7 @@ import { createStore } from "solid-js/store"
 import { useSessionLayout } from "./session-layout"
 import { useDialog, useI18n } from "@opencode-ai/ui/context"
 import { DialogUsageExceeded } from "@/components/dialog-usage-exceeded"
+import { openKtAccessGuide } from "@/components/dialog-kt-access-guide"
 
 const GO_UPSELL_FREE_TIER_LAST_SEEN_AT = "go_upsell_last_seen_at"
 const GO_UPSELL_FREE_TIER_DONT_SHOW = "go_upsell_dont_show"
@@ -65,25 +66,14 @@ export function useUsageExceededDialogs() {
       if (goUpsellState[keys.dontShow]) return
 
       if (action.reason === "free_tier_limit") {
-        dialog.show(() => (
-          <DialogUsageExceeded
-            title={isEnglish() ? action.title : t("dialog.usageExceeded.freeTier.title")}
-            description={isEnglish() ? action.message : t("dialog.usageExceeded.freeTier.description")}
-            actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.freeTier.actionLabel")}
-            link={action.link}
-            onClose={(dontShowAgain) => {
-              setGoUpsellState(keys.lastSeenAt, Date.now())
-              if (dontShowAgain) setGoUpsellState(keys.dontShow, Date.now())
-              else {
-                void import("../../components/dialog-connect-provider").then((x) => {
-                  const controller = x.useProviderConnectController()
-                  controller.select("opencode-go")
-                  void dialog.show(() => <x.DialogConnectProvider controller={controller} />)
-                })
-              }
-            }}
-          />
-        ))
+        openKtAccessGuide({
+          dialog,
+          kind: "billing",
+          onClose: (dontShowAgain) => {
+            setGoUpsellState(keys.lastSeenAt, Date.now())
+            if (dontShowAgain) setGoUpsellState(keys.dontShow, Date.now())
+          },
+        })
       } else if (action.reason === "account_rate_limit") {
         dialog.show(() => (
           <DialogUsageExceeded

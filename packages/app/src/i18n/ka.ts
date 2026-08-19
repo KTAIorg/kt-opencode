@@ -1,5 +1,5 @@
 export const dict = {
-  "desktop.menu.app": "OpenCode",
+  "desktop.menu.app": "Kito",
   "desktop.menu.file": "ფაილი",
   "desktop.menu.edit": "რედაქტირება",
   "desktop.menu.view": "ნახვა",
@@ -892,7 +892,7 @@ export const dict = {
   "debugBar.direction.tip": "აპის სრული განლაგების მიმართულების იძულება არჩეული ენის შეცვლის გარეშე",
   "debugBar.direction.ltr": "LTR",
   "debugBar.direction.rtl": "RTL",
-  "app.name.desktop": "OpenCode სამუშაო მაგიდა",
+  "app.name.desktop": "Kito",
   "settings.section.desktop": "დესკტოპი",
   "settings.section.server": "სერვერი",
   "settings.tab.general": "ზოგადი",

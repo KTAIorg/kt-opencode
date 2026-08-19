@@ -1,5 +1,5 @@
 export const dict = {
-  "desktop.menu.app": "OpenCode އެވެ",
+  "desktop.menu.app": "Kito",
   "desktop.menu.file": "ފައިލް",
   "desktop.menu.edit": "ބަދަލު ގެނައުން",
   "desktop.menu.view": "މަންޒަރު",
@@ -906,7 +906,7 @@ export const dict = {
   "debugBar.direction.tip": "ހޮވާފައިވާ ބަހަށް ބަދަލެއް ނުގެނެސް ފުލް އެޕް ލޭއައުޓް ޑިރެކްޝަން ފޯސް ކުރާށެވެ",
   "debugBar.direction.ltr": "LTR އެވެ",
   "debugBar.direction.rtl": "RTL އެވެ",
-  "app.name.desktop": "OpenCode Desktop އެވެ",
+  "app.name.desktop": "Kito",
   "settings.section.desktop": "ޑެސްކްޓޮޕް",
   "settings.section.server": "ސަރވަރ އެވެ",
   "settings.tab.general": "އާންމު",

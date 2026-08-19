@@ -1,5 +1,5 @@
 export const dict = {
-  "desktop.menu.app": "OpenCode",
+  "desktop.menu.app": "Kito",
   "desktop.menu.file": "Fitxer",
   "desktop.menu.edit": "Edita",
   "desktop.menu.view": "Veure",
@@ -901,7 +901,7 @@ export const dict = {
   "debugBar.direction.tip": "Força la direcció completa del disseny de l'aplicació sense canviar l'idioma seleccionat",
   "debugBar.direction.ltr": "LTR",
   "debugBar.direction.rtl": "RTL",
-  "app.name.desktop": "OpenCode Escriptori",
+  "app.name.desktop": "Kito",
   "settings.section.desktop": "Escriptori",
   "settings.section.server": "Servidor",
   "settings.tab.general": "General",

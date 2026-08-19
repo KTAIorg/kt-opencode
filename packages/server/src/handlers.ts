@@ -29,9 +29,11 @@ import { VcsHandler } from "./handlers/vcs"
 import { EventFeed } from "./event-feed"
 import { MigrationHandler } from "./handlers/migration"
 import { ConfigHandler } from "./handlers/config"
+import { KtaiHandler } from "./handlers/ktai"
 
 export const handlers = Layer.mergeAll(
   HealthHandler,
+  KtaiHandler,
   ServerHandler,
   DebugHandler,
   MigrationHandler,

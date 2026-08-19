@@ -18,6 +18,7 @@ import { useIntegrations } from "@/hooks/use-integrations"
 import { CustomProviderForm } from "./dialog-custom-provider"
 import { decode64 } from "@/utils/base64"
 import { createProviderConnectionController, type ProviderConnectMethod } from "./provider-connection-controller"
+import { customerFacingProviderName, isCustomerFacingProvider } from "@/utils/kt-settlement"
 
 const CUSTOM_ID = "_custom"
 type IntegrationForm = NonNullable<ProviderConnectMethod["form"]>[number]
@@ -110,12 +111,21 @@ function ProviderPicker(props: { directory?: string; onSelect: (provider: string
     active: undefined as string | undefined,
     connecting: undefined as string | undefined,
   })
-  const featured = ["opencode", "opencode-go", "anthropic", "openai", "google", "openrouter", "vercel"]
+  const featured = ["ktai", "opencode"]
   const custom = () => ({ id: CUSTOM_ID, name: language.t("dialog.provider.custom.label") })
   const all = createMemo(() => {
     language.locale()
     const query = store.filter.trim().toLowerCase()
-    const values = [custom(), ...integrations.list()]
+    const values = [
+      custom(),
+      ...integrations
+        .list()
+        .filter((provider) => isCustomerFacingProvider(provider.id))
+        .map((provider) => ({
+          id: provider.id,
+          name: customerFacingProviderName(provider.id, provider.name),
+        })),
+    ]
     if (!query) return values
     return values.filter((provider) => `${provider.id} ${provider.name}`.toLowerCase().includes(query))
   })

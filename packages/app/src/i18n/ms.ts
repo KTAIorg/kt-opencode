@@ -1,5 +1,5 @@
 export const dict = {
-  "desktop.menu.app": "OpenCode",
+  "desktop.menu.app": "Kito",
   "desktop.menu.file": "Fail",
   "desktop.menu.edit": "Sunting",
   "desktop.menu.view": "Paparan",
@@ -892,7 +892,7 @@ export const dict = {
   "debugBar.direction.tip": "Paksa arah tataletak aplikasi penuh tanpa menukar bahasa terpilih",
   "debugBar.direction.ltr": "LTR",
   "debugBar.direction.rtl": "RTL",
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name.desktop": "Kito",
   "settings.section.desktop": "Desktop",
   "settings.section.server": "Pelayan",
   "settings.tab.general": "Umum",

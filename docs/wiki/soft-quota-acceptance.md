@@ -1,0 +1,62 @@
+# 软限额与客户路径测试验收
+
+对应产品口径：[客户路径](./customer-journey.md)  
+已拍板：软限额 **100**、到点 **半停**、Zen 耗尽 **兜底**、不首屏强制登录。
+
+## 前置
+
+- 干净 profile / 新装（避免本地已有 key、计数被污染）。
+- 客户端：KT OpenCode Desktop（优先）或同版本构建。
+- 软限额已在服务端实现（`packages/opencode/src/session/soft-quota.ts`，阈值默认 100；测试可用 `OPENCODE_SOFT_QUOTA_LIMIT` / `OPENCODE_DISABLE_SOFT_QUOTA` / 删除 `soft-quota.json` 重置）。
+
+## B0. 软限额 100 + 半停（主转化，必测）
+
+- [ ] 新装免登录即可用 Zen，无强制 KT 登录门
+- [ ] 使用 Zen 免费模型对话会累计次数（目标阈值 **100**）
+- [ ] 未到 100：Zen 可正常发送
+- [ ] 到 100：Zen **不能再发送**；出现 KT 引导（指向 `https://www.ktapi.cc/wallet` 或等价入口）
+- [ ] 到 100 后：未配置 KTAI key 时，不能无提示继续白嫖 Zen
+- [ ] 到 100 后：配置个人 KTAI API key，付费 KTAI 模型仍可完成至少一轮对话
+- [ ] 计数在重启客户端后仍保持（除非用例要求清数据）
+- [ ] 开发/测试可重置计数（若提供开关或清 profile 方式，需在实现 PR 注明）
+
+## B1. 免费起步（与软限额兼容）
+
+- [ ] 无需 KT 账号、无需 NewAPI / KTAI API key 即可看到并选用 Zen 免费模型
+- [ ] 使用 Zen 完成至少一轮对话（次数未到 100 时）
+- [ ] 模型选择器可见 Zen；不强迫先登录 KT 或粘贴 key
+
+## B2. Zen 上游耗尽兜底
+
+- [ ] 代码/实现：`FreeUsageLimitError` → CTA `https://www.ktapi.cc/wallet`（非 OpenCode Go）
+- [ ] 未触发限额/耗尽时，不提前弹 wallet
+- [ ] 真实或可复现方式触发 Zen 额度用尽后，弹出与软限额一致口径的 KT 引导
+- [ ] 关闭引导后，用户能理解「免费不可用 / 需走 KT」，不是卡死无提示
+
+## B3. ktapi / KTAI 付费路径
+
+- [ ] 在 ktapi / OpenCode 使用 KT Identity（Telegram 或密码）可登录（过渡态可先测 API key）
+- [ ] 可配置/粘贴 **KTAI API key**
+- [ ] 模型选择器出现 KTAI 付费模型；精选模型默认可见
+- [ ] 使用 KTAI 模型完成至少一轮对话，用量归属该账号
+
+## B4. 两段过渡连贯
+
+- [ ] 从「Zen 白嫖」到「配好 KTAI key」可走通，无需无故清数据重装
+- [ ] 文案不误导：登录 KT Identity ≠ 自动获得模型调用能力（Ensure 上线前）
+- [ ] 不出现要求填写「未知的 NewAPI 本地旧密码」才能继续的主路径阻塞
+- [ ] 安装包未内置共享运营 key
+
+## 结果记录模板
+
+```text
+版本 / Commit：
+客户端：Desktop / 其他
+软限额实现：已上线 / 未上线
+B0：通过 / 失败 / 阻塞（原因）
+B1：
+B2：
+B3：
+B4：
+备注：
+```

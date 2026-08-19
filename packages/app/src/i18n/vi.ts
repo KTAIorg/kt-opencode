@@ -1,5 +1,5 @@
 export const dict = {
-  "desktop.menu.app": "OpenCode",
+  "desktop.menu.app": "Kito",
   "desktop.menu.file": "Tệp",
   "desktop.menu.edit": "Chỉnh sửa",
   "desktop.menu.view": "Xem",
@@ -904,7 +904,7 @@ export const dict = {
   "debugBar.direction.tip": "Buộc đặt hướng bố cục cho toàn bộ ứng dụng mà không thay đổi ngôn ngữ đã chọn",
   "debugBar.direction.ltr": "LTR",
   "debugBar.direction.rtl": "RTL",
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name.desktop": "Kito",
   "settings.section.desktop": "Desktop",
   "settings.section.server": "Máy chủ",
   "settings.tab.general": "Tổng quan",

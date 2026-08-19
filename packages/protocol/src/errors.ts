@@ -44,6 +44,15 @@ export class ServiceUnavailableError extends Schema.TaggedError<ServiceUnavailab
   { httpApiStatus: 503 },
 ) {}
 
+export class BadGatewayError extends Schema.TaggedError<BadGatewayError>()(
+  "BadGatewayError",
+  {
+    message: Schema.String,
+    service: Schema.optional(Schema.String),
+  },
+  { httpApiStatus: 502 },
+) {}
+
 export class UnknownError extends Schema.TaggedError<UnknownError>()(
   "UnknownError",
   {
