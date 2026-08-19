@@ -1,6 +1,4 @@
-import { Credential } from "@opencode-ai/core/credential"
-import { Integration } from "@opencode-ai/schema/integration"
-import { fetchAccountSummary, KT_IDENTITY_REFRESH_MARKER, externalIdentity } from "@opencode-ai/core/ktai/identity"
+import { fetchAccountSummary, externalIdentity, readPersistedIdentityToken } from "@opencode-ai/core/ktai/identity"
 import {
   createKtpayOrder,
   fetchDepositAddress,
@@ -20,12 +18,8 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
 
 const identityToken = Effect.fn("ktai.identityToken")(function* () {
-  const injected = externalIdentity()
-  if (injected?.token) return injected.token
-  const credentials = yield* Credential.Service
-  const stored = yield* credentials.list(Integration.ID.make("ktai"))
-  const oauth = stored.find((item) => item.value.type === "oauth" && item.value.refresh === KT_IDENTITY_REFRESH_MARKER)
-  if (oauth?.value.type === "oauth" && oauth.value.access) return oauth.value.access
+  const token = externalIdentity()?.token ?? readPersistedIdentityToken()
+  if (token) return token
   return yield* new UnauthorizedError({ message: "KT Identity is unavailable" })
 })
 
@@ -73,13 +67,7 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
     )
     .handle("ktai.credential.get", () =>
       Effect.gen(function* () {
-        const injected = externalIdentity()
-        const credentials = yield* Credential.Service
-        const stored = yield* credentials.list(Integration.ID.make("ktai"))
-        const oauth = stored.find(
-          (item) => item.value.type === "oauth" && item.value.refresh === KT_IDENTITY_REFRESH_MARKER,
-        )
-        const token = injected?.token ?? (oauth?.value.type === "oauth" ? oauth.value.access : undefined)
+        const token = externalIdentity()?.token ?? readPersistedIdentityToken()
         const key = yield* Effect.promise(() => readManagedApiKey())
         return {
           identity: Boolean(token),

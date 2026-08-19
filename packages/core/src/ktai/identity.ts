@@ -1,5 +1,10 @@
+import { Global } from "@opencode-ai/util/global"
+import fs from "fs"
+import path from "path"
+
 export const DEFAULT_IDENTITY_BASE_URL = "https://login.ktyun.cc"
 export const KT_IDENTITY_REFRESH_MARKER = "kt-identity"
+export const IDENTITY_SESSION_FILE = "ktai-identity.json"
 
 export type IdentityAccount = {
   id: string
@@ -369,4 +374,40 @@ export function parseTelegramAuthorization(input: { url: string; instructions: s
 export function identityLoginInstructions(session: IdentityBearerSession) {
   const who = session.account.displayName?.trim() || session.account.accountNo
   return `Signed in to KT Identity as ${who} (${session.account.accountNo}).`
+}
+
+export function identitySessionPath() {
+  return path.join(Global.Path.data, IDENTITY_SESSION_FILE)
+}
+
+export function persistIdentityToken(token: string, extra?: { accountId?: string; expiresAt?: string }) {
+  const current = token.trim()
+  if (!current) return
+  fs.mkdirSync(path.dirname(identitySessionPath()), { recursive: true })
+  fs.writeFileSync(
+    identitySessionPath(),
+    JSON.stringify({ token: current, accountId: extra?.accountId, expiresAt: extra?.expiresAt }, null, 2) + "\n",
+    { mode: 0o600 },
+  )
+}
+
+export function persistIdentitySession(session: IdentityBearerSession) {
+  persistIdentityToken(session.token, {
+    accountId: session.account.id,
+    expiresAt: session.session.expiresAt,
+  })
+}
+
+export function readPersistedIdentityToken() {
+  if (!fs.existsSync(identitySessionPath())) return
+  const raw = JSON.parse(fs.readFileSync(identitySessionPath(), "utf8")) as {
+    token?: unknown
+    expiresAt?: unknown
+  }
+  if (typeof raw.token !== "string" || !raw.token.trim()) return
+  if (typeof raw.expiresAt === "string") {
+    const expires = Date.parse(raw.expiresAt)
+    if (Number.isFinite(expires) && expires <= Date.now()) return
+  }
+  return raw.token.trim()
 }

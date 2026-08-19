@@ -10,7 +10,14 @@ import {
   loadKtaiModels,
   type RawModel,
 } from "../../ktai/catalog.js"
-import { KT_IDENTITY_REFRESH_MARKER, pollTelegramLogin, sessionExpiresAt, startTelegramLogin } from "../../ktai/identity.js"
+import {
+  KT_IDENTITY_REFRESH_MARKER,
+  persistIdentitySession,
+  persistIdentityToken,
+  pollTelegramLogin,
+  sessionExpiresAt,
+  startTelegramLogin,
+} from "../../ktai/identity.js"
 import { readManagedApiKey, syncManagedToken } from "../../ktai/newapi.js"
 import { Model } from "../../model.js"
 import { Provider } from "../../provider.js"
@@ -79,10 +86,14 @@ const telegram = (): IntegrationOAuthMethodRegistration => ({
           catch: (cause) => (cause instanceof Error ? cause : new Error("KT Identity Telegram login failed")),
         }).pipe(
           Effect.tap((session) =>
-            Effect.tryPromise({
-              try: () => syncManagedToken(session.token),
-              catch: () => undefined,
-            }).pipe(Effect.catch(() => Effect.void)),
+            Effect.sync(() => persistIdentitySession(session)).pipe(
+              Effect.andThen(
+                Effect.tryPromise({
+                  try: () => syncManagedToken(session.token),
+                  catch: () => undefined,
+                }).pipe(Effect.catch(() => Effect.void)),
+              ),
+            ),
           ),
           Effect.map((session) =>
             Credential.OAuth.make({
@@ -110,6 +121,7 @@ export const KtaiPlugin = define({
       const credential = connection
         ? yield* ctx.integration.connection.resolve(connection).pipe(Effect.catch(() => Effect.succeed(undefined)))
         : undefined
+      if (credential?.type === "oauth" && credential.access) persistIdentityToken(credential.access)
       const managed = yield* Effect.promise(() => readManagedApiKey())
       const apiKey =
         managed ??
