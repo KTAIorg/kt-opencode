@@ -150,7 +150,7 @@ test("ignores a TRON address returned for Ethereum and uses the next matching ho
         )
       }
       if (url.includes("/api/v1/address/list")) {
-        expect(url).toContain("chain=ethereum")
+        expect(url).toContain("chain=eth")
         expect(url).toContain("tenant_id=8b5efc4199144f9d86f1ac9e4d75d8c5")
         return new Response(
           JSON.stringify({
@@ -199,7 +199,7 @@ test("creates one Ethereum address for ERC20 USDT and USDC when Casio has none",
       expect(url).toBe("https://casio.test/api/v1/address/create")
       expect(init?.method).toBe("POST")
       expect(JSON.parse(String(init?.body))).toMatchObject({
-        chain: "ethereum",
+        chain: "eth",
         tenant_id: "8b5efc4199144f9d86f1ac9e4d75d8c5",
       })
       return new Response(JSON.stringify({ code: 0, data: { address: "0xCreatedErc20", chain: "ethereum" } }), {

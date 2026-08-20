@@ -317,6 +317,12 @@ export function addressLooksLikeChain(address: string, chain: string) {
   return true
 }
 
+// Casio address APIs accept tron / eth. Keep ethereum in the Kito/NewAPI contract.
+function casioDepositChain(chain: string) {
+  if (normalizeDepositChain(chain) === "ethereum") return "eth"
+  return normalizeDepositChain(chain)
+}
+
 function billingBaseUrls(explicit?: string, env: NodeJS.ProcessEnv = process.env) {
   if (explicit?.trim()) return []
   const value = env.KTAI_BILLING_BASE_URL?.trim()
@@ -365,7 +371,8 @@ async function assignSettlementAddress(
   const fetchImpl = input.fetchImpl
   const env = input.env ?? process.env
   const tenantID = (await fetchAccountMe(identityToken, undefined, fetchImpl)).id.replaceAll("-", "")
-  const query = new URLSearchParams({ tenant_id: tenantID, chain, page_size: "20" })
+  const casioChain = casioDepositChain(chain)
+  const query = new URLSearchParams({ tenant_id: tenantID, chain: casioChain, page_size: "20" })
   const listed = await fetchImpl(`${input.baseUrl}/api/v1/address/list?${query}`, {
     method: "GET",
     headers: { accept: "application/json" },
@@ -379,7 +386,7 @@ async function assignSettlementAddress(
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json" },
     body: JSON.stringify({
-      chain,
+      chain: casioChain,
       tenant_id: tenantID,
       application_id: env.KTAI_SETTLEMENT_APP_ID?.trim() || KTAI_SETTLEMENT_APP_ID,
       callback_url: env.KTAI_RECHARGE_CALLBACK_URL?.trim() || KTAI_RECHARGE_CALLBACK_URL,
