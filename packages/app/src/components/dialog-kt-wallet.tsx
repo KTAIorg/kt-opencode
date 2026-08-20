@@ -39,7 +39,7 @@ const DEFAULT_AMOUNTS = [10, 30, 50, 100]
 const TERMINAL_FAILURE = new Set(["failed", "expired", "cancelled", "canceled"])
 
 function qrUrl(address: string) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(address)}`
+  return `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(address)}`
 }
 
 function acceptedAssets(network: CryptoNetwork) {
@@ -211,8 +211,8 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
       <DialogHeader>
         <DialogTitleGroup title={language.t("dialog.ktWallet.title")} description={language.t("dialog.ktWallet.lead")} />
       </DialogHeader>
-      <DialogBody>
-      <div class="flex flex-col gap-4 px-6 pb-4">
+      <DialogBody class="min-h-0 overflow-y-auto">
+      <div class="flex min-h-0 flex-col gap-3 px-6 pb-4">
         <div class="flex gap-1 rounded-lg bg-background-stronger p-1">
           <button
             type="button"
@@ -374,7 +374,7 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
               <div class="grid grid-cols-2 gap-2">
                 <For each={acceptedAssets("ethereum")}>
                   {(asset) => (
-                    <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2">
+                    <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-1.5">
                       <div class="text-14-medium text-text-strong">{asset}</div>
                       <div class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.networkErc20")}</div>
                     </div>
@@ -382,9 +382,6 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
                 </For>
               </div>
             </Show>
-            <p class="text-12-regular text-text-weak">
-              {network() === "ethereum" ? language.t("dialog.ktWallet.hintErc20") : language.t("dialog.ktWallet.hintTrc20")}
-            </p>
           </div>
           <Show when={address.loading}>
             <div class="flex items-center gap-3 text-14-regular text-text-base">
@@ -399,29 +396,33 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
           </Show>
           <Show when={visibleAddress()}>
             {(current) => (
-              <div class="flex flex-col items-center gap-3">
+              <div class="flex flex-col items-center gap-2">
                 <img
                   src={qrUrl(current().address)}
-                  alt={current().address}
-                  width={220}
-                  height={220}
-                  class="rounded-md bg-white p-2"
+                  alt=""
+                  width={160}
+                  height={160}
+                  class="rounded-md bg-white p-1.5"
                 />
-                <div class="w-full break-all rounded-md bg-background-stronger px-3 py-2 font-mono text-13-regular text-text-strong">
-                  {current().address}
-                </div>
-                <Show when={network() === "ethereum"}>
-                  <p class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.sharedAddress")}</p>
-                </Show>
-                <p class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.hint")}</p>
-                <div class="flex w-full justify-end gap-2">
-                  <Button variant="ghost" size="large" type="button" onClick={close}>
-                    {language.t("dialog.ktAccess.snooze")}
-                  </Button>
-                  <Button variant="contrast" size="large" type="button" onClick={() => void copy()}>
+                <div class="flex w-full items-start gap-2 rounded-md bg-background-stronger px-2.5 py-2">
+                  <code class="min-w-0 flex-1 break-all font-mono text-[11px] leading-4 text-text-strong">
+                    {current().address}
+                  </code>
+                  <Button
+                    class="shrink-0"
+                    variant="contrast"
+                    size="small"
+                    type="button"
+                    onClick={() => void copy()}
+                  >
                     {copied() ? language.t("dialog.ktWallet.copied") : language.t("dialog.ktWallet.copy")}
                   </Button>
                 </div>
+                <p class="w-full text-12-regular text-text-weak">
+                  {network() === "ethereum"
+                    ? language.t("dialog.ktWallet.hintErc20")
+                    : language.t("dialog.ktWallet.hintTrc20")}
+                </p>
               </div>
             )}
           </Show>
