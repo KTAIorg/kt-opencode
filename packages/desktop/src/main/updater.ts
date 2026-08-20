@@ -1,6 +1,7 @@
 import { app, dialog } from "electron"
 import pkg from "electron-updater"
-import { UPDATER_ENABLED } from "./constants"
+import { selectKitoUpdaterSource } from "../kito-release/feed"
+import { CHANNEL, UPDATER_ENABLED } from "./constants"
 import { createUpdaterController, type UpdaterReadyRecord } from "./updater-controller"
 import { getLogger } from "./logging"
 import { getStore } from "./store"
@@ -29,7 +30,20 @@ export function setupAutoUpdater(stop: () => Promise<void>) {
     enabled: UPDATER_ENABLED,
     currentVersion: app.getVersion(),
     backend: {
-      checkForUpdates: () => autoUpdater.checkForUpdates(),
+      checkForUpdates: async () => {
+        const source = await selectKitoUpdaterSource({
+          currentVersion: app.getVersion(),
+          channel: CHANNEL === "beta" ? "beta" : "stable",
+          platform: process.platform,
+          arch: process.arch,
+        })
+        if (source.kind === "hold") return { isUpdateAvailable: false }
+        if (source.kind === "generic") {
+          autoUpdater.setFeedURL({ provider: "generic", url: source.baseUrl })
+          logger.log("auto updater using release service feed", { version: source.version })
+        }
+        return autoUpdater.checkForUpdates()
+      },
       downloadUpdate: () => autoUpdater.downloadUpdate(),
       quitAndInstall: () => {
         // quitAndInstall closes all windows before emitting before-quit, so
