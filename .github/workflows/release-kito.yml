@@ -1,0 +1,70 @@
+name: Release · Kito
+run-name: Release | ${{ inputs.tag || github.event.release.tag_name || github.ref_name }}
+
+on:
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Git tag whose GitHub Release assets should be registered
+        required: true
+        type: string
+      dry_run:
+        description: Print Release Service requests without writing
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-kito-${{ inputs.tag || github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  KT_RELEASE_SERVICE_ADMIN_BASE_URL: https://release-admin.ktyun.cc
+  KT_RELEASE_SERVICE_CLIENT_BASE_URL: https://updates.ktyun.cc
+
+jobs:
+  register-release:
+    name: register Release Service rollout 0
+    if: github.repository_owner == 'KTAIorg' || github.repository_owner == 'ktaiorg'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Download GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag || github.event.release.tag_name || github.ref_name }}"
+          mkdir -p /tmp/kito-release-assets
+          gh release download "$tag" --repo "${{ github.repository }}" --dir /tmp/kito-release-assets
+          find /tmp/kito-release-assets -maxdepth 1 -type f -printf '%f\n'
+
+      - name: Register artifacts and publish rollout 0
+        env:
+          KT_RELEASE_SERVICE_ADMIN_TOKEN: ${{ secrets.KT_RELEASE_SERVICE_ADMIN_TOKEN }}
+          KT_RELEASE_SERVICE_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag || github.event.release.tag_name || github.ref_name }}"
+          version="${tag#v}"
+          if [ -z "${KT_RELEASE_SERVICE_ADMIN_TOKEN:-}" ] && [ "${KT_RELEASE_SERVICE_DRY_RUN:-}" != "1" ]; then
+            echo "::warning::KT_RELEASE_SERVICE_ADMIN_TOKEN is not configured; skipping Release Service registration"
+            exit 0
+          fi
+          bun ./packages/desktop/scripts/kito-release.ts register \
+            --version "$version" \
+            --tag "$tag" \
+            --channel stable \
+            --repo "${{ github.repository }}" \
+            --dir /tmp/kito-release-assets
