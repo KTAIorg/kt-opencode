@@ -1,7 +1,9 @@
 ---
 name: kt-input-correction
-version: 1.1.0
+version: 1.2.0
 category: 工作流程
+status: active
+last_verified: 2026-08-20
 alwaysApply: true
 description: >
   在解读用户每条消息（打字或语音转写）之前，先按 KT 口误/识别词表做静默校正。
@@ -9,6 +11,12 @@ description: >
   “七七八八被识别成奇葩”、“输入校正”、“口误表”、“识别错了”、
   “以后把 XX 当成 YY” 或用户补充新的常错词。
   不要等用户再说一遍正确写法再行动。
+metadata:
+  kt:
+    related_skills:
+      - kito-wallet
+      - people-ops-resolver
+      - skill-installation-workflow
 ---
 
 # KT 输入校正
@@ -19,7 +27,8 @@ description: >
 
 - 这是**输入层**能力，不是人事别名（那是 `people-ops-resolver`），也不是产品命名对外文案（Kito 对外名仍看各仓库 AGENTS）。
 - 词表源：`references/glossary.md`。新的稳定口误只追加词表，不写进对话记忆了事。
-- 组织级源仓库是 `KTAIorg/kt-agent-skills`。本目录是 Kito 仓库内的工作副本，方便 Cloud Agent 加载。
+- 组织级源仓库是 `KTAIorg/kt-agent-skills`。Kito 仓 `.cursor/skills/kt-input-correction` 只是工作副本。
+- Kito 客户充值（法币 / TRC20 / ERC20 二维码与地址）走 `kito-wallet`，不要把整套取址 SOP 写进本 skill。
 
 ## 何时用
 
@@ -48,6 +57,7 @@ description: >
 - **Telegram / 飞机账户** 在 KT 语境里是同一登录因子，不是两个产品。
 - 对外产品名仍是 **Kito**。`Keto` / `Kete` 是 Kito 的误识别，不是新品牌。
 - **默认 `奇葩` → `七七八八`**（杂项、剩余事项）。不要理解成「做法很荒唐」。用户说「就是奇葩这个词」时保持字面。
+- **充值地址按链复用**，不是「一个人全世界共用一条地址」。TRC20 一条 `T…`（只收 USDT），ERC20 一条 `0x…`（USDT/USDC 共用）。细节见 `kito-wallet`。
 
 ## 追加词条
 
@@ -62,4 +72,5 @@ description: >
 
 - 词表：`references/glossary.md`
 - 例句：`examples/utterances.md`
+- Kito 充值：`kito-wallet`
 - 安装与落库：`skill-installation-workflow`

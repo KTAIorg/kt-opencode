@@ -15,7 +15,15 @@ Agent 应按「理解成」行动，回复里用校正后的词。
 ```text
 听到: 飞机账户, newAPI, Keto
 理解成: Telegram, NewAPI, Kito
-行动: 同一 kt_account_id → 同一 settlement 地址；NewAPI 只是计量面
+行动: 同一 kt_account_id 按链复用地址（TRC20 一条 T…，ERC20 一条 0x… 给 USDT+USDC）。NewAPI 只是计量面
+```
+
+## 「把 ERC20 USDT 和 USDC 的二维码和地址那一块做了」
+
+```text
+听到: ERC20, USDT, USDC, 二维码, 地址
+理解成: Kito 充值弹窗的以太坊网络
+行动: 走 kito-wallet。两张卡 + 一张 QR + 一条 0x。问 Casio 用 chain=eth。T… 当 ERC20 就丢掉，不要画
 ```
 
 ## 「我们不是有 kt Admin 吗？里面应该可以调用 Telegram」

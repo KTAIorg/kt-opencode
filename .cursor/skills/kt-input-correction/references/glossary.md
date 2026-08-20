@@ -30,7 +30,10 @@
 |---|---|---|---|
 | 身份 / Identity / kt identity | KT Identity（`kt_account_id`） | NewAPI user id、Telegram id | 跨产品主身份 |
 | Ensure | Identity 登录后为该 `kt_account_id` 幂等创建 NewAPI 影子用户并发卡给 Kito | 用户粘贴任意 NewAPI key | 支付仍不进 NewAPI |
-| 充值 / 钱包 / 虚拟币地址 | **KT 钱包**（settlement 按 `kt_account_id` 复用地址） | 把 `ktapi.cc` NewAPI 登录页当收银台 | 同一个人同一地址 |
+| 充值 / 钱包 / 虚拟币地址 | **Kito 钱包**（见 `kito-wallet`） | 把 `ktapi.cc` NewAPI 登录页当收银台 | 按 `kt_account_id` **按链**复用，不是跨链一条地址 |
+| TRC20 / TRON / 波场 | Kito TRC20：只收 USDT，地址 `T…` | 把 ERC20 的 `0x` 或 USDC 画进 TRC20 | Casio 链名 `tron` |
+| ERC20 / 以太坊 / ETH 地址 | Kito ERC20：USDT **和** USDC **共用一条** `0x…`（长 42） | 给 ERC20 展示 `T…` 二维码；USDT/USDC 各造一条 | 对用户说 `ethereum`；问 Casio 用 `eth` |
+| 卡西欧 / Casio | `kt-settlement` 收银台 / `settlement-address` | 新品牌、独立链 | 地址 list/create 只认 `tron` / `eth` |
 
 ## 口语 / 语音
 
