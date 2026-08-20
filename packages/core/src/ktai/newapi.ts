@@ -2,6 +2,7 @@ import { Global } from "@opencode-ai/util/global"
 import path from "path"
 
 export const KTAI_NEWAPI_BASE_URL = "https://ktapi.cc"
+export const KTAI_WALLET_FALLBACK_BASE_URL = "https://newapi-test.ktyun.cc"
 export const KTAI_MANAGED_TOKEN_NAME = "kito"
 export const KTAI_API_AUTH_ID = "ktai-api"
 
@@ -57,6 +58,13 @@ function newapiBaseUrl(env: NodeJS.ProcessEnv = process.env) {
   return value ? value.replace(/\/+$/, "") : KTAI_NEWAPI_BASE_URL
 }
 
+function walletBaseUrls(explicit?: string, env: NodeJS.ProcessEnv = process.env) {
+  if (explicit?.trim()) return [explicit.trim().replace(/\/+$/, "")]
+  const primary = newapiBaseUrl(env)
+  const fallback = (env.KTAI_WALLET_BASE_URL?.trim() || KTAI_WALLET_FALLBACK_BASE_URL).replace(/\/+$/, "")
+  return primary === fallback ? [primary] : [primary, fallback]
+}
+
 export function managedApiKeyPath() {
   return path.join(Global.Path.data, "ktai-api-key.json")
 }
@@ -93,6 +101,8 @@ function stringField(value: unknown, ...keys: string[]): string | undefined {
   for (const key of keys) {
     const item = record[key]
     if (typeof item === "string" && item.trim()) return item.trim()
+    const nested = asRecord(item)
+    if (typeof nested?.message === "string" && nested.message.trim()) return nested.message.trim()
   }
   if (record.data) return stringField(record.data, ...keys)
   return
@@ -299,36 +309,37 @@ export async function fetchDepositAddress(
   identityToken: string,
   input: { chain?: string; asset?: string; baseUrl?: string; fetchImpl?: FetchLike } = {},
 ): Promise<DepositAddress> {
-  const baseUrl = input.baseUrl ?? newapiBaseUrl()
   const fetchImpl = input.fetchImpl ?? fetch
   const chain = normalizeDepositChain(input.chain)
   const asset = input.asset?.trim().toUpperCase() || assetsForChain(chain)[0]
   const query = new URLSearchParams({ chain, asset })
   const paths = [`/api/iam/deposit-address?${query}`, `/wallet/v1/deposit-address?${query}`]
   let last = "Deposit address API is not available yet"
-  for (const pathName of paths) {
-    const response = await fetchImpl(`${baseUrl}${pathName}`, {
-      method: "GET",
-      headers: { accept: "application/json", authorization: `Bearer ${identityToken}` },
-      signal: AbortSignal.timeout(15_000),
-    })
-    const payload = await readJson(response)
-    if (response.status === 404 || typeof payload === "string") {
-      last = stringField(payload, "message", "error") ?? last
-      continue
-    }
-    if (!response.ok) {
-      throw new Error(stringField(payload, "message", "error") ?? `Deposit address failed (${response.status})`)
-    }
-    const address = stringField(payload, "address")
-    if (!address) {
-      last = "Deposit address API is not available yet"
-      continue
-    }
-    return {
-      chain: stringField(payload, "chain") ?? chain,
-      asset: stringField(payload, "asset") ?? asset,
-      address,
+  for (const baseUrl of walletBaseUrls(input.baseUrl)) {
+    for (const pathName of paths) {
+      const response = await fetchImpl(`${baseUrl}${pathName}`, {
+        method: "GET",
+        headers: { accept: "application/json", authorization: `Bearer ${identityToken}` },
+        signal: AbortSignal.timeout(15_000),
+      })
+      const payload = await readJson(response)
+      if (response.status === 404 || typeof payload === "string") {
+        last = stringField(payload, "message", "error") ?? last
+        continue
+      }
+      if (!response.ok) {
+        throw new Error(stringField(payload, "message", "error") ?? `Deposit address failed (${response.status})`)
+      }
+      const address = stringField(payload, "address")
+      if (!address) {
+        last = "Deposit address API is not available yet"
+        continue
+      }
+      return {
+        chain: stringField(payload, "chain") ?? chain,
+        asset: stringField(payload, "asset") ?? asset,
+        address,
+      }
     }
   }
   throw new Error(last)
@@ -339,29 +350,30 @@ async function fetchIamJson(
   paths: string[],
   input: { method?: string; body?: unknown; baseUrl?: string; fetchImpl?: FetchLike } = {},
 ): Promise<unknown> {
-  const baseUrl = input.baseUrl ?? newapiBaseUrl()
   const fetchImpl = input.fetchImpl ?? fetch
   let last = "KTPay API is not available yet"
-  for (const pathName of paths) {
-    const response = await fetchImpl(`${baseUrl}${pathName}`, {
-      method: input.method ?? "GET",
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${identityToken}`,
-        ...(input.body ? { "content-type": "application/json" } : {}),
-      },
-      body: input.body ? JSON.stringify(input.body) : undefined,
-      signal: AbortSignal.timeout(15_000),
-    })
-    const payload = await readJson(response)
-    if (response.status === 404 || typeof payload === "string") {
-      last = stringField(payload, "message", "error") ?? last
-      continue
+  for (const baseUrl of walletBaseUrls(input.baseUrl)) {
+    for (const pathName of paths) {
+      const response = await fetchImpl(`${baseUrl}${pathName}`, {
+        method: input.method ?? "GET",
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${identityToken}`,
+          ...(input.body ? { "content-type": "application/json" } : {}),
+        },
+        body: input.body ? JSON.stringify(input.body) : undefined,
+        signal: AbortSignal.timeout(15_000),
+      })
+      const payload = await readJson(response)
+      if (response.status === 404 || typeof payload === "string") {
+        last = stringField(payload, "message", "error") ?? last
+        continue
+      }
+      if (!response.ok || asRecord(payload)?.success === false) {
+        throw new Error(stringField(payload, "message", "error", "data") ?? `KTPay request failed (${response.status})`)
+      }
+      return payload
     }
-    if (!response.ok || asRecord(payload)?.success === false) {
-      throw new Error(stringField(payload, "message", "error", "data") ?? `KTPay request failed (${response.status})`)
-    }
-    return payload
   }
   throw new Error(last)
 }

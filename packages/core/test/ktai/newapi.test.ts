@@ -122,6 +122,47 @@ test("requests one Ethereum address for ERC20 USDT and USDC", async () => {
   expect(address).toEqual({ chain: "ethereum", asset: "USDC", address: "0xExampleAddress" })
 })
 
+test("falls back to the test NewAPI wallet host when production IAM 404s", async () => {
+  const hosts: string[] = []
+  const info = await fetchKtpayInfo("identity-bearer", {
+    fetchImpl: async (input) => {
+      const url = String(input)
+      hosts.push(url)
+      if (url.startsWith("https://ktapi.cc")) {
+        return new Response(JSON.stringify({ error: { message: "Invalid URL (GET /api/iam/ktpay/info)" } }), {
+          status: 404,
+        })
+      }
+      expect(url).toBe("https://newapi-test.ktyun.cc/api/iam/ktpay/info")
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { enabled: true, methods: [], min_topup: 5, max_topup: 10, amount_options: [10] },
+        }),
+        { status: 200 },
+      )
+    },
+  })
+  expect(info.enabled).toBe(true)
+  expect(hosts[0]).toContain("https://ktapi.cc")
+  expect(hosts.at(-1)).toBe("https://newapi-test.ktyun.cc/api/iam/ktpay/info")
+})
+
+test("surfaces NewAPI Invalid URL errors instead of a generic missing-route message", async () => {
+  let failed = false
+  try {
+    await fetchKtpayInfo("identity-bearer", {
+      baseUrl: "https://ktapi.test",
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ error: { message: "Invalid URL (GET /api/iam/ktpay/info)" } }), { status: 404 }),
+    })
+  } catch (error) {
+    failed = true
+    expect(error instanceof Error && error.message).toContain("Invalid URL (GET /api/iam/ktpay/info)")
+  }
+  expect(failed).toBe(true)
+})
+
 test("reads KTPay info from the Identity-gated NewAPI route", async () => {
   const info = await fetchKtpayInfo("identity-bearer", {
     baseUrl: "https://newapi.test",
