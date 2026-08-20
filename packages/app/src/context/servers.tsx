@@ -166,16 +166,24 @@ export function resolveServerList(input: {
     const key = ServerConnection.key(conn)
 
     const existing = deduped.get(key)
-    if (existing)
-      deduped.set(key, {
-        ...existing,
-        ...conn,
-        http: { ...existing.http, ...conn.http },
-      })
-    else deduped.set(key, conn)
+    if (!existing) {
+      deduped.set(key, conn)
+      continue
+    }
+    const fromAuthToken = existing.type === "http" && existing.authToken
+    deduped.set(key, {
+      ...conn,
+      ...existing,
+      http: fromAuthToken ? { ...conn.http, ...existing.http } : { ...existing.http, ...conn.http },
+    })
   }
 
   return [...deduped.values()]
+}
+
+export function preferredTitlebarServer(list: ServerConnection.Any[], selected?: ServerConnection.Any) {
+  const authed = list.find((item) => item.type === "http" && item.authToken)
+  return authed ?? selected ?? list[0]
 }
 
 export function canRemoveServer(input: {

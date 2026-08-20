@@ -3,6 +3,7 @@ import { createRoot, createSignal } from "solid-js"
 import {
   migrateCanonicalLocalServerState,
   nextServerAfterRemoval,
+  preferredTitlebarServer,
   resolveServerList,
   ServerConnection,
 } from "./servers"
@@ -36,6 +37,37 @@ describe("resolveServerList", () => {
     expect(ServerConnection.key(list[0]!) as string).toBe("https://server.example.test")
   })
 
+  test("lets startup auth_token credentials replace a persisted password", () => {
+    const list = resolveServerList({
+      stored: [
+        {
+          url: "https://server.example.test",
+          username: "opencode",
+          password: "stale",
+        },
+      ],
+      props: [
+        {
+          type: "http",
+          authToken: true,
+          http: {
+            url: "https://server.example.test",
+            username: "opencode",
+            password: "secret",
+          },
+        },
+      ],
+    })
+
+    expect(list).toHaveLength(1)
+    expect(list[0]?.http).toEqual({
+      url: "https://server.example.test",
+      username: "opencode",
+      password: "secret",
+    })
+    expect(list[0]?.type === "http" ? list[0].authToken : false).toBe(true)
+  })
+
   test("keeps persisted credentials when startup has no auth_token", () => {
     const list = resolveServerList({
       stored: [
@@ -57,6 +89,17 @@ describe("resolveServerList", () => {
     })
     expect(list[0]?.type === "http" ? list[0].authToken : true).toBeUndefined()
   })
+})
+
+test("titlebar prefers the auth_token server over another selected server", () => {
+  const selected = { type: "http" as const, http: { url: "http://127.0.0.1:4096" } }
+  const authed = {
+    type: "http" as const,
+    authToken: true,
+    http: { url: "http://127.0.0.1:4106", username: "opencode", password: "secret" },
+  }
+  expect(preferredTitlebarServer([selected, authed], selected)).toEqual(authed)
+  expect(preferredTitlebarServer([selected], selected)).toEqual(selected)
 })
 
 test("treats WSL sidecars as remote server connections", () => {
