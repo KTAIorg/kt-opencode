@@ -1,8 +1,11 @@
 import { Global } from "@opencode-ai/util/global"
 import path from "path"
+import { fetchAccountMe } from "./identity"
 
 export const KTAI_NEWAPI_BASE_URL = "https://ktapi.cc"
 export const KTAI_WALLET_FALLBACK_BASE_URL = "https://newapi-test.ktyun.cc"
+export const KTAI_SETTLEMENT_APP_ID = "2079689277851045900"
+export const KTAI_RECHARGE_CALLBACK_URL = "http://kt-billing.kt-billing-prod.svc.cluster.local/recharge/crypto/webhook"
 export const KTAI_MANAGED_TOKEN_NAME = "kito"
 export const KTAI_API_AUTH_ID = "ktai-api"
 
@@ -305,42 +308,146 @@ export function assetsForChain(chain: string) {
   return ["USDT"]
 }
 
+export function addressLooksLikeChain(address: string, chain: string) {
+  const value = address.trim()
+  if (!value) return false
+  const normalized = normalizeDepositChain(chain)
+  if (normalized === "ethereum") return value.toLowerCase().startsWith("0x")
+  if (normalized === "tron") return value.startsWith("T")
+  return true
+}
+
+function billingBaseUrls(explicit?: string, env: NodeJS.ProcessEnv = process.env) {
+  if (explicit?.trim()) return []
+  const value = env.KTAI_BILLING_BASE_URL?.trim()
+  return value ? [value.replace(/\/+$/, "")] : []
+}
+
+function settlementAddressUrl(
+  input: { baseUrl?: string; settlementBaseUrl?: string },
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  if (input.settlementBaseUrl?.trim()) return input.settlementBaseUrl.trim().replace(/\/+$/, "")
+  if (input.baseUrl?.trim()) return
+  const value = env.KTAI_SETTLEMENT_ADDRESS_URL?.trim()
+  return value ? value.replace(/\/+$/, "") : undefined
+}
+
+function depositFromPayload(payload: unknown, chain: string, asset: string): DepositAddress | undefined {
+  const address = stringField(payload, "address")
+  if (!address || !addressLooksLikeChain(address, chain)) return
+  return {
+    chain: normalizeDepositChain(stringField(payload, "chain") ?? chain),
+    asset: stringField(payload, "asset") ?? asset,
+    address,
+  }
+}
+
+async function readDepositResponse(
+  fetchImpl: FetchLike,
+  url: string,
+  identityToken: string,
+): Promise<{ ok: boolean; status: number; payload: unknown }> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    headers: { accept: "application/json", authorization: `Bearer ${identityToken}` },
+    signal: AbortSignal.timeout(15_000),
+  })
+  return { ok: response.ok, status: response.status, payload: await readJson(response) }
+}
+
+async function assignSettlementAddress(
+  identityToken: string,
+  chain: string,
+  asset: string,
+  input: { fetchImpl: FetchLike; baseUrl: string; env?: NodeJS.ProcessEnv },
+): Promise<DepositAddress | undefined> {
+  const fetchImpl = input.fetchImpl
+  const env = input.env ?? process.env
+  const tenantID = (await fetchAccountMe(identityToken, undefined, fetchImpl)).id.replaceAll("-", "")
+  const query = new URLSearchParams({ tenant_id: tenantID, chain, page_size: "20" })
+  const listed = await fetchImpl(`${input.baseUrl}/api/v1/address/list?${query}`, {
+    method: "GET",
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(15_000),
+  })
+  const listedPayload = await readJson(listed)
+  const existing = settlementAddressFromList(listedPayload, chain)
+  if (existing) return { chain, asset, address: existing }
+
+  const created = await fetchImpl(`${input.baseUrl}/api/v1/address/create`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({
+      chain,
+      tenant_id: tenantID,
+      application_id: env.KTAI_SETTLEMENT_APP_ID?.trim() || KTAI_SETTLEMENT_APP_ID,
+      callback_url: env.KTAI_RECHARGE_CALLBACK_URL?.trim() || KTAI_RECHARGE_CALLBACK_URL,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  const createdPayload = await readJson(created)
+  if (!created.ok) return
+  const address = stringField(createdPayload, "address")
+  if (!address || !addressLooksLikeChain(address, chain)) return
+  return { chain, asset, address }
+}
+
+function settlementAddressFromList(payload: unknown, chain: string) {
+  const record = asRecord(payload)
+  const data = asRecord(record?.data) ?? record
+  const rows = Array.isArray(data?.list) ? data.list : []
+  return rows
+    .flatMap((row) => {
+      const item = asRecord(row)
+      const address = typeof item?.address === "string" ? item.address.trim() : ""
+      if (!address) return []
+      const itemChain = typeof item?.chain === "string" ? item.chain.trim() : ""
+      if (!addressLooksLikeChain(address, chain)) return []
+      if (itemChain && normalizeDepositChain(itemChain) !== chain) return []
+      return [address]
+    })
+    .at(0)
+}
+
 export async function fetchDepositAddress(
   identityToken: string,
-  input: { chain?: string; asset?: string; baseUrl?: string; fetchImpl?: FetchLike } = {},
+  input: { chain?: string; asset?: string; baseUrl?: string; settlementBaseUrl?: string; fetchImpl?: FetchLike } = {},
 ): Promise<DepositAddress> {
   const fetchImpl = input.fetchImpl ?? fetch
   const chain = normalizeDepositChain(input.chain)
   const asset = input.asset?.trim().toUpperCase() || assetsForChain(chain)[0]
   const query = new URLSearchParams({ chain, asset })
-  const paths = [`/api/iam/deposit-address?${query}`, `/wallet/v1/deposit-address?${query}`]
+  const iamPaths = [`/api/iam/deposit-address?${query}`, `/wallet/v1/deposit-address?${query}`]
+  const billingPaths = [`/recharge/crypto/address?${query}`, `/wallet/v1/deposit-address?${query}`]
   let last = "Deposit address API is not available yet"
-  for (const baseUrl of walletBaseUrls(input.baseUrl)) {
-    for (const pathName of paths) {
-      const response = await fetchImpl(`${baseUrl}${pathName}`, {
-        method: "GET",
-        headers: { accept: "application/json", authorization: `Bearer ${identityToken}` },
-        signal: AbortSignal.timeout(15_000),
-      })
-      const payload = await readJson(response)
-      if (response.status === 404 || typeof payload === "string") {
-        last = stringField(payload, "message", "error") ?? last
+  const hosts = [
+    ...walletBaseUrls(input.baseUrl).map((baseUrl) => ({ baseUrl, paths: iamPaths })),
+    ...billingBaseUrls(input.baseUrl).map((baseUrl) => ({ baseUrl, paths: billingPaths })),
+  ]
+  for (const host of hosts) {
+    for (const pathName of host.paths) {
+      const result = await readDepositResponse(fetchImpl, `${host.baseUrl}${pathName}`, identityToken)
+      if (result.status === 404 || typeof result.payload === "string") {
+        last = stringField(result.payload, "message", "error") ?? last
         continue
       }
-      if (!response.ok) {
-        throw new Error(stringField(payload, "message", "error") ?? `Deposit address failed (${response.status})`)
+      if (!result.ok) {
+        throw new Error(stringField(result.payload, "message", "error") ?? `Deposit address failed (${result.status})`)
       }
-      const address = stringField(payload, "address")
-      if (!address) {
-        last = "Deposit address API is not available yet"
-        continue
-      }
-      return {
-        chain: stringField(payload, "chain") ?? chain,
-        asset: stringField(payload, "asset") ?? asset,
-        address,
-      }
+      const address = depositFromPayload(result.payload, chain, asset)
+      if (address) return address
+      last = "Deposit address does not match the requested network"
     }
+  }
+  const settlement = settlementAddressUrl(input)
+  if (settlement) {
+    const assigned = await assignSettlementAddress(identityToken, chain, asset, {
+      fetchImpl,
+      baseUrl: settlement,
+    })
+    if (assigned) return assigned
+    last = "Deposit address does not match the requested network"
   }
   throw new Error(last)
 }

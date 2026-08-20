@@ -95,7 +95,13 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
       const query = new URLSearchParams({ chain: selected, asset: "USDT" })
       const response = await request(`/ktai/wallet/deposit-address?${query}`)
       const payload = (await response.json().catch(() => undefined)) as DepositAddress & { error?: string } | undefined
-      if (!response.ok) throw new Error(payload?.error || language.t("dialog.ktWallet.error"))
+      if (!response.ok) {
+        const message = payload?.error || ""
+        if (message.includes("does not match the requested network")) {
+          throw new Error(language.t("dialog.ktWallet.networkMismatch"))
+        }
+        throw new Error(message || language.t("dialog.ktWallet.error"))
+      }
       if (!payload?.address) throw new Error(payload?.error || language.t("dialog.ktWallet.error"))
       if (!addressLooksLikeNetwork(selected, payload.address)) {
         throw new Error(language.t("dialog.ktWallet.networkMismatch"))
@@ -350,20 +356,32 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
                 )}
               </For>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <For each={acceptedAssets(network())}>
-                {(asset) => (
-                  <span class="rounded-full border border-border-weak-base px-2 py-0.5 text-12-regular text-text-strong">
-                    {asset}
-                  </span>
-                )}
-              </For>
-              <span class="text-12-regular text-text-weak">
-                {network() === "ethereum"
-                  ? language.t("dialog.ktWallet.networkEthereum")
-                  : language.t("dialog.ktWallet.networkTron")}
-              </span>
-            </div>
+            <Show
+              when={network() === "ethereum"}
+              fallback={
+                <div class="flex flex-wrap items-center gap-2">
+                  <For each={acceptedAssets(network())}>
+                    {(asset) => (
+                      <span class="rounded-full border border-border-weak-base px-2 py-0.5 text-12-regular text-text-strong">
+                        {asset}
+                      </span>
+                    )}
+                  </For>
+                  <span class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.networkTron")}</span>
+                </div>
+              }
+            >
+              <div class="grid grid-cols-2 gap-2">
+                <For each={acceptedAssets("ethereum")}>
+                  {(asset) => (
+                    <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2">
+                      <div class="text-14-medium text-text-strong">{asset}</div>
+                      <div class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.networkErc20")}</div>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
             <p class="text-12-regular text-text-weak">
               {network() === "ethereum" ? language.t("dialog.ktWallet.hintErc20") : language.t("dialog.ktWallet.hintTrc20")}
             </p>
@@ -392,6 +410,9 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
                 <div class="w-full break-all rounded-md bg-background-stronger px-3 py-2 font-mono text-13-regular text-text-strong">
                   {current().address}
                 </div>
+                <Show when={network() === "ethereum"}>
+                  <p class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.sharedAddress")}</p>
+                </Show>
                 <p class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.hint")}</p>
                 <div class="flex w-full justify-end gap-2">
                   <Button variant="ghost" size="large" type="button" onClick={close}>

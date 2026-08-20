@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test"
 import {
+  addressLooksLikeChain,
+  assetsForChain,
   createKtpayOrder,
   ensureManagedToken,
   fetchDepositAddress,
@@ -87,6 +89,11 @@ test("normalizes deposit chain aliases onto Casio names", () => {
   expect(normalizeDepositChain("erc20")).toBe("ethereum")
   expect(normalizeDepositChain("ETH")).toBe("ethereum")
   expect(normalizeDepositChain()).toBe("tron")
+  expect(assetsForChain("ethereum")).toEqual(["USDT", "USDC"])
+  expect(assetsForChain("tron")).toEqual(["USDT"])
+  expect(addressLooksLikeChain("0xAbc", "ethereum")).toBe(true)
+  expect(addressLooksLikeChain("TAbc", "ethereum")).toBe(false)
+  expect(addressLooksLikeChain("TAbc", "tron")).toBe(true)
 })
 
 test("reads deposit address from the Identity-gated NewAPI route", async () => {
@@ -120,6 +127,87 @@ test("requests one Ethereum address for ERC20 USDT and USDC", async () => {
     },
   })
   expect(address).toEqual({ chain: "ethereum", asset: "USDC", address: "0xExampleAddress" })
+})
+
+test("ignores a TRON address returned for Ethereum and uses the next matching host", async () => {
+  const hosts: string[] = []
+  const address = await fetchDepositAddress("identity-bearer", {
+    chain: "ethereum",
+    baseUrl: "https://stale.test",
+    settlementBaseUrl: "https://casio.test",
+    fetchImpl: async (input, init) => {
+      const url = String(input)
+      hosts.push(url)
+      if (url.includes("/identity/v1/account/me")) {
+        return new Response(JSON.stringify({ id: "8b5efc41-9914-4f9d-86f1-ac9e4d75d8c5", accountNo: "KT260702" }), {
+          status: 200,
+        })
+      }
+      if (url.includes("/api/iam/deposit-address") || url.includes("/wallet/v1/deposit-address")) {
+        return new Response(
+          JSON.stringify({ success: true, data: { chain: "ethereum", asset: "USDT", address: "TStaleTronAddress" } }),
+          { status: 200 },
+        )
+      }
+      if (url.includes("/api/v1/address/list")) {
+        expect(url).toContain("chain=ethereum")
+        expect(url).toContain("tenant_id=8b5efc4199144f9d86f1ac9e4d75d8c5")
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              list: [
+                { address: "TStaleTronAddress", chain: "tron" },
+                { address: "0xSharedErc20Address", chain: "ethereum" },
+              ],
+            },
+          }),
+          { status: 200 },
+        )
+      }
+      throw new Error(`unexpected ${url} ${init?.method}`)
+    },
+  })
+  expect(address).toEqual({ chain: "ethereum", asset: "USDT", address: "0xSharedErc20Address" })
+  expect(hosts.some((url) => url.includes("/api/v1/address/create"))).toBe(false)
+})
+
+test("creates one Ethereum address for ERC20 USDT and USDC when Casio has none", async () => {
+  const address = await fetchDepositAddress("identity-bearer", {
+    chain: "erc20",
+    asset: "USDC",
+    baseUrl: "https://stale.test",
+    settlementBaseUrl: "https://casio.test",
+    fetchImpl: async (input, init) => {
+      const url = String(input)
+      if (url.includes("/identity/v1/account/me")) {
+        return new Response(JSON.stringify({ account: { id: "8b5efc41-9914-4f9d-86f1-ac9e4d75d8c5", accountNo: "KT1" } }), {
+          status: 200,
+        })
+      }
+      if (url.includes("/api/iam/deposit-address") || url.includes("/wallet/v1/deposit-address")) {
+        return new Response(
+          JSON.stringify({ success: true, data: { chain: "ethereum", asset: "USDC", address: "TStaleTronAddress" } }),
+          { status: 200 },
+        )
+      }
+      if (url.includes("/api/v1/address/list")) {
+        return new Response(JSON.stringify({ code: 0, data: { list: [{ address: "TStaleTronAddress", chain: "tron" }] } }), {
+          status: 200,
+        })
+      }
+      expect(url).toBe("https://casio.test/api/v1/address/create")
+      expect(init?.method).toBe("POST")
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        chain: "ethereum",
+        tenant_id: "8b5efc4199144f9d86f1ac9e4d75d8c5",
+      })
+      return new Response(JSON.stringify({ code: 0, data: { address: "0xCreatedErc20", chain: "ethereum" } }), {
+        status: 200,
+      })
+    },
+  })
+  expect(address).toEqual({ chain: "ethereum", asset: "USDC", address: "0xCreatedErc20" })
 })
 
 test("falls back to the test NewAPI wallet host when production IAM 404s", async () => {

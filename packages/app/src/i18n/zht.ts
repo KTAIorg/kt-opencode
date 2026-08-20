@@ -1255,6 +1255,7 @@ export const dict = {
   "dialog.ktWallet.networkEthereum": "以太坊",
   "dialog.ktWallet.hintTrc20": "只向這個地址轉入 TRON（TRC20）上的 USDT。",
   "dialog.ktWallet.hintErc20": "這個以太坊地址同時收 USDT 和 USDC（ERC20）。不要轉入其他鏈或其他幣。",
+  "dialog.ktWallet.sharedAddress": "USDT 和 USDC 共用這個以太坊地址，複製一次即可。",
   "dialog.ktWallet.networkMismatch": "這條網絡的地址還沒準備好。請換一條網絡，或稍後再試。",
   "dialog.ktIdentity.title": "登入 Kito",
   "dialog.ktIdentity.lead": "掃碼或在本機打開 Telegram，確認後自動登入。",

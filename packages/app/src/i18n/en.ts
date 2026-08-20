@@ -1273,6 +1273,7 @@ export const dict = {
   "dialog.ktWallet.hintTrc20": "Only send USDT on TRON (TRC20) to this address.",
   "dialog.ktWallet.hintErc20":
     "This Ethereum address accepts both USDT and USDC (ERC20). Do not send other chains or coins.",
+  "dialog.ktWallet.sharedAddress": "USDT and USDC share this Ethereum address. Copy it once.",
   "dialog.ktWallet.networkMismatch": "This network is not ready yet. Use another network, or try again later.",
   "dialog.ktIdentity.title": "Sign in to Kito",
   "dialog.ktIdentity.lead": "Scan or open Telegram on this device. Confirm the login there.",
