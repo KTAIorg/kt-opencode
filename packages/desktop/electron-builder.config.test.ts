@@ -23,7 +23,6 @@ for (const channel of channels) {
     expect(config.appId).toBe(channel.appId)
     expect(config.productName).toBe(channel.productName)
     expect(config.artifactName).toBe("ktai-desktop-${version}-${os}-${arch}.${ext}")
-    expect(config.updaterCacheDirName).toBe("kito-updater")
     expect(config.protocols).toEqual({
       name: channel.channel === "dev" ? "KTAI" : channel.productName,
       schemes: ["ktai"],

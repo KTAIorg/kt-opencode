@@ -43,7 +43,6 @@ const APP_IDS = {
 
 const getBase = (appId: string): Configuration => ({
   artifactName: "ktai-desktop-${version}-${os}-${arch}.${ext}",
-  updaterCacheDirName: "kito-updater",
   directories: {
     output: "dist",
     buildResources: "resources",
