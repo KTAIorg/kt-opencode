@@ -190,6 +190,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write
+    environment: prod
     env:
       RELEASE_TAG: ${{ needs.resolve-version.outputs.tag }}
       RELEASE_TITLE: Kito ${{ needs.resolve-version.outputs.version }}
@@ -275,3 +277,48 @@ jobs:
             --notes-file release-notes.md \
             --prerelease=false \
             --latest
+
+      - name: Assume Aliyun OIDC role
+        id: aliyun-oidc
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6
+        with:
+          role-to-assume: acs:ram::5590716371345016:role/gha-ktaiorg-kt-opencode-prod
+          oidc-provider-arn: acs:ram::5590716371345016:oidc-provider/github-actions-KT-Settlement
+          audience: sts.aliyuncs.com
+          role-session-name: kito-oss-publish
+
+      # Mirror the same assets to OSS so download.ktai.im (Aliyun CDN) serves
+      # them for China users; GitHub Release remains the byte source of truth
+      # and Release Service keeps pointing at GitHub URLs.
+      - name: Mirror installers to OSS
+        shell: bash
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ steps.aliyun-oidc.outputs.aliyun-access-key-id }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ steps.aliyun-oidc.outputs.aliyun-access-key-secret }}
+          ALIYUN_SECURITY_TOKEN: ${{ steps.aliyun-oidc.outputs.aliyun-security-token }}
+          OSS_BUCKET: kontian-assets
+          OSS_REGION: oss-us-west-1
+          OSS_PUBLIC_BASE_URL: https://download.ktai.im
+        run: |
+          set -euo pipefail
+          pip3 install --quiet 'oss2<3'
+          cat > /tmp/mirror_oss.py <<'PY'
+          import os, sys, pathlib
+          import oss2
+
+          bucket_name, region, prefix = sys.argv[1], sys.argv[2], sys.argv[3]
+          auth = oss2.StsAuth(
+              os.environ["ALIYUN_ACCESS_KEY_ID"],
+              os.environ["ALIYUN_ACCESS_KEY_SECRET"],
+              os.environ["ALIYUN_SECURITY_TOKEN"],
+          )
+          bucket = oss2.Bucket(auth, f"https://{region}.aliyuncs.com", bucket_name)
+          files = sorted(pathlib.Path("release-assets-flat").iterdir())
+          for path in files:
+              key = f"{prefix}/{path.name}"
+              headers = {"Cache-Control": "public, max-age=31536000, immutable"}
+              bucket.put_object_from_file(key, str(path), headers=headers)
+              print(f"oss://{bucket_name}/{key}")
+          print(f"public base: {os.environ['OSS_PUBLIC_BASE_URL']}/{prefix}/")
+          PY
+          python3 /tmp/mirror_oss.py "$OSS_BUCKET" "$OSS_REGION" "kito/releases/${RELEASE_TAG}"
