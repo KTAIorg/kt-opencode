@@ -4,7 +4,9 @@ run-name: Release | ${{ inputs.tag || github.event.release.tag_name || github.re
 on:
   push:
     tags:
-      - "v*"
+      # Kito tags live in their own namespace; plain v* tags track upstream
+      # opencode releases and must never fire Kito registration.
+      - "kito-v*"
   release:
     types: [published]
   workflow_dispatch:
@@ -46,6 +48,10 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ inputs.tag || github.event.release.tag_name || github.ref_name }}"
+          case "$tag" in
+            kito-v*) ;;
+            *) echo "::warning::not a kito-v* tag ($tag); skipping Kito registration"; exit 0 ;;
+          esac
           mkdir -p /tmp/kito-release-assets
           gh release download "$tag" --repo "${{ github.repository }}" --dir /tmp/kito-release-assets
           find /tmp/kito-release-assets -maxdepth 1 -type f -printf '%f\n'
@@ -57,7 +63,11 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ inputs.tag || github.event.release.tag_name || github.ref_name }}"
-          version="${tag#v}"
+          case "$tag" in
+            kito-v*) ;;
+            *) echo "::warning::not a kito-v* tag ($tag); skipping Kito registration"; exit 0 ;;
+          esac
+          version="${tag#kito-v}"
           if [ -z "${KT_RELEASE_SERVICE_ADMIN_TOKEN:-}" ] && [ "${KT_RELEASE_SERVICE_DRY_RUN:-}" != "1" ]; then
             echo "::warning::KT_RELEASE_SERVICE_ADMIN_TOKEN is not configured; skipping Release Service registration"
             exit 0
