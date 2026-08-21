@@ -214,14 +214,22 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets-flat
+          # Fixed scan order so a duplicated metadata file (latest-mac.yml is
+          # produced per mac arch) resolves deterministically: the first copy
+          # wins (arm64), later arches are skipped. Installer binaries must
+          # still be unique.
           while IFS= read -r -d '' asset; do
             destination="release-assets-flat/$(basename "$asset")"
             if [[ -e "$destination" ]]; then
+              if [[ "$destination" == *.yml ]]; then
+                echo "skipping duplicate metadata $(basename "$asset") from ${asset%%/*}"
+                continue
+              fi
               echo "Duplicate release asset name: $(basename "$asset")" >&2
               exit 1
             fi
             cp "$asset" "$destination"
-          done < <(find release-assets -type f -print0)
+          done < <(find release-assets/windows-x64 release-assets/macos-arm64 release-assets/macos-x64 -type f -print0)
           (
             cd release-assets-flat
             sha256sum ./* > SHA256SUMS
