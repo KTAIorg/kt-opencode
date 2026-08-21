@@ -21,6 +21,7 @@ const metainfoFpm = (appId: string) =>
 async function signWindows(configuration: { path: string }) {
   if (process.platform !== "win32") return
   if (process.env.GITHUB_ACTIONS !== "true") return
+  if (process.env.KTAI_UNSIGNED_BUILD === "1") return
 
   await execFileAsync(
     "pwsh",
@@ -34,6 +35,8 @@ const channel = (() => {
   if (raw === "dev" || raw === "beta" || raw === "prod") return raw
   return "dev"
 })()
+
+const unsigned = process.env.KTAI_UNSIGNED_BUILD === "1"
 
 const APP_IDS = {
   dev: "ai.opencode.desktop.dev",
@@ -79,11 +82,12 @@ const getBase = (appId: string): Configuration => ({
     gatekeeperAssess: false,
     entitlements: "resources/entitlements.plist",
     entitlementsInherit: "resources/entitlements.plist",
-    notarize: true,
+    notarize: !unsigned,
+    identity: unsigned ? null : undefined,
     target: ["dmg", "zip"],
   },
   dmg: {
-    sign: true,
+    sign: !unsigned,
   },
   protocols: {
     name: "OpenCode",
@@ -138,7 +142,7 @@ function getConfig() {
         appId,
         productName: "Kito Beta",
         protocols: { name: "Kito Beta", schemes: ["ktai", "opencode"] },
-        publish: { provider: "github", owner: "anomalyco", repo: "opencode-beta", channel: "latest" },
+        publish: { provider: "github", owner: "ktaiorg", repo: "kt-opencode", channel: "latest" },
         deb: { fpm: [metainfoFpm(appId)] },
         rpm: { packageName: "opencode-beta", fpm: [metainfoFpm(appId)] },
       }
@@ -149,7 +153,7 @@ function getConfig() {
         appId,
         productName: "Kito",
         protocols: { name: "Kito", schemes: ["ktai", "opencode"] },
-        publish: { provider: "github", owner: "anomalyco", repo: "opencode", channel: "latest" },
+        publish: { provider: "github", owner: "ktaiorg", repo: "kt-opencode", channel: "latest" },
         deb: { fpm: [metainfoFpm(appId), legacyDesktopEntryFpm] },
         rpm: { packageName: "opencode", fpm: [metainfoFpm(appId), legacyDesktopEntryFpm] },
       }

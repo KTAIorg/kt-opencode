@@ -1,6 +1,8 @@
 import { app, autoUpdater } from "electron"
 import pkg from "electron-updater"
+import { CHANNEL } from "../constants"
 import { getLogger } from "../native/logging"
+import { selectKitoUpdaterSource } from "../../kito-release/feed"
 import { setAppQuitting } from "../windows"
 import type { UpdaterPlatform } from "./controller"
 
@@ -13,6 +15,19 @@ export function createUpdaterPlatform(logger: ReturnType<typeof getLogger>): Upd
 
   return {
     async checkForUpdate() {
+      const source = await selectKitoUpdaterSource({
+        currentVersion: app.getVersion(),
+        channel: CHANNEL === "beta" ? "beta" : "stable",
+        platform: process.platform,
+        arch: process.arch,
+      })
+      // A hold (e.g. rollout 0) must stop here: falling back to GitHub would
+      // bypass Release Service gray release.
+      if (source.kind === "hold") return
+      if (source.kind === "generic") {
+        updateClient.setFeedURL({ provider: "generic", url: source.baseUrl })
+        logger.log("auto updater using release service feed", { version: source.version })
+      }
       const result = await updateClient.checkForUpdates()
       if (!result?.isUpdateAvailable) return
       return result.updateInfo.version
