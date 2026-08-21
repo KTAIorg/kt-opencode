@@ -2,17 +2,21 @@ name: Release · Kito Installers
 
 run-name: Release Installers | ${{ inputs.tag || github.ref_name }}
 
-# Builds unsigned Kito installers for a v* tag and publishes them as a
+# Builds unsigned Kito installers for a kito-v* tag and publishes them as a
 # GitHub Release. Publishing fires release-kito.yml, which registers the
 # assets into Release Service at rollout 0.
+#
+# Kito tags live in their own kito-v* namespace: plain v* tags on this repo
+# track upstream opencode releases (v1.18.x and climbing) and must never
+# fire the Kito pipeline.
 on:
   push:
     tags:
-      - "v*"
+      - "kito-v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing v* tag to build and publish installers for
+        description: Existing kito-v* tag to build and publish installers for
         required: true
         type: string
 
@@ -45,10 +49,10 @@ jobs:
             tag="$INPUT_TAG"
           fi
           case "$tag" in
-            v*) ;;
-            *) echo "tag must start with 'v', got: $tag" >&2; exit 1 ;;
+            kito-v*) ;;
+            *) echo "tag must start with 'kito-v', got: $tag" >&2; exit 1 ;;
           esac
-          version="${tag#v}"
+          version="${tag#kito-v}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Kito version: $version (tag $tag)"
