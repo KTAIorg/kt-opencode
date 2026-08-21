@@ -39,7 +39,7 @@ export type IdentityBearerSession = {
 export type TelegramChallenge = {
   challengeId: string
   displayCode: string
-  opaqueCode?: string
+  opaqueCode: string
   telegram: {
     botUsername: string
     qrUrl: string
@@ -100,20 +100,22 @@ function errorMessage(payload: unknown, fallback: string) {
 function asSession(payload: unknown): IdentityBearerSession | undefined {
   if (!payload || typeof payload !== "object") return
   const record = payload as {
+    data?: unknown
     account?: { id?: unknown; accountNo?: unknown; displayName?: unknown }
     token?: unknown
+    expiresAt?: unknown
     session?: { id?: unknown; tokenType?: unknown; expiresAt?: unknown }
     loginHint?: unknown
   }
+  if (record.data && record.data !== payload) return asSession(record.data)
   if (typeof record.token !== "string" || !record.token) return
   if (typeof record.account?.id !== "string" || typeof record.account?.accountNo !== "string") return
-  if (
-    typeof record.session?.id !== "string" ||
-    typeof record.session?.tokenType !== "string" ||
-    typeof record.session?.expiresAt !== "string"
-  ) {
-    return
-  }
+  const expiresAt =
+    typeof record.session?.expiresAt === "string"
+      ? record.session.expiresAt
+      : typeof record.expiresAt === "string"
+        ? record.expiresAt
+        : undefined
   return {
     account: {
       id: record.account.id,
@@ -122,9 +124,9 @@ function asSession(payload: unknown): IdentityBearerSession | undefined {
     },
     token: record.token,
     session: {
-      id: record.session.id,
-      tokenType: record.session.tokenType,
-      expiresAt: record.session.expiresAt,
+      id: typeof record.session?.id === "string" ? record.session.id : "identity",
+      tokenType: typeof record.session?.tokenType === "string" ? record.session.tokenType : "Bearer",
+      expiresAt: expiresAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     },
     ...(typeof record.loginHint === "string" ? { loginHint: record.loginHint } : {}),
   }
@@ -272,39 +274,64 @@ export async function startTelegramLogin(
   if (!response.ok) {
     throw new Error(errorMessage(payload, `KT Identity Telegram start failed (${response.status})`))
   }
-  if (!payload || typeof payload !== "object")
-    throw new Error("KT Identity Telegram start returned an unexpected payload")
-  const record = payload as {
-    challengeId?: unknown
-    displayCode?: unknown
-    opaqueCode?: unknown
-    telegram?: { botUsername?: unknown; qrUrl?: unknown }
-    expiresAt?: unknown
-  }
+  const challenge = telegramStartChallenge(payload)
+  if (!challenge) throw new Error("KT Identity Telegram start returned an unexpected payload")
+  return challenge
+}
+
+function telegramStartChallenge(payload: unknown): TelegramChallenge | undefined {
+  if (!payload || typeof payload !== "object") return
+  const record = payload as Record<string, unknown>
+  const nested = record.challenge && typeof record.challenge === "object" ? (record.challenge as Record<string, unknown>) : undefined
+  const challengeId = stringField(nested?.id) ?? stringField(nested?.challengeId) ?? stringField(record.challengeId)
+  const displayCode = stringField(nested?.displayCode) ?? stringField(record.displayCode)
+  const expiresAt = stringField(nested?.expiresAt) ?? stringField(record.expiresAt)
+  const telegramSource = (nested?.telegram && typeof nested.telegram === "object" ? nested.telegram : record.telegram) as
+    | { botUsername?: unknown; qrUrl?: unknown }
+    | undefined
+  const qrUrl = typeof telegramSource?.qrUrl === "string" ? telegramSource.qrUrl : undefined
+  const opaqueCode =
+    stringField(nested?.opaqueCode) ?? stringField(record.opaqueCode) ?? opaqueCodeFromQrUrl(qrUrl)
   if (
-    typeof record.challengeId !== "string" ||
-    typeof record.displayCode !== "string" ||
-    typeof record.expiresAt !== "string" ||
-    typeof record.telegram?.botUsername !== "string" ||
-    typeof record.telegram?.qrUrl !== "string"
+    !challengeId ||
+    !displayCode ||
+    !expiresAt ||
+    !opaqueCode ||
+    typeof telegramSource?.botUsername !== "string" ||
+    !qrUrl
   ) {
-    throw new Error("KT Identity Telegram start returned an unexpected payload")
+    return
   }
   return {
-    challengeId: record.challengeId,
-    displayCode: record.displayCode,
-    ...(typeof record.opaqueCode === "string" ? { opaqueCode: record.opaqueCode } : {}),
+    challengeId,
+    displayCode,
+    opaqueCode,
     telegram: {
-      botUsername: record.telegram.botUsername,
-      qrUrl: record.telegram.qrUrl,
+      botUsername: telegramSource.botUsername,
+      qrUrl,
     },
-    expiresAt: record.expiresAt,
+    expiresAt,
   }
+}
+
+function opaqueCodeFromQrUrl(url?: string) {
+  if (!url) return
+  try {
+    const start = new URL(url).searchParams.get("start")?.trim()
+    if (start?.startsWith("login_") && start.length > "login_".length) return start.slice("login_".length)
+  } catch {
+    return
+  }
+}
+
+function stringField(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined
 }
 
 export async function pollTelegramLogin(
   input: {
     challengeId: string
+    opaqueCode: string
     baseUrl?: string
     timeoutMs?: number
     intervalMs?: number
@@ -315,10 +342,12 @@ export async function pollTelegramLogin(
   const intervalMs = input.intervalMs ?? 2_000
   const started = Date.now()
   const base = input.baseUrl ?? identityBaseUrl()
+  const opaqueCode = input.opaqueCode.trim()
+  if (!opaqueCode) throw new Error("KT Identity Telegram poll requires opaqueCode")
 
   while (Date.now() - started < timeoutMs) {
     const response = await fetchImpl(
-      `${base}/identity/v1/auth/telegram/poll/${encodeURIComponent(input.challengeId)}`,
+      `${base}/identity/v1/auth/telegram/poll/${encodeURIComponent(input.challengeId)}?opaqueCode=${encodeURIComponent(opaqueCode)}`,
       {
         method: "GET",
         headers: { accept: "application/json" },

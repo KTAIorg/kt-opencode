@@ -82,13 +82,15 @@ test("startTelegramLogin and pollTelegramLogin complete a challenge", async () =
         JSON.stringify({
           challengeId: "chal-1",
           displayCode: "AB12",
-          telegram: { botUsername: "KTClientBot", qrUrl: "https://t.me/KTClientBot?start=ab12" },
+          opaqueCode: "opaque-ab12",
+          telegram: { botUsername: "KTClientBot", qrUrl: "https://t.me/KTClientBot?start=login_opaque-ab12" },
           expiresAt: "2026-08-01T00:00:00.000Z",
         }),
         { status: 201, headers: { "content-type": "application/json" } },
       )
     }
     if (url.includes("/identity/v1/auth/telegram/poll/chal-1")) {
+      expect(url).toContain("opaqueCode=opaque-ab12")
       polls += 1
       if (polls === 1) {
         return new Response(JSON.stringify({ status: "pending" }), {
@@ -111,17 +113,78 @@ test("startTelegramLogin and pollTelegramLogin complete a challenge", async () =
 
   const challenge = await startTelegramLogin({ baseUrl: "https://login.example" }, fetchImpl)
   expect(challenge.displayCode).toBe("AB12")
+  expect(challenge.opaqueCode).toBe("opaque-ab12")
   expect(parseTelegramAuthorization(telegramAuthorizeView(challenge))).toEqual({
-    url: "https://t.me/KTClientBot?start=ab12",
+    url: "https://t.me/KTClientBot?start=login_opaque-ab12",
     code: "AB12",
     bot: "KTClientBot",
   })
 
   const session = await pollTelegramLogin(
-    { challengeId: challenge.challengeId, baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 1_000 },
+    {
+      challengeId: challenge.challengeId,
+      opaqueCode: challenge.opaqueCode,
+      baseUrl: "https://login.example",
+      intervalMs: 1,
+      timeoutMs: 1_000,
+    },
     fetchImpl,
   )
   expect(session.token).toBe("tg-token")
   expect(session.account.accountNo).toBe("KT260002")
   expect(KT_IDENTITY_REFRESH_MARKER).toBe("kt-identity")
+})
+
+test("startTelegramLogin accepts nested challenge.id", async () => {
+  const challenge = await startTelegramLogin({ baseUrl: "https://login.example" }, async () => {
+    return new Response(
+      JSON.stringify({
+        challenge: { id: "chal-nested" },
+        displayCode: "066949",
+        opaqueCode: "opaque-1",
+        telegram: { botUsername: "kt_official_service_bot", qrUrl: "https://t.me/kt_official_service_bot?start=login_x" },
+        expiresAt: "2026-08-01T00:00:00.000Z",
+      }),
+      { status: 201, headers: { "content-type": "application/json" } },
+    )
+  })
+  expect(challenge.challengeId).toBe("chal-nested")
+  expect(challenge.displayCode).toBe("066949")
+  expect(challenge.opaqueCode).toBe("opaque-1")
+})
+
+test("startTelegramLogin reads opaqueCode from telegram.qrUrl when the field is omitted", async () => {
+  const challenge = await startTelegramLogin({ baseUrl: "https://login.example" }, async () => {
+    return new Response(
+      JSON.stringify({
+        challengeId: "chal-qr",
+        displayCode: "112233",
+        telegram: {
+          botUsername: "kt_official_service_bot",
+          qrUrl: "https://t.me/kt_official_service_bot?start=login_from-qr",
+        },
+        expiresAt: "2026-08-01T00:00:00.000Z",
+      }),
+      { status: 201, headers: { "content-type": "application/json" } },
+    )
+  })
+  expect(challenge.opaqueCode).toBe("from-qr")
+})
+
+test("pollTelegramLogin accepts Identity confirmed payload without session wrapper", async () => {
+  const session = await pollTelegramLogin(
+    { challengeId: "chal-2", opaqueCode: "opaque-2", baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 1_000 },
+    async () =>
+      new Response(
+        JSON.stringify({
+          account: { id: "acc-3", accountNo: "KT260003", displayName: "芒 果果" },
+          token: "tg-token-plain",
+          expiresAt: "2026-08-01T00:00:00.000Z",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+  )
+  expect(session.token).toBe("tg-token-plain")
+  expect(session.account.displayName).toBe("芒 果果")
+  expect(session.session.expiresAt).toBe("2026-08-01T00:00:00.000Z")
 })

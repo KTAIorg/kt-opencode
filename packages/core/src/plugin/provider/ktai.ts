@@ -82,7 +82,7 @@ const telegram = (): IntegrationOAuthMethodRegistration => ({
         url: challenge.telegram.qrUrl,
         instructions: `Confirm Kito login in Telegram @${challenge.telegram.botUsername}. Code: ${challenge.displayCode}`,
         callback: Effect.tryPromise({
-          try: () => pollTelegramLogin({ challengeId: challenge.challengeId }),
+          try: () => pollTelegramLogin({ challengeId: challenge.challengeId, opaqueCode: challenge.opaqueCode }),
           catch: (cause) => (cause instanceof Error ? cause : new Error("KT Identity Telegram login failed")),
         }).pipe(
           Effect.tap((session) =>
