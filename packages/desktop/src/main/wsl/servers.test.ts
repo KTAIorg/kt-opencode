@@ -42,7 +42,7 @@ test("rejects a WSL CLI version that differs from the bundled version", async ()
   )
 
   await expect(controller.installOpencode("Debian")).rejects.toThrow(
-    "OpenCode update finished but Debian still reports 0.0.0-dev-older; expected 0.0.0-dev-16365",
+    "Kito update finished but Debian still reports 0.0.0-dev-older; expected 0.0.0-dev-16365",
   )
 })
 
