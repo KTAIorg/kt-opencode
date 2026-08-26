@@ -19,6 +19,8 @@ import { useClipboard } from "../../context/clipboard"
 import { Spinner } from "../spinner"
 import { useClient } from "../../context/client"
 import { useRoute } from "../../context/route"
+import { usePromptRef } from "../../context/prompt"
+import { useSessionTabs } from "../../context/session-tabs"
 import { useEvent } from "../../context/event"
 import { editorSelectionKey, useEditorContext, type EditorSelection } from "../../context/editor"
 import { normalizePromptContent, openEditor } from "../../editor"
@@ -56,7 +58,7 @@ import {
   MAX_LOCAL_ATTACHMENT_BYTES,
   type LocalAttachment,
 } from "./local-attachment"
-import { useData } from "../../context/data"
+import { locationKey, useData } from "../../context/data"
 import { useLocation } from "../../context/location"
 import { Keymap, type KeymapCommand } from "../../context/keymap"
 import { abbreviateHome } from "../../runtime"
@@ -100,6 +102,7 @@ export type PromptRef = {
 }
 
 const DRAFT_RETENTION_MIN_CHARS = 20
+const revealedPromptMetadata = new WeakSet<object>()
 
 function randomIndex(count: number) {
   if (count <= 0) return 0
@@ -201,6 +204,8 @@ export function Prompt(props: PromptProps) {
   const client = useClient()
   const editor = useEditorContext()
   const route = useRoute()
+  const promptRef = usePromptRef()
+  const sessionTabs = useSessionTabs()
   const data = useData()
   const directoryRecents = useDirectoryRecents()
   const keymapCommands = Keymap.useCommands()
@@ -258,6 +263,7 @@ export function Prompt(props: PromptProps) {
       (props.sessionID ? data.session.get(props.sessionID)?.projectID : undefined) ?? data.location.info()?.project.id,
     sessionID: () => props.sessionID,
   })
+  const [pendingDirectory, setPendingDirectory] = createSignal<string>()
   Keymap.createLayer(() => ({
     mode: "global",
     commands: [
@@ -281,13 +287,18 @@ export function Prompt(props: PromptProps) {
             expanded,
           )
           if (!sessionID) {
+            setPendingDirectory(directory)
             const location = await client.api.location.get({ location: { directory } }).catch((error) => {
               toast.show({ title: "Failed to change directory", message: errorMessage(error), variant: "error" })
               return undefined
             })
-            if (!location) return
+            if (!location) {
+              setPendingDirectory(undefined)
+              return
+            }
             if (sourceProjectID) directoryRecents.touch(sourceProjectID, location.directory)
             currentLocation.set(location)
+            setPendingDirectory(undefined)
             return
           }
           const error = await client.api.session.move({ sessionID, directory: input }).then(
@@ -304,7 +315,6 @@ export function Prompt(props: PromptProps) {
     ],
   }))
   const [cursorVersion, setCursorVersion] = createSignal(0)
-  const currentProviderLabel = createMemo(() => local.model.parsed().provider)
   const connected = useConnected()
   const hasRightContent = createMemo(() => Boolean(props.right))
 
@@ -590,10 +600,10 @@ export function Prompt(props: PromptProps) {
         run: () => {
           dialog.replace(() => (
             <DialogSkill
-              location={currentLocation.current}
+              location={currentLocation.ref}
               onSelect={(skill) => {
                 if (store.prompt.skills?.some((item) => item.id === skill)) return
-                const text = `/${skill}`
+                const text = `@${skill}`
                 const start = input.cursorOffset
                 input.insertText(text + " ")
                 const extmarkId = input.extmarks.create({
@@ -688,14 +698,18 @@ export function Prompt(props: PromptProps) {
       input.gotoBufferEnd()
     },
     reset() {
-      input.clear()
-      input.extmarks.clear()
-      setStore("prompt", emptyPrompt())
-      setStore("extmarkToPart", new Map())
+      resetComposer()
     },
     submit() {
       void submit()
     },
+  }
+
+  function resetComposer() {
+    input.extmarks.clear()
+    setStore("prompt", emptyPrompt())
+    setStore("extmarkToPart", new Map())
+    input.clear()
   }
 
   // Captured once: the session route is keyed by sessionID, so this Prompt
@@ -873,10 +887,7 @@ export function Prompt(props: PromptProps) {
         run: () => {
           if (!store.prompt.text) return
           stash.push({ prompt: store.prompt })
-          input.extmarks.clear()
-          input.clear()
-          setStore("prompt", emptyPrompt())
-          setStore("extmarkToPart", new Map())
+          resetComposer()
           dialog.clear()
         },
       },
@@ -976,9 +987,19 @@ export function Prompt(props: PromptProps) {
 
   Keymap.createLayer(() => {
     return {
+      priority: 1,
       target: inputTarget,
       enabled: inputTarget() !== undefined && store.mode === "shell",
-      commands: [{ bind: "escape", title: "Exit shell mode", group: "Prompt", run: () => setStore("mode", "normal") }],
+      commands: [
+        { bind: "escape", title: "Exit shell mode", group: "Prompt", run: () => setStore("mode", "normal") },
+        {
+          bind: "ctrl+c",
+          title: "Exit shell mode",
+          group: "Prompt",
+          enabled: () => store.prompt.text === "",
+          run: () => setStore("mode", "normal"),
+        },
+      ],
     }
   })
 
@@ -1168,102 +1189,132 @@ export function Prompt(props: PromptProps) {
       return false
     }
 
+    // Snapshot the composer and clear it synchronously, before the first await.
+    // Everything below reads the snapshot: text typed while a request is in
+    // flight lands in the already-empty composer and survives, and prompt
+    // history records exactly what was submitted instead of the live store
+    // (which may have absorbed mid-flight typing). Failure paths restore the
+    // snapshot unless the user has started typing something new.
+    const currentMode = store.mode
+    const entry = { ...store.prompt, mode: currentMode }
+    resetComposer()
+    props.onSubmit?.()
+    const restoreEntry = () => {
+      if (disposed || input.isDestroyed || input.plainText !== "") return
+      input.setText(entry.text)
+      setStore("prompt", entry)
+      setStore("mode", entry.mode ?? "normal")
+      restoreExtmarksFromPrompt(entry)
+      input.cursorOffset = entry.text.length
+    }
+
     const variant = selection.variant
     let sessionID = props.sessionID
     let session = sessionID ? data.session.get(sessionID) : undefined
     let finishMoveProgress = false
+    // New-session sends wait for creation and environment setup.
+    let newSession: { gate: Promise<unknown>; recover: (error: unknown) => void } | undefined
     if (sessionID == null) {
       const directory = await move.getDirectory()
-      if (move.pending() && !directory) return false
+      if (move.pending() && !directory) {
+        restoreEntry()
+        return false
+      }
       finishMoveProgress = Boolean(move.progress())
       // The location context is where the next session is created: seeded by the home
       // route (launch cwd, inherited session location, or picked project) and updated
       // by /cd before a session exists.
       const location = currentLocation.ref ?? data.location.default()
 
-      const created = await client.api.session
-        .create({
-          location: directory ? { directory } : location,
-          agent: agent.id,
-          model: {
-            providerID: selection.providerID,
-            id: selection.modelID,
-            variant,
-          },
-        })
-        .catch(() => undefined)
-
-      if (!created) {
-        if (finishMoveProgress) move.finishSubmit()
-        toast.show({
-          message: "Creating a session failed. Open console for more details.",
-          variant: "error",
-        })
-
-        return true
-      }
-
+      // Optimistic create: the data layer mints the ID client-side and admits
+      // a local session record synchronously, so the navigation below happens
+      // immediately — enter feels sent even while the create round-trip is in
+      // flight. Sends against the new session gate on the request.
+      const created = data.session.create({
+        location: directory ? { directory } : location,
+        agent: agent.id,
+        model: {
+          providerID: selection.providerID,
+          id: selection.modelID,
+          variant,
+        },
+      })
       sessionID = created.id
-      session = created
-      if (created.location.workspaceID === undefined && terminalEnvironment.variables !== undefined) {
-        const error = await client.api.session
-          .environment({ sessionID, variables: terminalEnvironment.variables })
-          .then(
-            () => undefined,
-            (error) => error,
-          )
-        if (error) {
-          if (finishMoveProgress) move.finishSubmit()
-          toast.show({ title: "Failed to set session environment", message: errorMessage(error), variant: "error" })
-          return true
-        }
+      session = data.session.get(created.id)
+      newSession = {
+        gate: created.request.then(async (info) => {
+          if (info.location.workspaceID === undefined && terminalEnvironment.variables !== undefined) {
+            await client.api.session.environment({ sessionID: created.id, variables: terminalEnvironment.variables })
+          }
+        }),
+        recover: (error) => {
+          toast.show({
+            title: data.session.get(created.id) ? "Failed to set up session" : "Creating a session failed",
+            message: errorMessage(error),
+            variant: "error",
+          })
+          const active =
+            route.data.type === "session" && route.data.sessionID === created.id ? promptRef.current : undefined
+          const current = active?.current
+          const draft = current?.text
+            ? { prompt: { ...unwrap(current) }, cursor: current.text.length }
+            : (takeDraft(created.id) ?? { prompt: entry, cursor: entry.text.length })
+          saveDraft(undefined, draft)
+          active?.reset()
+          if (sessionTabs.enabled()) {
+            sessionTabs.close(created.id)
+          } else if (route.data.type === "session" && route.data.sessionID === created.id) {
+            route.navigate({ type: "home" })
+          }
+        },
       }
     }
 
-    // Capture mode before it gets reset
-    const currentMode = store.mode
-    if (store.mode === "shell") {
+    const target = sessionID
+    history.append(entry)
+    const dispatch = (send: () => Promise<unknown>) => {
+      const setup = newSession
+      if (setup) void setup.gate.then(send).catch(setup.recover)
+      else void send()
+    }
+    if (currentMode === "shell") {
       move.startSubmit()
-      void client.api.session.shell({
-        sessionID,
-        command: inputText,
-      })
+      dispatch(() => client.api.session.shell({ sessionID: target, command: inputText }))
       setStore("mode", "normal")
     } else if (slashHead && isCommand) {
-      move.startSubmit()
-      const model = { providerID: selection.providerID, id: selection.modelID, variant }
-      const cancelCommit = local.model.trackSessionCommit(sessionID, model)
-
-      void client.api.session
-        .command({
-          sessionID,
+      const send = () =>
+        client.api.session.command({
+          sessionID: target,
           command: slashHead.name,
-          arguments: slashHead.arguments,
-          agent: agent.id,
-          model,
-          files: store.prompt.files,
-          agents: store.prompt.agents,
-          skills: store.prompt.skills?.length ? store.prompt.skills : undefined,
+          text: slashHead.arguments,
+          files: entry.files,
+          agents: entry.agents,
+          skills: entry.skills?.length ? entry.skills : undefined,
           delivery,
         })
-        .catch((error) => {
-          cancelCommit()
-          toast.show({ title: "Failed to run command", message: errorMessage(error), variant: "error" })
-        })
+      const setup = newSession
+      void (setup ? setup.gate.then(send) : send()).catch((error) => {
+        if (setup) return setup.recover(error)
+        toast.show({ title: "Failed to run command", message: errorMessage(error), variant: "error" })
+        restoreEntry()
+      })
     } else if (isSkill) {
       move.startSubmit()
-      void client.api.session.skill({
-        sessionID,
-        skill: slashHead.name,
-      })
+      dispatch(() => client.api.session.skill({ sessionID: target, skill: slashHead.name }))
     } else {
       move.startSubmit()
-      if (!session) {
-        await data.session.sync(sessionID)
-        session = data.session.get(sessionID)
-      }
-      if (session?.agent !== agent.id) {
-        await client.api.session.switchAgent({ sessionID, agent: agent.id })
+      try {
+        if (!session) {
+          await data.session.sync(target)
+          session = data.session.get(target)
+        }
+        if (session?.agent !== agent.id) {
+          await client.api.session.switchAgent({ sessionID: target, agent: agent.id })
+        }
+      } catch (error) {
+        toast.show({ title: "Failed to prepare session", message: errorMessage(error), variant: "error" })
+        restoreEntry()
+        return true
       }
       if (
         session?.model?.providerID !== selection.providerID ||
@@ -1271,78 +1322,96 @@ export function Prompt(props: PromptProps) {
         (session.model.variant ?? "default") !== (variant ?? "default")
       ) {
         const model = { providerID: selection.providerID, id: selection.modelID, variant }
-        const cancelCommit = local.model.trackSessionCommit(sessionID, model)
-        await client.api.session.switchModel({ sessionID, model }).catch((error) => {
+        const cancelCommit = local.model.trackSessionCommit(target, model)
+        const switchError = await client.api.session.switchModel({ sessionID: target, model }).then(
+          () => undefined,
+          (error) => error,
+        )
+        if (switchError) {
           cancelCommit()
-          throw error
-        })
+          toast.show({ title: "Failed to switch model", message: errorMessage(switchError), variant: "error" })
+          restoreEntry()
+          return true
+        }
       }
       if (session?.revert) {
-        const error = await client.api.session.revert.commit({ sessionID }).then(
+        const error = await client.api.session.revert.commit({ sessionID: target }).then(
           () => undefined,
           (error) => error,
         )
         if (error) {
           toast.show({ title: "Failed to commit revert", message: errorMessage(error), variant: "error" })
+          restoreEntry()
           return false
         }
       }
       if (pendingEditorSelection) {
         // Keep editor context hidden while admitting it before the corresponding user prompt.
-        const error = await client.api.session
-          .synthetic({
-            sessionID,
+        const send = () =>
+          client.api.session.synthetic({
+            sessionID: target,
             text: formatEditorContext(pendingEditorSelection),
             resume: false,
           })
-          .then(
+        if (newSession) {
+          // Fold into the setup gate so the context still admits before the
+          // user prompt once the session exists.
+          newSession.gate = newSession.gate.then(send)
+        } else {
+          const error = await send().then(
             () => undefined,
             (error) => error,
           )
-        if (error) {
-          toast.show({ title: "Failed to send editor context", message: errorMessage(error), variant: "error" })
-          return false
+          if (error) {
+            toast.show({ title: "Failed to send editor context", message: errorMessage(error), variant: "error" })
+            restoreEntry()
+            return false
+          }
         }
       }
-      const error = await client.api.session
+      // The data layer admits optimistically: the prompt renders immediately
+      // and rolls back if the server rejects it, so submission does not wait
+      // on the network. On rejection the row is already rolled back; restore
+      // the composer unless the user has started typing something new.
+      data.session
         .prompt({
-          sessionID,
+          sessionID: target,
           text: inputText,
-          files: store.prompt.files,
-          agents: store.prompt.agents,
-          skills: store.prompt.skills?.length ? store.prompt.skills : undefined,
+          files: entry.files,
+          agents: entry.agents,
+          skills: entry.skills?.length ? entry.skills : undefined,
           delivery,
+          gate: newSession?.gate,
         })
-        .then(
-          () => undefined,
-          (error) => error,
-        )
-      if (error) {
-        toast.show({ title: "Failed to send prompt", message: errorMessage(error), variant: "error" })
-        return false
-      }
+        .catch((error) => {
+          if (newSession) return newSession.recover(error)
+          toast.show({ title: "Failed to send prompt", message: errorMessage(error), variant: "error" })
+          restoreEntry()
+        })
       if (pendingEditorSelection) editor.markSelectionSent()
     }
-    history.append({
-      ...store.prompt,
-      mode: currentMode,
-    })
-    input.extmarks.clear()
-    setStore("prompt", emptyPrompt())
-    setStore("extmarkToPart", new Map())
-    props.onSubmit?.()
 
-    // temporary hack to make sure the message is sent
+    sessionTabs.promote(target)
+
+    // Optimistic admission puts the message in the store synchronously, so
+    // the session view renders it on arrival.
     if (!props.sessionID) {
       if (pendingEditorSelection) editor.preserveSelectionFromNewSession()
-      setTimeout(() => {
-        route.navigate({
-          type: "session",
-          sessionID,
-        })
-      }, 50)
+      // Text typed while session creation was in flight lives in this (home)
+      // prompt, which unmounts on navigation and would stash it under the
+      // home key. Re-stash it under the new session so that composer restores
+      // it, and clear it here so onCleanup does not also stash it for home.
+      if (!disposed && !input.isDestroyed && store.prompt.text) {
+        // Copy before clearing: unwrap returns the live store target, and the
+        // resetComposer store write merges into that same object.
+        saveDraft(sessionID, { prompt: { ...unwrap(store.prompt) }, cursor: input.cursorOffset })
+        resetComposer()
+      }
+      route.navigate({
+        type: "session",
+        sessionID,
+      })
     }
-    input.clear()
     if (finishMoveProgress) move.finishSubmit()
     return true
   }
@@ -1504,38 +1573,66 @@ export function Prompt(props: PromptProps) {
         mode: store.mode,
       })
     }
-    input.clear()
-    input.extmarks.clear()
-    setStore("prompt", emptyPrompt())
-    setStore("extmarkToPart", new Map())
+    resetComposer()
   }
 
+  // Keep the last resolved prompt display visible while destination catalogs load;
+  // availability and submission still use the live location-scoped catalog.
+  const promptDisplay = createMemo<{
+    agentLabel: string | undefined
+    agentColor: RGBA | undefined
+    modelLabel: string
+    providerLabel: string
+    variant: string | undefined
+  }>(
+    (previous) => {
+      const location = currentLocation.ref ?? data.location.default()
+      const sessionLocation = props.sessionID ? data.session.get(props.sessionID)?.location : location
+      if (!sessionLocation || locationKey(sessionLocation) !== locationKey(location)) return previous
+
+      const loading = data.location.agent.list(location) === undefined || !local.model.catalogReady
+      const error = currentLocation.error
+      const failed = error && locationKey(error.location) === locationKey(location)
+      if (loading && !failed) return previous
+
+      const agent = local.agent.current()
+      const model = local.model.parsed()
+      return {
+        agentLabel: agent ? Locale.titlecase(agent.id) : undefined,
+        agentColor: agent ? local.agent.color(agent.id) : undefined,
+        modelLabel: model.model,
+        providerLabel: model.provider,
+        variant: local.model.variant.current(),
+      }
+    },
+    {
+      agentLabel: undefined,
+      agentColor: undefined,
+      modelLabel: local.model.parsed().model,
+      providerLabel: local.model.parsed().provider,
+      variant: undefined,
+    },
+  )
   const highlight = createMemo(() => {
     if (leader()) return theme.border.default
     if (store.mode === "shell") return theme.text.action.primary.selected
-    const agent = local.agent.current()
-    if (!agent) return theme.border.default
-    return local.agent.color(agent.id)
+    return promptDisplay().agentColor ?? theme.border.default
   })
-  const agentLabel = createMemo(() => {
-    if (store.mode === "shell") return "Shell"
-    const agent = local.agent.current()
-    return agent ? Locale.titlecase(agent.id) : undefined
-  })
-
-  const showVariant = createMemo(() => {
-    const variants = local.model.variant.list()
-    if (variants.length === 0) return false
-    const current = local.model.variant.current()
-    return !!current
-  })
-
-  const agentMetaAlpha = createFadeIn(() => store.mode === "shell" || !!local.agent.current(), animationsEnabled)
-  const modelMetaAlpha = createFadeIn(() => !!local.agent.current() && store.mode === "normal", animationsEnabled)
-  const variantMetaAlpha = createFadeIn(
-    () => !!local.agent.current() && store.mode === "normal" && showVariant(),
-    animationsEnabled,
+  const agentLabel = createMemo(() => (store.mode === "shell" ? "Shell" : promptDisplay().agentLabel))
+  const animateMetadata = !revealedPromptMetadata.has(local)
+  const metadataAnimationsEnabled = () => animationsEnabled() && animateMetadata
+  const agentMetaAlpha = createFadeIn(() => !!agentLabel(), metadataAnimationsEnabled)
+  const modelMetaAlpha = createFadeIn(
+    () => !!promptDisplay().agentLabel && store.mode === "normal",
+    metadataAnimationsEnabled,
   )
+  const variantMetaAlpha = createFadeIn(
+    () => !!promptDisplay().agentLabel && store.mode === "normal" && !!promptDisplay().variant,
+    metadataAnimationsEnabled,
+  )
+  createEffect(() => {
+    if (agentLabel()) revealedPromptMetadata.add(local)
+  })
   const borderHighlight = createMemo(() => tint(theme.border.default, highlight(), agentMetaAlpha()))
   const footerInput = () => ({ sessionID: props.sessionID, mode: store.mode })
 
@@ -1544,10 +1641,10 @@ export function Prompt(props: PromptProps) {
     const value = (() => {
       if (store.mode === "shell") {
         if (!shell().length) return undefined
-        return `Run a command... "${shell()[store.placeholder % shell().length]}"`
+        return `Run a command… "${shell()[store.placeholder % shell().length]}"`
       }
       if (!list().length) return undefined
-      return `Ask anything... "${list()[store.placeholder % list().length]}"`
+      return `Ask anything… "${list()[store.placeholder % list().length]}"`
     })()
     if (!value) return undefined
     const width = dimensions().width < 44 ? dimensions().width - 5 : Math.min(75, dimensions().width - 4) - 5
@@ -1562,7 +1659,8 @@ export function Prompt(props: PromptProps) {
     return data.session.get(props.sessionID)?.location
   })
   const locationLabel = createMemo(() => {
-    const location = footerLocation()
+    const pending = pendingDirectory()
+    const location = pending ? { directory: pending } : footerLocation()
     if (!location) return
     const directory = abbreviateHome(location.directory, paths.home)
     const branch = data.location.vcs.info(location)?.branch.current
@@ -1580,8 +1678,7 @@ export function Prompt(props: PromptProps) {
   })
 
   const spinnerDef = createMemo(() => {
-    const agent = status() === "running" ? local.agent.current() : local.agent.current()
-    const color = agent ? local.agent.color(agent.id) : theme.border.default
+    const color = promptDisplay().agentColor ?? theme.border.default
     return {
       frames: createFrames({
         color,
@@ -1796,14 +1893,14 @@ export function Prompt(props: PromptProps) {
                             truncate
                             fg={fadeColor(leader() ? theme.text.subdued : theme.text.default, modelMetaAlpha())}
                           >
-                            {local.model.parsed().model}
+                            {promptDisplay().modelLabel}
                           </text>
                           <Show when={dimensions().width >= 50}>
                             <text flexShrink={0} fg={fadeColor(theme.text.subdued, modelMetaAlpha())}>
-                              {currentProviderLabel()}
+                              {promptDisplay().providerLabel}
                             </text>
                           </Show>
-                          <Show when={showVariant() && dimensions().width >= 70}>
+                          <Show when={promptDisplay().variant && dimensions().width >= 70}>
                             <text fg={fadeColor(theme.text.subdued, variantMetaAlpha())}>·</text>
                             <text>
                               <span
@@ -1812,7 +1909,7 @@ export function Prompt(props: PromptProps) {
                                   bold: true,
                                 }}
                               >
-                                {local.model.variant.current()}
+                                {promptDisplay().variant}
                               </span>
                             </text>
                           </Show>

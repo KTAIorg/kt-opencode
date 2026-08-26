@@ -26,6 +26,7 @@ export interface Interface {
     | "interrupt"
     | "synthetic"
     | "wait"
+    | "context"
   >
   readonly job: Pick<Job.Interface, "start" | "wait" | "block" | "background" | "cancel">
   readonly location: {
@@ -54,11 +55,10 @@ export interface Cell {
 
 export const makeCell = (): Cell => ({})
 
-const unavailable = <A, E, R>() => Effect.die(new Error("Plugin runtime is unavailable")) as Effect.Effect<A, E, R>
 const require = <A, E, R>(cell: Cell, f: (runtime: Interface) => Effect.Effect<A, E, R>) =>
   Effect.suspend(() => {
     const runtime = cell.runtime
-    if (runtime === undefined) return unavailable<A, E, R>()
+    if (runtime === undefined) return Effect.die(new Error("Plugin runtime is unavailable"))
     return f(runtime)
   })
 
@@ -82,6 +82,7 @@ export const layerWithCell = (cell: Cell) =>
         interrupt: (sessionID) => require(cell, (runtime) => runtime.session.interrupt(sessionID)),
         synthetic: (input) => require(cell, (runtime) => runtime.session.synthetic(input)),
         wait: (sessionID) => require(cell, (runtime) => runtime.session.wait(sessionID)),
+        context: (sessionID) => require(cell, (runtime) => runtime.session.context(sessionID)),
       },
       job: {
         start: (input) => require(cell, (runtime) => runtime.job.start(input)),

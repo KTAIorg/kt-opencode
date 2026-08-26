@@ -1,7 +1,20 @@
 import { Schema } from "effect"
-import { ContentBlockID, FinishReason, ProviderMetadata, ToolCallID } from "./ids.js"
-import { Message, ToolCallPart, ToolOutput, ToolResultPart, ToolResultValue, type ContentPart } from "./messages.js"
+import { LLM } from "@opencode-ai/schema/llm"
+import { ContentBlockID, ToolCallID } from "./ids.js"
+import {
+  Message,
+  ProviderMetadata,
+  ToolCallPart,
+  ToolOutput,
+  ToolResultPart,
+  ToolResultValue,
+  type ContentPart,
+} from "./messages.js"
 import { ProviderFailureClassification } from "./errors.js"
+
+export const FinishReason = LLM.FinishReason
+export type FinishReason = Schema.Schema.Type<typeof FinishReason>
+export { ProviderMetadata } from "./messages.js"
 
 /**
  * Token usage reported by an LLM provider.
@@ -139,6 +152,8 @@ export const ToolInputDelta = Schema.Struct({
   id: ToolCallID,
   name: Schema.String,
   text: Schema.String,
+  /** Best-effort parse of all input fragments received through this delta. */
+  input: Schema.optional(Schema.Unknown),
 }).annotate({ identifier: "LLM.Event.ToolInputDelta" })
 export type ToolInputDelta = Schema.Schema.Type<typeof ToolInputDelta>
 

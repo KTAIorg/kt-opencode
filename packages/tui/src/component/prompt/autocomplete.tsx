@@ -24,7 +24,7 @@ import type { FileSystemEntry } from "@opencode-ai/client"
 import { Skill } from "@opencode-ai/schema/skill"
 import { stringWidth } from "../../util/string-width"
 import { parseFileLineRange, stripFileLineRange } from "../../prompt/parse"
-import { moveSelection, revealSelectionOffset } from "../../ui/select-controller"
+import { moveSelection, reconcileSelectionWindow, revealSelectionOffset } from "../../ui/select-controller"
 import {
   directoryAutocompleteExactValue,
   directoryAutocompleteMatches,
@@ -176,7 +176,7 @@ export function Autocomplete(props: {
 
     const charAfterCursor = displayCharAt(props.value, currentCursorOffset)
     const needsSpace = charAfterCursor !== " "
-    const prefix = part.type === "skill" ? "/" : "@"
+    const prefix = "@"
     const append = prefix + text + (needsSpace ? " " : "")
 
     input.cursorOffset = store.index
@@ -478,6 +478,22 @@ export function Autocomplete(props: {
       )
   })
 
+  const skillOptions = createMemo(() =>
+    (data.location.skill.list(location.current) ?? []).map(
+      (skill): AutocompleteOption => ({
+        display: "@" + skill.id,
+        description: skill.description,
+        kind: "skill",
+        onSelect: () => {
+          insertPart(skill.id, {
+            type: "skill",
+            value: { id: Skill.ID.make(skill.id), mention: { start: 0, end: 0, text: "" } },
+          })
+        },
+      }),
+    ),
+  )
+
   const referenceAliases = createMemo(() =>
     references()
       .filter((reference) => !reference.hidden)
@@ -537,11 +553,7 @@ export function Autocomplete(props: {
         display: "/" + skill.id,
         description: skill.description,
         kind: "skill",
-        onSelect: () =>
-          insertPart(skill.id, {
-            type: "skill",
-            value: { id: Skill.ID.make(skill.id), mention: { start: 0, end: 0, text: "" } },
-          }),
+        onSelect: () => insertSlash(skill.id),
       })
     }
 
@@ -592,10 +604,10 @@ export function Autocomplete(props: {
     const fileOptions: AutocompleteOption[] = store.visible === "reference" ? fileSearch.options : []
     const nonFileOptions: AutocompleteOption[] =
       store.visible === "reference"
-        ? [...referenceAliasesValue, ...agentsValue, ...mcpResources()]
+        ? [...skillOptions(), ...referenceAliasesValue, ...agentsValue, ...mcpResources()]
         : store.index === 0
           ? [...commandsValue]
-          : commandsValue.filter((item) => item.kind === "skill")
+          : []
 
     if (!searchValue) {
       return [...nonFileOptions, ...fileOptions]
@@ -650,6 +662,18 @@ export function Autocomplete(props: {
     })
     if (offset === scroll.scrollTop) return
     scroll.scrollBy(offset - scroll.scrollTop)
+  }
+
+  function syncSelectionWindow() {
+    if (!scroll) return
+    const selected = reconcileSelectionWindow(store.selected, {
+      count: options().length,
+      limit: Math.min(height(), options().length),
+      offset: scroll.scrollTop,
+    })
+    if (selected === store.selected) return
+    setConfirming(undefined)
+    setStore("selected", selected)
   }
 
   function select() {
@@ -733,6 +757,14 @@ export function Autocomplete(props: {
         group: "Autocomplete",
         run() {
           hide()
+        },
+      },
+      {
+        id: "prompt.clear",
+        title: "Dismiss autocomplete",
+        group: "Autocomplete",
+        run() {
+          hide(true)
         },
       },
       {
@@ -854,7 +886,8 @@ export function Autocomplete(props: {
     return Math.min(10, count, Math.max(1, props.anchor().y))
   })
 
-  let scroll: ScrollBoxRenderable
+  let scroll: ScrollBoxRenderable | undefined
+  onCleanup(() => scroll?.verticalScrollBar.off("change", syncSelectionWindow))
   const scrollAcceleration = createMemo(() => getScrollAcceleration(config))
   const emptyMessage = createMemo(() => {
     const fileSearch = visibleFiles()
@@ -882,7 +915,11 @@ export function Autocomplete(props: {
       borderColor={theme.border.default}
     >
       <scrollbox
-        ref={(r: ScrollBoxRenderable) => (scroll = r)}
+        ref={(r: ScrollBoxRenderable) => {
+          scroll?.verticalScrollBar.off("change", syncSelectionWindow)
+          scroll = r
+          scroll.verticalScrollBar.on("change", syncSelectionWindow)
+        }}
         backgroundColor={theme.background.default}
         height={height()}
         scrollbarOptions={{ visible: false }}
@@ -944,7 +981,7 @@ export function Autocomplete(props: {
                     fg={index === store.selected ? theme.text.action.primary.focused : theme.text.subdued}
                     wrapMode="none"
                   >
-                    {" " + option().description?.trimStart()}
+                    {" " + option().description?.replace(/\s+/g, " ").trim()}
                   </text>
                 </Show>
               </box>

@@ -1,15 +1,23 @@
 import { Schema } from "effect"
 import { Tool } from "@opencode-ai/schema/tool"
-import { JsonSchema, MessageRole, ProviderMetadata } from "./ids.js"
 import {
   CacheHint,
   CachePolicy,
   GenerationOptions,
   HttpOptions,
+  JsonSchema,
   LanguageModelSchema,
   ProviderOptions,
 } from "./options.js"
 import { isRecord } from "../utils/record.js"
+
+export const MessageRole = Schema.Literals(["system", "user", "assistant", "tool"])
+export type MessageRole = Schema.Schema.Type<typeof MessageRole>
+
+export const ProviderMetadata = Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Unknown)).annotate({
+  identifier: "LLM.ProviderMetadata",
+})
+export type ProviderMetadata = Schema.Schema.Type<typeof ProviderMetadata>
 
 const systemPartSchema = Schema.Struct({
   type: Schema.Literal("text"),
@@ -43,6 +51,7 @@ export const MediaPart = Schema.Struct({
   mediaType: Schema.String,
   data: Schema.Union([Schema.String, Schema.Uint8Array]),
   filename: Schema.optional(Schema.String),
+  cache: Schema.optional(CacheHint),
   metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 }).annotate({ identifier: "LLM.Content.Media" })
 export type MediaPart = Schema.Schema.Type<typeof MediaPart>
@@ -247,6 +256,7 @@ export namespace ToolDefinition {
 export class ToolChoice extends Schema.Class<ToolChoice>("LLM.ToolChoice")({
   type: Schema.Literals(["auto", "none", "required", "tool"]),
   name: Schema.optional(Schema.String),
+  disableParallelToolUse: Schema.optional(Schema.Boolean),
 }) {}
 
 export namespace ToolChoice {

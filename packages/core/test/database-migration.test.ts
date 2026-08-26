@@ -8,6 +8,7 @@ import { Effect, Layer } from "effect"
 import { sql } from "drizzle-orm"
 import { DatabaseMigration } from "@opencode-ai/core/database/migration"
 import { migrations } from "@opencode-ai/core/database/migration.gen"
+import workspaceNameMigration from "@opencode-ai/core/database/migration/20260410174513_workspace-name"
 import { Database } from "@opencode-ai/core/database/database"
 import { tmpdir } from "./fixture/tmpdir"
 import type { SqlClient } from "effect/unstable/sql/SqlClient"
@@ -17,6 +18,7 @@ import previousV2Migration from "@opencode-ai/core/database/migration/2026080423
 import workspaceMigration from "@opencode-ai/core/database/migration/20260808023530_workspace_domain"
 import executionClaimsMigration from "@opencode-ai/core/database/migration/20260811161259_execution_claim_attempts"
 import sessionInboxMigration from "@opencode-ai/core/database/migration/20260812181746_session_inbox"
+import sessionViewedStateMigration from "@opencode-ai/core/database/migration/20260819222447_session_viewed_state"
 import { Global } from "@opencode-ai/util/global"
 
 const run = <A, E>(
@@ -34,6 +36,68 @@ const run = <A, E>(
 const makeDb = EffectDrizzleSqlite.makeWithDefaults()
 
 describe("DatabaseMigration", () => {
+  test("defaults missing workspace names while preserving legacy workspace data", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* db.run(sql`
+          CREATE TABLE workspace (
+            id text PRIMARY KEY,
+            type text NOT NULL,
+            branch text,
+            directory text,
+            extra text,
+            project_id text NOT NULL
+          )
+        `)
+        yield* db.run(sql`
+          INSERT INTO workspace (id, type, branch, directory, extra, project_id)
+          VALUES ('wrk_legacy', 'remote', 'main', '/repo', '{}', 'proj_legacy')
+        `)
+
+        yield* DatabaseMigration.applyOnly(db, [workspaceNameMigration])
+
+        expect(yield* db.get(sql`SELECT id, name, branch, directory, extra FROM workspace`)).toEqual({
+          id: "wrk_legacy",
+          name: "",
+          branch: "main",
+          directory: "/repo",
+          extra: "{}",
+        })
+      }),
+    )
+  })
+
+  test("imports unnamed legacy Drizzle journal entries by their actual migration timestamps", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* db.run(sql`CREATE TABLE __drizzle_migrations (id integer PRIMARY KEY, hash text, created_at integer)`)
+        yield* db.run(sql`
+          INSERT INTO __drizzle_migrations (hash, created_at)
+          VALUES ('', ${Date.UTC(2026, 3, 10, 17, 45, 13)})
+        `)
+
+        yield* DatabaseMigration.applyOnly(db, [workspaceNameMigration])
+
+        expect(yield* db.all(sql`SELECT id FROM migration`)).toEqual([{ id: "20260410174513_workspace-name" }])
+      }),
+    )
+  })
+
+  test("rejects unknown legacy Drizzle journal timestamps instead of guessing completed migrations", async () => {
+    await expect(
+      run(
+        Effect.gen(function* () {
+          const db = yield* makeDb
+          yield* db.run(sql`CREATE TABLE __drizzle_migrations (id integer PRIMARY KEY, hash text, created_at integer)`)
+          yield* db.run(sql`INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('', 1234567890000)`)
+          yield* DatabaseMigration.applyOnly(db, [workspaceNameMigration])
+        }),
+      ),
+    ).rejects.toThrow("does not match any known migration")
+  })
+
   test("serializes concurrent embedded initialization for one database path", async () => {
     await using tmp = await tmpdir()
     const filename = path.join(tmp.path, "embedded.sqlite")
@@ -73,6 +137,28 @@ describe("DatabaseMigration", () => {
           yield* db.get(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_pending'`),
         ).toEqual({ name: "session_pending" })
         expect(yield* db.get(sql`SELECT count(*) AS count FROM migration`)).toEqual({ count: migrations.length })
+      }),
+    )
+  })
+
+  test("adds nullable attention state to existing sessions", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* db.run(sql`CREATE TABLE session_v2 (id text PRIMARY KEY, title text)`)
+        yield* db.run(sql`INSERT INTO session_v2 (id, title) VALUES ('ses_existing', 'Existing')`)
+
+        yield* DatabaseMigration.applyOnly(db, [sessionViewedStateMigration])
+        yield* DatabaseMigration.applyOnly(db, [sessionViewedStateMigration])
+
+        expect(yield* db.get(sql`SELECT id, title, time_idle, time_viewed, idle_outcome FROM session_v2`)).toEqual({
+          id: "ses_existing",
+          title: "Existing",
+          time_idle: null,
+          time_viewed: null,
+          idle_outcome: null,
+        })
+        expect(yield* db.get(sql`SELECT count(*) AS count FROM migration`)).toEqual({ count: 1 })
       }),
     )
   })

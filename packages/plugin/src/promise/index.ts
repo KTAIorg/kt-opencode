@@ -1,4 +1,5 @@
 export type { PluginOptions } from "../options.js"
+export type { StorageEntry, StorageScanOptions, StorageScanResult } from "../storage.js"
 export * as Plugin from "./plugin.js"
 
 export { Agent } from "@opencode-ai/schema/agent"
@@ -11,4 +12,5 @@ export { Model } from "@opencode-ai/schema/model"
 export { Provider } from "@opencode-ai/schema/provider"
 export { Reference } from "@opencode-ai/schema/reference"
 export { Skill } from "@opencode-ai/schema/skill"
+export { Vcs } from "@opencode-ai/schema/vcs"
 export { WebSearch } from "@opencode-ai/schema/websearch"

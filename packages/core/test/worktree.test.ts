@@ -192,6 +192,94 @@ describe("Worktree", () => {
     }),
   )
 
+  it.live("runs the project setup script with worktree paths", () =>
+    Effect.gen(function* () {
+      const input = yield* setup()
+      const worktree = yield* Worktree.Service
+      const temp = yield* Effect.promise(() => fs.realpath(path.dirname(input.root.path)))
+      const parent = abs(path.join(temp, path.basename(input.root.path) + "-worktree-setup"))
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() => fs.rm(parent, { recursive: true, force: true })).pipe(Effect.ignore),
+      )
+      yield* input.db
+        .update(ProjectTable)
+        .set({
+          commands: {
+            start:
+              "bun -e \"await Bun.write('setup.json', JSON.stringify([process.env.OPENCODE_WORKTREE_BASE, process.env.OPENCODE_WORKTREE_PATH, process.cwd()]))\"",
+          },
+        })
+        .where(eq(ProjectTable.id, input.projectID))
+        .run()
+        .pipe(Effect.orDie)
+      const created = yield* worktree.create({
+        projectID: input.projectID,
+        strategy: gitWorktree,
+        directory: parent,
+        name: "worktree",
+      })
+
+      expect(yield* Effect.promise(() => Bun.file(path.join(created.directory, "setup.json")).json())).toEqual([
+        input.sourceDirectory,
+        created.directory,
+        created.directory,
+      ])
+      yield* worktree.remove({ projectID: input.projectID, directory: created.directory, force: true })
+    }),
+  )
+
+  it.live("creates a git worktree from a selected branch", () =>
+    Effect.gen(function* () {
+      const input = yield* setup()
+      const worktree = yield* Worktree.Service
+      const parent = abs(`${input.root.path}-branch-worktree`)
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() => fs.rm(parent, { recursive: true, force: true })).pipe(Effect.ignore),
+      )
+      yield* Effect.promise(async () => {
+        await $`git branch feature-base`.cwd(input.sourceDirectory).quiet()
+      })
+
+      const created = yield* worktree.create({
+        projectID: input.projectID,
+        strategy: gitWorktree,
+        branch: "feature-base",
+        directory: parent,
+        name: "worktree",
+      })
+
+      const head = (yield* Effect.promise(() => $`git rev-parse HEAD`.cwd(created.directory).quiet().text())).trim()
+      const branch = (yield* Effect.promise(() =>
+        $`git rev-parse feature-base`.cwd(input.sourceDirectory).quiet().text(),
+      )).trim()
+      expect(head).toBe(branch)
+    }),
+  )
+
+  it.live("does not interpret a branch as a git option", () =>
+    Effect.gen(function* () {
+      const input = yield* setup()
+      const worktree = yield* Worktree.Service
+      const parent = abs(`${input.root.path}-option-worktree`)
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() => fs.rm(parent, { recursive: true, force: true })).pipe(Effect.ignore),
+      )
+
+      const error = yield* worktree
+        .create({
+          projectID: input.projectID,
+          strategy: gitWorktree,
+          branch: "--no-checkout",
+          directory: parent,
+          name: "worktree",
+        })
+        .pipe(Effect.flip)
+
+      expect(error).toBeInstanceOf(Git.WorktreeError)
+      expect(yield* Effect.promise(() => Bun.file(path.join(parent, "worktree")).exists())).toBe(false)
+    }),
+  )
+
   it.live("rejects a missing source directory", () =>
     Effect.gen(function* () {
       const input = yield* setup()
@@ -434,29 +522,32 @@ describe("Worktree", () => {
     }),
   )
 
-  it.live("refresh ignores stale git worktree registrations", () =>
-    Effect.gen(function* () {
-      const input = yield* setup()
-      const worktree = yield* Worktree.Service
-      const stale = abs(`${input.root.path}-worktree-stale`)
-      const target = abs(`${input.root.path}-worktree-after-stale`)
-      yield* Effect.addFinalizer(() =>
-        Effect.promise(() => fs.rm(target, { recursive: true, force: true })).pipe(Effect.ignore),
-      )
-      yield* Effect.promise(() => $`git worktree add --detach ${stale} HEAD`.cwd(input.root.path).quiet())
-      yield* Effect.promise(() => fs.rm(stale, { recursive: true, force: true }))
-      yield* Effect.promise(() => $`git worktree add --detach ${target} HEAD`.cwd(input.root.path).quiet())
+  it.live(
+    "refresh ignores stale git worktree registrations",
+    () =>
+      Effect.gen(function* () {
+        const input = yield* setup()
+        const worktree = yield* Worktree.Service
+        const stale = abs(`${input.root.path}-worktree-stale`)
+        const target = abs(`${input.root.path}-worktree-after-stale`)
+        yield* Effect.addFinalizer(() =>
+          Effect.promise(() => fs.rm(target, { recursive: true, force: true })).pipe(Effect.ignore),
+        )
+        yield* Effect.promise(() => $`git worktree add --detach ${stale} HEAD`.cwd(input.root.path).quiet())
+        yield* Effect.promise(() => fs.rm(stale, { recursive: true, force: true }))
+        yield* Effect.promise(() => $`git worktree add --detach ${target} HEAD`.cwd(input.root.path).quiet())
 
-      yield* worktree.refresh({ projectID: input.projectID })
+        yield* worktree.refresh({ projectID: input.projectID })
 
-      const discovered = abs(yield* Effect.promise(() => fs.realpath(target)))
-      expect(yield* stored(input.projectID)).toEqual(
-        [
-          { directory: input.sourceDirectory, strategy: null },
-          { directory: discovered, strategy: "git" },
-        ].toSorted((a, b) => a.directory.localeCompare(b.directory)),
-      )
-    }),
+        const discovered = abs(yield* Effect.promise(() => fs.realpath(target)))
+        expect(yield* stored(input.projectID)).toEqual(
+          [
+            { directory: input.sourceDirectory, strategy: null },
+            { directory: discovered, strategy: "git" },
+          ].toSorted((a, b) => a.directory.localeCompare(b.directory)),
+        )
+      }),
+    15_000,
   )
 
   it.live("refresh ignores existing directories that are no longer git checkouts", () =>

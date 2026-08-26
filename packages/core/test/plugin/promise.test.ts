@@ -10,6 +10,7 @@ import { PluginHooks } from "@opencode-ai/core/plugin/hooks"
 import { PluginHost } from "@opencode-ai/core/plugin/host"
 import { PluginPromise } from "@opencode-ai/core/plugin/promise"
 import { WebSearch } from "@opencode-ai/core/websearch"
+import { Vcs } from "@opencode-ai/core/vcs"
 import { Session } from "@opencode-ai/core/session"
 import { SessionMessage } from "@opencode-ai/core/session/message"
 import { SessionInbox } from "@opencode-ai/core/session/inbox"
@@ -27,6 +28,32 @@ import { host as testHost } from "./host"
 const it = testEffect(PluginTestLayer)
 
 describe("fromPromise", () => {
+  it.effect("adapts plugin storage methods", () =>
+    Effect.gen(function* () {
+      const plugins = yield* Plugin.Service
+      const adapted = PluginPromise.fromPromise(
+        define({
+          id: "promise-storage",
+          setup: async (ctx) => {
+            expect(await ctx.storage.get("missing")).toBeUndefined()
+            await ctx.storage.set("items/b", { order: 2 })
+            await ctx.storage.set("items/a", { order: 1 })
+            expect(await ctx.storage.get("items/a")).toEqual({ order: 1 })
+            expect(await ctx.storage.scan({ prefix: "items/", limit: 1 })).toEqual({
+              entries: [{ key: "items/a", value: { order: 1 } }],
+              next: "items/a",
+            })
+            await ctx.storage.remove("items/a")
+            await ctx.storage.remove("items/a")
+            expect(await ctx.storage.get("items/a")).toBeUndefined()
+          },
+        }),
+      )
+
+      yield* plugins.activate([{ ...adapted, version: "1" }])
+    }),
+  )
+
   it.effect("adapts session creation through the protocol schema", () =>
     Effect.gen(function* () {
       let seen: unknown
@@ -95,7 +122,7 @@ describe("fromPromise", () => {
     }),
   )
 
-  it.effect("preserves no-content and rejected Promise behavior", () =>
+  it.effect("preserves interrupt results and rejected Promise behavior", () =>
     Effect.gen(function* () {
       const seen: unknown[] = []
       const host = testHost({
@@ -105,8 +132,10 @@ describe("fromPromise", () => {
               return Effect.fail(new Error("interrupt failed"))
             }
             expect(input.continue).toBe(true)
-            return Effect.void
+            return Effect.succeed({ interrupted: false })
           },
+          switchAgent: (input) => Effect.sync(() => seen.push(input)),
+          switchModel: (input) => Effect.sync(() => seen.push(input)),
           rename: (input) => Effect.sync(() => seen.push(input)),
           wait: (input) => Effect.sync(() => seen.push(input)),
         },
@@ -116,8 +145,17 @@ describe("fromPromise", () => {
         define({
           id: "promise-session-interrupt",
           setup: async (ctx) => {
-            expect(await ctx.session.interrupt({ sessionID: "ses_success", continue: true })).toBeUndefined()
+            expect(await ctx.session.interrupt({ sessionID: "ses_success", continue: true })).toEqual({
+              interrupted: false,
+            })
             await expect(ctx.session.interrupt({ sessionID: "ses_failure" })).rejects.toThrow("interrupt failed")
+            expect(await ctx.session.switchAgent({ sessionID: "ses_success", agent: "build" })).toBeUndefined()
+            expect(
+              await ctx.session.switchModel({
+                sessionID: "ses_success",
+                model: { providerID: "openai", id: "gpt-5" },
+              }),
+            ).toBeUndefined()
             expect(await ctx.session.rename({ sessionID: "ses_success", title: "Renamed" })).toBeUndefined()
             expect(await ctx.session.wait({ sessionID: "ses_success" })).toBeUndefined()
           },
@@ -125,6 +163,11 @@ describe("fromPromise", () => {
       ).effect(host)
 
       expect(seen).toEqual([
+        { sessionID: Session.ID.make("ses_success"), agent: Agent.ID.make("build") },
+        {
+          sessionID: Session.ID.make("ses_success"),
+          model: { providerID: Provider.ID.make("openai"), id: Model.ID.make("gpt-5") },
+        },
         { sessionID: Session.ID.make("ses_success"), title: "Renamed" },
         { sessionID: Session.ID.make("ses_success") },
       ])
@@ -387,6 +430,56 @@ describe("fromPromise", () => {
       yield* adapted.effect(host)
 
       expect(yield* agents.get(Agent.ID.make("temp"))).toBeUndefined()
+    }),
+  )
+
+  it.effect("registers a Promise VCS provider and forwards client reads", () =>
+    Effect.gen(function* () {
+      const vcs = yield* Vcs.Service
+      const plugin = yield* Plugin.Service
+      const host = yield* PluginHost.make(plugin)
+      const signals: AbortSignal[] = []
+      const promisePlugin = define({
+        id: "promise-vcs",
+        setup: async (ctx) => {
+          await ctx.vcs.transform((draft) => {
+            draft.add({
+              id: "custom",
+              name: "Custom VCS",
+              info: async (_input, request) => {
+                signals.push(request.signal)
+                return { branch: { current: "feature", default: "main" } }
+              },
+              branches: async (input, request) => {
+                signals.push(request.signal)
+                expect(input.search).toBe("feat")
+                return ["feature"]
+              },
+              status: async (_input, request) => {
+                signals.push(request.signal)
+                return [{ file: "file.txt", additions: 1, deletions: 0, status: "added" }]
+              },
+              diff: async (input, request) => {
+                signals.push(request.signal)
+                expect(input.context).toBe(2)
+                expect(input.maxOutputBytes).toBe(10_000_000)
+                return [{ file: "file.txt", patch: "+hello", additions: 1, deletions: 0, status: "added" }]
+              },
+            })
+            draft.default.set("custom")
+          })
+
+          expect((await ctx.vcs.get()).data.branch.current).toBe("feature")
+          expect((await ctx.vcs.branches({ search: "feat" })).data).toEqual(["feature"])
+          expect((await ctx.vcs.status()).data).toHaveLength(1)
+          expect((await ctx.vcs.diff({ mode: "working", context: 2 })).data[0].patch).toBe("+hello")
+        },
+      })
+
+      yield* PluginPromise.fromPromise(promisePlugin).effect(host)
+      expect((yield* vcs.info()).branch.current).toBe("feature")
+      expect(signals).toHaveLength(4)
+      expect(signals.every((signal) => signal instanceof AbortSignal)).toBeTrue()
     }),
   )
 

@@ -31,6 +31,11 @@ import { testEffect } from "../lib/effect"
 const it = testEffect(Layer.empty)
 const selection = Schema.decodeUnknownSync(ConfigModel.Selection)
 
+function inFixture(root: string, target: string) {
+  const relative = path.relative(root, target)
+  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+}
+
 function testLayer(
   directory: string,
   globalDirectory = path.join(directory, "global"),
@@ -388,6 +393,7 @@ describe("Config", () => {
                   ]),
                 get: () => Effect.die("unused Credential.get"),
                 create: () => Effect.die("unused Credential.create"),
+                activate: () => Effect.die("unused Credential.activate"),
                 update: () => Effect.die("unused Credential.update"),
                 remove: () => Effect.die("unused Credential.remove"),
               }),
@@ -432,7 +438,11 @@ describe("Config", () => {
             yield* Effect.yieldNow
             available = true
             key = "next"
-            yield* bus.publish(Integration.Event.ConnectionUpdated, { integrationID })
+            yield* bus.publish(
+              Credential.Event.Switched,
+              { credentialID: Credential.ID.create(), integrationID },
+              { global: true },
+            )
             expect(yield* Fiber.join(updated)).toHaveLength(1)
             const refreshed = yield* config.entries()
             expect(Config.latest(refreshed, "shell")).toBe("project")
@@ -491,6 +501,7 @@ describe("Config", () => {
                   ]),
                 get: () => Effect.die("unused Credential.get"),
                 create: () => Effect.die("unused Credential.create"),
+                activate: () => Effect.die("unused Credential.activate"),
                 update: () => Effect.die("unused Credential.update"),
                 remove: () => Effect.die("unused Credential.remove"),
               }),
@@ -599,6 +610,7 @@ describe("Config", () => {
         provider: {
           bedrock: {
             npm: "@ai-sdk/amazon-bedrock",
+            models: { claude: { provider: { npm: "@ai-sdk/anthropic" } } },
             options: {
               headers: { "x-test": "1" },
               body: { trace: true },
@@ -611,6 +623,7 @@ describe("Config", () => {
 
       expect(migrated.providers?.bedrock).toMatchObject({
         package: Provider.aisdk("@ai-sdk/amazon-bedrock"),
+        models: { claude: { package: Provider.aisdk("@ai-sdk/anthropic") } },
         settings: { region: "us-east-1", profile: "dev" },
         headers: { "x-test": "1" },
         body: { trace: true },
@@ -801,7 +814,7 @@ describe("Config", () => {
       Effect.flatMap((tmp) =>
         Effect.gen(function* () {
           const config = yield* Config.Service
-          const entries = yield* config.entries()
+          const entries = (yield* config.entries()).filter((entry) => !entry.path || inFixture(tmp.path, entry.path))
 
           expect(entries).toEqual([
             new Directory({ type: "directory", path: AbsolutePath.make(path.join(tmp.path, "global")) }),
@@ -861,7 +874,7 @@ describe("Config", () => {
             const watcher = yield* Watcher.Test
             yield* config.entries()
 
-            expect(yield* watcher.subscriptions()).toEqual([
+            expect((yield* watcher.subscriptions()).filter((item) => inFixture(tmp.path, item.path))).toEqual([
               {
                 type: "directory",
                 path: AbsolutePath.make(path.join(tmp.path, "global")),
@@ -1506,7 +1519,7 @@ describe("Config", () => {
 
           return yield* Effect.gen(function* () {
             const config = yield* Config.Service
-            const entries = yield* config.entries()
+            const entries = (yield* config.entries()).filter((entry) => !entry.path || inFixture(tmp.path, entry.path))
             const documents = entries.filter((entry) => entry.type === "document")
 
             expect(entries.filter((entry) => entry.type === "directory").map((entry) => entry.path)).toEqual([

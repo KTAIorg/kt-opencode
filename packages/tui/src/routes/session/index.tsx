@@ -108,6 +108,8 @@ import type { SessionInbox } from "@opencode-ai/schema/session-inbox"
 import { generateThinkingSyntax } from "./thinking-syntax"
 import { createDelayedPresence } from "../../util/delayed-presence"
 import { SessionLocationMissing } from "./location-missing"
+import { isRecord } from "../../util/record"
+import { createHistoryPrepend } from "./history"
 
 addDefaultParsers(parsers.parsers)
 
@@ -121,10 +123,16 @@ const TRANSCRIPT_BACKFILL_CHUNK = 60
 type PendingAction = "steer" | "queue" | "cancel"
 
 const context = createContext<{
+  /** Content width: terminal width minus vertical tabs, sidebar, and padding. */
   width: number
+  /**
+   * Shared reactive terminal size. Transcript-row components must read this
+   * instead of calling useTerminalDimensions(), which registers one renderer
+   * resize listener per mounted component and grows with transcript length.
+   */
+  terminal: { width: number; height: number }
   sessionID: string
   thinkingMode: () => ThinkingMode
-  showThinking: () => boolean
   markdownMode: () => "source" | "rendered"
   groupExploration: () => boolean
   diffWrapMode: () => "word" | "none"
@@ -221,7 +229,6 @@ export function Session(props: { verticalTabsWidth: number }) {
   const sidebar = createMemo(() => config.session?.sidebar ?? "auto")
   const [sidebarOpen, setSidebarOpen] = createSignal(false)
   const thinkingMode = createMemo<ThinkingMode>(() => config.session?.thinking ?? "hide")
-  const showThinking = createMemo(() => true)
   const showScrollbar = createMemo(() => config.session?.scrollbar ?? false)
   const markdownMode = createMemo(() => config.session?.markdown ?? "rendered")
   const diffWrapMode = createMemo(() => config.diffs?.wrap ?? "word")
@@ -235,6 +242,11 @@ export function Session(props: { verticalTabsWidth: number }) {
     if (sidebar() === "auto" && wide()) return true
     return false
   })
+  Keymap.createLayer(() => ({
+    priority: 10,
+    enabled: () => sidebarOpen() && !wide() && !disabled(),
+    commands: [{ bind: "escape,ctrl+c", title: "Close sidebar", group: "Session", run: () => setSidebarOpen(false) }],
+  }))
   const contentWidth = createMemo(() => availableWidth() - (sidebarVisible() ? 42 : 0) - 4)
   const models = createMemo(() => data.location.model.list(location()) ?? [])
 
@@ -275,8 +287,13 @@ export function Session(props: { verticalTabsWidth: number }) {
   const sessionTabs = useSessionTabs()
   const [awayFromBottom, setAwayFromBottom] = createSignal(false)
   const [latestHovered, setLatestHovered] = createSignal(false)
+  let ensureAllRowsPending: (() => void)[] | undefined
+  createEffect(() => {
+    if (!awayFromBottom()) setLatestHovered(false)
+  })
 
   const clearMessageNavigation = () => {
+    ensureAllRowsPending?.splice(0)
     setNavigationSlack(0)
     setNavigationMessage(undefined)
   }
@@ -285,7 +302,9 @@ export function Session(props: { verticalTabsWidth: number }) {
     on(
       () => [dimensions().width, dimensions().height, props.verticalTabsWidth] as const,
       (_, previous) => {
-        if (previous) clearMessageNavigation()
+        if (!previous) return
+        clearMessageNavigation()
+        if (scroll && !scroll.isDestroyed) updateAwayFromBottom()
       },
     ),
   )
@@ -345,6 +364,7 @@ export function Session(props: { verticalTabsWidth: number }) {
   onCleanup(() => {
     if (awayTimer) clearTimeout(awayTimer)
     if (!scroll || scroll.isDestroyed) return
+    scroll.verticalScrollBar.off("change", updateAwayFromBottom)
     saveScrollAnchor()
   })
   const [prompt, setPrompt] = createSignal<PromptRef>()
@@ -367,31 +387,38 @@ export function Session(props: { verticalTabsWidth: number }) {
   }
 
   // Tail-first transcript mounting: only the newest rows mount when the session opens. Older rows
-  // mount on demand near the top, keeping inactive tabs cheap to tear down. Until the first chunk
-  // pins the count, the hidden span derives from the row count, so streaming appends remain visible.
+  // mount on demand near the top, keeping inactive tabs cheap to tear down. While the reader stays
+  // at the bottom the hidden span follows appends; leaving the bottom pins it to preserve the viewport.
   const [hiddenRows, setHiddenRows] = createSignal<number>()
   const [visibleRowsEnd, setVisibleRowsEnd] = createSignal<number>()
   const hidden = createMemo(() => Math.max(0, Math.min(hiddenRows() ?? Infinity, rows.length - TRANSCRIPT_TAIL_ROWS)))
   const visibleEnd = createMemo(() => Math.max(hidden(), Math.min(visibleRowsEnd() ?? rows.length, rows.length)))
   const visibleRows = createMemo(() => rows.slice(hidden(), visibleEnd()))
+  const prependHistory = createHistoryPrepend({
+    sessionID: () => route.sessionID,
+    more: (id) => data.session.message.more(id),
+    loadMore: (id) => data.session.message.loadMore(id),
+    height: () => scroll.scrollHeight,
+    afterLayout,
+    active: (id) => route.sessionID === id && Boolean(scroll && !scroll.isDestroyed),
+    scrollBy: (amount) => {
+      scroll.scrollBy(amount)
+      updateAwayFromBottom()
+    },
+  })
   let revealingOlderRows = false
   const revealOlderRows = (scrollBy = 0) => {
     const current = hidden()
-    if (
-      revealingOlderRows ||
-      current === 0 ||
-      !scroll ||
-      scroll.isDestroyed ||
-      scroll.scrollTop > scroll.viewport.height
-    )
-      return false
+    if (revealingOlderRows || !scroll || scroll.isDestroyed || scroll.scrollTop > scroll.viewport.height) return false
+    if (current === 0) return prependHistory(scrollBy)
     revealingOlderRows = true
     const before = scroll.scrollHeight
+    scroll.stickyScroll = false
     setHiddenRows(Math.max(0, current - TRANSCRIPT_BACKFILL_CHUNK))
     afterLayout(() => {
-      revealingOlderRows = false
       scroll.scrollBy(scroll.scrollHeight - before + scrollBy)
-      updateAwayFromBottom()
+      scroll.stickyScroll = !navigationMessage()
+      revealingOlderRows = false
     })
     return true
   }
@@ -418,23 +445,40 @@ export function Session(props: { verticalTabsWidth: number }) {
   }
   /** Message navigation needs the full transcript mounted before walking or jumping. */
   const ensureAllRows = (continuation: () => void) => {
-    if (hidden() === 0 && visibleEnd() === rows.length) return continuation()
+    if (!ensureAllRowsPending && hidden() === 0 && visibleEnd() === rows.length) return continuation()
+    if (ensureAllRowsPending) {
+      ensureAllRowsPending.push(continuation)
+      return
+    }
+    const pending = [continuation]
+    ensureAllRowsPending = pending
     setHiddenRows(0)
     setVisibleRowsEnd(undefined)
-    afterLayout(continuation)
+    afterLayout(() => {
+      if (ensureAllRowsPending === pending) ensureAllRowsPending = undefined
+      pending.forEach((continuation) => continuation())
+      updateAwayFromBottom()
+    })
   }
 
   function isAwayFromBottom() {
+    if (revealingOlderRows || revealingNewerRows || ensureAllRowsPending || navigationMessage()) return true
     if (visibleEnd() < rows.length) return true
-    return scroll.scrollTop < Math.max(0, scroll.scrollHeight - scroll.viewport.height) - 1
+    return scroll.scrollTop < Math.max(0, scroll.scrollHeight - scroll.viewport.height)
   }
   function updateAwayFromBottom() {
+    const preserveWindow = revealingOlderRows || revealingNewerRows || !!ensureAllRowsPending
+    if (isAwayFromBottom()) setHiddenRows((current) => current ?? hidden())
     if (awayTimer) clearTimeout(awayTimer)
     awayTimer = setTimeout(() => {
       awayTimer = undefined
       if (!scroll || scroll.isDestroyed) return
-      const away = isAwayFromBottom()
+      const away = preserveWindow || isAwayFromBottom()
       setAwayFromBottom(away)
+      if (!away) {
+        if (!renderer.getSelection()) setHiddenRows(undefined)
+        scroll.stickyScroll = true
+      }
       saveScrollAnchor()
     })
   }
@@ -559,6 +603,7 @@ export function Session(props: { verticalTabsWidth: number }) {
   const alignMessage = (messageID: string, top: number) => {
     scroll.stickyScroll = false
     setNavigationMessage(messageID)
+    updateAwayFromBottom()
     setNavigationSlack(
       messageNavigationSlack({
         top,
@@ -585,7 +630,15 @@ export function Session(props: { verticalTabsWidth: number }) {
         userOnly,
       })
 
-      if (target) alignMessage(target.id, target.top)
+      if (target) {
+        alignMessage(target.id, target.top)
+        dialog.clear()
+        return
+      }
+      if (direction === "prev" && data.session.message.more(route.sessionID)) {
+        prependHistory(0, () => scrollToMessage(direction, dialog, userOnly))
+        return
+      }
       dialog.clear()
     })
 
@@ -600,6 +653,7 @@ export function Session(props: { verticalTabsWidth: number }) {
 
   function toBottom() {
     clearMessageNavigation()
+    ensureAllRowsPending = undefined
     if (awayTimer) clearTimeout(awayTimer)
     awayTimer = undefined
     setAwayFromBottom(false)
@@ -681,10 +735,16 @@ export function Session(props: { verticalTabsWidth: number }) {
       palette: undefined,
       run: () => {
         clearMessageNavigation()
-        ensureAllRows(() => {
-          scroll.scrollTo(0)
-          updateAwayFromBottom()
-        })
+        const first = () => {
+          if (data.session.message.more(route.sessionID)) {
+            prependHistory(0, first)
+            return
+          }
+          ensureAllRows(() => {
+            scroll.scrollTo(0)
+          })
+        }
+        first()
         dialog.clear()
       },
     },
@@ -713,8 +773,13 @@ export function Session(props: { verticalTabsWidth: number }) {
       title: "Rename session",
       id: "session.rename",
       group: "Session",
-      slash: { name: "rename" },
-      run: () => DialogSessionRename.show(dialog, route.sessionID, session()?.title),
+      slash: { name: "rename", arguments: true as const },
+      run: (input?: string) => {
+        if (input === undefined) return DialogSessionRename.show(dialog, route.sessionID, session()?.title)
+        void client.api.session
+          .rename({ sessionID: route.sessionID, title: input.trim() })
+          .catch((error) => toast.error(error))
+      },
     },
     {
       title: "Jump to message",
@@ -986,7 +1051,7 @@ export function Session(props: { verticalTabsWidth: number }) {
         try {
           const sessionData = session()
           if (!sessionData) return
-          const transcript = formatSessionTranscript(sessionData, messages(), showThinking())
+          const transcript = formatSessionTranscript(sessionData, messages(), true)
           await clipboard.write(transcript)
           toast.show({ message: "Session transcript copied to clipboard!", variant: "success" })
         } catch {
@@ -1007,7 +1072,7 @@ export function Session(props: { verticalTabsWidth: number }) {
           const sessionData = session()
           if (!sessionData) return
 
-          const options = await DialogExportOptions.show(dialog, showThinking())
+          const options = await DialogExportOptions.show(dialog, true)
 
           if (options === null) return
 
@@ -1121,15 +1186,27 @@ export function Session(props: { verticalTabsWidth: number }) {
     ),
   )
 
+  // Memoized per axis so width readers do not re-run on height-only resizes
+  // (dimensions() is one object signal with identity equality) and vice versa.
+  const terminalWidth = createMemo(() => dimensions().width)
+  const terminalHeight = createMemo(() => dimensions().height)
+
   return (
     <context.Provider
       value={{
         get width() {
           return contentWidth()
         },
+        terminal: {
+          get width() {
+            return terminalWidth()
+          },
+          get height() {
+            return terminalHeight()
+          },
+        },
         sessionID: route.sessionID,
         thinkingMode,
-        showThinking,
         markdownMode,
         groupExploration,
         diffWrapMode,
@@ -1150,7 +1227,10 @@ export function Session(props: { verticalTabsWidth: number }) {
           <Show when={session()}>
             <box flexGrow={1} minHeight={0} position="relative">
               <scrollbox
-                ref={(r) => (scroll = r)}
+                ref={(r) => {
+                  scroll = r
+                  scroll.verticalScrollBar.on("change", updateAwayFromBottom)
+                }}
                 viewportOptions={{
                   paddingRight: showScrollbar() ? 1 : 0,
                 }}
@@ -1196,16 +1276,15 @@ export function Session(props: { verticalTabsWidth: number }) {
             <box height={1} flexShrink={0} flexDirection="row" justifyContent="flex-end">
               <Show when={awayFromBottom()}>
                 <box
+                  id="session-jump-to-latest"
                   paddingLeft={1}
-                  paddingRight={1}
-                  backgroundColor={
-                    latestHovered() ? theme.background.action.primary.focused : theme.background.action.primary.default
-                  }
                   onMouseOver={() => setLatestHovered(true)}
                   onMouseOut={() => setLatestHovered(false)}
                   onMouseUp={toBottom}
                 >
-                  <text fg={latestHovered() ? theme.text.action.primary.focused : theme.text.action.primary.default}>
+                  <text
+                    fg={latestHovered() ? theme.text.action.secondary.hovered : theme.text.action.secondary.default}
+                  >
                     Jump to latest ↓
                   </text>
                 </box>
@@ -1220,7 +1299,14 @@ export function Session(props: { verticalTabsWidth: number }) {
                 sessionID={route.sessionID}
                 open={composer.open || (!!session()?.parentID && forms().length === 0)}
                 defaultTab={composer.tab ?? (session()?.parentID ? "subagents" : undefined)}
-                onClose={() => setComposer("open", false)}
+                onClose={() => {
+                  const parent = session()?.parentID
+                  if (parent) {
+                    navigate({ type: "session", sessionID: parent })
+                    return
+                  }
+                  setComposer("open", false)
+                }}
               />
               <Switch>
                 <Match when={composer.open || (!!session()?.parentID && forms().length === 0)}>{null}</Match>
@@ -1592,7 +1678,11 @@ function SessionPartView(props: { partRef: PartRef; message: (messageID: string)
       {(item) => (
         <Switch>
           <Match when={item().type === "text"}>
-            <TextPart part={item() as SessionMessageAssistantText} last={false} />
+            <TextPart
+              part={item() as SessionMessageAssistantText}
+              message={message() as SessionMessageAssistant}
+              last={false}
+            />
           </Match>
           <Match when={item().type === "reasoning"}>
             <ReasoningPart
@@ -1754,6 +1844,9 @@ function SessionGroupView(props: {
     })
   const grouped = createMemo(() => parts(props.refs))
   const pending = createMemo(() => parts(props.pending))
+  const completed = createMemo(
+    () => props.completed || (grouped().length > 0 && grouped().every((part) => part.time.completed !== undefined)),
+  )
   const label = createMemo(() => {
     const counts = grouped().reduce<Record<string, number>>((result, part) => {
       const tool = toolDisplay(part.name)
@@ -1764,7 +1857,7 @@ function SessionGroupView(props: {
     const tools = Object.entries(counts).map(
       ([name, count]) => `${count} ${count === 1 ? name : name === "search" ? "searches" : `${name}s`}`,
     )
-    return `${props.completed ? "Explored" : "Exploring"} — ${tools.join(", ")}`
+    return `${completed() ? "Explored" : "Exploring"} — ${tools.join(", ")}`
   })
   return (
     <Show when={grouped().length > 0 || pending().length > 0}>
@@ -1774,11 +1867,11 @@ function SessionGroupView(props: {
       >
         <Show when={grouped().length > 0}>
           <InlineToolRow
-            icon={props.completed ? "→" : "✱"}
+            icon={completed() ? "→" : "✱"}
             color={hover() ? theme.text.default : theme.text.subdued}
-            complete={props.completed}
+            complete={completed()}
             pending={label()}
-            spinner={!props.completed}
+            spinner={!completed()}
             onMouseOver={() => setHover(true)}
             onMouseOut={() => setHover(false)}
             onMouseUp={() => {
@@ -1803,7 +1896,6 @@ function AssistantFooter(props: { message: SessionMessageAssistant }) {
   const ctx = use()
   const data = useData()
   const local = useLocal()
-  const dimensions = useTerminalDimensions()
   const theme = useTheme("elevated")
   const model = createMemo(
     () =>
@@ -1827,10 +1919,10 @@ function AssistantFooter(props: { message: SessionMessageAssistant }) {
           <span style={{ fg: props.message.error ? theme.text.subdued : local.agent.color(props.message.agent) }}>
             {Locale.titlecase(props.message.agent)}
           </span>
-          <Show when={dimensions().width >= 28}>
+          <Show when={ctx.terminal.width >= 28}>
             <span style={{ fg: theme.text.subdued }}> · {model()}</span>
           </Show>
-          <Show when={duration() && (dimensions().width < 28 || dimensions().width >= 36)}>
+          <Show when={duration() && (ctx.terminal.width < 28 || ctx.terminal.width >= 36)}>
             <span style={{ fg: theme.text.subdued }}> · {Locale.duration(duration())}</span>
           </Show>
           <Show when={interrupted()}>
@@ -2407,7 +2499,7 @@ function ReasoningHeader(props: {
   )
 }
 
-function TextPart(props: { last: boolean; part: SessionMessageAssistantText }) {
+function TextPart(props: { last: boolean; part: SessionMessageAssistantText; message: SessionMessageAssistant }) {
   const ctx = use()
   const theme = useTheme()
   const { currentSyntax: syntax } = useThemes()
@@ -2417,7 +2509,7 @@ function TextPart(props: { last: boolean; part: SessionMessageAssistantText }) {
       <box paddingLeft={3} flexShrink={0}>
         <markdown
           syntaxStyle={syntax()}
-          streaming={true}
+          streaming={props.message.time.completed === undefined}
           internalBlockMode="top-level"
           content={props.part.text.trim()}
           tableOptions={{ style: "grid", cellPaddingX: 1 }}
@@ -2519,9 +2611,8 @@ function ToolImages(props: { parts: readonly SessionMessageAssistantTool[] }) {
 function SessionImages(props: { images: readonly { uri: string }[]; paddingLeft?: number }) {
   const ctx = use()
   const dialog = useDialog()
-  const dimensions = useTerminalDimensions()
   const images = createMemo(() => (ctx.config.session?.image_preview ? props.images : []))
-  const height = createMemo(() => Math.max(4, Math.min(8, Math.floor(dimensions().height / 4))))
+  const height = createMemo(() => Math.max(4, Math.min(8, Math.floor(ctx.terminal.height / 4))))
   const visible = createMemo(() => images().slice(0, 3))
 
   return (
@@ -3043,9 +3134,9 @@ function Shell(props: ToolProps) {
           when={command()}
           fallback={
             isRunning() || props.part.state.status === "streaming" ? (
-              <Spinner color={color()}>Writing command...</Spinner>
+              <Spinner color={color()}>Writing command…</Spinner>
             ) : (
-              <text fg={theme.text.subdued}>Writing command...</text>
+              <text fg={theme.text.subdued}>Writing command…</text>
             )
           }
         >
@@ -3092,7 +3183,7 @@ function Write(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="←" pending="Preparing write..." complete={stringValue(props.input.path)} part={props.part}>
+        <InlineTool icon="←" pending="Preparing write…" complete={stringValue(props.input.path)} part={props.part}>
           Write {pathFormatter.format(stringValue(props.input.path))}
         </InlineTool>
       </Match>
@@ -3103,7 +3194,7 @@ function Write(props: ToolProps) {
 function Glob(props: ToolProps) {
   const pathFormatter = usePathFormatter()
   return (
-    <InlineTool icon="✱" pending="Finding files..." complete={stringValue(props.input.pattern)} part={props.part}>
+    <InlineTool icon="✱" pending="Finding files…" complete={stringValue(props.input.pattern)} part={props.part}>
       Glob "{stringValue(props.input.pattern)}"{" "}
       <Show when={stringValue(props.input.path)}>in {pathFormatter.format(stringValue(props.input.path))} </Show>
       <Show when={finiteNumber(props.metadata.count)}>
@@ -3127,7 +3218,7 @@ function Read(props: ToolProps) {
     <>
       <InlineTool
         icon="→"
-        pending="Reading file..."
+        pending="Reading file…"
         complete={stringValue(props.input.path)}
         spinner={isRunning()}
         part={props.part}
@@ -3150,7 +3241,7 @@ function Read(props: ToolProps) {
 function Grep(props: ToolProps) {
   const pathFormatter = usePathFormatter()
   return (
-    <InlineTool icon="✱" pending="Searching content..." complete={stringValue(props.input.pattern)} part={props.part}>
+    <InlineTool icon="✱" pending="Searching content…" complete={stringValue(props.input.pattern)} part={props.part}>
       Grep "{stringValue(props.input.pattern)}"{" "}
       <Show when={stringValue(props.input.path)}>in {pathFormatter.format(stringValue(props.input.path))} </Show>
       <Show when={finiteNumber(props.metadata.matches)}>
@@ -3162,7 +3253,7 @@ function Grep(props: ToolProps) {
 
 function WebFetch(props: ToolProps) {
   return (
-    <InlineTool icon="%" pending="Fetching from the web..." complete={stringValue(props.input.url)} part={props.part}>
+    <InlineTool icon="%" pending="Fetching from the web…" complete={stringValue(props.input.url)} part={props.part}>
       WebFetch {stringValue(props.input.url)}
     </InlineTool>
   )
@@ -3170,7 +3261,7 @@ function WebFetch(props: ToolProps) {
 
 function WebSearch(props: ToolProps) {
   return (
-    <InlineTool icon="◈" pending="Searching web..." complete={stringValue(props.input.query)} part={props.part}>
+    <InlineTool icon="◈" pending="Searching web…" complete={stringValue(props.input.query)} part={props.part}>
       {webSearchProviderLabel(props.metadata.provider)} "{stringValue(props.input.query)}"
     </InlineTool>
   )
@@ -3181,6 +3272,7 @@ function Subagent(props: ToolProps) {
   const data = useData()
   const sessionID = createMemo(() => stringValue(props.metadata.sessionID) ?? stringValue(props.metadata.sessionId))
   const description = createMemo(() => stringValue(props.input.description))
+  const continuation = createMemo(() => Boolean(stringValue(props.input.sessionID)))
   const isRunning = createMemo(() => {
     const id = sessionID()
     return props.part.state.status === "running" || Boolean(id && data.session.status(id) === "running")
@@ -3188,10 +3280,10 @@ function Subagent(props: ToolProps) {
 
   return (
     <InlineTool
-      icon={isRunning() ? "│" : props.part.state.status === "completed" ? "✓" : "│"}
-      spinner={isRunning()}
+      icon={continuation() ? "↳" : isRunning() ? "│" : props.part.state.status === "completed" ? "✓" : "│"}
+      spinner={!continuation() && isRunning()}
       complete={description()}
-      pending="Delegating..."
+      pending="Delegating…"
       part={props.part}
       onClick={() => {
         const id = sessionID()
@@ -3203,7 +3295,9 @@ function Subagent(props: ToolProps) {
         ) : undefined
       }
     >
-      {`${Locale.titlecase(stringValue(props.input.agent) ?? stringValue(props.input.subagent_type) ?? "General")} Subagent — ${description() ?? "Subagent"}`}
+      {continuation()
+        ? `Continue subagent — ${description() ?? "Subagent"}`
+        : `${Locale.titlecase(stringValue(props.input.agent) ?? stringValue(props.input.subagent_type) ?? "General")} Subagent — ${description() ?? "Subagent"}`}
     </InlineTool>
   )
 }
@@ -3380,7 +3474,7 @@ function Edit(props: ToolProps) {
               ? { label: "← Edit", value: pathFormatter.format(stringValue(props.input.path)) }
               : undefined
           }
-          title={stringValue(props.input.path) ? undefined : "# Preparing edit..."}
+          title={stringValue(props.input.path) ? undefined : "# Preparing edit…"}
           part={props.part}
           spinner={props.part.state.status === "streaming"}
         />
@@ -3535,7 +3629,7 @@ function Question(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="→" pending="Asking questions..." complete={count()} part={props.part}>
+        <InlineTool icon="→" pending="Asking questions…" complete={count()} part={props.part}>
           Asked {count()} question{count() !== 1 ? "s" : ""}
         </InlineTool>
       </Match>
@@ -3546,7 +3640,7 @@ function Question(props: ToolProps) {
 function Skill(props: ToolProps) {
   const name = createMemo(() => stringValue(props.metadata.name) ?? stringValue(props.input.id))
   return (
-    <InlineTool icon="→" pending="Loading skill..." complete={name()} part={props.part}>
+    <InlineTool icon="→" pending="Loading skill…" complete={name()} part={props.part}>
       Skill "{name()}"
     </InlineTool>
   )
@@ -3604,8 +3698,7 @@ export function toolDisplay(tool: string) {
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return
-  return value as Record<string, unknown>
+  return isRecord(value) ? value : undefined
 }
 
 function formatSessionTranscript(session: SessionInfo, messages: SessionMessageInfo[], thinking: boolean) {

@@ -30,7 +30,7 @@ export const BindingValueSchema = Schema.Union([
   Schema.Literal("none"),
   BindingItem,
   Schema.Array(BindingItem),
-])
+]).annotate({ identifier: "TuiKeybind.BindingValue" })
 export type BindingValueSchema = Schema.Schema.Type<typeof BindingValueSchema>
 
 type Definition = {
@@ -189,7 +189,7 @@ export const Definitions = {
   "prompt.clear": keybind("ctrl+c", "Clear input field"),
   "prompt.paste": keybind({ key: "ctrl+v", preventDefault: false }, "Paste from clipboard"),
   "input.submit": keybind("return", "Submit input"),
-  "input.newline": keybind("shift+return,ctrl+return,ctrl+j", "Insert newline in input"),
+  "input.newline": keybind("shift+return,ctrl+return,alt+return,ctrl+j", "Insert newline in input"),
   "input.move.left": keybind("left,ctrl+b", "Move cursor left in input"),
   "input.move.right": keybind("right,ctrl+f", "Move cursor right in input"),
   "input.move.up": keybind("up", "Move cursor up in input"),
@@ -243,6 +243,8 @@ export const Definitions = {
   "dialog.select.end": keybind("end", "Move to last dialog item"),
   "dialog.select.submit": keybind("return", "Submit selected dialog item"),
   "dialog.prompt.submit": keybind("return", "Submit dialog prompt"),
+  "dialog.integration.rename": keybind("ctrl+r", "Rename integration account"),
+  "dialog.integration.delete": keybind("ctrl+d", "Delete integration account"),
   "dialog.worktree.generate": keybind("tab", "Generate worktree name"),
   "dialog.move_session.new": keybind("ctrl+m", "New worktree"),
   "dialog.move_session.delete": keybind("ctrl+d", "Delete worktree"),

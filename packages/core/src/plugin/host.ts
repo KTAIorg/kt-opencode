@@ -2,7 +2,6 @@ export * as PluginHost from "./host.js"
 
 import { Plugin } from "@opencode-ai/plugin/effect"
 import type { IntegrationMethodRegistration } from "@opencode-ai/plugin/effect/integration"
-import type { CredentialOAuth } from "@opencode-ai/sdk/v2/types"
 import { EventManifest } from "@opencode-ai/schema/event-manifest"
 import { Mcp } from "@opencode-ai/schema/mcp"
 import { App } from "../app.js"
@@ -14,6 +13,7 @@ import { Command } from "../command.js"
 import { Credential } from "../credential.js"
 import { Bus } from "../bus.js"
 import { Integration } from "../integration.js"
+import { KV } from "../kv.js"
 import { Location } from "../location.js"
 import { Model } from "../model.js"
 import { MCP } from "../mcp/index.js"
@@ -24,11 +24,15 @@ import { AbsolutePath, type DeepMutable } from "../schema.js"
 import { Skill } from "../skill.js"
 import { Tool } from "../tool.js"
 import { Workspace } from "../workspace.js"
+import { Vcs } from "../vcs.js"
 import { WebSearch } from "../websearch.js"
+import { Generate } from "../generate.js"
+import { Permission } from "../permission.js"
 import { PluginHooks } from "./hooks.js"
+import type { Interface } from "../plugin.js"
 
 const mutable = <T>(value: T) => value as DeepMutable<T>
-export const make = Effect.fn("PluginHost.make")(function* (plugin: import("../plugin.js").Interface) {
+export const make = Effect.fn("PluginHost.make")(function* (plugin: Interface, pluginID: string = "test") {
   const app = yield* App.Metadata
   const agents = yield* Agent.Service
   const aisdk = yield* AISDK.Service
@@ -36,12 +40,16 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: import("../p
   const commands = yield* Command.Service
   const bus = yield* Bus.Service
   const integration = yield* Integration.Service
+  const kv = yield* KV.Service
   const mcp = yield* MCP.Service
   const location = yield* Location.Service
   const reference = yield* Reference.Service
   const skill = yield* Skill.Service
   const tools = yield* Tool.Service
+  const vcs = yield* Vcs.Service
   const websearch = yield* WebSearch.Service
+  const generate = yield* Generate.Service
+  const permission = yield* Permission.Service
   const hooks = yield* PluginHooks.Service
   const runtime = yield* PluginRuntime.Service
   const locationInfo = () =>
@@ -179,13 +187,13 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: import("../p
     command: {
       list: () => response(commands.list()),
       reload: commands.reload,
-      transform: (callback) =>
-        commands.transform((draft) => {
-          callback(draft)
-        }),
+      transform: commands.transform,
     },
     event: {
       subscribe: () => bus.subscribe().pipe(Stream.filter(EventManifest.isServer)),
+    },
+    generate: {
+      text: (input) => generate.text(input).pipe(Effect.map((text) => ({ text }))),
     },
     integration: {
       list: () => response(integration.list()),
@@ -312,6 +320,30 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: import("../p
           })
         }),
     },
+    permission: {
+      hook: (name, callback) => hooks.register("permission", name, callback),
+      list: (input) => permission.forSession(input.sessionID),
+      get: (input) =>
+        permission
+          .get(input.requestID)
+          .pipe(
+            Effect.flatMap((request) =>
+              request?.sessionID === input.sessionID
+                ? Effect.succeed(request)
+                : Effect.fail(new Error(`Permission request not found: ${input.requestID}`)),
+            ),
+          ),
+      reply: (input) =>
+        permission
+          .get(input.requestID)
+          .pipe(
+            Effect.flatMap((request) =>
+              request?.sessionID === input.sessionID
+                ? permission.reply({ requestID: input.requestID, reply: input.reply, message: input.message })
+                : Effect.fail(new Error(`Permission request not found: ${input.requestID}`)),
+            ),
+          ),
+    },
     plugin: {
       list: () => response(plugin.list()),
     },
@@ -340,6 +372,7 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: import("../p
           })
         }),
     },
+    storage: storage(kv, pluginID),
     shell: {
       hook: (name, callback) => hooks.register("shell", name, callback),
     },
@@ -353,6 +386,14 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: import("../p
           )
           .pipe(Effect.orDie, Effect.as({ dispose: Effect.void })),
       hook: (name, callback) => hooks.register("tool", name, callback),
+    },
+    vcs: {
+      get: () => response(vcs.info()),
+      branches: (input) => response(vcs.branches({ search: input?.search, limit: input?.limit })),
+      status: () => response(vcs.status()),
+      diff: (input) => response(vcs.diff(input.mode, { context: input.context })),
+      transform: vcs.transform,
+      reload: vcs.reload,
     },
     websearch: {
       providers: () => response(websearch.providers()),
@@ -395,16 +436,51 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: import("../p
             input?.location ?? Location.Ref.make({ directory: location.directory, workspaceID: location.workspaceID }),
         }),
       get: (input) => runtime.session.get(input.sessionID),
+      switchAgent: runtime.session.switchAgent,
+      switchModel: runtime.session.switchModel,
       prompt: runtime.session.prompt,
       generate: (input) => runtime.session.generate(input).pipe(Effect.map((text) => ({ text }))),
       command: runtime.session.command,
       rename: runtime.session.rename,
       synthetic: runtime.session.synthetic,
-      interrupt: (input) => runtime.session.interrupt(input.sessionID),
+      interrupt: (input) =>
+        runtime.session
+          .interrupt(input.sessionID, { continue: input.continue })
+          .pipe(Effect.map((interrupted) => ({ interrupted }))),
       wait: (input) => runtime.session.wait(input.sessionID),
+      context: (input) => runtime.session.context(input.sessionID),
     },
   } satisfies Plugin.Context
 })
+
+export function storage(kv: KV.Interface, pluginID: string): Plugin.Context["storage"] {
+  const namespace = `plugin:${pluginID
+    .split("")
+    .map((value) => value.charCodeAt(0).toString(16).padStart(4, "0"))
+    .join("")}:`
+  return {
+    get: (key) => kv.get(namespace + key),
+    set: (key, value) => kv.set(namespace + key, value),
+    remove: (key) => kv.remove(namespace + key),
+    scan: (options) =>
+      kv
+        .scan({
+          prefix: namespace + options.prefix,
+          after: options.after === undefined ? undefined : namespace + options.after,
+          limit: options.limit,
+        })
+        .pipe(
+          Effect.map((result) => {
+            const entries = result.entries.map((entry) => ({
+              key: entry.key.slice(namespace.length),
+              value: entry.value,
+            }))
+            if (result.next === undefined) return { entries }
+            return { entries, next: result.next.slice(namespace.length) }
+          }),
+        ),
+  }
+}
 
 function methodImplementation(input: IntegrationMethodRegistration): Integration.Implementation {
   if ("authorize" in input) {
@@ -449,6 +525,6 @@ function methodImplementation(input: IntegrationMethodRegistration): Integration
   }
 }
 
-function credential(value: CredentialOAuth) {
+function credential(value: Credential.OAuth) {
   return Credential.OAuth.make({ ...value, methodID: Integration.MethodID.make(value.methodID) })
 }

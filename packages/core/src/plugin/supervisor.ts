@@ -3,7 +3,7 @@ export { Service, type Interface } from "./supervisor-service.js"
 
 import type { Plugin as PluginDefinition } from "@opencode-ai/plugin/effect/plugin"
 import { Event } from "@opencode-ai/schema/config"
-import { Cause, Deferred, Effect, Layer, Schema, Stream } from "effect"
+import { Cause, Effect, Latch, Layer, Schema, Stream } from "effect"
 import path from "path"
 import { pathToFileURL } from "url"
 import { ConfigPluginSource } from "../config/plugin/source.js"
@@ -95,7 +95,7 @@ const resolve = Effect.fn("PluginSupervisor.resolve")(function* (
   return {
     plugins: [
       ...pre.filter((plugin) => enabled.has(plugin.id)),
-      ...Array.from(packages.values()).filter((plugin) => enabled.has(plugin.id)),
+      ...[...packages.values()].filter((plugin) => enabled.has(plugin.id)),
       ...post.filter((plugin) => enabled.has(plugin.id)),
     ],
     failures: [...failures.values()],
@@ -108,7 +108,7 @@ const load = Effect.fn("PluginSupervisor.load")(function* (
   const npm = yield* Npm.Service
   const entrypoint = path.isAbsolute(operation.target)
     ? pathToFileURL(operation.target).href
-    : (yield* npm.add(operation.target, { subpaths: ["server", ""] })).entrypoint
+    : (yield* npm.add(operation.target, { subpaths: ["server", ""], refresh: true })).entrypoint
   if (!entrypoint) return yield* Effect.fail(new Error(`Plugin entrypoint not found: ${operation.target}`))
   // Bun currently ignores query parameters when caching file:// imports.
   const source =
@@ -137,7 +137,7 @@ export const layer = Layer.effect(
     const sdk = yield* SdkPlugins.Service
     const sources = yield* ConfigPluginSource.Service
     const bus = yield* Bus.Service
-    const ready = { current: yield* Deferred.make<void>() }
+    const ready = yield* Latch.make()
     let observed = 0
 
     const activate = Effect.fn("PluginSupervisor.activate")(function* () {
@@ -164,7 +164,7 @@ export const layer = Layer.effect(
       Stream.mapEffect(() =>
         Effect.gen(function* () {
           observed++
-          if (yield* Deferred.isDone(ready.current)) ready.current = yield* Deferred.make<void>()
+          yield* ready.close
           return observed
         }),
       ),
@@ -176,12 +176,12 @@ export const layer = Layer.effect(
       Stream.runForEach((target) =>
         Effect.gen(function* () {
           yield* activate()
-          if (observed === target) yield* Deferred.succeed(ready.current, undefined)
+          if (observed === target) yield* ready.open
         }).pipe(Effect.catchCause((cause) => Effect.logError("failed to reload plugins", { cause }))),
       ),
       Effect.forkScoped({ startImmediately: true }),
     )
-    return Service.of({ flush: Effect.suspend(() => Deferred.await(ready.current)) })
+    return Service.of({ flush: ready.await })
   }),
 )
 

@@ -89,6 +89,7 @@ export interface PublishOptions {
   readonly id?: Event.ID
   readonly metadata?: Record<string, unknown>
   readonly location?: Location.Ref
+  readonly global?: boolean
   /** Local operational projection committed atomically with a new durable event. Not replayed or serialized. */
   readonly commit?: (seq: number) => Effect.Effect<void>
 }
@@ -227,7 +228,7 @@ export function configured(options?: Options) {
           commit?: (seq: number) => Effect.Effect<void>,
         ) {
           return Effect.gen(function* () {
-            const durable = definition?.durable
+            const durable = definition.durable
             if (durable) {
               const aggregateID = (event.data as Record<string, unknown>)[durable.aggregate]
               if (typeof aggregateID !== "string") {
@@ -391,14 +392,14 @@ export function configured(options?: Options) {
           commit?: PublishOptions["commit"],
         ) {
           return Effect.gen(function* () {
-            if (!definition?.durable && commit)
+            if (!definition.durable && commit)
               return yield* Effect.die(
                 new InvalidDurableEventError({
                   type: event.type,
                   message: "Local commit hooks require a durable event",
                 }),
               )
-            if (definition?.durable) {
+            if (definition.durable) {
               const aggregateID = (event.data as Record<string, unknown>)[definition.durable.aggregate]
               if (typeof aggregateID !== "string")
                 return yield* commitDurableEvent(definition, event as Event.Payload, undefined, commit).pipe(
@@ -446,11 +447,12 @@ export function configured(options?: Options) {
         function publish<D extends Event.Definition>(definition: D, data: Event.Data<D>, options?: PublishOptions) {
           return Effect.gen(function* () {
             const serviceLocation = Option.getOrUndefined(yield* Effect.serviceOption(Location.Service))
-            const location =
-              options?.location ??
-              (serviceLocation
-                ? { directory: serviceLocation.directory, workspaceID: serviceLocation.workspaceID }
-                : undefined)
+            const location = options?.global
+              ? undefined
+              : (options?.location ??
+                (serviceLocation
+                  ? { directory: serviceLocation.directory, workspaceID: serviceLocation.workspaceID }
+                  : undefined))
             return yield* publishEvent(
               definition,
               {
@@ -480,11 +482,12 @@ export function configured(options?: Options) {
                     }),
                   )
                 }
-                const location =
-                  options?.location ??
-                  (serviceLocation
-                    ? { directory: serviceLocation.directory, workspaceID: serviceLocation.workspaceID }
-                    : undefined)
+                const location = options?.global
+                  ? undefined
+                  : (options?.location ??
+                    (serviceLocation
+                      ? { directory: serviceLocation.directory, workspaceID: serviceLocation.workspaceID }
+                      : undefined))
                 return {
                   definition,
                   aggregateID,
@@ -610,37 +613,35 @@ export function configured(options?: Options) {
         ) {
           return Effect.gen(function* () {
             const definition = Durable.get(event.type)
-            if (!definition?.durable) {
-              yield* Effect.die(
+            if (!definition?.durable)
+              return yield* Effect.die(
                 new InvalidDurableEventError({ type: event.type, message: `Unknown durable event type ${event.type}` }),
               )
-            } else {
-              yield* durableLocks.withLock(event.aggregateID)(
-                Effect.gen(function* () {
-                  const payload = {
-                    id: event.id,
-                    created: event.created ?? 0,
-                    type: definition.type,
-                    data: Schema.decodeUnknownSync(definition.data)(event.data),
-                  } as Event.Payload
-                  const committed = yield* commitDurableEvent(definition, payload, {
-                    seq: event.seq,
-                    aggregateID: event.aggregateID,
-                    ownerID: options?.ownerID,
-                    strictOwner: options?.strictOwner,
-                  })
-                  if (committed && options?.publish) {
-                    yield* notify(
-                      {
-                        ...payload,
-                        durable: envelope(committed.aggregateID, committed.seq, definition.durable.version),
-                      },
-                      true,
-                    )
-                  }
-                }),
-              )
-            }
+            yield* durableLocks.withLock(event.aggregateID)(
+              Effect.gen(function* () {
+                const payload = {
+                  id: event.id,
+                  created: event.created ?? 0,
+                  type: definition.type,
+                  data: Schema.decodeUnknownSync(definition.data)(event.data),
+                } as Event.Payload
+                const committed = yield* commitDurableEvent(definition, payload, {
+                  seq: event.seq,
+                  aggregateID: event.aggregateID,
+                  ownerID: options?.ownerID,
+                  strictOwner: options?.strictOwner,
+                })
+                if (committed && options?.publish) {
+                  yield* notify(
+                    {
+                      ...payload,
+                      durable: envelope(committed.aggregateID, committed.seq, definition.durable.version),
+                    },
+                    true,
+                  )
+                }
+              }),
+            )
           })
         }
 

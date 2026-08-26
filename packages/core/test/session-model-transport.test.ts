@@ -8,7 +8,7 @@ import type {
 } from "@opencode-ai/ai/route"
 import { SessionModelTransport } from "@opencode-ai/core/session/model-transport"
 import { Session } from "@opencode-ai/schema/session"
-import { Deferred, Effect, Fiber, Metric, Queue, Stream } from "effect"
+import { Cause, Deferred, Effect, Fiber, Metric, Queue, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { Headers } from "effect/unstable/http"
 
@@ -78,14 +78,15 @@ const collectComplete = (
 const automatic = () => {
   const connections: Array<{
     readonly messages: Queue.Queue<string | Uint8Array, AIError>
+    readonly headers: Headers.Headers
     closed: number
     sent: string[]
   }> = []
   const connector: WebSocketConnector = {
-    open: () =>
+    open: (input) =>
       Effect.gen(function* () {
         const messages = yield* Queue.unbounded<string | Uint8Array, AIError>()
-        const record = { messages, closed: 0, sent: [] as string[] }
+        const record = { messages, headers: input.headers, closed: 0, sent: [] as string[] }
         connections.push(record)
         const connection: WebSocketConnection = {
           sendText: (message) =>
@@ -545,6 +546,63 @@ describe("SessionModelTransport", () => {
     )
   })
 
+  test("falls back to HTTP after close code 1009 and keeps the Session on HTTP", async () => {
+    const messages = queue<string | Uint8Array, AIError>()
+    let opened = 0
+    let fallbacks = 0
+    let closed = 0
+    const connector: WebSocketConnector = {
+      open: () =>
+        Effect.sync(() => {
+          opened++
+          return {
+            sendText: () =>
+              Effect.sync(() => {
+                Queue.failCauseUnsafe(
+                  messages,
+                  Cause.fail(
+                    new AIError({
+                      module: "test",
+                      method: "websocket",
+                      reason: new TransportReason({
+                        message: "message too big",
+                        transport: "websocket",
+                        operation: "read",
+                        code: "1009",
+                        phase: "close",
+                      }),
+                    }),
+                  ),
+                )
+              }),
+            messages: Stream.fromQueue(messages),
+            close: Effect.sync(() => closed++).pipe(Effect.andThen(Queue.shutdown(messages)), Effect.asVoid),
+          }
+        }),
+    }
+    const item = (id: string) =>
+      exchange(id, {
+        fallback: () => {
+          fallbacks++
+          return Stream.make(`http:${id}`)
+        },
+      })
+
+    await run(
+      connector,
+      Effect.gen(function* () {
+        const transport = yield* SessionModelTransport.Service
+        const executor = transport.bind(session)
+
+        expect(yield* collect(executor, item("first"))).toEqual(["http:first"])
+        expect(yield* collect(executor, item("second"))).toEqual(["http:second"])
+        expect(opened).toBe(1)
+        expect(fallbacks).toBe(2)
+        expect(closed).toBe(1)
+      }),
+    )
+  })
+
   test("does not fall back after an ambiguous send failure", async () => {
     const messages = queue<string | Uint8Array, AIError>()
     let fallbacks = 0
@@ -583,7 +641,7 @@ describe("SessionModelTransport", () => {
     )
   })
 
-  test("rotates when handshake affinity or connection age changes", async () => {
+  test("rotates when refreshed authorization changes handshake affinity", async () => {
     const fixture = automatic()
 
     await run(
@@ -594,10 +652,26 @@ describe("SessionModelTransport", () => {
         yield* collect(executor, exchange("first", { headers: { authorization: "one" } }))
         yield* collect(executor, exchange("second", { headers: { authorization: "one" } }))
         yield* collect(executor, exchange("third", { headers: { authorization: "two" } }))
+        expect(fixture.connections).toHaveLength(2)
+        expect(fixture.connections[0]?.closed).toBe(1)
+        expect(fixture.connections.map((item) => item.headers.authorization)).toEqual(["one", "two"])
+      }),
+    )
+  })
+
+  test("rotates when the connection exceeds its requested age limit", async () => {
+    const fixture = automatic()
+
+    await run(
+      fixture.connector,
+      Effect.gen(function* () {
+        const transport = yield* SessionModelTransport.Service
+        const executor = transport.bind(session)
+        yield* collect(executor, exchange("first"))
         yield* Effect.sleep("5 millis")
-        yield* collect(executor, exchange("fourth", { headers: { authorization: "two" }, rotateAfterMs: 1 }))
-        expect(fixture.connections).toHaveLength(3)
-        expect(fixture.connections.slice(0, 2).map((item) => item.closed)).toEqual([1, 1])
+        yield* collect(executor, exchange("second", { rotateAfterMs: 1 }))
+        expect(fixture.connections).toHaveLength(2)
+        expect(fixture.connections[0]?.closed).toBe(1)
       }),
     )
   })

@@ -2,7 +2,7 @@ export * as Project from "./project.js"
 
 import { Context, Effect, Layer, Schema } from "effect"
 import { ChildProcess } from "effect/unstable/process"
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, asc, desc, eq, gte, isNull, lte } from "drizzle-orm"
 import path from "path"
 import { AbsolutePath } from "./schema.js"
 import { Bus } from "./bus.js"
@@ -29,6 +29,13 @@ export type Current = ProjectSchema.Current
 export const Info = ProjectSchema.Info
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 
+export const UpdateInput = ProjectSchema.UpdateInput
+export type UpdateInput = ProjectSchema.UpdateInput
+
+export class NotFoundError extends Schema.TaggedError<NotFoundError>()("Project.NotFoundError", {
+  projectID: ID,
+}) {}
+
 export interface Resolved {
   readonly previous?: ID
   readonly id: ID
@@ -41,12 +48,13 @@ export interface Resolved {
 export const root = Effect.fn("Project.root")(function* (fs: FSUtil.Interface, input: AbsolutePath) {
   return yield* fs.up({ targets: [".git", ".hg"], start: input, mode: "first" }).pipe(
     Effect.map((matches) => (matches[0] ? AbsolutePath.make(path.dirname(matches[0])) : undefined)),
-    Effect.catch(() => Effect.succeed(undefined)),
+    Effect.orElseSucceed(() => undefined),
   )
 })
 
 export interface Interface {
   readonly list: () => Effect.Effect<ReadonlyArray<Info>>
+  readonly update: (input: UpdateInput) => Effect.Effect<Info, NotFoundError>
   readonly resolve: (input: AbsolutePath) => Effect.Effect<Resolved>
 }
 
@@ -88,7 +96,22 @@ const layer = Layer.effect(
 
     const announcing = new Set<string>()
     const persist = Effect.fnUntraced(function* (project: Resolved) {
+      const previous = yield* db
+        .select({ canonical: ProjectTable.worktree })
+        .from(ProjectTable)
+        .where(eq(ProjectTable.id, project.id))
+        .get()
+        .pipe(Effect.orDie)
       yield* upsertProject(db, project).pipe(Effect.orDie)
+      if (previous && previous.canonical !== project.canonical) {
+        const row = yield* db
+          .select()
+          .from(ProjectTable)
+          .where(eq(ProjectTable.id, project.id))
+          .get()
+          .pipe(Effect.orDie)
+        if (row) yield* bus.publish(ProjectSchema.Event.Updated, fromRow(row))
+      }
       if (!project.vcs) return project
       const directories: Array<{ projectID: ID; directory: AbsolutePath; strategy?: string }> = [
         { projectID: project.id, directory: project.canonical },
@@ -117,9 +140,38 @@ const layer = Layer.effect(
             .get()
             .pipe(Effect.orDie)
           if (stored) return
+          const directory = AbsolutePath.make(yield* fs.resolve(item.directory))
+          const markerless = yield* db
+            .select({ id: ProjectTable.id, directory: ProjectTable.worktree })
+            .from(ProjectTable)
+            .where(
+              and(
+                isNull(ProjectTable.vcs),
+                gte(ProjectTable.worktree, directory),
+                lte(ProjectTable.worktree, AbsolutePath.make(directory + "\uffff")),
+              ),
+            )
+            .all()
+            .pipe(Effect.orDie)
+          const adopted = yield* Effect.filter(markerless, (candidate) =>
+            Effect.gen(function* () {
+              if (candidate.id === item.projectID) return false
+              if (!FSUtil.contains(directory, candidate.directory)) return false
+              const markers = yield* fs
+                .up({ targets: [".git", ".hg"], start: candidate.directory, stop: directory, mode: "first" })
+                .pipe(Effect.orElseSucceed(() => []))
+              if (!markers[0]) return false
+              return (yield* fs.resolve(path.dirname(markers[0]))) === directory
+            }),
+          )
           yield* bus.publish(
             Worktree.Event.Resolved,
-            { projectID: item.projectID, directory: item.directory, previous: project.previous ?? ID.global },
+            {
+              projectID: item.projectID,
+              directory: item.directory,
+              previous: project.previous ?? ID.global,
+              ...(adopted.length ? { adopted: adopted.map((candidate) => candidate.id) } : {}),
+            },
             {
               commit: () =>
                 db
@@ -145,11 +197,36 @@ const layer = Layer.effect(
       return rows.map(fromRow)
     })
 
+    const update = Effect.fn("Project.update")(function* (input: UpdateInput) {
+      const row = yield* db
+        .update(ProjectTable)
+        .set({
+          name: input.name === undefined ? undefined : input.name || null,
+          icon_url_override: input.icon?.override === undefined ? undefined : input.icon.override || null,
+          icon_color: input.icon?.color === undefined ? undefined : input.icon.color || null,
+          commands:
+            input.commands?.start === undefined
+              ? undefined
+              : input.commands.start
+                ? { start: input.commands.start }
+                : null,
+          time_updated: Date.now(),
+        })
+        .where(eq(ProjectTable.id, input.projectID))
+        .returning()
+        .get()
+        .pipe(Effect.orDie)
+      if (!row) return yield* new NotFoundError({ projectID: input.projectID })
+      const project = fromRow(row)
+      yield* bus.publish(ProjectSchema.Event.Updated, project)
+      return project
+    })
+
     const cached = Effect.fnUntraced(function* (dir: string) {
       return yield* fs.readFileString(path.join(dir, "opencode")).pipe(
         Effect.map((value) => value.trim()),
         Effect.map((value) => (value ? ID.make(value) : undefined)),
-        Effect.catch(() => Effect.succeed(undefined)),
+        Effect.orElseSucceed(() => undefined),
       )
     })
 
@@ -185,7 +262,7 @@ const layer = Layer.effect(
       return `${host.toLowerCase()}/${pathname}`
     }
 
-    const root = Effect.fnUntraced(function* (repo: Git.Repository) {
+    const rootCommit = Effect.fnUntraced(function* (repo: Git.Repository) {
       const root = (yield* git.history.rootCommits(repo))[0]
       return root ? ID.make(root) : undefined
     })
@@ -202,7 +279,7 @@ const layer = Layer.effect(
             stdin: "ignore",
           }),
         )
-        .pipe(Effect.catch(() => Effect.succeed(undefined)))
+        .pipe(Effect.orElseSucceed(() => undefined))
       if (!result || result.exitCode !== 0) return undefined
       const node = result.stdout
         .toString("utf8")
@@ -213,12 +290,7 @@ const layer = Layer.effect(
       return node ? ID.make(node) : undefined
     })
 
-    const hgDiscover = Effect.fnUntraced(function* (input: AbsolutePath) {
-      const dotHg = yield* fs.up({ targets: [".hg"], start: input, mode: "first" }).pipe(
-        Effect.map((matches) => matches[0]),
-        Effect.catch(() => Effect.succeed(undefined)),
-      )
-      if (!dotHg) return undefined
+    const hgDiscover = Effect.fnUntraced(function* (dotHg: AbsolutePath) {
       const worktree = AbsolutePath.make(path.dirname(dotHg))
       const store = AbsolutePath.make(dotHg)
       const previous = yield* cached(store)
@@ -232,16 +304,24 @@ const layer = Layer.effect(
     })
 
     const resolve = Effect.fn("Project.resolve")(function* (input: AbsolutePath) {
-      const repo = yield* git.repo.discover(input)
+      const directory = AbsolutePath.make(yield* fs.resolve(input))
+      const marker = yield* fs.up({ targets: [".git", ".hg"], start: directory, mode: "first" }).pipe(
+        Effect.map((matches) => matches[0]),
+        Effect.orElseSucceed(() => undefined),
+      )
+      const repo =
+        marker && path.basename(marker) === ".git"
+          ? yield* git.repo.discover(AbsolutePath.make(path.dirname(marker)))
+          : undefined
       if (repo) {
         const previous = yield* cached(repo.commonDirectory)
-        const id = (yield* remote(repo)) ?? previous ?? (yield* root(repo))
+        const id = (yield* remote(repo)) ?? previous ?? (yield* rootCommit(repo))
         const canonical =
           repo.gitDirectory === repo.commonDirectory
             ? repo.worktree
             : yield* git.worktree.list(repo).pipe(
                 Effect.map((items) => items.find((item) => item.kind === "main")?.directory ?? repo.worktree),
-                Effect.catch(() => Effect.succeed(repo.worktree)),
+                Effect.orElseSucceed(() => repo.worktree),
               )
         return yield* persist({
           previous,
@@ -252,13 +332,17 @@ const layer = Layer.effect(
         })
       }
 
-      const hg = yield* hgDiscover(input)
+      const hg = marker && path.basename(marker) === ".hg" ? yield* hgDiscover(AbsolutePath.make(marker)) : undefined
       if (hg) return yield* persist({ ...hg, canonical: hg.directory })
-      const directory = AbsolutePath.make(path.parse(input).root)
-      return yield* persist({ id: ID.global, directory, canonical: directory, vcs: undefined })
+      return yield* persist({
+        id: ID.make(Hash.fast(`directory:${directory}`)),
+        directory,
+        canonical: directory,
+        vcs: undefined,
+      })
     })
 
-    return Service.of({ list, resolve })
+    return Service.of({ list, update, resolve })
   }),
 )
 

@@ -85,7 +85,7 @@ test("shows a pending permission dock", async ({ page }) => {
       {
         id: "permission-request",
         sessionID,
-        permission: "bash",
+        permission: "shell",
         patterns: ["git status", "git diff"],
         metadata: {},
         always: [],
@@ -120,7 +120,7 @@ test("restores the draft caret before typing after a request dock closes", async
   await transport.waitForConnection()
   await expectSessionTitle(page, title)
 
-  const editor = page.locator('[data-component="prompt-input"][contenteditable="true"]')
+  const editor = page.locator('[data-component="composer-editor"][contenteditable="true"]')
   const draft = "keep the caret at the end"
   await editor.fill(draft)
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))

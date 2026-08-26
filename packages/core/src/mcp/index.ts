@@ -2,10 +2,10 @@ export * as MCP from "./index.js"
 
 import { Mcp } from "@opencode-ai/schema/mcp"
 import { McpEvent } from "@opencode-ai/schema/mcp-event"
-import { Command } from "@opencode-ai/schema/command"
+import { ephemeral } from "@opencode-ai/schema/event"
 import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
-import { Cause, Context, Deferred, Effect, Exit, FiberSet, Layer, Schema, Scope, Stream, Types } from "effect"
+import { Cause, Context, Effect, Exit, FiberSet, Latch, Layer, Schema, Scope, Stream, Types } from "effect"
 import { makeLocationNode } from "@opencode-ai/util/effect/app-node"
 import { Credential } from "../credential.js"
 import { Bus } from "../bus.js"
@@ -19,6 +19,7 @@ import { State } from "../state.js"
 import type { MCPClient } from "./client.js"
 
 export const ServerName = Schema.String.pipe(Schema.brand("MCP.ServerName"))
+export const PromptsChanged = ephemeral({ type: "mcp.prompts.changed", schema: { server: Schema.String } })
 export type ServerName = typeof ServerName.Type
 
 // The status union is a public wire contract, so it lives in @opencode-ai/schema and is re-exported here.
@@ -111,7 +112,7 @@ export class ToolCallError extends Schema.TaggedError<ToolCallError>()("MCP.Tool
 type ServerEntry = {
   readonly config: Mcp.ServerConfig
   status: Status
-  readonly startup: Deferred.Deferred<void>
+  readonly startup: Latch.Latch
   scope?: Scope.Closeable
   client?: MCPClient.Connection
   tools?: ReadonlyArray<Tool>
@@ -139,8 +140,7 @@ export type Draft = {
   remove: (server: ServerName | string) => void
 }
 
-const cloneConfig = (config: Mcp.ServerConfig) =>
-  structuredClone(config) as Types.DeepMutable<Mcp.ServerConfig>
+const cloneConfig = (config: Mcp.ServerConfig) => structuredClone(config) as Types.DeepMutable<Mcp.ServerConfig>
 
 export interface Interface extends State.Transformable<Draft> {
   readonly servers: () => Effect.Effect<ServerInfo[]>
@@ -228,6 +228,7 @@ export const layer = (options?: Options) =>
           .transform((draft) => {
             draft.update(integrationID, (ref) => {
               ref.name = name
+              ref.metadata = { source: "mcp" }
             })
             draft.method.update({
               integrationID,
@@ -263,8 +264,7 @@ export const layer = (options?: Options) =>
           // No browser during connect: an auth-gated server surfaces needs_auth instead of opening a browser.
           onRedirect: () => {},
         }
-        const stored = yield* credentials.list(entry.integrationID)
-        const found = stored.find((credential) => credential.value.type === "oauth")
+        const found = (yield* credentials.list(entry.integrationID)).at(-1)
         if (!found || found.value.type !== "oauth")
           // No stored credential yet: an empty in-memory store still lets the SDK run the auth handshake, which
           // ends in UnauthorizedError -> needs_auth. Returning no provider instead would let the transport throw
@@ -273,28 +273,53 @@ export const layer = (options?: Options) =>
           return MCPOAuth.provider({ ...base, store: MCPOAuth.memoryStore() })
         const credentialID = found.id
         const methodID = found.value.methodID
-        let current: Credential.OAuth | undefined = found.value
+        const integrationID = entry.integrationID
+        // Tracks the refresh token this provider last presented, so invalidate can tell whether the SDK
+        // rejected the currently-stored credential or a snapshot another connection has already rotated past.
+        let presented = found.value.refresh
+        const readOAuthCredential = async () => {
+          const stored = await Effect.runPromise(credentials.list(integrationID))
+          const match = stored.find((credential) => credential.id === credentialID)
+          return match && match.value.type === "oauth" ? match.value : undefined
+        }
         return MCPOAuth.provider({
           ...base,
-          // Drop a credential the SDK rejected so the next connect cleanly reports needs_auth. Uses the raw
-          // credential service (no integration event) to avoid re-triggering the reconnect subscriber mid-connect.
+          // Drop a credential the SDK rejected so the next connect cleanly reports needs_auth — but only if it is
+          // still the stored one. Rotating servers hand out a fresh refresh token per use, so a concurrent
+          // connection may have already replaced ours; deleting then would discard the newer valid credential and
+          // strand every connection in needs_auth until a manual re-auth. Credential deletion notifies all locations;
+          // reconnects remain serialized by the server lock.
           invalidate: async (scope) => {
             if (scope === "verifier" || scope === "discovery") return
-            current = undefined
+            const oauth = await readOAuthCredential()
+            if (!oauth || oauth.refresh !== presented) return
             await Effect.runPromise(credentials.remove(credentialID))
           },
+          // Always read the latest stored tokens instead of caching at connect time: with refresh-token rotation,
+          // a cached snapshot goes stale the moment another connection refreshes, and re-presenting the consumed
+          // token fails with invalid_grant.
           store: {
-            tokens: async () => (current ? MCPOAuth.toTokens(current) : undefined),
+            tokens: async () => {
+              const oauth = await readOAuthCredential()
+              if (!oauth) return undefined
+              presented = oauth.refresh
+              return MCPOAuth.toTokens(oauth)
+            },
             saveTokens: async (tokens) => {
-              current = MCPOAuth.toCredential({
+              const previous = await readOAuthCredential()
+              const value = MCPOAuth.toCredential({
                 methodID,
                 serverUrl: remote.url,
                 tokens,
-                client: current ? MCPOAuth.clientFromCredential(current) : undefined,
+                client: previous ? MCPOAuth.clientFromCredential(previous) : undefined,
               })
-              await Effect.runPromise(credentials.update(credentialID, { value: current }))
+              presented = value.refresh
+              await Effect.runPromise(credentials.update(credentialID, { value }))
             },
-            clientInformation: async () => (current ? MCPOAuth.clientFromCredential(current) : undefined),
+            clientInformation: async () => {
+              const oauth = await readOAuthCredential()
+              return oauth ? MCPOAuth.clientFromCredential(oauth) : undefined
+            },
             saveClientInformation: async () => {},
             codeVerifier: async () => undefined,
             saveCodeVerifier: async () => {},
@@ -424,11 +449,11 @@ export const layer = (options?: Options) =>
 
       const refreshPrompts = (name: ServerName, entry: ServerEntry, connection: MCPClient.Connection) =>
         connection.prompts().pipe(
-          Effect.catch(() => Effect.succeed([])),
+          Effect.orElseSucceed(() => []),
           Effect.map((defs) => {
             entry.prompts = defs.map((def) => toPrompt(name, def))
           }),
-          Effect.andThen(bus.publish(Command.Event.Updated, {})),
+          Effect.andThen(bus.publish(PromptsChanged, { server: name })),
         )
 
       // Runs a connection callback under the server lock, dropping it if the connection is no longer
@@ -535,7 +560,7 @@ export const layer = (options?: Options) =>
               : { status: "failed", error: error instanceof Error ? error.message : String(error) }
           yield* Effect.logWarning("mcp connect failed", { server: name, status: entry.status })
           yield* bus.publish(McpEvent.StatusChanged, { server: name }).pipe(Effect.ignore)
-        }).pipe(Effect.ensuring(Deferred.succeed(entry.startup, undefined)))
+        }).pipe(Effect.ensuring(entry.startup.open))
 
       const stopServer = Effect.fnUntraced(function* (name: ServerName, entry: ServerEntry) {
         const scope = entry.scope
@@ -547,7 +572,7 @@ export const layer = (options?: Options) =>
         yield* Scope.close(scope, Exit.void)
         yield* bus.publish(McpEvent.ToolsChanged, { server: name }).pipe(Effect.ignore)
         yield* bus.publish(McpEvent.ResourcesChanged, { server: name }).pipe(Effect.ignore)
-        yield* bus.publish(Command.Event.Updated, {}).pipe(Effect.ignore)
+        yield* bus.publish(PromptsChanged, { server: name }).pipe(Effect.ignore)
       })
 
       const disposeServer = Effect.fnUntraced(function* (name: ServerName, entry: ServerEntry) {
@@ -562,7 +587,7 @@ export const layer = (options?: Options) =>
         const entry: ServerEntry = {
           config: serverConfig,
           status: { status: "pending" },
-          startup: Deferred.makeUnsafe<void>(),
+          startup: Latch.makeUnsafe(),
         }
         entries.set(name, entry)
         yield* Effect.gen(function* () {
@@ -575,7 +600,7 @@ export const layer = (options?: Options) =>
           yield* startServer(name, entry)
         }).pipe(
           // Settle startup even when registration fails or replacement is interrupted, so readers cannot hang.
-          Effect.ensuring(Effect.sync(() => Deferred.doneUnsafe(entry.startup, Exit.void))),
+          Effect.ensuring(entry.startup.open),
         )
       })
 
@@ -597,7 +622,7 @@ export const layer = (options?: Options) =>
             entries.set(name, {
               config: server,
               status: { status: "pending" },
-              startup: Deferred.makeUnsafe<void>(),
+              startup: Latch.makeUnsafe(),
             })
           }
           yield* Effect.forEach(entries, ([name, entry]) => register(name, entry), { discard: true })
@@ -607,7 +632,7 @@ export const layer = (options?: Options) =>
           for (const [name, entry] of entries) {
             if (entry.config.disabled) {
               entry.status = { status: "disabled" }
-              Deferred.doneUnsafe(entry.startup, Exit.void)
+              entry.startup.openUnsafe()
               yield* bus.publish(McpEvent.StatusChanged, { server: name }).pipe(Effect.ignore)
               continue
             }
@@ -647,7 +672,7 @@ export const layer = (options?: Options) =>
           }).pipe(locks.withLock(name))
         })
       fork(
-        bus.subscribe(Integration.Event.ConnectionUpdated).pipe(
+        bus.subscribe(Credential.Event.Switched).pipe(
           Stream.filter((event) => owned.has(event.data.integrationID)),
           Stream.runForEach((event) => Effect.sync(() => fork(reconnect(event.data.integrationID)))),
           Effect.ignore,
@@ -661,9 +686,7 @@ export const layer = (options?: Options) =>
               config === false ? [] : [[name, cloneConfig(config)] as const],
             ),
           ),
-          removed: new Set(
-            Array.from(overrides).flatMap(([name, config]) => (config === false ? [name] : [])),
-          ),
+          removed: new Set(Array.from(overrides).flatMap(([name, config]) => (config === false ? [name] : []))),
         }),
         draft: (draft) => ({
           list: () => Array.from(draft.servers),
@@ -685,7 +708,7 @@ export const layer = (options?: Options) =>
 
       // Suspend so each await sees current entries; a bare Map iterator is exhausted after one run.
       const whenAllReady = Effect.suspend(() =>
-        Effect.forEach(Array.from(entries.values()), (entry) => Deferred.await(entry.startup), {
+        Effect.forEach(Array.from(entries.values()), (entry) => entry.startup.await, {
           concurrency: "unbounded",
           discard: true,
         }),
@@ -734,7 +757,7 @@ export const layer = (options?: Options) =>
         }),
         callTool: Effect.fn("MCP.callTool")(function* (input) {
           const target = yield* requireServer(input.server)
-          yield* Deferred.await(target.entry.startup)
+          yield* target.entry.startup.await
           if (!target.entry.client)
             return yield* new ToolCallError({
               server: target.name,
@@ -773,11 +796,11 @@ export const layer = (options?: Options) =>
         }),
         prompt: Effect.fn("MCP.prompt")(function* (input) {
           const target = yield* requireServer(input.server)
-          yield* Deferred.await(target.entry.startup)
+          yield* target.entry.startup.await
           if (!target.entry.client) return undefined
           const result = yield* target.entry.client
             .prompt({ name: input.name, args: input.args })
-            .pipe(Effect.catch(() => Effect.succeed(undefined)))
+            .pipe(Effect.orElseSucceed(() => undefined))
           if (!result) return undefined
           return new PromptResult({
             server: target.name,
@@ -795,8 +818,8 @@ export const layer = (options?: Options) =>
               if (!entry.client) return Effect.succeed({ resources: [], templates: [] })
               return Effect.all(
                 {
-                  resources: entry.client.resources().pipe(Effect.catch(() => Effect.succeed([]))),
-                  templates: entry.client.resourceTemplates().pipe(Effect.catch(() => Effect.succeed([]))),
+                  resources: entry.client.resources().pipe(Effect.orElseSucceed(() => [])),
+                  templates: entry.client.resourceTemplates().pipe(Effect.orElseSucceed(() => [])),
                 },
                 { concurrency: "unbounded" },
               ).pipe(
@@ -827,11 +850,11 @@ export const layer = (options?: Options) =>
         }),
         readResource: Effect.fn("MCP.readResource")(function* (input) {
           const target = yield* requireServer(input.server)
-          yield* Deferred.await(target.entry.startup)
+          yield* target.entry.startup.await
           if (!target.entry.client) return undefined
           const result = yield* target.entry.client
             .readResource({ uri: input.uri })
-            .pipe(Effect.catch(() => Effect.succeed(undefined)))
+            .pipe(Effect.orElseSucceed(() => undefined))
           if (!result) return undefined
           return ResourceContent.make({
             server: target.name,

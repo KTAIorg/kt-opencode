@@ -10,6 +10,7 @@ import type { Project } from "@opencode-ai/schema/project"
 import type { RelativePath } from "@opencode-ai/schema/schema"
 import type { Brand } from "effect"
 import type { Model } from "@opencode-ai/schema/model"
+import type { DateTime } from "effect"
 import type { SessionMessage } from "@opencode-ai/schema/session-message"
 import type { SessionInbox } from "@opencode-ai/schema/session-inbox"
 import type { PromptInput } from "@opencode-ai/schema/prompt-input"
@@ -31,6 +32,7 @@ import type { FileSystem } from "@opencode-ai/schema/filesystem"
 import type { Command } from "@opencode-ai/schema/command"
 import type { OpenCodeEvent } from "@opencode-ai/protocol/groups/event"
 import type { Pty } from "@opencode-ai/schema/pty"
+import type { PtyTicket } from "@opencode-ai/schema/pty-ticket"
 import type { Reference } from "@opencode-ai/schema/reference"
 import type { Worktree } from "@opencode-ai/schema/worktree"
 import type { Vcs } from "@opencode-ai/schema/vcs"
@@ -38,39 +40,46 @@ import type { FileDiff } from "@opencode-ai/schema/file-diff"
 import type { WebSearch } from "@opencode-ai/schema/websearch"
 import type { Config } from "@opencode-ai/schema/config"
 
-export type Endpoint0_0Output = { readonly healthy: true; readonly version: string; readonly pid: number }
-export type HealthGetOperation<E = never> = () => Effect.Effect<Endpoint0_0Output, E>
+export type HealthGetOutput = { readonly healthy: true; readonly version: string; readonly pid: number }
+export type HealthGetOperation<E = never> = () => Effect.Effect<HealthGetOutput, E>
 
 export interface HealthApi<E = never> {
   readonly get: HealthGetOperation<E>
 }
 
-export type Endpoint1_0Output = {
+export type ServerKtaiAccountGetOutput = {
   readonly account: { readonly id: string; readonly accountNo: string; readonly displayName?: string | undefined }
   readonly balance: number
   readonly memberSince?: string | undefined
   readonly joinedDays?: number | undefined
 }
-export type ServerKtaiAccountGetOperation<E = never> = () => Effect.Effect<Endpoint1_0Output, E>
+export type ServerKtaiAccountGetOperation<E = never> = () => Effect.Effect<ServerKtaiAccountGetOutput, E>
 
-export type Endpoint1_1Output = {
+export type ServerKtaiEnsureOutput = {
   readonly ok: true
   readonly updated: boolean
   readonly created: boolean
   readonly keyPresent: true
 }
-export type ServerKtaiEnsureOperation<E = never> = () => Effect.Effect<Endpoint1_1Output, E>
+export type ServerKtaiEnsureOperation<E = never> = () => Effect.Effect<ServerKtaiEnsureOutput, E>
 
-export type Endpoint1_2Output = { readonly identity: boolean; readonly keyPresent: boolean }
-export type ServerKtaiCredentialGetOperation<E = never> = () => Effect.Effect<Endpoint1_2Output, E>
+export type ServerKtaiCredentialGetOutput = { readonly identity: boolean; readonly keyPresent: boolean }
+export type ServerKtaiCredentialGetOperation<E = never> = () => Effect.Effect<ServerKtaiCredentialGetOutput, E>
 
-export type Endpoint1_3Input = { readonly chain?: string | undefined; readonly asset?: string | undefined }
-export type Endpoint1_3Output = { readonly chain: string; readonly asset: string; readonly address: string }
+export type ServerKtaiWalletDepositAddressInput = {
+  readonly chain?: string | undefined
+  readonly asset?: string | undefined
+}
+export type ServerKtaiWalletDepositAddressOutput = {
+  readonly chain: string
+  readonly asset: string
+  readonly address: string
+}
 export type ServerKtaiWalletDepositAddressOperation<E = never> = (
-  input?: Endpoint1_3Input,
-) => Effect.Effect<Endpoint1_3Output, E>
+  input?: ServerKtaiWalletDepositAddressInput,
+) => Effect.Effect<ServerKtaiWalletDepositAddressOutput, E>
 
-export type Endpoint1_4Output = {
+export type ServerKtaiWalletKtpayInfoOutput = {
   readonly enabled: boolean
   readonly methods: ReadonlyArray<{ readonly name: string; readonly type: string }>
   readonly minTopup: number
@@ -80,10 +89,10 @@ export type Endpoint1_4Output = {
   readonly defaultLang?: string | undefined
   readonly sdkUrl?: string | undefined
 }
-export type ServerKtaiWalletKtpayInfoOperation<E = never> = () => Effect.Effect<Endpoint1_4Output, E>
+export type ServerKtaiWalletKtpayInfoOperation<E = never> = () => Effect.Effect<ServerKtaiWalletKtpayInfoOutput, E>
 
-export type Endpoint1_5Input = { readonly amount: number; readonly method: string }
-export type Endpoint1_5Output = {
+export type ServerKtaiWalletKtpayPayInput = { readonly amount: number; readonly method: string }
+export type ServerKtaiWalletKtpayPayOutput = {
   readonly orderId: string
   readonly cashierUrl: string
   readonly amount: number
@@ -91,19 +100,19 @@ export type Endpoint1_5Output = {
   readonly status: string
 }
 export type ServerKtaiWalletKtpayPayOperation<E = never> = (
-  input: Endpoint1_5Input,
-) => Effect.Effect<Endpoint1_5Output, E>
+  input: ServerKtaiWalletKtpayPayInput,
+) => Effect.Effect<ServerKtaiWalletKtpayPayOutput, E>
 
-export type Endpoint1_6Input = { readonly order_id: string }
-export type Endpoint1_6Output = {
+export type ServerKtaiWalletKtpayStatusInput = { readonly order_id: string }
+export type ServerKtaiWalletKtpayStatusOutput = {
   readonly orderId: string
   readonly status: string
   readonly localStatus: string
   readonly settled: boolean
 }
 export type ServerKtaiWalletKtpayStatusOperation<E = never> = (
-  input: Endpoint1_6Input,
-) => Effect.Effect<Endpoint1_6Output, E>
+  input: ServerKtaiWalletKtpayStatusInput,
+) => Effect.Effect<ServerKtaiWalletKtpayStatusOutput, E>
 
 export interface ServerKtaiApi<E = never> {
   readonly account: { readonly get: ServerKtaiAccountGetOperation<E> }
@@ -119,52 +128,52 @@ export interface ServerKtaiApi<E = never> {
   }
 }
 
-export type Endpoint2_0Output = { readonly urls: ReadonlyArray<string> }
-export type ServerGetOperation<E = never> = () => Effect.Effect<Endpoint2_0Output, E>
+export type ServerGetOutput = { readonly urls: ReadonlyArray<string> }
+export type ServerGetOperation<E = never> = () => Effect.Effect<ServerGetOutput, E>
 
 export interface ServerApi<E = never> {
   readonly get: ServerGetOperation<E>
 }
 
-export type Endpoint3_0Input = {
+export type LocationGetInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint3_0Output = Location.Info
-export type LocationGetOperation<E = never> = (input?: Endpoint3_0Input) => Effect.Effect<Endpoint3_0Output, E>
+export type LocationGetOutput = Location.Info
+export type LocationGetOperation<E = never> = (input?: LocationGetInput) => Effect.Effect<LocationGetOutput, E>
 
 export interface LocationApi<E = never> {
   readonly get: LocationGetOperation<E>
 }
 
-export type Endpoint4_0Input = {
+export type AgentListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint4_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Agent.Info> }
-export type AgentListOperation<E = never> = (input?: Endpoint4_0Input) => Effect.Effect<Endpoint4_0Output, E>
+export type AgentListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Agent.Info> }
+export type AgentListOperation<E = never> = (input?: AgentListInput) => Effect.Effect<AgentListOutput, E>
 
-export type Endpoint4_1Input = {
+export type AgentGetInput = {
   readonly agentID: Agent.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint4_1Output = { readonly location: Location.Info; readonly data: Agent.Info }
-export type AgentGetOperation<E = never> = (input: Endpoint4_1Input) => Effect.Effect<Endpoint4_1Output, E>
+export type AgentGetOutput = { readonly location: Location.Info; readonly data: Agent.Info }
+export type AgentGetOperation<E = never> = (input: AgentGetInput) => Effect.Effect<AgentGetOutput, E>
 
 export interface AgentApi<E = never> {
   readonly list: AgentListOperation<E>
   readonly get: AgentGetOperation<E>
 }
 
-export type Endpoint5_0Input = {
+export type PluginListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint5_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Plugin.Info> }
-export type PluginListOperation<E = never> = (input?: Endpoint5_0Input) => Effect.Effect<Endpoint5_0Output, E>
+export type PluginListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Plugin.Info> }
+export type PluginListOperation<E = never> = (input?: PluginListInput) => Effect.Effect<PluginListOutput, E>
 
 export interface PluginApi<E = never> {
   readonly list: PluginListOperation<E>
 }
 
-export type Endpoint6_0Input = {
+export type SessionListInput = {
   readonly workspace?: Workspace.ID | undefined
   readonly limit?: number | undefined
   readonly order?: "asc" | "desc" | undefined
@@ -175,74 +184,143 @@ export type Endpoint6_0Input = {
   readonly subpath?: RelativePath | undefined
   readonly cursor?: (string & Brand.Brand<"SessionsCursor">) | undefined
 }
-export type Endpoint6_0Output = {
+export type SessionListOutput = {
   readonly data: ReadonlyArray<Session.Info>
   readonly cursor: {
     readonly previous?: (string & Brand.Brand<"SessionsCursor">) | undefined
     readonly next?: (string & Brand.Brand<"SessionsCursor">) | undefined
   }
 }
-export type SessionListOperation<E = never> = (input?: Endpoint6_0Input) => Effect.Effect<Endpoint6_0Output, E>
+export type SessionListOperation<E = never> = (input?: SessionListInput) => Effect.Effect<SessionListOutput, E>
 
-export type Endpoint6_1Input = {
+export type SessionStatsInput = {
+  readonly from?: number | undefined
+  readonly to?: number | undefined
+  readonly project?: Project.ID | undefined
+  readonly timezone?: string | undefined
+  readonly tools?: "none" | "summary" | "detail" | undefined
+}
+export type SessionStatsOutput = {
+  readonly range: { readonly from: DateTime.Utc; readonly to: DateTime.Utc }
+  readonly sessions: number
+  readonly subagents: number
+  readonly prompts: number
+  readonly steps: number
+  readonly tokens: {
+    readonly input: number
+    readonly output: number
+    readonly reasoning: number
+    readonly cache: { readonly read: number; readonly write: number }
+  }
+  readonly cost: number & Brand.Brand<"Money.USD">
+  readonly tools:
+    | { readonly mode: "none" }
+    | {
+        readonly mode: "summary"
+        readonly totals: {
+          readonly calls: number
+          readonly succeeded: number
+          readonly failed: number
+          readonly unfinished: number
+        }
+      }
+    | {
+        readonly mode: "detail"
+        readonly totals: {
+          readonly calls: number
+          readonly succeeded: number
+          readonly failed: number
+          readonly unfinished: number
+        }
+        readonly usage: ReadonlyArray<{
+          readonly name: string
+          readonly calls: number
+          readonly succeeded: number
+          readonly failed: number
+          readonly unfinished: number
+          readonly durationP50?: number | undefined
+        }>
+      }
+  readonly activeDays: number
+  readonly streak: number
+  readonly activity: ReadonlyArray<{ readonly date: string; readonly steps: number }>
+  readonly models: ReadonlyArray<{
+    readonly model: Model.Ref
+    readonly steps: number
+    readonly tokens: {
+      readonly input: number
+      readonly output: number
+      readonly reasoning: number
+      readonly cache: { readonly read: number; readonly write: number }
+    }
+    readonly cost: number & Brand.Brand<"Money.USD">
+  }>
+}
+export type SessionStatsOperation<E = never> = (input?: SessionStatsInput) => Effect.Effect<SessionStatsOutput, E>
+
+export type SessionCreateInput = {
   readonly id?: Session.ID | undefined
   readonly title?: string | undefined
   readonly agent?: Agent.ID | undefined
   readonly model?: Model.Ref | undefined
   readonly location?: Location.Ref | undefined
 }
-export type Endpoint6_1Output = Session.Info
-export type SessionCreateOperation<E = never> = (input?: Endpoint6_1Input) => Effect.Effect<Endpoint6_1Output, E>
+export type SessionCreateOutput = Session.Info
+export type SessionCreateOperation<E = never> = (input?: SessionCreateInput) => Effect.Effect<SessionCreateOutput, E>
 
-export type Endpoint6_2Input = {
+export type SessionImportInput = {
   readonly info: Session.Info
   readonly messages: ReadonlyArray<SessionMessage.Info>
   readonly location?: Location.Ref | undefined
 }
-export type Endpoint6_2Output = Session.Info
-export type SessionImportOperation<E = never> = (input: Endpoint6_2Input) => Effect.Effect<Endpoint6_2Output, E>
+export type SessionImportOutput = Session.Info
+export type SessionImportOperation<E = never> = (input: SessionImportInput) => Effect.Effect<SessionImportOutput, E>
 
-export type Endpoint6_3Input = { readonly sessionID: Session.ID; readonly sanitize?: boolean | undefined }
-export type Endpoint6_3Output = { readonly info: Session.Info; readonly messages: ReadonlyArray<SessionMessage.Info> }
-export type SessionExportOperation<E = never> = (input: Endpoint6_3Input) => Effect.Effect<Endpoint6_3Output, E>
+export type SessionExportInput = { readonly sessionID: Session.ID; readonly sanitize?: boolean | undefined }
+export type SessionExportOutput = { readonly info: Session.Info; readonly messages: ReadonlyArray<SessionMessage.Info> }
+export type SessionExportOperation<E = never> = (input: SessionExportInput) => Effect.Effect<SessionExportOutput, E>
 
-export type Endpoint6_4Output = { readonly [x: Session.ID]: { readonly type: "running" } }
-export type SessionActiveOperation<E = never> = () => Effect.Effect<Endpoint6_4Output, E>
+export type SessionActiveOutput = { readonly [x: Session.ID]: { readonly type: "running" } }
+export type SessionActiveOperation<E = never> = () => Effect.Effect<SessionActiveOutput, E>
 
-export type Endpoint6_5Input = { readonly sessionID: Session.ID }
-export type Endpoint6_5Output = Session.Info
-export type SessionGetOperation<E = never> = (input: Endpoint6_5Input) => Effect.Effect<Endpoint6_5Output, E>
+export type SessionGetInput = { readonly sessionID: Session.ID }
+export type SessionGetOutput = Session.Info
+export type SessionGetOperation<E = never> = (input: SessionGetInput) => Effect.Effect<SessionGetOutput, E>
 
-export type Endpoint6_6Input = { readonly sessionID: Session.ID }
-export type Endpoint6_6Output = void
-export type SessionRemoveOperation<E = never> = (input: Endpoint6_6Input) => Effect.Effect<Endpoint6_6Output, E>
+export type SessionRemoveInput = { readonly sessionID: Session.ID }
+export type SessionRemoveOutput = void
+export type SessionRemoveOperation<E = never> = (input: SessionRemoveInput) => Effect.Effect<SessionRemoveOutput, E>
 
-export type Endpoint6_7Input = { readonly sessionID: Session.ID; readonly boundary: Session.ForkRequestBoundary }
-export type Endpoint6_7Output = Session.Info
-export type SessionForkOperation<E = never> = (input: Endpoint6_7Input) => Effect.Effect<Endpoint6_7Output, E>
+export type SessionForkInput = { readonly sessionID: Session.ID; readonly boundary: Session.ForkRequestBoundary }
+export type SessionForkOutput = Session.Info
+export type SessionForkOperation<E = never> = (input: SessionForkInput) => Effect.Effect<SessionForkOutput, E>
 
-export type Endpoint6_8Input = { readonly sessionID: Session.ID; readonly agent: Agent.ID }
-export type Endpoint6_8Output = void
-export type SessionSwitchAgentOperation<E = never> = (input: Endpoint6_8Input) => Effect.Effect<Endpoint6_8Output, E>
+export type SessionSwitchAgentInput = { readonly sessionID: Session.ID; readonly agent: Agent.ID }
+export type SessionSwitchAgentOutput = void
+export type SessionSwitchAgentOperation<E = never> = (
+  input: SessionSwitchAgentInput,
+) => Effect.Effect<SessionSwitchAgentOutput, E>
 
-export type Endpoint6_9Input = { readonly sessionID: Session.ID; readonly model: Model.Ref }
-export type Endpoint6_9Output = void
-export type SessionSwitchModelOperation<E = never> = (input: Endpoint6_9Input) => Effect.Effect<Endpoint6_9Output, E>
+export type SessionSwitchModelInput = { readonly sessionID: Session.ID; readonly model: Model.Ref }
+export type SessionSwitchModelOutput = void
+export type SessionSwitchModelOperation<E = never> = (
+  input: SessionSwitchModelInput,
+) => Effect.Effect<SessionSwitchModelOutput, E>
 
-export type Endpoint6_10Input = { readonly sessionID: Session.ID; readonly title: string }
-export type Endpoint6_10Output = void
-export type SessionRenameOperation<E = never> = (input: Endpoint6_10Input) => Effect.Effect<Endpoint6_10Output, E>
+export type SessionRenameInput = { readonly sessionID: Session.ID; readonly title: string }
+export type SessionRenameOutput = void
+export type SessionRenameOperation<E = never> = (input: SessionRenameInput) => Effect.Effect<SessionRenameOutput, E>
 
-export type Endpoint6_11Input = {
+export type SessionMoveInput = {
   readonly sessionID: Session.ID
   readonly directory: AbsolutePath
   readonly workspaceID?: Workspace.ID | undefined
   readonly delivery?: SessionInbox.Delivery | undefined
 }
-export type Endpoint6_11Output = void
-export type SessionMoveOperation<E = never> = (input: Endpoint6_11Input) => Effect.Effect<Endpoint6_11Output, E>
+export type SessionMoveOutput = void
+export type SessionMoveOperation<E = never> = (input: SessionMoveInput) => Effect.Effect<SessionMoveOutput, E>
 
-export type Endpoint6_12Input = {
+export type SessionPromptInput = {
   readonly sessionID: Session.ID
   readonly id?: SessionMessage.ID | undefined
   readonly text: string
@@ -253,35 +331,31 @@ export type Endpoint6_12Input = {
   readonly delivery?: SessionInbox.Delivery | undefined
   readonly resume?: boolean | undefined
 }
-export type Endpoint6_12Output = SessionInbox.User
-export type SessionPromptOperation<E = never> = (input: Endpoint6_12Input) => Effect.Effect<Endpoint6_12Output, E>
+export type SessionPromptOutput = SessionInbox.User
+export type SessionPromptOperation<E = never> = (input: SessionPromptInput) => Effect.Effect<SessionPromptOutput, E>
 
-export type Endpoint6_13Input = {
+export type SessionCommandInput = {
   readonly sessionID: Session.ID
-  readonly id?: SessionMessage.ID | undefined
   readonly command: string
-  readonly arguments?: string | undefined
-  readonly agent?: Agent.ID | undefined
-  readonly model?: Model.Ref | undefined
+  readonly text: string
   readonly files?: ReadonlyArray<PromptInput.FileAttachment> | undefined
   readonly agents?: ReadonlyArray<AgentAttachment> | undefined
   readonly skills?: ReadonlyArray<PromptInput.SkillAttachment> | undefined
   readonly delivery?: SessionInbox.Delivery | undefined
-  readonly resume?: boolean | undefined
 }
-export type Endpoint6_13Output = SessionInbox.User
-export type SessionCommandOperation<E = never> = (input: Endpoint6_13Input) => Effect.Effect<Endpoint6_13Output, E>
+export type SessionCommandOutput = void
+export type SessionCommandOperation<E = never> = (input: SessionCommandInput) => Effect.Effect<SessionCommandOutput, E>
 
-export type Endpoint6_14Input = {
+export type SessionSkillInput = {
   readonly sessionID: Session.ID
   readonly id?: SessionMessage.ID | undefined
   readonly skill: Skill.ID
   readonly resume?: boolean | undefined
 }
-export type Endpoint6_14Output = void
-export type SessionSkillOperation<E = never> = (input: Endpoint6_14Input) => Effect.Effect<Endpoint6_14Output, E>
+export type SessionSkillOutput = void
+export type SessionSkillOperation<E = never> = (input: SessionSkillInput) => Effect.Effect<SessionSkillOutput, E>
 
-export type Endpoint6_15Input = {
+export type SessionSyntheticInput = {
   readonly sessionID: Session.ID
   readonly id?: SessionMessage.ID | undefined
   readonly text: string
@@ -290,97 +364,115 @@ export type Endpoint6_15Input = {
   readonly delivery?: SessionInbox.Delivery | undefined
   readonly resume?: boolean | undefined
 }
-export type Endpoint6_15Output = SessionInbox.Synthetic
-export type SessionSyntheticOperation<E = never> = (input: Endpoint6_15Input) => Effect.Effect<Endpoint6_15Output, E>
+export type SessionSyntheticOutput = SessionInbox.Synthetic
+export type SessionSyntheticOperation<E = never> = (
+  input: SessionSyntheticInput,
+) => Effect.Effect<SessionSyntheticOutput, E>
 
-export type Endpoint6_16Input = {
+export type SessionShellInput = {
   readonly sessionID: Session.ID
   readonly id?: Event.ID | undefined
   readonly command: string
 }
-export type Endpoint6_16Output = void
-export type SessionShellOperation<E = never> = (input: Endpoint6_16Input) => Effect.Effect<Endpoint6_16Output, E>
+export type SessionShellOutput = void
+export type SessionShellOperation<E = never> = (input: SessionShellInput) => Effect.Effect<SessionShellOutput, E>
 
-export type Endpoint6_17Input = {
+export type SessionCompactInput = {
   readonly sessionID: Session.ID
   readonly id?: SessionMessage.ID | undefined
   readonly delivery?: SessionInbox.Delivery | undefined
 }
-export type Endpoint6_17Output = SessionInbox.Compaction
-export type SessionCompactOperation<E = never> = (input: Endpoint6_17Input) => Effect.Effect<Endpoint6_17Output, E>
+export type SessionCompactOutput = SessionInbox.Compaction
+export type SessionCompactOperation<E = never> = (input: SessionCompactInput) => Effect.Effect<SessionCompactOutput, E>
 
-export type Endpoint6_18Input = { readonly sessionID: Session.ID }
-export type Endpoint6_18Output = void
-export type SessionWaitOperation<E = never> = (input: Endpoint6_18Input) => Effect.Effect<Endpoint6_18Output, E>
+export type SessionWaitInput = { readonly sessionID: Session.ID }
+export type SessionWaitOutput = void
+export type SessionWaitOperation<E = never> = (input: SessionWaitInput) => Effect.Effect<SessionWaitOutput, E>
 
-export type Endpoint6_19Input = {
+export type SessionRevertStageInput = {
   readonly sessionID: Session.ID
   readonly messageID: SessionMessage.ID
   readonly files?: boolean | undefined
 }
-export type Endpoint6_19Output = Session.Revert
-export type SessionRevertStageOperation<E = never> = (input: Endpoint6_19Input) => Effect.Effect<Endpoint6_19Output, E>
+export type SessionRevertStageOutput = Session.Revert
+export type SessionRevertStageOperation<E = never> = (
+  input: SessionRevertStageInput,
+) => Effect.Effect<SessionRevertStageOutput, E>
 
-export type Endpoint6_20Input = { readonly sessionID: Session.ID }
-export type Endpoint6_20Output = void
-export type SessionRevertClearOperation<E = never> = (input: Endpoint6_20Input) => Effect.Effect<Endpoint6_20Output, E>
+export type SessionRevertClearInput = { readonly sessionID: Session.ID }
+export type SessionRevertClearOutput = void
+export type SessionRevertClearOperation<E = never> = (
+  input: SessionRevertClearInput,
+) => Effect.Effect<SessionRevertClearOutput, E>
 
-export type Endpoint6_21Input = { readonly sessionID: Session.ID }
-export type Endpoint6_21Output = void
-export type SessionRevertCommitOperation<E = never> = (input: Endpoint6_21Input) => Effect.Effect<Endpoint6_21Output, E>
+export type SessionRevertCommitInput = { readonly sessionID: Session.ID }
+export type SessionRevertCommitOutput = void
+export type SessionRevertCommitOperation<E = never> = (
+  input: SessionRevertCommitInput,
+) => Effect.Effect<SessionRevertCommitOutput, E>
 
-export type Endpoint6_22Input = { readonly sessionID: Session.ID }
-export type Endpoint6_22Output = ReadonlyArray<SessionMessage.Info>
-export type SessionContextOperation<E = never> = (input: Endpoint6_22Input) => Effect.Effect<Endpoint6_22Output, E>
+export type SessionContextInput = { readonly sessionID: Session.ID }
+export type SessionContextOutput = ReadonlyArray<SessionMessage.Info>
+export type SessionContextOperation<E = never> = (input: SessionContextInput) => Effect.Effect<SessionContextOutput, E>
 
-export type Endpoint6_23Input = { readonly sessionID: Session.ID }
-export type Endpoint6_23Output = ReadonlyArray<SessionInbox.Info>
-export type SessionInboxListOperation<E = never> = (input: Endpoint6_23Input) => Effect.Effect<Endpoint6_23Output, E>
+export type SessionInboxListInput = { readonly sessionID: Session.ID }
+export type SessionInboxListOutput = ReadonlyArray<SessionInbox.Info>
+export type SessionInboxListOperation<E = never> = (
+  input: SessionInboxListInput,
+) => Effect.Effect<SessionInboxListOutput, E>
 
-export type Endpoint6_24Input = { readonly sessionID: Session.ID; readonly inboxID: SessionMessage.ID }
-export type Endpoint6_24Output = void
-export type SessionInboxCancelOperation<E = never> = (input: Endpoint6_24Input) => Effect.Effect<Endpoint6_24Output, E>
+export type SessionInboxCancelInput = { readonly sessionID: Session.ID; readonly inboxID: SessionMessage.ID }
+export type SessionInboxCancelOutput = void
+export type SessionInboxCancelOperation<E = never> = (
+  input: SessionInboxCancelInput,
+) => Effect.Effect<SessionInboxCancelOutput, E>
 
-export type Endpoint6_25Input = { readonly sessionID: Session.ID; readonly inboxID: SessionMessage.ID }
-export type Endpoint6_25Output = void
-export type SessionInboxSteerOperation<E = never> = (input: Endpoint6_25Input) => Effect.Effect<Endpoint6_25Output, E>
+export type SessionInboxSteerInput = { readonly sessionID: Session.ID; readonly inboxID: SessionMessage.ID }
+export type SessionInboxSteerOutput = void
+export type SessionInboxSteerOperation<E = never> = (
+  input: SessionInboxSteerInput,
+) => Effect.Effect<SessionInboxSteerOutput, E>
 
-export type Endpoint6_26Input = { readonly sessionID: Session.ID; readonly inboxID: SessionMessage.ID }
-export type Endpoint6_26Output = void
-export type SessionInboxQueueOperation<E = never> = (input: Endpoint6_26Input) => Effect.Effect<Endpoint6_26Output, E>
+export type SessionInboxQueueInput = { readonly sessionID: Session.ID; readonly inboxID: SessionMessage.ID }
+export type SessionInboxQueueOutput = void
+export type SessionInboxQueueOperation<E = never> = (
+  input: SessionInboxQueueInput,
+) => Effect.Effect<SessionInboxQueueOutput, E>
 
-export type Endpoint6_27Input = { readonly sessionID: Session.ID }
-export type Endpoint6_27Output = ReadonlyArray<InstructionEntry.Info>
+export type SessionInstructionsEntryListInput = { readonly sessionID: Session.ID }
+export type SessionInstructionsEntryListOutput = ReadonlyArray<InstructionEntry.Info>
 export type SessionInstructionsEntryListOperation<E = never> = (
-  input: Endpoint6_27Input,
-) => Effect.Effect<Endpoint6_27Output, E>
+  input: SessionInstructionsEntryListInput,
+) => Effect.Effect<SessionInstructionsEntryListOutput, E>
 
-export type Endpoint6_28Input = {
+export type SessionInstructionsEntryPutInput = {
   readonly sessionID: Session.ID
   readonly key: InstructionEntry.Key
   readonly value: Schema.Json
 }
-export type Endpoint6_28Output = void
+export type SessionInstructionsEntryPutOutput = void
 export type SessionInstructionsEntryPutOperation<E = never> = (
-  input: Endpoint6_28Input,
-) => Effect.Effect<Endpoint6_28Output, E>
+  input: SessionInstructionsEntryPutInput,
+) => Effect.Effect<SessionInstructionsEntryPutOutput, E>
 
-export type Endpoint6_29Input = { readonly sessionID: Session.ID; readonly key: InstructionEntry.Key }
-export type Endpoint6_29Output = void
+export type SessionInstructionsEntryRemoveInput = { readonly sessionID: Session.ID; readonly key: InstructionEntry.Key }
+export type SessionInstructionsEntryRemoveOutput = void
 export type SessionInstructionsEntryRemoveOperation<E = never> = (
-  input: Endpoint6_29Input,
-) => Effect.Effect<Endpoint6_29Output, E>
+  input: SessionInstructionsEntryRemoveInput,
+) => Effect.Effect<SessionInstructionsEntryRemoveOutput, E>
 
-export type Endpoint6_30Input = { readonly sessionID: Session.ID; readonly prompt: string }
-export type Endpoint6_30Output = { readonly text: string }
-export type SessionGenerateOperation<E = never> = (input: Endpoint6_30Input) => Effect.Effect<Endpoint6_30Output, E>
+export type SessionGenerateInput = { readonly sessionID: Session.ID; readonly prompt: string }
+export type SessionGenerateOutput = { readonly text: string }
+export type SessionGenerateOperation<E = never> = (
+  input: SessionGenerateInput,
+) => Effect.Effect<SessionGenerateOutput, E>
 
-export type Endpoint6_31Input = {
+export type SessionLogInput = {
   readonly sessionID: Session.ID
   readonly after?: Event.Seq | undefined
   readonly follow?: boolean | undefined
 }
-export type Endpoint6_31Output =
+export type SessionLogOutput =
   | (
       | {
           readonly id: Event.ID
@@ -455,6 +547,15 @@ export type Endpoint6_31Output =
           readonly id: Event.ID
           readonly created: number
           readonly metadata?: { readonly [x: string]: unknown } | undefined
+          readonly type: "session.viewed"
+          readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
+          readonly location?: Location.Ref | undefined
+          readonly data: { readonly sessionID: Session.ID; readonly idle: number }
+        }
+      | {
+          readonly id: Event.ID
+          readonly created: number
+          readonly metadata?: { readonly [x: string]: unknown } | undefined
           readonly type: "session.deleted"
           readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
           readonly location?: Location.Ref | undefined
@@ -474,6 +575,7 @@ export type Endpoint6_31Output =
             readonly instructions?:
               | { readonly [x: string & Brand.Brand<"Instruction.Key">]: string & Brand.Brand<"Instruction.Hash"> }
               | undefined
+            readonly instructionEntries?: InstructionEntry.Snapshot | undefined
           }
         }
       | {
@@ -974,26 +1076,40 @@ export type Endpoint6_31Output =
         }
     )
   | EventLog.Synced
-export type SessionLogOperation<E = never> = (input: Endpoint6_31Input) => Stream.Stream<Endpoint6_31Output, E>
+export type SessionLogOperation<E = never> = (input: SessionLogInput) => Stream.Stream<SessionLogOutput, E>
 
-export type Endpoint6_32Input = { readonly sessionID: Session.ID; readonly continue?: boolean | undefined }
-export type Endpoint6_32Output = void
-export type SessionInterruptOperation<E = never> = (input: Endpoint6_32Input) => Effect.Effect<Endpoint6_32Output, E>
+export type SessionInterruptInput = { readonly sessionID: Session.ID; readonly continue?: boolean | undefined }
+export type SessionInterruptOutput = { readonly interrupted: boolean }
+export type SessionInterruptOperation<E = never> = (
+  input: SessionInterruptInput,
+) => Effect.Effect<SessionInterruptOutput, E>
 
-export type Endpoint6_33Input = { readonly sessionID: Session.ID }
-export type Endpoint6_33Output = void
-export type SessionBackgroundOperation<E = never> = (input: Endpoint6_33Input) => Effect.Effect<Endpoint6_33Output, E>
+export type SessionBackgroundInput = { readonly sessionID: Session.ID }
+export type SessionBackgroundOutput = void
+export type SessionBackgroundOperation<E = never> = (
+  input: SessionBackgroundInput,
+) => Effect.Effect<SessionBackgroundOutput, E>
 
-export type Endpoint6_34Input = { readonly sessionID: Session.ID; readonly messageID: SessionMessage.ID }
-export type Endpoint6_34Output = SessionMessage.Info
-export type SessionMessageOperation<E = never> = (input: Endpoint6_34Input) => Effect.Effect<Endpoint6_34Output, E>
+export type SessionMessageInput = { readonly sessionID: Session.ID; readonly messageID: SessionMessage.ID }
+export type SessionMessageOutput = SessionMessage.Info
+export type SessionMessageOperation<E = never> = (input: SessionMessageInput) => Effect.Effect<SessionMessageOutput, E>
 
-export type Endpoint6_35Input = { readonly sessionID: Session.ID; readonly variables: { readonly [x: string]: string } }
-export type Endpoint6_35Output = void
-export type SessionEnvironmentOperation<E = never> = (input: Endpoint6_35Input) => Effect.Effect<Endpoint6_35Output, E>
+export type SessionEnvironmentInput = {
+  readonly sessionID: Session.ID
+  readonly variables: { readonly [x: string]: string }
+}
+export type SessionEnvironmentOutput = void
+export type SessionEnvironmentOperation<E = never> = (
+  input: SessionEnvironmentInput,
+) => Effect.Effect<SessionEnvironmentOutput, E>
+
+export type SessionViewInput = { readonly sessionID: Session.ID; readonly idle: number }
+export type SessionViewOutput = void
+export type SessionViewOperation<E = never> = (input: SessionViewInput) => Effect.Effect<SessionViewOutput, E>
 
 export interface SessionApi<E = never> {
   readonly list: SessionListOperation<E>
+  readonly stats: SessionStatsOperation<E>
   readonly create: SessionCreateOperation<E>
   readonly import: SessionImportOperation<E>
   readonly export: SessionExportOperation<E>
@@ -1037,178 +1153,186 @@ export interface SessionApi<E = never> {
   readonly background: SessionBackgroundOperation<E>
   readonly message: SessionMessageOperation<E>
   readonly environment: SessionEnvironmentOperation<E>
+  readonly view: SessionViewOperation<E>
 }
 
-export type Endpoint7_0Input = {
+export type MessageListInput = {
   readonly sessionID: Session.ID
   readonly limit?: number | undefined
   readonly order?: "asc" | "desc" | undefined
   readonly cursor?: string | undefined
 }
-export type Endpoint7_0Output = {
+export type MessageListOutput = {
   readonly data: ReadonlyArray<SessionMessage.Info>
   readonly cursor: { readonly previous?: string | undefined; readonly next?: string | undefined }
 }
-export type MessageListOperation<E = never> = (input: Endpoint7_0Input) => Effect.Effect<Endpoint7_0Output, E>
+export type MessageListOperation<E = never> = (input: MessageListInput) => Effect.Effect<MessageListOutput, E>
 
 export interface MessageApi<E = never> {
   readonly list: MessageListOperation<E>
 }
 
-export type Endpoint8_0Input = {
+export type ModelListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint8_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Model.Info> }
-export type ModelListOperation<E = never> = (input?: Endpoint8_0Input) => Effect.Effect<Endpoint8_0Output, E>
+export type ModelListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Model.Info> }
+export type ModelListOperation<E = never> = (input?: ModelListInput) => Effect.Effect<ModelListOutput, E>
 
-export type Endpoint8_1Input = {
+export type ModelDefaultInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint8_1Output = { readonly location: Location.Info; readonly data: Model.Info | undefined }
-export type ModelDefaultOperation<E = never> = (input?: Endpoint8_1Input) => Effect.Effect<Endpoint8_1Output, E>
+export type ModelDefaultOutput = { readonly location: Location.Info; readonly data: Model.Info | undefined }
+export type ModelDefaultOperation<E = never> = (input?: ModelDefaultInput) => Effect.Effect<ModelDefaultOutput, E>
 
 export interface ModelApi<E = never> {
   readonly list: ModelListOperation<E>
   readonly default: ModelDefaultOperation<E>
 }
 
-export type Endpoint9_0Input = {
-  readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
-  readonly prompt: string
-  readonly model?: Model.Ref | undefined
-}
-export type Endpoint9_0Output = { readonly text: string }
-export type GenerateTextOperation<E = never> = (input: Endpoint9_0Input) => Effect.Effect<Endpoint9_0Output, E>
+export type GenerateTextInput = { readonly prompt: string; readonly model?: Model.Ref | undefined }
+export type GenerateTextOutput = { readonly text: string }
+export type GenerateTextOperation<E = never> = (input: GenerateTextInput) => Effect.Effect<GenerateTextOutput, E>
 
 export interface GenerateApi<E = never> {
   readonly text: GenerateTextOperation<E>
 }
 
-export type Endpoint10_0Input = {
+export type ProviderListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint10_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Provider.Info> }
-export type ProviderListOperation<E = never> = (input?: Endpoint10_0Input) => Effect.Effect<Endpoint10_0Output, E>
+export type ProviderListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Provider.Info> }
+export type ProviderListOperation<E = never> = (input?: ProviderListInput) => Effect.Effect<ProviderListOutput, E>
 
-export type Endpoint10_1Input = {
+export type ProviderGetInput = {
   readonly providerID: Provider.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint10_1Output = { readonly location: Location.Info; readonly data: Provider.Info }
-export type ProviderGetOperation<E = never> = (input: Endpoint10_1Input) => Effect.Effect<Endpoint10_1Output, E>
+export type ProviderGetOutput = { readonly location: Location.Info; readonly data: Provider.Info }
+export type ProviderGetOperation<E = never> = (input: ProviderGetInput) => Effect.Effect<ProviderGetOutput, E>
 
 export interface ProviderApi<E = never> {
   readonly list: ProviderListOperation<E>
   readonly get: ProviderGetOperation<E>
 }
 
-export type Endpoint11_0Input = {
+export type IntegrationListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint11_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Integration.Info> }
-export type IntegrationListOperation<E = never> = (input?: Endpoint11_0Input) => Effect.Effect<Endpoint11_0Output, E>
+export type IntegrationListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Integration.Info> }
+export type IntegrationListOperation<E = never> = (
+  input?: IntegrationListInput,
+) => Effect.Effect<IntegrationListOutput, E>
 
-export type Endpoint11_1Input = {
+export type IntegrationGetInput = {
   readonly integrationID: Integration.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint11_1Output = { readonly location: Location.Info; readonly data: Integration.Info | undefined }
-export type IntegrationGetOperation<E = never> = (input: Endpoint11_1Input) => Effect.Effect<Endpoint11_1Output, E>
+export type IntegrationGetOutput = { readonly location: Location.Info; readonly data: Integration.Info | undefined }
+export type IntegrationGetOperation<E = never> = (input: IntegrationGetInput) => Effect.Effect<IntegrationGetOutput, E>
 
-export type Endpoint11_2Input = {
+export type IntegrationWellknownAddInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly url: string
 }
-export type Endpoint11_2Output = void
+export type IntegrationWellknownAddOutput = void
 export type IntegrationWellknownAddOperation<E = never> = (
-  input: Endpoint11_2Input,
-) => Effect.Effect<Endpoint11_2Output, E>
+  input: IntegrationWellknownAddInput,
+) => Effect.Effect<IntegrationWellknownAddOutput, E>
 
-export type Endpoint11_3Input = {
+export type IntegrationConnectKeyInput = {
   readonly integrationID: Integration.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly key: string
   readonly answer?: Form.Answer | undefined
   readonly label?: string | undefined
 }
-export type Endpoint11_3Output = void
+export type IntegrationConnectKeyOutput = void
 export type IntegrationConnectKeyOperation<E = never> = (
-  input: Endpoint11_3Input,
-) => Effect.Effect<Endpoint11_3Output, E>
+  input: IntegrationConnectKeyInput,
+) => Effect.Effect<IntegrationConnectKeyOutput, E>
 
-export type Endpoint11_4Input = {
+export type IntegrationOauthConnectInput = {
   readonly integrationID: Integration.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly methodID: Integration.MethodID
   readonly answer?: Form.Answer | undefined
   readonly label?: string | undefined
 }
-export type Endpoint11_4Output = { readonly location: Location.Info; readonly data: Integration.Attempt }
+export type IntegrationOauthConnectOutput = { readonly location: Location.Info; readonly data: Integration.Attempt }
 export type IntegrationOauthConnectOperation<E = never> = (
-  input: Endpoint11_4Input,
-) => Effect.Effect<Endpoint11_4Output, E>
+  input: IntegrationOauthConnectInput,
+) => Effect.Effect<IntegrationOauthConnectOutput, E>
 
-export type Endpoint11_5Input = {
+export type IntegrationOauthStatusInput = {
   readonly integrationID: Integration.ID
   readonly attemptID: Integration.AttemptID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint11_5Output = { readonly location: Location.Info; readonly data: Integration.AttemptStatus }
+export type IntegrationOauthStatusOutput = {
+  readonly location: Location.Info
+  readonly data: Integration.AttemptStatus
+}
 export type IntegrationOauthStatusOperation<E = never> = (
-  input: Endpoint11_5Input,
-) => Effect.Effect<Endpoint11_5Output, E>
+  input: IntegrationOauthStatusInput,
+) => Effect.Effect<IntegrationOauthStatusOutput, E>
 
-export type Endpoint11_6Input = {
+export type IntegrationOauthCompleteInput = {
   readonly integrationID: Integration.ID
   readonly attemptID: Integration.AttemptID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly code?: string | undefined
 }
-export type Endpoint11_6Output = void
+export type IntegrationOauthCompleteOutput = void
 export type IntegrationOauthCompleteOperation<E = never> = (
-  input: Endpoint11_6Input,
-) => Effect.Effect<Endpoint11_6Output, E>
+  input: IntegrationOauthCompleteInput,
+) => Effect.Effect<IntegrationOauthCompleteOutput, E>
 
-export type Endpoint11_7Input = {
+export type IntegrationOauthCancelInput = {
   readonly integrationID: Integration.ID
   readonly attemptID: Integration.AttemptID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint11_7Output = void
+export type IntegrationOauthCancelOutput = void
 export type IntegrationOauthCancelOperation<E = never> = (
-  input: Endpoint11_7Input,
-) => Effect.Effect<Endpoint11_7Output, E>
+  input: IntegrationOauthCancelInput,
+) => Effect.Effect<IntegrationOauthCancelOutput, E>
 
-export type Endpoint11_8Input = {
+export type IntegrationCommandConnectInput = {
   readonly integrationID: Integration.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly methodID: Integration.MethodID
   readonly label?: string | undefined
 }
-export type Endpoint11_8Output = { readonly location: Location.Info; readonly data: Integration.CommandAttempt }
+export type IntegrationCommandConnectOutput = {
+  readonly location: Location.Info
+  readonly data: Integration.CommandAttempt
+}
 export type IntegrationCommandConnectOperation<E = never> = (
-  input: Endpoint11_8Input,
-) => Effect.Effect<Endpoint11_8Output, E>
+  input: IntegrationCommandConnectInput,
+) => Effect.Effect<IntegrationCommandConnectOutput, E>
 
-export type Endpoint11_9Input = {
+export type IntegrationCommandStatusInput = {
   readonly integrationID: Integration.ID
   readonly attemptID: Integration.AttemptID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint11_9Output = { readonly location: Location.Info; readonly data: Integration.CommandAttemptStatus }
+export type IntegrationCommandStatusOutput = {
+  readonly location: Location.Info
+  readonly data: Integration.CommandAttemptStatus
+}
 export type IntegrationCommandStatusOperation<E = never> = (
-  input: Endpoint11_9Input,
-) => Effect.Effect<Endpoint11_9Output, E>
+  input: IntegrationCommandStatusInput,
+) => Effect.Effect<IntegrationCommandStatusOutput, E>
 
-export type Endpoint11_10Input = {
+export type IntegrationCommandCancelInput = {
   readonly integrationID: Integration.ID
   readonly attemptID: Integration.AttemptID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint11_10Output = void
+export type IntegrationCommandCancelOutput = void
 export type IntegrationCommandCancelOperation<E = never> = (
-  input: Endpoint11_10Input,
-) => Effect.Effect<Endpoint11_10Output, E>
+  input: IntegrationCommandCancelInput,
+) => Effect.Effect<IntegrationCommandCancelOutput, E>
 
 export interface IntegrationApi<E = never> {
   readonly list: IntegrationListOperation<E>
@@ -1228,46 +1352,48 @@ export interface IntegrationApi<E = never> {
   }
 }
 
-export type Endpoint12_0Input = {
+export type McpListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint12_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Mcp.Server> }
-export type McpListOperation<E = never> = (input?: Endpoint12_0Input) => Effect.Effect<Endpoint12_0Output, E>
+export type McpListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Mcp.Server> }
+export type McpListOperation<E = never> = (input?: McpListInput) => Effect.Effect<McpListOutput, E>
 
-export type Endpoint12_1Input = {
+export type McpAddInput = {
   readonly server: string
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly config: Mcp.LocalConfig | Mcp.RemoteConfig
 }
-export type Endpoint12_1Output = void
-export type McpAddOperation<E = never> = (input: Endpoint12_1Input) => Effect.Effect<Endpoint12_1Output, E>
+export type McpAddOutput = void
+export type McpAddOperation<E = never> = (input: McpAddInput) => Effect.Effect<McpAddOutput, E>
 
-export type Endpoint12_2Input = {
+export type McpRemoveInput = {
   readonly server: string
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint12_2Output = void
-export type McpRemoveOperation<E = never> = (input: Endpoint12_2Input) => Effect.Effect<Endpoint12_2Output, E>
+export type McpRemoveOutput = void
+export type McpRemoveOperation<E = never> = (input: McpRemoveInput) => Effect.Effect<McpRemoveOutput, E>
 
-export type Endpoint12_3Input = {
+export type McpConnectInput = {
   readonly server: string
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint12_3Output = void
-export type McpConnectOperation<E = never> = (input: Endpoint12_3Input) => Effect.Effect<Endpoint12_3Output, E>
+export type McpConnectOutput = void
+export type McpConnectOperation<E = never> = (input: McpConnectInput) => Effect.Effect<McpConnectOutput, E>
 
-export type Endpoint12_4Input = {
+export type McpDisconnectInput = {
   readonly server: string
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint12_4Output = void
-export type McpDisconnectOperation<E = never> = (input: Endpoint12_4Input) => Effect.Effect<Endpoint12_4Output, E>
+export type McpDisconnectOutput = void
+export type McpDisconnectOperation<E = never> = (input: McpDisconnectInput) => Effect.Effect<McpDisconnectOutput, E>
 
-export type Endpoint12_5Input = {
+export type McpResourceCatalogInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint12_5Output = { readonly location: Location.Info; readonly data: Mcp.ResourceCatalog }
-export type McpResourceCatalogOperation<E = never> = (input?: Endpoint12_5Input) => Effect.Effect<Endpoint12_5Output, E>
+export type McpResourceCatalogOutput = { readonly location: Location.Info; readonly data: Mcp.ResourceCatalog }
+export type McpResourceCatalogOperation<E = never> = (
+  input?: McpResourceCatalogInput,
+) => Effect.Effect<McpResourceCatalogOutput, E>
 
 export interface McpApi<E = never> {
   readonly list: McpListOperation<E>
@@ -1278,75 +1404,101 @@ export interface McpApi<E = never> {
   readonly resource: { readonly catalog: McpResourceCatalogOperation<E> }
 }
 
-export type Endpoint13_0Input = {
+export type CredentialUpdateInput = {
   readonly credentialID: Credential.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly label: string
 }
-export type Endpoint13_0Output = void
-export type CredentialUpdateOperation<E = never> = (input: Endpoint13_0Input) => Effect.Effect<Endpoint13_0Output, E>
+export type CredentialUpdateOutput = void
+export type CredentialUpdateOperation<E = never> = (
+  input: CredentialUpdateInput,
+) => Effect.Effect<CredentialUpdateOutput, E>
 
-export type Endpoint13_1Input = {
+export type CredentialActivateInput = {
   readonly credentialID: Credential.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint13_1Output = void
-export type CredentialRemoveOperation<E = never> = (input: Endpoint13_1Input) => Effect.Effect<Endpoint13_1Output, E>
+export type CredentialActivateOutput = void
+export type CredentialActivateOperation<E = never> = (
+  input: CredentialActivateInput,
+) => Effect.Effect<CredentialActivateOutput, E>
+
+export type CredentialRemoveInput = {
+  readonly credentialID: Credential.ID
+  readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+}
+export type CredentialRemoveOutput = void
+export type CredentialRemoveOperation<E = never> = (
+  input: CredentialRemoveInput,
+) => Effect.Effect<CredentialRemoveOutput, E>
 
 export interface CredentialApi<E = never> {
   readonly update: CredentialUpdateOperation<E>
+  readonly activate: CredentialActivateOperation<E>
   readonly remove: CredentialRemoveOperation<E>
 }
 
-export type Endpoint14_0Output = ReadonlyArray<Project.Info>
-export type ProjectListOperation<E = never> = () => Effect.Effect<Endpoint14_0Output, E>
+export type ProjectListOutput = ReadonlyArray<Project.Info>
+export type ProjectListOperation<E = never> = () => Effect.Effect<ProjectListOutput, E>
 
-export type Endpoint14_1Input = {
+export type ProjectUpdateInput = {
+  readonly projectID: Project.ID
+  readonly name?: string | undefined
+  readonly icon?: Project.Icon | undefined
+  readonly commands?: Project.Commands | undefined
+}
+export type ProjectUpdateOutput = Project.Info
+export type ProjectUpdateOperation<E = never> = (input: ProjectUpdateInput) => Effect.Effect<ProjectUpdateOutput, E>
+
+export type ProjectCurrentInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint14_1Output = Project.Current
-export type ProjectCurrentOperation<E = never> = (input?: Endpoint14_1Input) => Effect.Effect<Endpoint14_1Output, E>
+export type ProjectCurrentOutput = Project.Current
+export type ProjectCurrentOperation<E = never> = (input?: ProjectCurrentInput) => Effect.Effect<ProjectCurrentOutput, E>
 
 export interface ProjectApi<E = never> {
   readonly list: ProjectListOperation<E>
+  readonly update: ProjectUpdateOperation<E>
   readonly current: ProjectCurrentOperation<E>
 }
 
-export type Endpoint15_0Input = {
+export type FormRequestListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint15_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Form.Info> }
-export type FormRequestListOperation<E = never> = (input?: Endpoint15_0Input) => Effect.Effect<Endpoint15_0Output, E>
+export type FormRequestListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Form.Info> }
+export type FormRequestListOperation<E = never> = (
+  input?: FormRequestListInput,
+) => Effect.Effect<FormRequestListOutput, E>
 
-export type Endpoint15_1Input = { readonly sessionID: string }
-export type Endpoint15_1Output = ReadonlyArray<Form.Info>
-export type FormListOperation<E = never> = (input: Endpoint15_1Input) => Effect.Effect<Endpoint15_1Output, E>
+export type FormListInput = { readonly sessionID: string }
+export type FormListOutput = ReadonlyArray<Form.Info>
+export type FormListOperation<E = never> = (input: FormListInput) => Effect.Effect<FormListOutput, E>
 
-export type Endpoint15_2Input = {
+export type FormCreateInput = {
   readonly sessionID: string
   readonly id?: Form.ID | undefined
   readonly title: string
   readonly metadata?: Form.Metadata | undefined
   readonly fields: Form.Fields
 }
-export type Endpoint15_2Output = Form.Info
-export type FormCreateOperation<E = never> = (input: Endpoint15_2Input) => Effect.Effect<Endpoint15_2Output, E>
+export type FormCreateOutput = Form.Info
+export type FormCreateOperation<E = never> = (input: FormCreateInput) => Effect.Effect<FormCreateOutput, E>
 
-export type Endpoint15_3Input = { readonly sessionID: string; readonly formID: Form.ID }
-export type Endpoint15_3Output = Form.Info
-export type FormGetOperation<E = never> = (input: Endpoint15_3Input) => Effect.Effect<Endpoint15_3Output, E>
+export type FormGetInput = { readonly sessionID: string; readonly formID: Form.ID }
+export type FormGetOutput = Form.Info
+export type FormGetOperation<E = never> = (input: FormGetInput) => Effect.Effect<FormGetOutput, E>
 
-export type Endpoint15_4Input = { readonly sessionID: string; readonly formID: Form.ID }
-export type Endpoint15_4Output = Form.State
-export type FormStateOperation<E = never> = (input: Endpoint15_4Input) => Effect.Effect<Endpoint15_4Output, E>
+export type FormStateInput = { readonly sessionID: string; readonly formID: Form.ID }
+export type FormStateOutput = Form.State
+export type FormStateOperation<E = never> = (input: FormStateInput) => Effect.Effect<FormStateOutput, E>
 
-export type Endpoint15_5Input = { readonly sessionID: string; readonly formID: Form.ID; readonly answer: Form.Answer }
-export type Endpoint15_5Output = void
-export type FormReplyOperation<E = never> = (input: Endpoint15_5Input) => Effect.Effect<Endpoint15_5Output, E>
+export type FormReplyInput = { readonly sessionID: string; readonly formID: Form.ID; readonly answer: Form.Answer }
+export type FormReplyOutput = void
+export type FormReplyOperation<E = never> = (input: FormReplyInput) => Effect.Effect<FormReplyOutput, E>
 
-export type Endpoint15_6Input = { readonly sessionID: string; readonly formID: Form.ID }
-export type Endpoint15_6Output = void
-export type FormCancelOperation<E = never> = (input: Endpoint15_6Input) => Effect.Effect<Endpoint15_6Output, E>
+export type FormCancelInput = { readonly sessionID: string; readonly formID: Form.ID }
+export type FormCancelOutput = void
+export type FormCancelOperation<E = never> = (input: FormCancelInput) => Effect.Effect<FormCancelOutput, E>
 
 export interface FormApi<E = never> {
   readonly request: { readonly list: FormRequestListOperation<E> }
@@ -1358,27 +1510,30 @@ export interface FormApi<E = never> {
   readonly cancel: FormCancelOperation<E>
 }
 
-export type Endpoint16_0Input = {
+export type PermissionRequestListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint16_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Permission.Request> }
+export type PermissionRequestListOutput = {
+  readonly location: Location.Info
+  readonly data: ReadonlyArray<Permission.Request>
+}
 export type PermissionRequestListOperation<E = never> = (
-  input?: Endpoint16_0Input,
-) => Effect.Effect<Endpoint16_0Output, E>
+  input?: PermissionRequestListInput,
+) => Effect.Effect<PermissionRequestListOutput, E>
 
-export type Endpoint16_1Input = { readonly projectID?: Project.ID | undefined }
-export type Endpoint16_1Output = ReadonlyArray<PermissionSaved.Info>
+export type PermissionSavedListInput = { readonly projectID?: Project.ID | undefined }
+export type PermissionSavedListOutput = ReadonlyArray<PermissionSaved.Info>
 export type PermissionSavedListOperation<E = never> = (
-  input?: Endpoint16_1Input,
-) => Effect.Effect<Endpoint16_1Output, E>
+  input?: PermissionSavedListInput,
+) => Effect.Effect<PermissionSavedListOutput, E>
 
-export type Endpoint16_2Input = { readonly id: PermissionSaved.ID }
-export type Endpoint16_2Output = void
+export type PermissionSavedRemoveInput = { readonly id: PermissionSaved.ID }
+export type PermissionSavedRemoveOutput = void
 export type PermissionSavedRemoveOperation<E = never> = (
-  input: Endpoint16_2Input,
-) => Effect.Effect<Endpoint16_2Output, E>
+  input: PermissionSavedRemoveInput,
+) => Effect.Effect<PermissionSavedRemoveOutput, E>
 
-export type Endpoint16_3Input = {
+export type PermissionCreateInput = {
   readonly sessionID: Session.ID
   readonly id?: Permission.ID | undefined
   readonly action: string
@@ -1388,25 +1543,29 @@ export type Endpoint16_3Input = {
   readonly source?: Permission.Source | undefined
   readonly agent?: Agent.ID | undefined
 }
-export type Endpoint16_3Output = { readonly id: Permission.ID; readonly effect: Permission.Effect }
-export type PermissionCreateOperation<E = never> = (input: Endpoint16_3Input) => Effect.Effect<Endpoint16_3Output, E>
+export type PermissionCreateOutput = { readonly id: Permission.ID; readonly effect: Permission.Effect }
+export type PermissionCreateOperation<E = never> = (
+  input: PermissionCreateInput,
+) => Effect.Effect<PermissionCreateOutput, E>
 
-export type Endpoint16_4Input = { readonly sessionID: Session.ID }
-export type Endpoint16_4Output = ReadonlyArray<Permission.Request>
-export type PermissionListOperation<E = never> = (input: Endpoint16_4Input) => Effect.Effect<Endpoint16_4Output, E>
+export type PermissionListInput = { readonly sessionID: Session.ID }
+export type PermissionListOutput = ReadonlyArray<Permission.Request>
+export type PermissionListOperation<E = never> = (input: PermissionListInput) => Effect.Effect<PermissionListOutput, E>
 
-export type Endpoint16_5Input = { readonly sessionID: Session.ID; readonly requestID: Permission.ID }
-export type Endpoint16_5Output = Permission.Request
-export type PermissionGetOperation<E = never> = (input: Endpoint16_5Input) => Effect.Effect<Endpoint16_5Output, E>
+export type PermissionGetInput = { readonly sessionID: Session.ID; readonly requestID: Permission.ID }
+export type PermissionGetOutput = Permission.Request
+export type PermissionGetOperation<E = never> = (input: PermissionGetInput) => Effect.Effect<PermissionGetOutput, E>
 
-export type Endpoint16_6Input = {
+export type PermissionReplyInput = {
   readonly sessionID: Session.ID
   readonly requestID: Permission.ID
   readonly reply: Permission.Reply
   readonly message?: string | undefined
 }
-export type Endpoint16_6Output = void
-export type PermissionReplyOperation<E = never> = (input: Endpoint16_6Input) => Effect.Effect<Endpoint16_6Output, E>
+export type PermissionReplyOutput = void
+export type PermissionReplyOperation<E = never> = (
+  input: PermissionReplyInput,
+) => Effect.Effect<PermissionReplyOutput, E>
 
 export interface PermissionApi<E = never> {
   readonly request: { readonly list: PermissionRequestListOperation<E> }
@@ -1417,61 +1576,61 @@ export interface PermissionApi<E = never> {
   readonly reply: PermissionReplyOperation<E>
 }
 
-export type Endpoint17_0Input = {
+export type FileListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly path?: RelativePath | undefined
 }
-export type Endpoint17_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<FileSystem.Entry> }
-export type FileListOperation<E = never> = (input?: Endpoint17_0Input) => Effect.Effect<Endpoint17_0Output, E>
+export type FileListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<FileSystem.Entry> }
+export type FileListOperation<E = never> = (input?: FileListInput) => Effect.Effect<FileListOutput, E>
 
-export type Endpoint17_1Input = {
+export type FileFindInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly query: string
   readonly type?: "file" | "directory" | undefined
   readonly limit?: number | undefined
 }
-export type Endpoint17_1Output = { readonly location: Location.Info; readonly data: ReadonlyArray<FileSystem.Entry> }
-export type FileFindOperation<E = never> = (input: Endpoint17_1Input) => Effect.Effect<Endpoint17_1Output, E>
+export type FileFindOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<FileSystem.Entry> }
+export type FileFindOperation<E = never> = (input: FileFindInput) => Effect.Effect<FileFindOutput, E>
 
 export interface FileApi<E = never> {
   readonly list: FileListOperation<E>
   readonly find: FileFindOperation<E>
 }
 
-export type Endpoint18_0Input = {
+export type CommandListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint18_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Command.Info> }
-export type CommandListOperation<E = never> = (input?: Endpoint18_0Input) => Effect.Effect<Endpoint18_0Output, E>
+export type CommandListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Command.Info> }
+export type CommandListOperation<E = never> = (input?: CommandListInput) => Effect.Effect<CommandListOutput, E>
 
 export interface CommandApi<E = never> {
   readonly list: CommandListOperation<E>
 }
 
-export type Endpoint19_0Input = {
+export type SkillListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint19_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Skill.Info> }
-export type SkillListOperation<E = never> = (input?: Endpoint19_0Input) => Effect.Effect<Endpoint19_0Output, E>
+export type SkillListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Skill.Info> }
+export type SkillListOperation<E = never> = (input?: SkillListInput) => Effect.Effect<SkillListOutput, E>
 
 export interface SkillApi<E = never> {
   readonly list: SkillListOperation<E>
 }
 
-export type Endpoint20_0Output = OpenCodeEvent
-export type EventSubscribeOperation<E = never> = () => Stream.Stream<Endpoint20_0Output, E>
+export type EventSubscribeOutput = OpenCodeEvent
+export type EventSubscribeOperation<E = never> = () => Stream.Stream<EventSubscribeOutput, E>
 
 export interface EventApi<E = never> {
   readonly subscribe: EventSubscribeOperation<E>
 }
 
-export type Endpoint21_0Input = {
+export type PtyListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint21_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Pty.Info> }
-export type PtyListOperation<E = never> = (input?: Endpoint21_0Input) => Effect.Effect<Endpoint21_0Output, E>
+export type PtyListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Pty.Info> }
+export type PtyListOperation<E = never> = (input?: PtyListInput) => Effect.Effect<PtyListOutput, E>
 
-export type Endpoint21_1Input = {
+export type PtyCreateInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly command?: string | undefined
   readonly args?: ReadonlyArray<string> | undefined
@@ -1479,31 +1638,41 @@ export type Endpoint21_1Input = {
   readonly title?: string | undefined
   readonly env?: { readonly [x: string]: string } | undefined
 }
-export type Endpoint21_1Output = { readonly location: Location.Info; readonly data: Pty.Info }
-export type PtyCreateOperation<E = never> = (input?: Endpoint21_1Input) => Effect.Effect<Endpoint21_1Output, E>
+export type PtyCreateOutput = { readonly location: Location.Info; readonly data: Pty.Info }
+export type PtyCreateOperation<E = never> = (input?: PtyCreateInput) => Effect.Effect<PtyCreateOutput, E>
 
-export type Endpoint21_2Input = {
+export type PtyGetInput = {
   readonly ptyID: Pty.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint21_2Output = { readonly location: Location.Info; readonly data: Pty.Info }
-export type PtyGetOperation<E = never> = (input: Endpoint21_2Input) => Effect.Effect<Endpoint21_2Output, E>
+export type PtyGetOutput = { readonly location: Location.Info; readonly data: Pty.Info }
+export type PtyGetOperation<E = never> = (input: PtyGetInput) => Effect.Effect<PtyGetOutput, E>
 
-export type Endpoint21_3Input = {
+export type PtyUpdateInput = {
   readonly ptyID: Pty.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly title?: string | undefined
   readonly size?: { readonly rows: number; readonly cols: number } | undefined
 }
-export type Endpoint21_3Output = { readonly location: Location.Info; readonly data: Pty.Info }
-export type PtyUpdateOperation<E = never> = (input: Endpoint21_3Input) => Effect.Effect<Endpoint21_3Output, E>
+export type PtyUpdateOutput = { readonly location: Location.Info; readonly data: Pty.Info }
+export type PtyUpdateOperation<E = never> = (input: PtyUpdateInput) => Effect.Effect<PtyUpdateOutput, E>
 
-export type Endpoint21_4Input = {
+export type PtyRemoveInput = {
   readonly ptyID: Pty.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint21_4Output = void
-export type PtyRemoveOperation<E = never> = (input: Endpoint21_4Input) => Effect.Effect<Endpoint21_4Output, E>
+export type PtyRemoveOutput = void
+export type PtyRemoveOperation<E = never> = (input: PtyRemoveInput) => Effect.Effect<PtyRemoveOutput, E>
+
+export type PtyConnectTokenInput = {
+  readonly ptyID: Pty.ID
+  readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  readonly "x-opencode-ticket"?: string | undefined
+}
+export type PtyConnectTokenOutput = { readonly location: Location.Info; readonly data: PtyTicket.ConnectToken }
+export type PtyConnectTokenOperation<E = never> = (
+  input: PtyConnectTokenInput,
+) => Effect.Effect<PtyConnectTokenOutput, E>
 
 export interface PtyApi<E = never> {
   readonly list: PtyListOperation<E>
@@ -1511,46 +1680,193 @@ export interface PtyApi<E = never> {
   readonly get: PtyGetOperation<E>
   readonly update: PtyUpdateOperation<E>
   readonly remove: PtyRemoveOperation<E>
+  readonly connect: { readonly token: PtyConnectTokenOperation<E> }
 }
 
-export type Endpoint22_0Input = {
+export type ExperimentalPersistentPtyListInput = { readonly sessionID: Session.ID }
+export type ExperimentalPersistentPtyListOutput = ReadonlyArray<{
+  readonly id: Pty.ID
+  readonly title: string
+  readonly command: string
+  readonly args: ReadonlyArray<string>
+  readonly cwd: string
+  readonly status: "running" | "exited"
+  readonly pid: number
+  readonly exitCode?: number | undefined
+  readonly sessionID: Session.ID
+  readonly foregroundProcess: string | null
+  readonly size: { readonly cols: number; readonly rows: number }
+  readonly output: { readonly head: number; readonly tail: number }
+}>
+export type ExperimentalPersistentPtyListOperation<E = never> = (
+  input: ExperimentalPersistentPtyListInput,
+) => Effect.Effect<ExperimentalPersistentPtyListOutput, E>
+
+export type ExperimentalPersistentPtyCreateInput = {
+  readonly sessionID: Session.ID
+  readonly command: string
+  readonly args: ReadonlyArray<string>
+  readonly cwd: string
+  readonly title: string
+  readonly env: { readonly [x: string]: string }
+  readonly size?: { readonly cols: number; readonly rows: number } | undefined
+}
+export type ExperimentalPersistentPtyCreateOutput = {
+  readonly id: Pty.ID
+  readonly title: string
+  readonly command: string
+  readonly args: ReadonlyArray<string>
+  readonly cwd: string
+  readonly status: "running" | "exited"
+  readonly pid: number
+  readonly exitCode?: number | undefined
+  readonly sessionID: Session.ID
+  readonly foregroundProcess: string | null
+  readonly size: { readonly cols: number; readonly rows: number }
+  readonly output: { readonly head: number; readonly tail: number }
+}
+export type ExperimentalPersistentPtyCreateOperation<E = never> = (
+  input: ExperimentalPersistentPtyCreateInput,
+) => Effect.Effect<ExperimentalPersistentPtyCreateOutput, E>
+
+export type ExperimentalPersistentPtyShutdownOutput = void
+export type ExperimentalPersistentPtyShutdownOperation<E = never> = () => Effect.Effect<
+  ExperimentalPersistentPtyShutdownOutput,
+  E
+>
+
+export type ExperimentalPersistentPtyGetInput = { readonly ptyID: Pty.ID }
+export type ExperimentalPersistentPtyGetOutput = {
+  readonly id: Pty.ID
+  readonly title: string
+  readonly command: string
+  readonly args: ReadonlyArray<string>
+  readonly cwd: string
+  readonly status: "running" | "exited"
+  readonly pid: number
+  readonly exitCode?: number | undefined
+  readonly sessionID: Session.ID
+  readonly foregroundProcess: string | null
+  readonly size: { readonly cols: number; readonly rows: number }
+  readonly output: { readonly head: number; readonly tail: number }
+}
+export type ExperimentalPersistentPtyGetOperation<E = never> = (
+  input: ExperimentalPersistentPtyGetInput,
+) => Effect.Effect<ExperimentalPersistentPtyGetOutput, E>
+
+export type ExperimentalPersistentPtyUpdateInput = {
+  readonly ptyID: Pty.ID
+  readonly attachmentID?: string | undefined
+  readonly size: { readonly cols: number; readonly rows: number }
+}
+export type ExperimentalPersistentPtyUpdateOutput = {
+  readonly id: Pty.ID
+  readonly title: string
+  readonly command: string
+  readonly args: ReadonlyArray<string>
+  readonly cwd: string
+  readonly status: "running" | "exited"
+  readonly pid: number
+  readonly exitCode?: number | undefined
+  readonly sessionID: Session.ID
+  readonly foregroundProcess: string | null
+  readonly size: { readonly cols: number; readonly rows: number }
+  readonly output: { readonly head: number; readonly tail: number }
+}
+export type ExperimentalPersistentPtyUpdateOperation<E = never> = (
+  input: ExperimentalPersistentPtyUpdateInput,
+) => Effect.Effect<ExperimentalPersistentPtyUpdateOutput, E>
+
+export type ExperimentalPersistentPtySnapshotInput = { readonly ptyID: Pty.ID }
+export type ExperimentalPersistentPtySnapshotOutput = {
+  readonly info: {
+    readonly id: Pty.ID
+    readonly title: string
+    readonly command: string
+    readonly args: ReadonlyArray<string>
+    readonly cwd: string
+    readonly status: "running" | "exited"
+    readonly pid: number
+    readonly exitCode?: number | undefined
+    readonly sessionID: Session.ID
+    readonly foregroundProcess: string | null
+    readonly size: { readonly cols: number; readonly rows: number }
+    readonly output: { readonly head: number; readonly tail: number }
+  }
+  readonly text: string
+  readonly checkpoint: globalThis.Uint8Array
+  readonly cursor: { readonly x: number; readonly y: number }
+}
+export type ExperimentalPersistentPtySnapshotOperation<E = never> = (
+  input: ExperimentalPersistentPtySnapshotInput,
+) => Effect.Effect<ExperimentalPersistentPtySnapshotOutput, E>
+
+export type ExperimentalPersistentPtyRemoveInput = { readonly ptyID: Pty.ID }
+export type ExperimentalPersistentPtyRemoveOutput = void
+export type ExperimentalPersistentPtyRemoveOperation<E = never> = (
+  input: ExperimentalPersistentPtyRemoveInput,
+) => Effect.Effect<ExperimentalPersistentPtyRemoveOutput, E>
+
+export type ExperimentalPersistentPtyConnectTokenInput = {
+  readonly ptyID: Pty.ID
+  readonly "x-opencode-ticket"?: string | undefined
+}
+export type ExperimentalPersistentPtyConnectTokenOutput = PtyTicket.ConnectToken
+export type ExperimentalPersistentPtyConnectTokenOperation<E = never> = (
+  input: ExperimentalPersistentPtyConnectTokenInput,
+) => Effect.Effect<ExperimentalPersistentPtyConnectTokenOutput, E>
+
+export interface ExperimentalApi<E = never> {
+  readonly persistentPty: {
+    readonly list: ExperimentalPersistentPtyListOperation<E>
+    readonly create: ExperimentalPersistentPtyCreateOperation<E>
+    readonly shutdown: ExperimentalPersistentPtyShutdownOperation<E>
+    readonly get: ExperimentalPersistentPtyGetOperation<E>
+    readonly update: ExperimentalPersistentPtyUpdateOperation<E>
+    readonly snapshot: ExperimentalPersistentPtySnapshotOperation<E>
+    readonly remove: ExperimentalPersistentPtyRemoveOperation<E>
+    readonly connectToken: ExperimentalPersistentPtyConnectTokenOperation<E>
+  }
+}
+
+export type ShellListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint22_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Shell.Info> }
-export type ShellListOperation<E = never> = (input?: Endpoint22_0Input) => Effect.Effect<Endpoint22_0Output, E>
+export type ShellListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Shell.Info> }
+export type ShellListOperation<E = never> = (input?: ShellListInput) => Effect.Effect<ShellListOutput, E>
 
-export type Endpoint22_1Input = {
+export type ShellCreateInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly command: string
   readonly cwd?: string | undefined
   readonly timeout: number
   readonly metadata?: { readonly [x: string]: unknown } | undefined
 }
-export type Endpoint22_1Output = { readonly location: Location.Info; readonly data: Shell.Info }
-export type ShellCreateOperation<E = never> = (input: Endpoint22_1Input) => Effect.Effect<Endpoint22_1Output, E>
+export type ShellCreateOutput = { readonly location: Location.Info; readonly data: Shell.Info }
+export type ShellCreateOperation<E = never> = (input: ShellCreateInput) => Effect.Effect<ShellCreateOutput, E>
 
-export type Endpoint22_2Input = {
+export type ShellGetInput = {
   readonly id: Shell.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint22_2Output = { readonly location: Location.Info; readonly data: Shell.Info }
-export type ShellGetOperation<E = never> = (input: Endpoint22_2Input) => Effect.Effect<Endpoint22_2Output, E>
+export type ShellGetOutput = { readonly location: Location.Info; readonly data: Shell.Info }
+export type ShellGetOperation<E = never> = (input: ShellGetInput) => Effect.Effect<ShellGetOutput, E>
 
-export type Endpoint22_3Input = {
+export type ShellTimeoutInput = {
   readonly id: Shell.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly timeout: number
 }
-export type Endpoint22_3Output = { readonly location: Location.Info; readonly data: Shell.Info }
-export type ShellTimeoutOperation<E = never> = (input: Endpoint22_3Input) => Effect.Effect<Endpoint22_3Output, E>
+export type ShellTimeoutOutput = { readonly location: Location.Info; readonly data: Shell.Info }
+export type ShellTimeoutOperation<E = never> = (input: ShellTimeoutInput) => Effect.Effect<ShellTimeoutOutput, E>
 
-export type Endpoint22_4Input = {
+export type ShellOutputInput = {
   readonly id: Shell.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly cursor?: number | undefined
   readonly limit?: number | undefined
 }
-export type Endpoint22_4Output = {
+export type ShellOutputOutput = {
   readonly location: Location.Info
   readonly data: {
     readonly output: string
@@ -1559,14 +1875,14 @@ export type Endpoint22_4Output = {
     readonly truncated: boolean
   }
 }
-export type ShellOutputOperation<E = never> = (input: Endpoint22_4Input) => Effect.Effect<Endpoint22_4Output, E>
+export type ShellOutputOperation<E = never> = (input: ShellOutputInput) => Effect.Effect<ShellOutputOutput, E>
 
-export type Endpoint22_5Input = {
+export type ShellRemoveInput = {
   readonly id: Shell.ID
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint22_5Output = void
-export type ShellRemoveOperation<E = never> = (input: Endpoint22_5Input) => Effect.Effect<Endpoint22_5Output, E>
+export type ShellRemoveOutput = void
+export type ShellRemoveOperation<E = never> = (input: ShellRemoveInput) => Effect.Effect<ShellRemoveOutput, E>
 
 export interface ShellApi<E = never> {
   readonly list: ShellListOperation<E>
@@ -1577,41 +1893,44 @@ export interface ShellApi<E = never> {
   readonly remove: ShellRemoveOperation<E>
 }
 
-export type Endpoint23_0Input = {
+export type ReferenceListInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint23_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Reference.Info> }
-export type ReferenceListOperation<E = never> = (input?: Endpoint23_0Input) => Effect.Effect<Endpoint23_0Output, E>
+export type ReferenceListOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Reference.Info> }
+export type ReferenceListOperation<E = never> = (input?: ReferenceListInput) => Effect.Effect<ReferenceListOutput, E>
 
 export interface ReferenceApi<E = never> {
   readonly list: ReferenceListOperation<E>
 }
 
-export type Endpoint24_0Input = { readonly projectID: Project.ID }
-export type Endpoint24_0Output = Worktree.List
-export type WorktreeListOperation<E = never> = (input: Endpoint24_0Input) => Effect.Effect<Endpoint24_0Output, E>
+export type WorktreeListInput = { readonly projectID: Project.ID }
+export type WorktreeListOutput = Worktree.List
+export type WorktreeListOperation<E = never> = (input: WorktreeListInput) => Effect.Effect<WorktreeListOutput, E>
 
-export type Endpoint24_1Input = {
+export type WorktreeCreateInput = {
   readonly projectID: Project.ID
   readonly strategy: Worktree.StrategyID
   readonly from?: AbsolutePath | undefined
+  readonly branch?: string | undefined
   readonly directory: AbsolutePath
   readonly name?: string | undefined
 }
-export type Endpoint24_1Output = Worktree.Info
-export type WorktreeCreateOperation<E = never> = (input: Endpoint24_1Input) => Effect.Effect<Endpoint24_1Output, E>
+export type WorktreeCreateOutput = Worktree.Info
+export type WorktreeCreateOperation<E = never> = (input: WorktreeCreateInput) => Effect.Effect<WorktreeCreateOutput, E>
 
-export type Endpoint24_2Input = {
+export type WorktreeRemoveInput = {
   readonly projectID: Project.ID
   readonly directory: AbsolutePath
   readonly force: boolean
 }
-export type Endpoint24_2Output = void
-export type WorktreeRemoveOperation<E = never> = (input: Endpoint24_2Input) => Effect.Effect<Endpoint24_2Output, E>
+export type WorktreeRemoveOutput = void
+export type WorktreeRemoveOperation<E = never> = (input: WorktreeRemoveInput) => Effect.Effect<WorktreeRemoveOutput, E>
 
-export type Endpoint24_3Input = { readonly projectID: Project.ID }
-export type Endpoint24_3Output = void
-export type WorktreeRefreshOperation<E = never> = (input: Endpoint24_3Input) => Effect.Effect<Endpoint24_3Output, E>
+export type WorktreeRefreshInput = { readonly projectID: Project.ID }
+export type WorktreeRefreshOutput = void
+export type WorktreeRefreshOperation<E = never> = (
+  input: WorktreeRefreshInput,
+) => Effect.Effect<WorktreeRefreshOutput, E>
 
 export interface WorktreeApi<E = never> {
   readonly list: WorktreeListOperation<E>
@@ -1620,46 +1939,74 @@ export interface WorktreeApi<E = never> {
   readonly refresh: WorktreeRefreshOperation<E>
 }
 
-export type Endpoint25_0Input = {
+export type WorkspaceCreateInput = { readonly id?: Workspace.ID | undefined; readonly provider: string }
+export type WorkspaceCreateOutput = Workspace.ID
+export type WorkspaceCreateOperation<E = never> = (
+  input: WorkspaceCreateInput,
+) => Effect.Effect<WorkspaceCreateOutput, E>
+
+export type WorkspaceDestroyInput = { readonly workspaceID: Workspace.ID }
+export type WorkspaceDestroyOutput = Workspace.DestroyResult
+export type WorkspaceDestroyOperation<E = never> = (
+  input: WorkspaceDestroyInput,
+) => Effect.Effect<WorkspaceDestroyOutput, E>
+
+export interface WorkspaceApi<E = never> {
+  readonly create: WorkspaceCreateOperation<E>
+  readonly destroy: WorkspaceDestroyOperation<E>
+}
+
+export type VcsGetInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint25_0Output = { readonly location: Location.Info; readonly data: Vcs.Info }
-export type VcsGetOperation<E = never> = (input?: Endpoint25_0Input) => Effect.Effect<Endpoint25_0Output, E>
+export type VcsGetOutput = { readonly location: Location.Info; readonly data: Vcs.Info }
+export type VcsGetOperation<E = never> = (input?: VcsGetInput) => Effect.Effect<VcsGetOutput, E>
 
-export type Endpoint25_1Input = {
+export type VcsStatusInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint25_1Output = { readonly location: Location.Info; readonly data: ReadonlyArray<Vcs.FileStatus> }
-export type VcsStatusOperation<E = never> = (input?: Endpoint25_1Input) => Effect.Effect<Endpoint25_1Output, E>
+export type VcsStatusOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<Vcs.FileStatus> }
+export type VcsStatusOperation<E = never> = (input?: VcsStatusInput) => Effect.Effect<VcsStatusOutput, E>
 
-export type Endpoint25_2Input = {
+export type VcsBranchesInput = {
+  readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  readonly search?: string | undefined
+  readonly limit?: number | undefined
+}
+export type VcsBranchesOutput = { readonly location: Location.Info; readonly data: Vcs.BranchList }
+export type VcsBranchesOperation<E = never> = (input?: VcsBranchesInput) => Effect.Effect<VcsBranchesOutput, E>
+
+export type VcsDiffInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly mode: Vcs.Mode
   readonly context?: number | undefined
 }
-export type Endpoint25_2Output = { readonly location: Location.Info; readonly data: ReadonlyArray<FileDiff.Info> }
-export type VcsDiffOperation<E = never> = (input: Endpoint25_2Input) => Effect.Effect<Endpoint25_2Output, E>
+export type VcsDiffOutput = { readonly location: Location.Info; readonly data: ReadonlyArray<FileDiff.Info> }
+export type VcsDiffOperation<E = never> = (input: VcsDiffInput) => Effect.Effect<VcsDiffOutput, E>
 
 export interface VcsApi<E = never> {
   readonly get: VcsGetOperation<E>
   readonly status: VcsStatusOperation<E>
+  readonly branches: VcsBranchesOperation<E>
   readonly diff: VcsDiffOperation<E>
 }
 
-export type Endpoint26_0Output = ReadonlyArray<Location.Ref>
-export type DebugLocationListOperation<E = never> = () => Effect.Effect<Endpoint26_0Output, E>
+export type DebugLocationListOutput = ReadonlyArray<Location.Ref>
+export type DebugLocationListOperation<E = never> = () => Effect.Effect<DebugLocationListOutput, E>
 
-export type Endpoint26_1Input = {
+export type DebugLocationEvictInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint26_1Output = void
-export type DebugLocationEvictOperation<E = never> = (input?: Endpoint26_1Input) => Effect.Effect<Endpoint26_1Output, E>
+export type DebugLocationEvictOutput = void
+export type DebugLocationEvictOperation<E = never> = (
+  input?: DebugLocationEvictInput,
+) => Effect.Effect<DebugLocationEvictOutput, E>
 
 export interface DebugApi<E = never> {
   readonly location: { readonly list: DebugLocationListOperation<E>; readonly evict: DebugLocationEvictOperation<E> }
 }
 
-export type Endpoint27_0Output =
+export type MigrationV1StatusOutput =
   | { readonly status: "required" | "completed" }
   | {
       readonly status: "running"
@@ -1670,36 +2017,41 @@ export type Endpoint27_0Output =
       }
     }
   | { readonly status: "error"; readonly error: string }
-export type MigrationV1StatusOperation<E = never> = () => Effect.Effect<Endpoint27_0Output, E>
+export type MigrationV1StatusOperation<E = never> = () => Effect.Effect<MigrationV1StatusOutput, E>
 
 export interface MigrationApi<E = never> {
   readonly v1: { readonly status: MigrationV1StatusOperation<E> }
 }
 
-export type Endpoint28_0Input = {
+export type WebsearchProvidersInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint28_0Output = { readonly location: Location.Info; readonly data: ReadonlyArray<WebSearch.Provider> }
-export type WebsearchProvidersOperation<E = never> = (input?: Endpoint28_0Input) => Effect.Effect<Endpoint28_0Output, E>
+export type WebsearchProvidersOutput = {
+  readonly location: Location.Info
+  readonly data: ReadonlyArray<WebSearch.Provider>
+}
+export type WebsearchProvidersOperation<E = never> = (
+  input?: WebsearchProvidersInput,
+) => Effect.Effect<WebsearchProvidersOutput, E>
 
-export type Endpoint28_1Input = {
+export type WebsearchQueryInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
   readonly query: string
   readonly providerID?: WebSearch.ID | undefined
 }
-export type Endpoint28_1Output = { readonly location: Location.Info; readonly data: WebSearch.Response }
-export type WebsearchQueryOperation<E = never> = (input: Endpoint28_1Input) => Effect.Effect<Endpoint28_1Output, E>
+export type WebsearchQueryOutput = { readonly location: Location.Info; readonly data: WebSearch.Response }
+export type WebsearchQueryOperation<E = never> = (input: WebsearchQueryInput) => Effect.Effect<WebsearchQueryOutput, E>
 
 export interface WebsearchApi<E = never> {
   readonly providers: WebsearchProvidersOperation<E>
   readonly query: WebsearchQueryOperation<E>
 }
 
-export type Endpoint29_0Input = {
+export type ConfigGetInput = {
   readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
 }
-export type Endpoint29_0Output = ReadonlyArray<Config.Entry>
-export type ConfigGetOperation<E = never> = (input?: Endpoint29_0Input) => Effect.Effect<Endpoint29_0Output, E>
+export type ConfigGetOutput = ReadonlyArray<Config.Entry>
+export type ConfigGetOperation<E = never> = (input?: ConfigGetInput) => Effect.Effect<ConfigGetOutput, E>
 
 export interface ConfigApi<E = never> {
   readonly get: ConfigGetOperation<E>
@@ -1728,9 +2080,11 @@ export interface AppApi<E = never> {
   readonly skill: SkillApi<E>
   readonly event: EventApi<E>
   readonly pty: PtyApi<E>
+  readonly experimental: ExperimentalApi<E>
   readonly shell: ShellApi<E>
   readonly reference: ReferenceApi<E>
   readonly worktree: WorktreeApi<E>
+  readonly workspace: WorkspaceApi<E>
   readonly vcs: VcsApi<E>
   readonly debug: DebugApi<E>
   readonly migration: MigrationApi<E>

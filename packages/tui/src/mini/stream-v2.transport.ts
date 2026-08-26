@@ -143,6 +143,8 @@ type State = {
   closed: boolean
   initial: boolean
   rootActive: boolean
+  /** Bumped on every root execution lifecycle event; guards paints against stale acks. */
+  executionEpoch: number
   buffered?: ReplayBuffer
   errors: Set<string>
   pending: Map<string, FooterQueuedPrompt>
@@ -188,6 +190,9 @@ function pendingPrompt(item: SessionInboxInfo): FooterQueuedPrompt | undefined {
     messageID: item.id,
     prompt: { messageID: item.id, text: item.payload.text, parts: [] },
     delivery: item.delivery,
+    ...(item.payload.skills?.length
+      ? { skills: item.payload.skills.map((skill) => ({ id: skill.id, name: skill.name })) }
+      : {}),
   }
 }
 
@@ -363,6 +368,7 @@ function messageIDFromEvent(id: string) {
 const catalogEvents = new Set([
   "catalog.updated",
   "integration.updated",
+  "credential.switched",
   "agent.updated",
   "command.updated",
   "skill.updated",
@@ -383,6 +389,12 @@ function skillCommit(messageID: string, name: string, skillID = messageID): Stre
     text: `→ Skill "${name}"`,
     phase: "start",
   }
+}
+
+function skillCommits(messageID: string, skills: FooterQueuedPrompt["skills"] = []) {
+  return Array.from(new Map(skills.map((skill) => [skill.id, skill])).values(), (skill) =>
+    skillCommit(messageID, skill.name, skill.id),
+  )
 }
 
 function compactionCommit(messageID: string): StreamCommit {
@@ -474,6 +486,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
     closed: false,
     initial: true,
     rootActive: false,
+    executionEpoch: 0,
     errors: new Set(),
     pending: new Map(),
     admitted: new Set(),
@@ -511,6 +524,13 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
     },
   })
   controller.signal.addEventListener("abort", () => subagents.close(), { once: true })
+
+  // The one "go idle" transition, shared by settlement, terminal events, and the
+  // interrupt ack so the flag and the paint cannot drift apart.
+  const paintIdle = (status: string) => {
+    state.rootActive = false
+    write([], { phase: "idle", status })
+  }
 
   const write = (commits: StreamCommit[], patch?: { phase?: "idle" | "running"; status?: string; usage?: string }) => {
     if (state.closed || controller.signal.aborted || input.footer.isClosed) return
@@ -656,7 +676,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       if (!render) return
       if (reuseVisibleWait && waiting) return
       write([
-        ...(message.skills ?? []).map((skill) => skillCommit(message.id, skill.name, skill.id)),
+        ...skillCommits(message.id, message.skills),
         { kind: "user", source: "system", text: message.text, phase: "start", messageID: message.id },
       ])
       return
@@ -790,8 +810,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
   const settleSession = async (client: OpenCodeClient) => {
     await client.session.wait({ sessionID: input.sessionID }, { signal: controller.signal })
     for (const message of await projectedMessages(client, controller.signal)) renderMessage(message, true, true)
-    state.rootActive = false
-    write([], { phase: "idle", status: blockerStatus(state.view) })
+    paintIdle(blockerStatus(state.view))
     await input.footer.idle()
   }
 
@@ -946,18 +965,16 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       syncPending()
       const visible = state.messageIDs.has(event.data.inboxID)
       if (waiting || pending) state.messageIDs.add(event.data.inboxID)
-      if (!waiting && pending && !visible) {
-        write([
-          {
-            kind: "user",
-            source: "system",
-            text: pending.prompt.text,
-            phase: "start",
-            messageID: event.data.inboxID,
-          },
-        ])
-      }
-      write([], { phase: "running", status: "waiting for assistant" })
+      const commits = pending && !visible ? skillCommits(event.data.inboxID, pending.skills) : []
+      if (!waiting && pending && !visible)
+        commits.push({
+          kind: "user",
+          source: "system",
+          text: pending.prompt.text,
+          phase: "start",
+          messageID: event.data.inboxID,
+        })
+      write(commits, { phase: "running", status: "waiting for assistant" })
       return
     }
     if (event.type === "session.inbox.delivery.changed") {
@@ -969,6 +986,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       if (state.messageIDs.has(event.data.inboxID)) return
       state.messageIDs.add(event.data.inboxID)
       write([
+        ...skillCommits(event.data.inboxID, pending.skills),
         {
           kind: "user",
           source: "system",
@@ -1297,6 +1315,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       return
     }
     if (event.type === "session.execution.started") {
+      state.executionEpoch++
       state.rootActive = true
       write([], { phase: "running" })
       return
@@ -1306,8 +1325,8 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       event.type === "session.execution.failed" ||
       event.type === "session.execution.interrupted"
     ) {
-      state.rootActive = false
-      write([], { phase: "idle", status: "" })
+      state.executionEpoch++
+      paintIdle("")
       const current = state.wait
       if (!current) return
       if (current.interrupted && event.type === "session.execution.interrupted" && event.data.reason === "user") {
@@ -1647,17 +1666,12 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       )
     }
 
-    const selected = await resolveSelectedModel(input, client, next)
-    if (next.variant && !selected) throw new Error("Cannot select a variant before selecting a model")
     input.trace?.write("send.command", { sessionID: input.sessionID, messageID, command: command.name, delivery })
     return client.session.command(
       {
         sessionID: input.sessionID,
-        id: messageID,
         command: command.name,
-        arguments: command.arguments,
-        agent: next.agent,
-        model: selected,
+        text: command.arguments,
         files: attachments.files.length ? attachments.files : undefined,
         agents: agents.length ? agents : undefined,
         skills: skills.length ? skills : undefined,
@@ -1698,7 +1712,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
         throw new Error("This prompt cannot be queued")
       if (!state.connected) throw new Error("Event stream is reconnecting")
       const client = sdk
-      if (next.agent)
+      if (!next.prompt.command && next.agent)
         await client.session.switchAgent({ sessionID: input.sessionID, agent: next.agent }, { signal: next.signal })
       if (!next.prompt.command) {
         const selected = await resolveSelectedModel(input, client, next)
@@ -1706,7 +1720,8 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
         if (selected)
           await client.session.switchModel({ sessionID: input.sessionID, model: selected }, { signal: next.signal })
       }
-      mergePending(await admitPrompt(next, client, delivery))
+      const admitted = await admitPrompt(next, client, delivery)
+      if (admitted) mergePending(admitted)
       settlementClient = client
     },
     async waitForIdle() {
@@ -1744,13 +1759,8 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
         return
       }
       if (command) {
-        await runTurnWait(
-          next,
-          messageID,
-          client,
-          () => admitPrompt(next, client, next.prompt.delivery ?? "steer"),
-          admitted,
-        )
+        await admitPrompt(next, client, next.prompt.delivery ?? "steer")
+        admitted?.()
         return
       }
 
@@ -1780,7 +1790,17 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
         return
       }
       if (state.wait) state.wait.interrupted = true
-      await sdk.session.interrupt({ sessionID: input.sessionID, continue: true }).catch(() => {})
+      // Paint idle at the ack, not at settlement: the server accepts interruption immediately
+      // while cleanup finishes asynchronously, and the terminal execution event re-confirms.
+      // A failed request paints nothing, so the two-press gesture stays available for retry,
+      // and a lifecycle event racing the ack wins via the epoch guard.
+      const epoch = state.executionEpoch
+      await sdk.session.interrupt({ sessionID: input.sessionID, continue: true }).then(
+        () => {
+          if (state.executionEpoch === epoch) paintIdle(blockerStatus(state.view))
+        },
+        () => {},
+      )
     },
     selectSubagent(sessionID) {
       subagents.select(sdk, sessionID)

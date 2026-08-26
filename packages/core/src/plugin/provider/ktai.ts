@@ -174,8 +174,7 @@ export const KtaiPlugin = define({
     })
 
     const refresh = () => load().pipe(Effect.andThen(ctx.catalog.reload()))
-    yield* bus.subscribe(Integration.Event.ConnectionUpdated).pipe(
-      Stream.filter((event) => event.data.integrationID === integrationID),
+    yield* bus.subscribe(Integration.Event.Updated).pipe(
       Stream.runForEach(refresh),
       Effect.forkScoped({ startImmediately: true }),
     )

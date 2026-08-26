@@ -47,7 +47,18 @@ export interface SessionHooks {
 
 export type SessionDomain = Pick<
   SessionApi<unknown>,
-  "create" | "get" | "prompt" | "generate" | "command" | "synthetic" | "interrupt" | "rename" | "wait"
+  | "create"
+  | "get"
+  | "switchAgent"
+  | "switchModel"
+  | "prompt"
+  | "generate"
+  | "command"
+  | "synthetic"
+  | "interrupt"
+  | "rename"
+  | "wait"
+  | "context"
 > & {
   readonly hook: ModelHooks<SessionHooks>
 }

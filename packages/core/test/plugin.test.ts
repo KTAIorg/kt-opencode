@@ -14,6 +14,7 @@ import { AbsolutePath } from "@opencode-ai/core/schema"
 import { Session } from "@opencode-ai/core/session"
 import { SessionMessage } from "@opencode-ai/core/session/message"
 import { Tool } from "@opencode-ai/core/tool"
+import { Vcs } from "@opencode-ai/core/vcs"
 import { testEffect } from "./lib/effect"
 import { PluginTestLayer } from "./plugin/fixture"
 
@@ -90,6 +91,37 @@ describe("Plugin", () => {
       yield* host.mcp.disconnect({ location, server: "routed" }).pipe(Effect.orDie)
       expect((yield* host.mcp.list({ location }).pipe(Effect.orDie)).location.directory).toBe(target)
       expect(routed).toEqual(["add:/target", "remove:/target", "connect:/target", "disconnect:/target", "list:/target"])
+    }),
+  )
+
+  it.effect("registers and removes scoped VCS providers", () =>
+    Effect.gen(function* () {
+      const plugins = yield* Plugin.Service
+      const vcs = yield* Vcs.Service
+      const provider = EffectPlugin.define({
+        id: "custom-vcs",
+        effect: (ctx) =>
+          ctx.vcs
+            .transform((draft) => {
+              draft.add({
+                id: "custom",
+                name: "Custom VCS",
+                info: () => Effect.succeed({ branch: { current: "feature" } }),
+                branches: () => Effect.succeed(["feature"]),
+                status: () => Effect.succeed([]),
+                diff: () => Effect.succeed([]),
+              })
+              draft.default.set("custom")
+            })
+            .pipe(Effect.asVoid),
+      })
+
+      yield* plugins.activate([versioned(provider)])
+      expect(yield* vcs.info()).toEqual({ branch: { current: "feature" } })
+      expect(yield* vcs.branches()).toEqual(["feature"])
+
+      yield* plugins.activate([])
+      expect(yield* vcs.info()).toEqual({ branch: {} })
     }),
   )
 
@@ -338,6 +370,54 @@ describe("Plugin", () => {
     }),
   )
 
+  it.effect("provides isolated durable storage for each plugin ID", () =>
+    Effect.gen(function* () {
+      const plugins = yield* Plugin.Service
+      const storage = new Map<string, EffectPlugin.Context["storage"]>()
+      yield* plugins.activate(
+        ["a", "a:b", "雪"].map((id) => ({
+          id,
+          version: "1",
+          effect: (context: EffectPlugin.Context) => Effect.sync(() => storage.set(id, context.storage)),
+        })),
+      )
+      const first = storage.get("a")
+      const second = storage.get("a:b")
+      const unicode = storage.get("雪")
+      if (!first || !second || !unicode) return yield* Effect.die("plugin storage was not activated")
+
+      yield* first.set("b:c", { plugin: "a" })
+      yield* second.set("c", { plugin: "a:b" })
+      yield* unicode.set("c", { plugin: "雪" })
+      expect(yield* first.get("b:c")).toEqual({ plugin: "a" })
+      expect(yield* second.get("c")).toEqual({ plugin: "a:b" })
+      expect(yield* unicode.get("c")).toEqual({ plugin: "雪" })
+      expect(yield* first.get("c")).toBeUndefined()
+
+      const prefix = "%_:/雪/"
+      yield* first.set(`${prefix}beta`, [2])
+      yield* first.set(`${prefix}alpha`, [1])
+      const firstPage = yield* first.scan({ prefix, limit: 1 })
+      expect(firstPage).toEqual({ entries: [{ key: `${prefix}alpha`, value: [1] }], next: `${prefix}alpha` })
+      expect(yield* first.scan({ prefix, after: firstPage.next, limit: 1 })).toEqual({
+        entries: [{ key: `${prefix}beta`, value: [2] }],
+      })
+      expect(yield* first.scan({ prefix: `${prefix}%_` })).toEqual({ entries: [] })
+      expect(yield* first.scan({ prefix: "" })).toEqual({
+        entries: [
+          { key: `${prefix}alpha`, value: [1] },
+          { key: `${prefix}beta`, value: [2] },
+          { key: "b:c", value: { plugin: "a" } },
+        ],
+      })
+
+      yield* first.remove("b:c")
+      yield* first.remove("b:c")
+      expect(yield* first.get("b:c")).toBeUndefined()
+      return undefined
+    }),
+  )
+
   it.effect("registers location tools through the plugin context", () =>
     Effect.gen(function* () {
       const plugins = yield* Plugin.Service
@@ -407,7 +487,7 @@ describe("Plugin", () => {
       const registry = yield* Tool.Service
       const executed: unknown[] = []
       const seen: {
-        before?: unknown
+        before?: { input: unknown; inputSchema: unknown }
         after?: { input: unknown; status: string; content: unknown; metadata: unknown }
       } = {}
 
@@ -432,7 +512,7 @@ describe("Plugin", () => {
             yield* ctx.tool
               .hook("execute.before", (event) =>
                 Effect.sync(() => {
-                  seen.before = event.input
+                  seen.before = { input: event.input, inputSchema: event.inputSchema }
                   event.input = { text: "before-mutated" }
                 }),
               )
@@ -478,7 +558,15 @@ describe("Plugin", () => {
         call: { type: "tool-call", id: "call-hooks", name: "echo", input: { text: "original" } },
       })
 
-      expect(seen.before).toEqual({ text: "original" })
+      expect(seen.before).toEqual({
+        input: { text: "original" },
+        inputSchema: {
+          type: "object",
+          properties: { text: { type: "string" } },
+          required: ["text"],
+          additionalProperties: false,
+        },
+      })
       expect(executed).toEqual([{ text: "before-mutated" }])
       expect(seen.after).toEqual({
         input: { text: "before-mutated" },

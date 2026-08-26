@@ -1,6 +1,7 @@
 import { APICallError } from "@ai-sdk/provider"
 import type { LanguageModelV3, LanguageModelV3StreamPart } from "@ai-sdk/provider"
 import { createMistral } from "@ai-sdk/mistral"
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { AISDK } from "@opencode-ai/core/aisdk"
 import { SessionRunnerRetry } from "@opencode-ai/core/session/runner/retry"
 import { toSessionError } from "@opencode-ai/core/session/to-session-error"
@@ -94,13 +95,87 @@ it.effect("projects request settings, headers, and body overlays", () =>
       headers: { "x-test": "header" },
       body: { safety_setting: "strict" },
     })
-    const prepared = yield* compileRequest(LLM.request({ model: resolved, prompt: "Hello" }))
+    const prepared = yield* compileRequest(
+      LLM.request({
+        model: resolved,
+        prompt: "Hello",
+        providerOptions: { safetySettings: [{ category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }] },
+      }),
+    )
 
     expect(prepared.body.providerOptions).toEqual({
-      google: { thinkingConfig: { thinkingBudget: 1024 } },
+      google: {
+        thinkingConfig: { thinkingBudget: 1024 },
+        safetySettings: [{ category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }],
+      },
     })
     expect(prepared.body.headers).toEqual({ "x-test": "header" })
     expect(body).toEqual({ safety_setting: "strict" })
+  }),
+)
+
+it.effect("uses only the provider timeout signal when the request signal is null", () =>
+  Effect.gen(function* () {
+    const aisdk = yield* AISDK.Service
+    let wrappedFetch: typeof fetch | undefined
+    let requestSignal: AbortSignal | null | undefined
+    yield* aisdk.hook.sdk((event) => {
+      wrappedFetch = event.options.fetch
+      event.sdk = { languageModel: () => ({ provider: event.model.providerID }) }
+    })
+
+    yield* aisdk.language(
+      model("test-ai-sdk", {
+        timeout: 60_000,
+        fetch: async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+          requestSignal = init?.signal
+          return new Response()
+        },
+      }),
+    )
+    const request = wrappedFetch
+    if (!request) return yield* Effect.die("Expected wrapped fetch")
+    yield* Effect.promise(() => request("https://example.com", { signal: null }))
+
+    expect(requestSignal).toBeInstanceOf(AbortSignal)
+    expect(requestSignal?.aborted).toBeFalse()
+  }),
+)
+
+it.effect("lowers chronological system updates to wrapped user messages", () =>
+  Effect.gen(function* () {
+    const aisdk = yield* AISDK.Service
+    yield* aisdk.hook.sdk((event) => {
+      event.sdk = { languageModel: () => ({ provider: event.model.providerID }) }
+    })
+
+    const resolved = yield* aisdk.model(model("opaque-provider"))
+    const prepared = yield* compileRequest(
+      LLM.request({
+        model: resolved,
+        system: "Initial instructions.",
+        messages: [
+          Message.user("Before."),
+          Message.system("Updated <rules> & constraints."),
+          Message.assistant("After."),
+        ],
+      }),
+    )
+
+    expect(prepared.body.prompt).toEqual([
+      { role: "system", content: "Initial instructions." },
+      { role: "user", content: [{ type: "text", text: "Before." }] },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<system-update>\nUpdated &lt;rules&gt; &amp; constraints.\n</system-update>",
+          },
+        ],
+      },
+      { role: "assistant", content: [{ type: "text", text: "After." }] },
+    ])
   }),
 )
 
@@ -363,6 +438,63 @@ it.effect("moves a tool image through the real Mistral provider as a user messag
         ],
       },
     ])
+  }),
+)
+
+it.effect("does not treat SSE comment heartbeats as model progress", () =>
+  Effect.gen(function* () {
+    const aisdk = yield* AISDK.Service
+    const encoder = new TextEncoder()
+    let heartbeat: ReturnType<typeof setInterval> | undefined
+    const customFetch = Object.assign(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'data: {"id":"response-1","object":"chat.completion.chunk","created":0,"model":"api-model","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n',
+                ),
+              )
+              heartbeat = setInterval(() => controller.enqueue(encoder.encode(": keepalive\n\n")), 5)
+            },
+            cancel() {
+              if (heartbeat) clearInterval(heartbeat)
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      { preconnect: fetch.preconnect },
+    )
+    yield* aisdk.hook.sdk((event) => {
+      event.sdk = createOpenAICompatible({
+        ...event.options,
+        name: String(event.options.name),
+        baseURL: String(event.options.baseURL),
+      })
+    })
+    const resolved = yield* aisdk.model(
+      model("@ai-sdk/openai-compatible", {
+        apiKey: "test",
+        baseURL: "https://example.test/v1",
+        chunkTimeout: 25,
+        fetch: customFetch,
+      }),
+    )
+    const result = yield* LLMClient.generate(LLM.request({ model: resolved, prompt: "Hello" })).pipe(
+      Effect.provide(client),
+      Effect.result,
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (heartbeat) clearInterval(heartbeat)
+        }),
+      ),
+    )
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: { message: expect.stringContaining("SSE read timed out") } },
+    })
   }),
 )
 

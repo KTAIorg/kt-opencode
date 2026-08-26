@@ -40,15 +40,16 @@ const patterns = [
   /model_context_window_exceeded/i,
   /too many tokens/i,
   /token limit exceeded/i,
+  /request_too_large/i,
 ]
 
-const payloadPatterns = [/request_too_large/i, /request entity too large/i, /payload too large/i, /request too large/i]
+const payloadPatterns = [/request entity too large/i, /payload too large/i, /request too large/i]
 
 const exclusions = [/^(throttling error|service unavailable):/i, /rate limit/i, /too many requests/i]
 
 export const isContextOverflow = (message: string) =>
   !exclusions.some((pattern) => pattern.test(message)) &&
-  (patterns.some((pattern) => pattern.test(message)) || /^400\s*(status code)?\s*\(no body\)/i.test(message))
+  (patterns.some((pattern) => pattern.test(message)) || /^4(?:00|13)\s*(status code)?\s*\(no body\)/i.test(message))
 
 export const isPayloadTooLarge = (message: string) => payloadPatterns.some((pattern) => pattern.test(message))
 
@@ -74,11 +75,15 @@ const INVALID_REQUEST_CODES = new Set(["invalid_prompt", "invalid_request_error"
 const RATE_LIMIT_TEXT = /rate increased too quickly|rate[-_\s]?limit|too[_\s]?many[_\s]?requests/i
 const QUOTA_TEXT = /insufficient[-_\s]?quota|quota[-_\s]?exceeded/i
 const CONTENT_POLICY_TEXT = /content[-_\s]?policy|content_filter|safety/i
+const NETWORK_ERROR_TEXT = /network[-_\s]error/i
 
 export interface ProviderFailure {
   readonly message: string
   readonly status?: number | undefined
   readonly code?: string | undefined
+  // Raw wire payload, scanned for failure signals (codes, overflow phrases)
+  // that the summary message does not carry. Not shown to users.
+  readonly rawBody?: string | undefined
   readonly retryAfterMs?: number | undefined
   readonly rateLimit?: HttpRateLimitDetails | undefined
   readonly http?: HttpContext | undefined
@@ -88,11 +93,13 @@ export interface ProviderFailure {
 // Keep HTTP failures and provider-reported stream failures on one typed path so
 // session retry policy never needs provider-specific string matching.
 export function classifyProviderFailure(input: ProviderFailure): AIError["reason"] {
-  const body = input.http?.body ?? ""
+  const body = input.http?.body ?? input.rawBody ?? ""
   const codes = [input.code, ...providerCodes(body), ...providerCodes(input.message)]
     .filter((code): code is string => code !== undefined)
     .map((code) => code.toLowerCase())
-  const text = body || input.message
+  // Scan the raw payload too so signals missing from the summary message
+  // (e.g. overflow phrases nested in a JSON error body) still classify.
+  const text = [input.message, body].filter((value) => value.length > 0).join("\n")
   const common = { message: input.message, providerMetadata: input.providerMetadata, http: input.http }
   const clientScoped = input.status === undefined || (input.status >= 400 && input.status < 500)
 
@@ -100,6 +107,7 @@ export function classifyProviderFailure(input: ProviderFailure): AIError["reason
     clientScoped &&
     (codes.includes("context_length_exceeded") ||
       codes.includes("model_context_window_exceeded") ||
+      codes.includes("request_too_large") ||
       isContextOverflow(text))
   )
     return new InvalidRequestReason({ ...common, classification: "context-overflow" })
@@ -127,6 +135,7 @@ export function classifyProviderFailure(input: ProviderFailure): AIError["reason
       retryAfterMs: input.retryAfterMs,
       rateLimit: input.rateLimit,
     })
+  if (NETWORK_ERROR_TEXT.test(text)) return new ProviderInternalReason({ ...common, status: input.status })
   if (codes.some((code) => SERVER_CODES.has(code) || code.includes("exhausted") || code.includes("unavailable")))
     return new ProviderInternalReason({
       ...common,
