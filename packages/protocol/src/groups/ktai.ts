@@ -25,6 +25,10 @@ export const KtaiCredential = Schema.Struct({
   keyPresent: Schema.Boolean,
 }).annotate({ identifier: "KtaiCredential" })
 
+export const KtaiLogout = Schema.Struct({
+  ok: Schema.Literal(true),
+}).annotate({ identifier: "KtaiLogout" })
+
 export const KtaiDepositAddress = Schema.Struct({
   chain: Schema.String,
   asset: Schema.String,
@@ -98,6 +102,17 @@ export const KtaiGroup = HttpApiGroup.make("server.ktai")
         identifier: "v2.ktai.credential.get",
         summary: "Get Kito credential flags",
         description: "Report whether Identity and the managed API key are present.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("ktai.logout", "/ktai/logout", {
+      success: KtaiLogout,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.ktai.logout",
+        summary: "Sign out of Kito",
+        description: "Revoke the current KT Identity session and clear the local Kito key.",
       }),
     ),
   )

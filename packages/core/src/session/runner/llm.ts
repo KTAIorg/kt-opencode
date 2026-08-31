@@ -279,9 +279,20 @@ const layer = Layer.effect(
         cost: resolved.cost,
       })
       if (zenFree && SoftQuota.exhausted()) {
-        return yield* new StepFailedError({
-          error: { type: "provider.quota", message: SoftQuota.KT_TOPUP_MESSAGE },
+        const error = { type: "provider.quota", message: SoftQuota.KT_TOPUP_MESSAGE }
+        // Timeline error cards fold onto the assistant row, so Step.Started must land first.
+        yield* bus.publish(SessionEvent.Step.Started, {
+          sessionID,
+          agent: agent.id,
+          model: resolved.ref,
+          assistantMessageID,
         })
+        yield* bus.publish(SessionEvent.Step.Failed, {
+          sessionID,
+          assistantMessageID,
+          error,
+        })
+        return yield* new StepFailedError({ error })
       }
       // Make room: history must fit the context window before the call. A pending manual
       // compaction owns this instead; the runner executes it between steps.

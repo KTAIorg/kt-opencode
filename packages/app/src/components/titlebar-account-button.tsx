@@ -1,6 +1,6 @@
 import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { Show, createMemo, createResource, onCleanup, onMount } from "solid-js"
+import { Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { openKtIdentityLogin } from "@/components/dialog-kt-identity-login"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
@@ -13,6 +13,7 @@ export function TitlebarAccountButton() {
   const dialog = useDialog()
   const platform = usePlatform()
   const serverSDK = useServerSDK()
+  const [signingOut, setSigningOut] = createSignal(false)
   const [account, accountActions] = createResource(
     () => {
       if (serverSDK.connection.status() !== "connected") return
@@ -41,13 +42,23 @@ export function TitlebarAccountButton() {
   })
 
   onMount(() => {
-    const refresh = () => void accountActions.refetch()
+    let lastRefresh = 0
+    const refresh = () => {
+      const now = Date.now()
+      if (now - lastRefresh < 15_000) return
+      lastRefresh = now
+      void accountActions.refetch()
+    }
+    const forceRefresh = () => {
+      lastRefresh = 0
+      refresh()
+    }
     window.addEventListener("focus", refresh)
-    window.addEventListener("kito-account-refresh", refresh)
+    window.addEventListener("kito-account-refresh", forceRefresh)
     document.addEventListener("visibilitychange", refresh)
     onCleanup(() => {
       window.removeEventListener("focus", refresh)
-      window.removeEventListener("kito-account-refresh", refresh)
+      window.removeEventListener("kito-account-refresh", forceRefresh)
       document.removeEventListener("visibilitychange", refresh)
     })
   })
@@ -60,6 +71,26 @@ export function TitlebarAccountButton() {
     openKtWallet({ dialog })
   }
 
+  const onSignOut = async () => {
+    if (signingOut()) return
+    const input = {
+      url: serverSDK.url.replace(/\/+$/, ""),
+      username: serverSDK.server.http.username,
+      password: serverSDK.server.http.password,
+    }
+    setSigningOut(true)
+    await (platform.fetch ?? fetch)(`${input.url}/ktai/logout`, {
+      method: "POST",
+      headers:
+        input.username && input.password
+          ? { authorization: `Basic ${btoa(`${input.username}:${input.password}`)}` }
+          : undefined,
+    }).catch(() => undefined)
+    accountActions.mutate(undefined)
+    window.dispatchEvent(new Event("kito-account-refresh"))
+    setSigningOut(false)
+  }
+
   return (
     <div data-slot="titlebar-account" class="flex shrink-0 items-center gap-1.5 mr-1.5">
       <Show when={signedIn() && signedInLabel()}>
@@ -70,6 +101,18 @@ export function TitlebarAccountButton() {
       <Button type="button" size="small" variant="contrast" class="shrink-0 px-2" onClick={onClick}>
         {signedIn() ? language.t("titlebar.account.topUp") : language.t("titlebar.account.signIn")}
       </Button>
+      <Show when={signedIn()}>
+        <Button
+          type="button"
+          size="small"
+          variant="ghost"
+          class="shrink-0 px-2"
+          disabled={signingOut()}
+          onClick={() => void onSignOut()}
+        >
+          {language.t("titlebar.account.signOut")}
+        </Button>
+      </Show>
     </div>
   )
 }

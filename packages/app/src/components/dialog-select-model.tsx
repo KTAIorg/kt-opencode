@@ -56,8 +56,8 @@ const ModelList: Component<{
   const models = createMemo(() =>
     model
       .list()
-      .filter((m) => model.visible({ modelID: m.id, providerID: m.provider.id }))
-      .filter((m) => (props.provider ? m.provider.id === props.provider : true)),
+      .filter((m) => (props.provider ? m.provider.id === props.provider : true))
+      .filter((m) => props.provider || model.visible({ modelID: m.id, providerID: m.provider.id })),
   )
 
   return (

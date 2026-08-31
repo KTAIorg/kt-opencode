@@ -64,13 +64,16 @@ export type ServerKtaiEnsureOperation<E = never> = () => Effect.Effect<Endpoint1
 export type Endpoint1_2Output = { readonly identity: boolean; readonly keyPresent: boolean }
 export type ServerKtaiCredentialGetOperation<E = never> = () => Effect.Effect<Endpoint1_2Output, E>
 
-export type Endpoint1_3Input = { readonly chain?: string | undefined; readonly asset?: string | undefined }
-export type Endpoint1_3Output = { readonly chain: string; readonly asset: string; readonly address: string }
-export type ServerKtaiWalletDepositAddressOperation<E = never> = (
-  input?: Endpoint1_3Input,
-) => Effect.Effect<Endpoint1_3Output, E>
+export type Endpoint1_3Output = { readonly ok: true }
+export type ServerKtaiLogoutOperation<E = never> = () => Effect.Effect<Endpoint1_3Output, E>
 
-export type Endpoint1_4Output = {
+export type Endpoint1_4Input = { readonly chain?: string | undefined; readonly asset?: string | undefined }
+export type Endpoint1_4Output = { readonly chain: string; readonly asset: string; readonly address: string }
+export type ServerKtaiWalletDepositAddressOperation<E = never> = (
+  input?: Endpoint1_4Input,
+) => Effect.Effect<Endpoint1_4Output, E>
+
+export type Endpoint1_5Output = {
   readonly enabled: boolean
   readonly methods: ReadonlyArray<{ readonly name: string; readonly type: string }>
   readonly minTopup: number
@@ -80,10 +83,10 @@ export type Endpoint1_4Output = {
   readonly defaultLang?: string | undefined
   readonly sdkUrl?: string | undefined
 }
-export type ServerKtaiWalletKtpayInfoOperation<E = never> = () => Effect.Effect<Endpoint1_4Output, E>
+export type ServerKtaiWalletKtpayInfoOperation<E = never> = () => Effect.Effect<Endpoint1_5Output, E>
 
-export type Endpoint1_5Input = { readonly amount: number; readonly method: string }
-export type Endpoint1_5Output = {
+export type Endpoint1_6Input = { readonly amount: number; readonly method: string }
+export type Endpoint1_6Output = {
   readonly orderId: string
   readonly cashierUrl: string
   readonly amount: number
@@ -91,24 +94,25 @@ export type Endpoint1_5Output = {
   readonly status: string
 }
 export type ServerKtaiWalletKtpayPayOperation<E = never> = (
-  input: Endpoint1_5Input,
-) => Effect.Effect<Endpoint1_5Output, E>
+  input: Endpoint1_6Input,
+) => Effect.Effect<Endpoint1_6Output, E>
 
-export type Endpoint1_6Input = { readonly order_id: string }
-export type Endpoint1_6Output = {
+export type Endpoint1_7Input = { readonly order_id: string }
+export type Endpoint1_7Output = {
   readonly orderId: string
   readonly status: string
   readonly localStatus: string
   readonly settled: boolean
 }
 export type ServerKtaiWalletKtpayStatusOperation<E = never> = (
-  input: Endpoint1_6Input,
-) => Effect.Effect<Endpoint1_6Output, E>
+  input: Endpoint1_7Input,
+) => Effect.Effect<Endpoint1_7Output, E>
 
 export interface ServerKtaiApi<E = never> {
   readonly account: { readonly get: ServerKtaiAccountGetOperation<E> }
   readonly ensure: ServerKtaiEnsureOperation<E>
   readonly credential: { readonly get: ServerKtaiCredentialGetOperation<E> }
+  readonly logout: ServerKtaiLogoutOperation<E>
   readonly wallet: {
     readonly depositAddress: ServerKtaiWalletDepositAddressOperation<E>
     readonly ktpay: {

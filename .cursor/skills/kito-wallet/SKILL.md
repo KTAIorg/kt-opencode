@@ -56,7 +56,7 @@ Casio **只认** `tron` / `eth`。把 `ethereum` 原样发给 Casio 会失败或
 
 取址顺序：
 
-1. 问 NewAPI IAM（生产 `ktapi.cc` 可能还没有这条路由）。
+1. 问生产 NewAPI IAM（`https://ktapi.cc`）。
 2. 地址与网络不符就丢掉，继续（例如 `ethereum` 收到 `T…`）。
 3. 可选 `KTAI_BILLING_BASE_URL` 走 billing；必须按 chain 过滤，不能 `page_size=1` 拿租户第一条。
 4. 可选 `KTAI_SETTLEMENT_ADDRESS_URL`：先 `GET /api/v1/address/list?tenant_id=&chain=eth|tron`，没有再 `POST /api/v1/address/create`（`chain: eth|tron`）。

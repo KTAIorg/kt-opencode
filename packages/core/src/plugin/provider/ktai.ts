@@ -6,6 +6,7 @@ import { Bus } from "../../bus.js"
 import { Credential } from "../../credential.js"
 import { Integration } from "../../integration.js"
 import {
+  HIDDEN_RELEASE_DATE,
   KTAI_API_URL,
   loadKtaiModels,
   type RawModel,
@@ -60,8 +61,10 @@ function applyModel(model: RawModel, draft: Model.MutableInfo) {
     },
   ]
   draft.status = "active"
-  draft.enabled = visible
-  draft.time.released = visible ? Date.now() : Date.parse("2020-01-01")
+  // Keep every catalog model selectable in Manage Models. The picker still
+  // hides non-defaults via the stale release date until the user turns them on.
+  draft.enabled = true
+  draft.time.released = visible ? Date.now() : Date.parse(HIDDEN_RELEASE_DATE)
 }
 
 const telegram = (): IntegrationOAuthMethodRegistration => ({
@@ -179,6 +182,13 @@ export const KtaiPlugin = define({
       Stream.runForEach(refresh),
       Effect.forkScoped({ startImmediately: true }),
     )
-    yield* refresh().pipe(Effect.forkScoped)
+    yield* Effect.gen(function* () {
+      yield* refresh()
+      for (const delay of ["5 seconds", "15 seconds", "30 seconds"] as const) {
+        if (loaded.models.length) return
+        yield* Effect.sleep(delay)
+        yield* refresh()
+      }
+    }).pipe(Effect.forkScoped)
   }),
 } satisfies PluginInternal.InternalPlugin)

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { isNushell, mergeShellEnv, parseShellEnv, resolveUserShell } from "./shell-env"
+import { applyShellEnvironment, isNushell, mergeShellEnv, parseShellEnv, resolveUserShell } from "./shell-env"
 
 describe("shell env", () => {
   test("parseShellEnv supports null-delimited pairs", () => {
@@ -39,6 +39,32 @@ describe("shell env", () => {
     expect(resolveUserShell(undefined, "/bin/zsh")).toBe("/bin/zsh")
     expect(resolveUserShell(undefined, "unknown")).toBe("/bin/sh")
     expect(resolveUserShell(undefined, undefined)).toBe("/bin/sh")
+  })
+
+  test("applyShellEnvironment drops host OpenAI keys from the login shell", () => {
+    const env = applyShellEnvironment(
+      { PATH: "/usr/bin", HOME: "/tmp/home" },
+      {
+        PATH: "/shell/path",
+        OPENAI_API_KEY: "sk-from-zsh",
+        OPENAI_BASE_URL: "https://sub2api.ktyun.cc/v1",
+      },
+    )
+
+    expect(env.PATH).toBe("/shell/path")
+    expect(env.HOME).toBe("/tmp/home")
+    expect(env.OPENAI_API_KEY).toBeUndefined()
+    expect(env.OPENAI_BASE_URL).toBeUndefined()
+  })
+
+  test("applyShellEnvironment keeps keys already set on the process", () => {
+    const env = applyShellEnvironment(
+      { OPENAI_API_KEY: "sk-explicit" },
+      { OPENAI_API_KEY: "sk-from-zsh", OPENAI_BASE_URL: "https://sub2api.ktyun.cc/v1" },
+    )
+
+    expect(env.OPENAI_API_KEY).toBe("sk-explicit")
+    expect(env.OPENAI_BASE_URL).toBeUndefined()
   })
 
   test("isNushell handles path and binary name", () => {

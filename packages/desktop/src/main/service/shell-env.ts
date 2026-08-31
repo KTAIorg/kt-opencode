@@ -99,3 +99,31 @@ export function mergeShellEnv(shell: Record<string, string> | null, env: Record<
     ...env,
   }
 }
+
+/** Host CLI keys that must not leak from zsh/bashrc into the desktop sidecar. */
+export const HOST_PROVIDER_ENV_KEYS = [
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OPENAI_MODEL",
+  "ANTHROPIC_API_KEY",
+  "OPENROUTER_API_KEY",
+  "KTAI_API_KEY",
+  "KTAI_IDENTITY_TOKEN",
+  "KTAI_IDENTITY_EXPIRES_AT",
+] as const
+
+export function applyShellEnvironment(
+  current: Record<string, string | undefined>,
+  shell: Record<string, string> | null,
+) {
+  const kept: Record<string, string> = {}
+  for (const key of HOST_PROVIDER_ENV_KEYS) {
+    const value = current[key]
+    if (value) kept[key] = value
+  }
+  const next = { ...current, ...(shell ?? {}), ...kept }
+  for (const key of HOST_PROVIDER_ENV_KEYS) {
+    if (!kept[key]) delete next[key]
+  }
+  return next
+}

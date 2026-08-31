@@ -85,6 +85,12 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/Mo
 
 const apiKey = (model: Info, credential?: Credential.Value) => {
   if (credential?.type === "key") return Auth.value(credential.key)
+  // Kito Telegram oauth is KT Identity. NewAPI chat only accepts the managed key.
+  if (model.providerID === "ktai") {
+    const value = model.settings?.apiKey
+    if (typeof value === "string" && value) return Auth.value(value)
+    return undefined
+  }
   if (credential?.type === "oauth") return Auth.value(credential.access)
   const value = model.settings?.apiKey
   if (typeof value === "string") return Auth.value(value)
@@ -210,7 +216,7 @@ const resolveCatalogModel = Effect.fn("ModelResolver.resolveCatalogModel")(funct
     const settings = yield* prepareProviderSettings(
       resolved,
       Provider.mergeOverlay(resolved.settings, {
-        ...nativeCredentialSettings(resolved.package ?? "", credential),
+        ...nativeCredentialSettings(resolved.package ?? "", credential, resolved.providerID),
         ...credential?.metadata,
         ...configuration,
       }) ?? {},
@@ -229,7 +235,7 @@ const resolveCatalogModel = Effect.fn("ModelResolver.resolveCatalogModel")(funct
   )
   const settings = {
     ...(credential ? withoutNativeAuthSettings(mapped) : mapped),
-    ...nativeCredentialSettings(specifier, credential),
+    ...nativeCredentialSettings(specifier, credential, resolved.providerID),
     headers: Provider.mergeHeaders(mapping?.headers, resolved.headers),
     body: Provider.mergeOverlay(mapping?.body, resolved.body),
     limits: { context: resolved.limit.context, input: resolved.limit.input, output: resolved.limit.output },
@@ -308,9 +314,14 @@ function unresolvedProviderVariables(model: Info, baseURL: string) {
   })
 }
 
-const nativeCredentialSettings = (specifier: string, credential: Credential.Value | undefined) => {
+const nativeCredentialSettings = (
+  specifier: string,
+  credential: Credential.Value | undefined,
+  providerID?: Provider.ID,
+) => {
   if (!credential) return {}
   if (credential.type === "key") return { apiKey: credential.key }
+  if (providerID === "ktai") return {}
   if (
     specifier === "@opencode-ai/ai/providers/anthropic" ||
     specifier === "@opencode-ai/ai/providers/anthropic-compatible"

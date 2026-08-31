@@ -6,6 +6,8 @@ export type KtaiEnsure = { ok: true; updated: boolean; created: boolean; keyPres
 
 export type KtaiCredential = { identity: boolean; keyPresent: boolean }
 
+export type KtaiLogout = { ok: true }
+
 export type KtaiDepositAddress = { chain: string; asset: string; address: string }
 
 export type KtaiKtpayOrder = { orderId: string; cashierUrl: string; amount: number; requested: number; status: string }
@@ -2327,6 +2329,8 @@ export type ServerKtaiAccountGetOutput = KtaiAccount
 export type ServerKtaiEnsureOutput = KtaiEnsure
 
 export type ServerKtaiCredentialGetOutput = KtaiCredential
+
+export type ServerKtaiLogoutOutput = KtaiLogout
 
 export type ServerKtaiWalletDepositAddressInput = {
   readonly chain?: { readonly chain?: string | undefined; readonly asset?: string | undefined }["chain"]

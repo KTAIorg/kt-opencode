@@ -3,6 +3,7 @@ import type {
   ServerKtaiAccountGetOutput,
   ServerKtaiEnsureOutput,
   ServerKtaiCredentialGetOutput,
+  ServerKtaiLogoutOutput,
   ServerKtaiWalletDepositAddressInput,
   ServerKtaiWalletDepositAddressOutput,
   ServerKtaiWalletKtpayInfoOutput,
@@ -408,6 +409,11 @@ export function make(options: ClientOptions) {
             requestOptions,
           ),
       },
+      logout: (requestOptions?: RequestOptions) =>
+        request<ServerKtaiLogoutOutput>(
+          { method: "POST", path: `/ktai/logout`, successStatus: 200, declaredStatuses: [401, 400], empty: false },
+          requestOptions,
+        ),
       wallet: {
         depositAddress: (input?: ServerKtaiWalletDepositAddressInput, requestOptions?: RequestOptions) =>
           request<ServerKtaiWalletDepositAddressOutput>(

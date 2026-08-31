@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import {
   externalIdentity,
+  fetchAccountSummary,
   identityBaseUrl,
   identityLoginInstructions,
   isEmbeddedMode,
@@ -8,6 +9,7 @@ import {
   parseTelegramAuthorization,
   passwordLogin,
   pollTelegramLogin,
+  revokeCurrentIdentitySession,
   sessionExpiresAt,
   startTelegramLogin,
   telegramAuthorizeView,
@@ -187,4 +189,36 @@ test("pollTelegramLogin accepts Identity confirmed payload without session wrapp
   expect(session.token).toBe("tg-token-plain")
   expect(session.account.displayName).toBe("芒 果果")
   expect(session.session.expiresAt).toBe("2026-08-01T00:00:00.000Z")
+})
+
+test("fetchAccountSummary keeps the profile when the ledger is unavailable", async () => {
+  const summary = await fetchAccountSummary("identity-token", "https://login.example", async (input) => {
+    const url = String(input)
+    if (url.endsWith("/identity/v1/account/me")) {
+      return new Response(
+        JSON.stringify({ id: "acc-1", accountNo: "KT260001", displayName: "芒 果果" }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    }
+    return new Response("ledger down", { status: 503 })
+  })
+  expect(summary.account.displayName).toBe("芒 果果")
+  expect(summary.balance).toBe(0)
+})
+
+test("revokes the current Identity session on the product logout route", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = []
+  await revokeCurrentIdentitySession("identity-token", "https://login.example", async (input, init) => {
+    calls.push({ url: String(input), init })
+    return new Response(JSON.stringify({ revoked: 1 }), { status: 200 })
+  })
+  expect(calls[0]?.url).toBe("https://login.example/identity/v1/account/sessions/current/revoke")
+  expect(calls[0]?.init?.method).toBe("POST")
+  expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe("Bearer identity-token")
+})
+
+test("treats an already-invalid Identity session as a successful revoke", async () => {
+  await revokeCurrentIdentitySession("expired-token", "https://login.example", async () => {
+    return new Response(JSON.stringify({ message: "invalid or inactive Identity token" }), { status: 401 })
+  })
 })

@@ -735,6 +735,66 @@ describe("ModelResolver", () => {
     }),
   )
 
+  it.effect("uses the managed Kito key instead of Identity oauth for NewAPI chat", () =>
+    Effect.gen(function* () {
+      const resolved = yield* ModelResolver.fromCatalogModel(
+        model(Provider.aisdk("@ai-sdk/openai-compatible"), {
+          providerID: Provider.ID.make("ktai"),
+          settings: { apiKey: "sk-managed-kito", baseURL: "https://ktapi.cc/v1" },
+          headers: {},
+          body: {},
+        }),
+        Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("telegram"),
+          access: "identity-token",
+          refresh: "refresh",
+          expires: Date.now() + 60_000,
+          metadata: { accountId: "acct_123" },
+        }),
+      )
+      const headers = yield* resolved.route.auth.apply({
+        request: LLM.request({ model: resolved, prompt: "Hello" }),
+        method: "POST",
+        url: "https://ktapi.cc/v1/chat/completions",
+        body: "{}",
+        headers: Headers.empty,
+      })
+
+      expect(resolved.route.endpoint.baseURL).toBe("https://ktapi.cc/v1")
+      expect(headers.authorization).toBe("Bearer sk-managed-kito")
+    }),
+  )
+
+  it.effect("does not send Kito Identity oauth as a NewAPI model key", () =>
+    Effect.gen(function* () {
+      const resolved = yield* ModelResolver.fromCatalogModel(
+        model(Provider.aisdk("@ai-sdk/openai-compatible"), {
+          providerID: Provider.ID.make("ktai"),
+          settings: { baseURL: "https://ktapi.cc/v1" },
+          headers: {},
+          body: {},
+        }),
+        Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("telegram"),
+          access: "identity-token",
+          refresh: "refresh",
+          expires: Date.now() + 60_000,
+        }),
+      )
+      const headers = yield* resolved.route.auth.apply({
+        request: LLM.request({ model: resolved, prompt: "Hello" }),
+        method: "POST",
+        url: "https://ktapi.cc/v1/chat/completions",
+        body: "{}",
+        headers: Headers.empty,
+      })
+
+      expect(headers.authorization).not.toBe("Bearer identity-token")
+    }),
+  )
+
   it.effect("loads dynamic native provider packages through the injected package loader", () =>
     Effect.gen(function* () {
       const native = yield* ModelResolver.fromCatalogModel(

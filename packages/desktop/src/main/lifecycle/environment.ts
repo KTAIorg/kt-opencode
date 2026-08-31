@@ -9,7 +9,7 @@ import contextMenu from "electron-context-menu"
 import { Effect } from "effect"
 import { CHANNEL, VERSION } from "../constants"
 import { initCrashReporter, initLogging, type DesktopLogger } from "../native/logging"
-import { getUserShell, loadShellEnv } from "../service/shell-env"
+import { applyShellEnvironment, getUserShell, HOST_PROVIDER_ENV_KEYS, loadShellEnv } from "../service/shell-env"
 import { cleanupStoreFiles } from "../storage/cleanup"
 import { registerRendererProtocol, setDockIcon } from "../windows"
 import { initializeFirstLaunchOnboarding } from "./onboarding"
@@ -69,12 +69,15 @@ export function preferApplicationEnvironment(logger: DesktopLogger) {
   const shell = process.platform === "win32" ? null : getUserShell()
   const shellEnv = shell ? loadShellEnv(shell, logger) : null
   if (!shellEnv?.XDG_STATE_HOME) delete process.env.XDG_STATE_HOME
-  Object.assign(process.env, {
-    ...shellEnv,
+  const merged = applyShellEnvironment(process.env, shellEnv)
+  Object.assign(process.env, merged, {
     OPENCODE_EXPERIMENTAL_ICON_DISCOVERY: "true",
     OPENCODE_EXPERIMENTAL_FILEWATCHER: "true",
     OPENCODE_CLIENT: "desktop",
   })
+  for (const key of HOST_PROVIDER_ENV_KEYS) {
+    if (!merged[key]) delete process.env[key]
+  }
 }
 
 export function prepareDesktop(logger: DesktopLogger) {

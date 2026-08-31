@@ -1,13 +1,15 @@
 import { Global } from "@opencode-ai/util/global"
+import fs from "fs"
 import path from "path"
 import { fetchAccountMe } from "./identity"
 
 export const KTAI_NEWAPI_BASE_URL = "https://ktapi.cc"
-export const KTAI_WALLET_FALLBACK_BASE_URL = "https://newapi-test.ktyun.cc"
 export const KTAI_SETTLEMENT_APP_ID = "2079689277851045900"
 export const KTAI_RECHARGE_CALLBACK_URL = "http://kt-billing.kt-billing-prod.svc.cluster.local/recharge/crypto/webhook"
 export const KTAI_MANAGED_TOKEN_NAME = "kito"
 export const KTAI_API_AUTH_ID = "ktai-api"
+export const KTAI_CUSTOMER_GROUP = "default"
+export const NEWAPI_QUOTA_PER_USD = 500_000
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
@@ -54,6 +56,16 @@ export type KtpayStatus = {
   settled: boolean
 }
 
+export type NewapiUserSnapshot = {
+  id?: number
+  username?: string
+  displayName?: string
+  group?: string
+  quota?: number
+  usedQuota?: number
+  remainingUsd?: number
+}
+
 type JsonRecord = Record<string, unknown>
 
 function newapiBaseUrl(env: NodeJS.ProcessEnv = process.env) {
@@ -63,9 +75,9 @@ function newapiBaseUrl(env: NodeJS.ProcessEnv = process.env) {
 
 function walletBaseUrls(explicit?: string, env: NodeJS.ProcessEnv = process.env) {
   if (explicit?.trim()) return [explicit.trim().replace(/\/+$/, "")]
-  const primary = newapiBaseUrl(env)
-  const fallback = (env.KTAI_WALLET_BASE_URL?.trim() || KTAI_WALLET_FALLBACK_BASE_URL).replace(/\/+$/, "")
-  return primary === fallback ? [primary] : [primary, fallback]
+  const override = env.KTAI_WALLET_BASE_URL?.trim()
+  if (override) return [override.replace(/\/+$/, "")]
+  return [newapiBaseUrl(env)]
 }
 
 export function managedApiKeyPath() {
@@ -148,6 +160,25 @@ export async function readManagedApiKey(): Promise<string | undefined> {
     // no stored key yet
   }
   return
+}
+
+export async function clearManagedApiKey() {
+  clearNewapiSpendableCache()
+  const files = [managedApiKeyPath(), spendableCachePath()]
+  for (const file of files) {
+    if (fs.existsSync(file)) fs.unlinkSync(file)
+  }
+  const authFile = path.join(Global.Path.data, "auth.json")
+  if (!fs.existsSync(authFile)) return
+  try {
+    const data = JSON.parse(fs.readFileSync(authFile, "utf8")) as Record<string, unknown>
+    if (!data[KTAI_API_AUTH_ID] && !data.ktai) return
+    delete data[KTAI_API_AUTH_ID]
+    delete data.ktai
+    fs.writeFileSync(authFile, JSON.stringify(data, null, 2) + "\n", { mode: 0o600 })
+  } catch {
+    // leftover auth.json is not enough to keep the user signed in
+  }
 }
 
 async function tryDedicatedTokenEnsure(
@@ -283,6 +314,170 @@ async function ensureViaSession(
     throw new Error(stringField(keyResult.payload, "message", "error") ?? `NewAPI token key failed (${keyResult.status})`)
   }
   return { key: formatRelayKey(key), created, name: KTAI_MANAGED_TOKEN_NAME }
+}
+
+export function newapiQuotaToUsd(quota: number) {
+  return Math.round((quota / NEWAPI_QUOTA_PER_USD) * 100) / 100
+}
+
+function userSnapshotFrom(payload: unknown): NewapiUserSnapshot {
+  const record = asRecord(payload)
+  const data = asRecord(record?.data) ?? record
+  if (!data) return {}
+  const quota = numberField(data, "quota")
+  const id = typeof data.id === "number" && Number.isFinite(data.id) ? data.id : Number(data.id)
+  return {
+    ...(Number.isFinite(id) ? { id } : {}),
+    username: stringField(data, "username"),
+    displayName: stringField(data, "display_name"),
+    group: stringField(data, "group"),
+    quota,
+    usedQuota: numberField(data, "used_quota"),
+    remainingUsd: quota === undefined ? undefined : newapiQuotaToUsd(quota),
+  }
+}
+
+function customerGroups(group?: string) {
+  return (group ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+type SpendableSession = {
+  cookie: string
+  userId?: number
+}
+
+let spendableSession: SpendableSession | undefined
+let spendableUsd: number | undefined
+
+export function clearNewapiSpendableCache() {
+  spendableSession = undefined
+  spendableUsd = undefined
+}
+
+function spendableCachePath() {
+  return process.env.OPENCODE_KTAI_SPENDABLE_PATH?.trim() || path.join(Global.Path.data, "ktai-spendable.json")
+}
+
+function rememberSession(cookie: string | undefined, userId?: number) {
+  if (!cookie) return
+  spendableSession = userId ? { cookie, userId } : { cookie }
+}
+
+function rememberSpendable(usd: number | undefined) {
+  if (usd === undefined) return
+  spendableUsd = usd
+  void Bun.write(spendableCachePath(), JSON.stringify({ remainingUsd: usd })).catch(() => undefined)
+  return usd
+}
+
+export async function readCachedSpendable() {
+  if (spendableUsd !== undefined) return spendableUsd
+  try {
+    const raw = (await Bun.file(spendableCachePath()).json()) as { remainingUsd?: unknown }
+    if (typeof raw.remainingUsd === "number" && Number.isFinite(raw.remainingUsd)) {
+      spendableUsd = raw.remainingUsd
+      return raw.remainingUsd
+    }
+  } catch {
+    // no cached spendable yet
+  }
+  return
+}
+
+async function readSelfSpendable(
+  session: SpendableSession,
+  input: { baseUrl: string; fetchImpl: FetchLike },
+) {
+  const self = await sessionJson(input.fetchImpl, `${input.baseUrl}/api/user/self`, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      cookie: session.cookie,
+      ...(session.userId ? { "New-Api-User": String(session.userId) } : {}),
+    },
+  })
+  if (self.status >= 400) return
+  return userSnapshotFrom(self.payload).remainingUsd
+}
+
+async function iamEnsureUser(
+  identityToken: string,
+  input: { baseUrl?: string; fetchImpl?: FetchLike } = {},
+) {
+  const baseUrl = input.baseUrl ?? newapiBaseUrl()
+  const fetchImpl = input.fetchImpl ?? fetch
+  const ensured = await sessionJson(fetchImpl, `${baseUrl}/api/iam/ensure`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      authorization: `Bearer ${identityToken}`,
+    },
+    body: "{}",
+  })
+  if (ensured.status < 400) rememberSession(ensured.cookie, userSnapshotFrom(ensured.payload).id)
+  return ensured
+}
+
+export async function fetchNewapiSpendable(
+  identityToken: string,
+  input: { baseUrl?: string; fetchImpl?: FetchLike } = {},
+) {
+  const baseUrl = input.baseUrl ?? newapiBaseUrl()
+  const fetchImpl = input.fetchImpl ?? fetch
+  if (spendableSession) {
+    const cached = await readSelfSpendable(spendableSession, { baseUrl, fetchImpl })
+    if (cached !== undefined) return rememberSpendable(cached)
+    spendableSession = undefined
+  }
+  const ensured = await iamEnsureUser(identityToken, { baseUrl, fetchImpl })
+  if (ensured.status >= 400) return readCachedSpendable()
+  const fromEnsure = userSnapshotFrom(ensured.payload)
+  if (fromEnsure.remainingUsd !== undefined) return rememberSpendable(fromEnsure.remainingUsd)
+  if (!ensured.cookie) return readCachedSpendable()
+  const fromSelf = await readSelfSpendable(
+    { cookie: ensured.cookie, ...(fromEnsure.id ? { userId: fromEnsure.id } : {}) },
+    { baseUrl, fetchImpl },
+  )
+  return fromSelf !== undefined ? rememberSpendable(fromSelf) : readCachedSpendable()
+}
+
+export async function pinEnsuredUserToDefault(
+  identityToken: string,
+  input: { baseUrl?: string; fetchImpl?: FetchLike } = {},
+) {
+  const baseUrl = input.baseUrl ?? newapiBaseUrl()
+  const fetchImpl = input.fetchImpl ?? fetch
+  const ensured = await iamEnsureUser(identityToken, { baseUrl, fetchImpl })
+  if (ensured.status >= 400 || !ensured.cookie) return { pinned: false as const }
+  const snapshot = userSnapshotFrom(ensured.payload)
+  if (!snapshot.id || !snapshot.username) return { pinned: false as const, group: snapshot.group }
+  if (customerGroups(snapshot.group).join(",") === KTAI_CUSTOMER_GROUP) {
+    return { pinned: false as const, group: snapshot.group }
+  }
+  const updated = await sessionJson(fetchImpl, `${baseUrl}/api/user/`, {
+    method: "PUT",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      cookie: ensured.cookie,
+      "New-Api-User": String(snapshot.id),
+    },
+    body: JSON.stringify({
+      id: snapshot.id,
+      username: snapshot.username,
+      display_name: snapshot.displayName || snapshot.username,
+      group: KTAI_CUSTOMER_GROUP,
+      status: 1,
+    }),
+  })
+  if (updated.status >= 400 || asRecord(updated.payload)?.success === false) {
+    return { pinned: false as const, group: snapshot.group }
+  }
+  return { pinned: true as const, group: KTAI_CUSTOMER_GROUP }
 }
 
 export async function ensureManagedToken(
@@ -435,8 +630,11 @@ export async function fetchDepositAddress(
   for (const host of hosts) {
     for (const pathName of host.paths) {
       const result = await readDepositResponse(fetchImpl, `${host.baseUrl}${pathName}`, identityToken)
-      if (result.status === 404 || typeof result.payload === "string") {
-        last = stringField(result.payload, "message", "error") ?? last
+      if (result.status === 404 || result.status === 429 || typeof result.payload === "string") {
+        last =
+          result.status === 429
+            ? "Deposit address is rate limited, try again later"
+            : (stringField(result.payload, "message", "error") ?? last)
         continue
       }
       if (!result.ok) {
@@ -567,5 +765,6 @@ export async function syncManagedToken(identityToken: string, input: { baseUrl?:
   const current = await readManagedApiKey()
   const token = await ensureManagedToken(identityToken, input)
   if (current !== token.key) await persistManagedApiKey(token.key)
+  await pinEnsuredUserToDefault(identityToken, input).catch(() => undefined)
   return { ...token, updated: current !== token.key }
 }

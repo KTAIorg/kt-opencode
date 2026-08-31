@@ -1,9 +1,13 @@
-import { fetchAccountSummary, externalIdentity, readPersistedIdentityToken } from "@opencode-ai/core/ktai/identity"
+import { Integration } from "@opencode-ai/core/integration"
+import { fetchAccountSummary, externalIdentity, readPersistedIdentityToken, signOutIdentity } from "@opencode-ai/core/ktai/identity"
 import {
+  clearManagedApiKey,
   createKtpayOrder,
   fetchDepositAddress,
   fetchKtpayInfo,
   fetchKtpayStatus,
+  fetchNewapiSpendable,
+  readCachedSpendable,
   readManagedApiKey,
   syncManagedToken,
 } from "@opencode-ai/core/ktai/newapi"
@@ -39,7 +43,9 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
           try: async () => {
             const current = await fetchAccountSummary(token)
             if (!(await readManagedApiKey())) await syncManagedToken(token).catch(() => undefined)
-            return current
+            const spendable = await fetchNewapiSpendable(token).catch(() => undefined)
+            const balance = spendable ?? (await readCachedSpendable()) ?? 0
+            return { ...current, balance }
           },
           catch: (error) =>
             new ServiceUnavailableError({
@@ -73,6 +79,22 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
           identity: Boolean(token),
           keyPresent: Boolean(key),
         }
+      }),
+    )
+    .handle("ktai.logout", () =>
+      Effect.gen(function* () {
+        yield* Effect.promise(() => signOutIdentity())
+        yield* Effect.promise(() => clearManagedApiKey())
+        const integration = yield* Integration.Service
+        const info = yield* integration.get(Integration.ID.make("ktai"))
+        if (info) {
+          yield* Effect.forEach(
+            info.connections.filter((connection) => connection.type === "credential"),
+            (connection) => integration.connection.remove(connection.id),
+            { discard: true },
+          )
+        }
+        return { ok: true as const }
       }),
     )
     .handle("ktai.wallet.depositAddress", (ctx) =>

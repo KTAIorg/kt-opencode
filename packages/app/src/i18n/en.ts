@@ -1213,9 +1213,16 @@ export const dict = {
 
   "dialog.ktAccess.auth.title": "Sign in to Kito",
   "dialog.ktAccess.auth.lead": "Sign in with Telegram. Then you can top up and keep chatting.",
+  "dialog.ktAccess.auth.signedIn.lead":
+    "You're already signed in. The model key failed — refresh it, then send again.",
+  "dialog.ktAccess.refreshKey": "Refresh key",
+  "dialog.ktAccess.refreshKey.failed": "Could not refresh the Kito model key. Try again.",
   "dialog.ktAccess.billing.title": "Free chats used up",
   "dialog.ktAccess.billing.lead":
     "Zen free chats are exhausted. Sign in to Kito, top up, and continue on paid models.",
+  "dialog.ktAccess.billing.signedIn.lead":
+    "Zen free chats are exhausted. Switch to a Kito paid model, or top up first if your balance is empty.",
+  "dialog.ktAccess.billing.paid.lead": "Your Kito chat balance is empty. Top up, then send again.",
   "dialog.ktAccess.step1": "Sign in to Kito with Telegram (same account as NewAPI).",
   "dialog.ktAccess.step2": "Open the wallet and top up so paid models keep working.",
   "dialog.ktAccess.step3": "Pick a Kito paid model and send again.",
@@ -1228,10 +1235,11 @@ export const dict = {
   "dialog.ktAccess.snooze": "Remind me later",
   "dialog.ktAccess.switch.title": "Free quota used up — switch to Kito",
   "dialog.ktAccess.switch.lead":
-    "Zen free chats are exhausted. Your Kito API key is already configured — pick a paid Kito model below to continue.",
+    "Zen free chats are exhausted. You already have Kito balance — pick a paid model below to continue. No extra top-up needed.",
   "dialog.ktAccess.switch.pickHint": "Click a model to switch immediately, then send again (billed to your Kito balance).",
   "dialog.ktAccess.switch.empty": "No visible Kito models yet. Open the full model list to choose or manage visibility.",
   "dialog.ktAccess.switch.browseAll": "Open full model list",
+  "dialog.ktAccess.pickPaidModel": "Pick a paid model",
   "dialog.ktAccess.switch.step1": "Open the model picker (bottom of the composer).",
   "dialog.ktAccess.switch.step2": "Choose a model under the Kito provider (not Zen Free).",
   "dialog.ktAccess.switch.step3": "Send again — usage bills to your Kito balance.",
@@ -1240,6 +1248,7 @@ export const dict = {
   "dialog.ktAccess.switch.ack": "Got it",
   "titlebar.account.signIn": "Sign in",
   "titlebar.account.topUp": "Top up",
+  "titlebar.account.signOut": "Sign out",
   "titlebar.account.signedIn": "{{name}} · {{balance}}",
   "dialog.ktWallet.title": "Top up Kito",
   "dialog.ktWallet.lead":
@@ -1255,7 +1264,9 @@ export const dict = {
   "dialog.ktWallet.alipay": "Alipay",
   "dialog.ktWallet.wechat": "WeChat Pay",
   "dialog.ktWallet.paying": "Creating order…",
-  "dialog.ktWallet.waiting": "Scan or complete payment in the cashier. This window updates when it clears.",
+  "dialog.ktWallet.waiting": "Complete payment in the cashier. This window updates when it clears — or tap I've paid.",
+  "dialog.ktWallet.confirmPaid": "I've paid",
+  "dialog.ktWallet.confirmPaid.waiting": "Still confirming the payment. Wait a moment.",
   "dialog.ktWallet.openCashier": "Open cashier",
   "dialog.ktWallet.back": "Back",
   "dialog.ktWallet.success": "Payment received. Kito balance will update shortly.",
@@ -1264,7 +1275,8 @@ export const dict = {
   "dialog.ktWallet.loading": "Loading deposit address…",
   "dialog.ktWallet.copy": "Copy address",
   "dialog.ktWallet.copied": "Address copied",
-  "dialog.ktWallet.error": "Could not load the deposit address. Sign in with Telegram and try again.",
+  "dialog.ktWallet.error": "Could not load the deposit address. Try again in a moment.",
+  "dialog.ktWallet.rateLimited": "Address lookup is rate limited. Wait a few minutes, then reopen the crypto tab. You are already signed in.",
   "dialog.ktWallet.hint": "Do not generate an address yourself. Balance updates after the chain payment is credited.",
   "dialog.ktWallet.networkTrc20": "TRC20",
   "dialog.ktWallet.networkErc20": "ERC20",

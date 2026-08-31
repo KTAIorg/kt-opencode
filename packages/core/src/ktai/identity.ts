@@ -204,18 +204,17 @@ export async function fetchAccountSummary(
   baseUrl?: string,
   fetchImpl: FetchLike = fetch,
 ): Promise<IdentityAccountSummary> {
-  const [accountPayload, balancePayload] = await Promise.all([
-    identityGet(token, "/identity/v1/account/me", baseUrl, fetchImpl),
-    identityGet(token, "/identity/v1/account/ledger/balance", baseUrl, fetchImpl),
-  ])
+  const accountPayload = await identityGet(token, "/identity/v1/account/me", baseUrl, fetchImpl)
   const account = asAccount(accountPayload)
-  const balance = balanceFrom(balancePayload)
-  if (!account || balance === undefined) throw new Error("KT Identity account response was unexpected")
+  if (!account) throw new Error("KT Identity account response was unexpected")
+  const balance = await identityGet(token, "/identity/v1/account/ledger/balance", baseUrl, fetchImpl)
+    .then((payload) => balanceFrom(payload))
+    .catch(() => undefined)
   const memberSince = optionalAccountDetail(accountPayload, "memberSince")
   const joinedDays = optionalAccountDetail(accountPayload, "joinedDays")
   return {
     account,
-    balance,
+    balance: balance ?? 0,
     ...(typeof memberSince === "string" ? { memberSince } : {}),
     ...(typeof joinedDays === "number" && Number.isFinite(joinedDays) ? { joinedDays } : {}),
   }
@@ -427,16 +426,63 @@ export function persistIdentitySession(session: IdentityBearerSession) {
   })
 }
 
-export function readPersistedIdentityToken() {
+function readIdentitySessionFile() {
   if (!fs.existsSync(identitySessionPath())) return
-  const raw = JSON.parse(fs.readFileSync(identitySessionPath(), "utf8")) as {
-    token?: unknown
-    expiresAt?: unknown
+  try {
+    return JSON.parse(fs.readFileSync(identitySessionPath(), "utf8")) as {
+      token?: unknown
+      expiresAt?: unknown
+    }
+  } catch {
+    return
   }
-  if (typeof raw.token !== "string" || !raw.token.trim()) return
+}
+
+export function readStoredIdentityToken() {
+  const token = readIdentitySessionFile()?.token
+  if (typeof token === "string" && token.trim()) return token.trim()
+}
+
+export function readPersistedIdentityToken() {
+  const raw = readIdentitySessionFile()
+  if (typeof raw?.token !== "string" || !raw.token.trim()) return
   if (typeof raw.expiresAt === "string") {
     const expires = Date.parse(raw.expiresAt)
     if (Number.isFinite(expires) && expires <= Date.now()) return
   }
   return raw.token.trim()
+}
+
+export function clearPersistedIdentity() {
+  if (!fs.existsSync(identitySessionPath())) return
+  fs.unlinkSync(identitySessionPath())
+}
+
+export async function revokeCurrentIdentitySession(
+  token: string,
+  baseUrl?: string,
+  fetchImpl: FetchLike = fetch,
+) {
+  const response = await fetchImpl(`${baseUrl ?? identityBaseUrl()}/identity/v1/account/sessions/current/revoke`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: "{}",
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (response.ok || response.status === 401 || response.status === 404) return
+  throw new Error(errorMessage(await readJson(response), `KT Identity logout failed (${response.status})`))
+}
+
+export async function signOutIdentity(
+  input: { baseUrl?: string; fetchImpl?: FetchLike } = {},
+) {
+  const token = readStoredIdentityToken()
+  if (token) {
+    await revokeCurrentIdentitySession(token, input.baseUrl, input.fetchImpl ?? fetch).catch(() => undefined)
+  }
+  clearPersistedIdentity()
 }

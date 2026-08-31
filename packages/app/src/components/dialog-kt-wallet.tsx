@@ -1,11 +1,12 @@
 import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode-ai/ui/dialog"
+import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode-ai/ui/dialog"
 import { Spinner } from "@opencode-ai/ui/spinner"
-import { For, Show, createEffect, createMemo, createResource, createSignal, onCleanup } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
+import { isKtpayPaid, readKtpayStatus } from "./dialog-kt-wallet-status"
 import { showToast } from "@/utils/toast"
 
 export type DepositAddress = {
@@ -71,6 +72,7 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   const [order, setOrder] = createSignal<KtpayOrder>()
   const [payError, setPayError] = createSignal<string>()
   const [paid, setPaid] = createSignal(false)
+  const [checking, setChecking] = createSignal(false)
 
   const request = (path: string, init?: RequestInit) => {
     const sdk = serverSDK
@@ -82,36 +84,73 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
     return (platform.fetch ?? fetch)(`${sdk.url.replace(/\/+$/, "")}${path}`, { ...init, headers })
   }
 
-  const [info] = createResource(async () => {
-    const response = await request("/ktai/wallet/ktpay/info")
-    const payload = (await response.json().catch(() => undefined)) as KtpayInfo & { error?: string } | undefined
-    if (!response.ok) throw new Error(payload?.error || language.t("dialog.ktWallet.fiatError"))
-    return payload
+  const [info, setInfo] = createSignal<KtpayInfo>()
+  const [infoError, setInfoError] = createSignal<Error>()
+  const [infoLoading, setInfoLoading] = createSignal(true)
+  const [address, setAddress] = createSignal<DepositAddress>()
+  const [addressError, setAddressError] = createSignal<Error>()
+  const [addressLoading, setAddressLoading] = createSignal(false)
+
+  onMount(() => {
+    void request("/ktai/wallet/ktpay/info")
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => undefined)) as (KtpayInfo & { error?: string }) | undefined
+        if (!response.ok) throw new Error(payload?.error || language.t("dialog.ktWallet.fiatError"))
+        setInfo(payload)
+      })
+      .catch((error) => {
+        setInfoError(error instanceof Error ? error : new Error(language.t("dialog.ktWallet.fiatError")))
+      })
+      .finally(() => setInfoLoading(false))
   })
 
-  const [address] = createResource(
-    () => (tab() === "crypto" ? network() : undefined),
-    async (selected) => {
-      const query = new URLSearchParams({ chain: selected, asset: "USDT" })
-      const response = await request(`/ktai/wallet/deposit-address?${query}`)
-      const payload = (await response.json().catch(() => undefined)) as DepositAddress & { error?: string } | undefined
-      if (!response.ok) {
-        const message = payload?.error || ""
-        if (message.includes("does not match the requested network")) {
+  createEffect(() => {
+    const selected = tab() === "crypto" ? network() : undefined
+    if (!selected) {
+      setAddress()
+      setAddressError()
+      setAddressLoading(false)
+      return
+    }
+    setAddressLoading(true)
+    setAddressError()
+    let cancelled = false
+    void request(`/ktai/wallet/deposit-address?${new URLSearchParams({ chain: selected, asset: "USDT" })}`)
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => undefined)) as
+          | (DepositAddress & { error?: string; message?: string })
+          | undefined
+        if (!response.ok) {
+          const message = payload?.error || payload?.message || ""
+          if (message.includes("does not match the requested network")) {
+            throw new Error(language.t("dialog.ktWallet.networkMismatch"))
+          }
+          if (message.includes("429") || /rate limit/i.test(message)) {
+            throw new Error(language.t("dialog.ktWallet.rateLimited"))
+          }
+          throw new Error(message || language.t("dialog.ktWallet.error"))
+        }
+        if (!payload?.address) throw new Error(payload?.error || language.t("dialog.ktWallet.error"))
+        if (!addressLooksLikeNetwork(selected, payload.address)) {
           throw new Error(language.t("dialog.ktWallet.networkMismatch"))
         }
-        throw new Error(message || language.t("dialog.ktWallet.error"))
-      }
-      if (!payload?.address) throw new Error(payload?.error || language.t("dialog.ktWallet.error"))
-      if (!addressLooksLikeNetwork(selected, payload.address)) {
-        throw new Error(language.t("dialog.ktWallet.networkMismatch"))
-      }
-      return payload
-    },
-  )
+        if (!cancelled) setAddress(payload)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setAddress()
+        setAddressError(error instanceof Error ? error : new Error(language.t("dialog.ktWallet.error")))
+      })
+      .finally(() => {
+        if (!cancelled) setAddressLoading(false)
+      })
+    onCleanup(() => {
+      cancelled = true
+    })
+  })
 
   const visibleAddress = createMemo(() => {
-    if (address.loading || address.error) return
+    if (addressLoading() || addressError()) return
     const row = address()
     if (!row || !addressLooksLikeNetwork(network(), row.address)) return
     return row
@@ -140,30 +179,38 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
     return amount()
   })
 
+  const markPaid = () => {
+    if (paid()) return
+    setPaid(true)
+    window.dispatchEvent(new Event("kito-account-refresh"))
+    showToast({
+      variant: "success",
+      title: language.t("dialog.ktWallet.success"),
+    })
+  }
+
+  const checkOrder = (current: KtpayOrder, quiet = true) =>
+    request(`/ktai/wallet/ktpay/status/${encodeURIComponent(current.orderId)}`).then(async (response) => {
+      const payload = await response.json().catch(() => undefined)
+      if (isKtpayPaid(payload)) {
+        markPaid()
+        return true
+      }
+      const remote = readKtpayStatus(payload)?.status.toLowerCase()
+      if (response.ok && remote && TERMINAL_FAILURE.has(remote)) {
+        setPayError(language.t(remote === "expired" ? "dialog.ktWallet.expired" : "dialog.ktWallet.failed"))
+        setOrder(undefined)
+        return false
+      }
+      if (!quiet) showToast({ variant: "error", title: language.t("dialog.ktWallet.confirmPaid.waiting") })
+      return false
+    })
+
   createEffect(() => {
     const current = order()
     if (!current || paid()) return
-    const timer = window.setInterval(() => {
-      void request(`/ktai/wallet/ktpay/status/${encodeURIComponent(current.orderId)}`)
-        .then((response) => (response.ok ? response.json().catch(() => undefined) : undefined))
-        .then((payload: { localStatus?: string; status?: string } | undefined) => {
-          if (!payload) return
-          if (payload.localStatus === "success") {
-            setPaid(true)
-            window.dispatchEvent(new Event("kito-account-refresh"))
-            showToast({
-              variant: "success",
-              title: language.t("dialog.ktWallet.success"),
-            })
-            return
-          }
-          const remote = payload.status?.toLowerCase()
-          if (remote && TERMINAL_FAILURE.has(remote)) {
-            setPayError(language.t(remote === "expired" ? "dialog.ktWallet.expired" : "dialog.ktWallet.failed"))
-            setOrder(undefined)
-          }
-        })
-    }, 5000)
+    void checkOrder(current)
+    const timer = window.setInterval(() => void checkOrder(current), 2000)
     onCleanup(() => window.clearInterval(timer))
   })
 
@@ -207,12 +254,17 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   }
 
   return (
-    <Dialog size="large">
+    <Dialog fit containerClass="!h-auto max-h-[min(92vh,760px)] !w-[min(calc(100vw-32px),520px)]">
       <DialogHeader>
-        <DialogTitleGroup title={language.t("dialog.ktWallet.title")} description={language.t("dialog.ktWallet.lead")} />
+        <DialogTitleGroup
+          title={language.t("dialog.ktWallet.title")}
+          description={
+            order() && !paid() ? language.t("dialog.ktWallet.waiting") : language.t("dialog.ktWallet.lead")
+          }
+        />
       </DialogHeader>
-      <DialogBody class="min-h-0 overflow-y-auto">
-      <div class="flex min-h-0 flex-col gap-3 px-6 pb-4">
+      <DialogBody class="min-h-0 flex-1 overflow-y-auto">
+      <div class="flex min-h-0 flex-col gap-3 px-6 pb-2">
         <div class="flex gap-1 rounded-lg bg-background-stronger p-1">
           <button
             type="button"
@@ -239,15 +291,15 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
         </div>
 
         <Show when={tab() === "fiat"}>
-          <Show when={info.loading}>
+          <Show when={infoLoading()}>
             <div class="flex items-center gap-3 text-14-regular text-text-base">
               <Spinner />
               <span>{language.t("dialog.ktWallet.fiatLoading")}</span>
             </div>
           </Show>
-          <Show when={info.error}>
+          <Show when={infoError()}>
             <p class="text-14-regular text-text-base">
-              {info.error instanceof Error ? info.error.message : language.t("dialog.ktWallet.fiatError")}
+              {infoError()?.message || language.t("dialog.ktWallet.fiatError")}
             </p>
           </Show>
           <Show when={info()?.enabled === false}>
@@ -303,37 +355,18 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
             </div>
           </Show>
           <Show when={order() && !paid()}>
-            <div class="flex flex-col gap-3">
-              <p class="text-13-regular text-text-weak">{language.t("dialog.ktWallet.waiting")}</p>
-              <iframe
-                src={order()?.cashierUrl}
-                title={language.t("dialog.ktWallet.tabFiat")}
-                class="h-[420px] w-full rounded-md bg-white"
-              />
-              <div class="flex justify-end gap-2">
-                <Button variant="ghost" size="large" type="button" onClick={() => setOrder(undefined)}>
-                  {language.t("dialog.ktWallet.back")}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="large"
-                  type="button"
-                  onClick={() => window.open(order()?.cashierUrl, "_blank", "noopener")}
-                >
-                  {language.t("dialog.ktWallet.openCashier")}
-                </Button>
-              </div>
-            </div>
+            <iframe
+              src={order()?.cashierUrl}
+              title={language.t("dialog.ktWallet.tabFiat")}
+              class="h-[min(38vh,360px)] w-full rounded-md bg-white"
+              onLoad={() => {
+                const current = order()
+                if (current) void checkOrder(current)
+              }}
+            />
           </Show>
           <Show when={paid()}>
-            <div class="flex flex-col gap-3">
-              <p class="text-14-regular text-text-strong">{language.t("dialog.ktWallet.success")}</p>
-              <div class="flex justify-end">
-                <Button variant="contrast" size="large" type="button" onClick={close}>
-                  {language.t("dialog.ktAccess.switch.ack")}
-                </Button>
-              </div>
-            </div>
+            <p class="text-14-regular text-text-strong">{language.t("dialog.ktWallet.success")}</p>
           </Show>
         </Show>
 
@@ -356,42 +389,33 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
                 )}
               </For>
             </div>
-            <Show
-              when={network() === "ethereum"}
-              fallback={
-                <div class="flex flex-wrap items-center gap-2">
-                  <For each={acceptedAssets(network())}>
-                    {(asset) => (
-                      <span class="rounded-full border border-border-weak-base px-2 py-0.5 text-12-regular text-text-strong">
-                        {asset}
-                      </span>
-                    )}
-                  </For>
-                  <span class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.networkTron")}</span>
-                </div>
-              }
-            >
-              <div class="grid grid-cols-2 gap-2">
-                <For each={acceptedAssets("ethereum")}>
+            <div class="flex flex-col gap-1.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <For each={acceptedAssets(network())}>
                   {(asset) => (
-                    <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-1.5">
-                      <div class="text-14-medium text-text-strong">{asset}</div>
-                      <div class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.networkErc20")}</div>
-                    </div>
+                    <span class="rounded-full border border-border-weak-base px-2 py-0.5 text-12-regular text-text-strong">
+                      {asset}
+                    </span>
                   )}
                 </For>
+                <span class="text-12-regular text-text-weak">
+                  {language.t(network() === "ethereum" ? "dialog.ktWallet.networkEthereum" : "dialog.ktWallet.networkTron")}
+                </span>
               </div>
-            </Show>
+              <Show when={network() === "ethereum"}>
+                <p class="text-12-regular text-text-weak">{language.t("dialog.ktWallet.sharedAddress")}</p>
+              </Show>
+            </div>
           </div>
-          <Show when={address.loading}>
+          <Show when={addressLoading()}>
             <div class="flex items-center gap-3 text-14-regular text-text-base">
               <Spinner />
               <span>{language.t("dialog.ktWallet.loading")}</span>
             </div>
           </Show>
-          <Show when={address.error}>
+          <Show when={addressError()}>
             <p class="text-14-regular text-text-base">
-              {address.error instanceof Error ? address.error.message : language.t("dialog.ktWallet.error")}
+              {addressError()?.message || language.t("dialog.ktWallet.error")}
             </p>
           </Show>
           <Show when={visibleAddress()}>
@@ -429,6 +453,34 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
         </Show>
       </div>
       </DialogBody>
+      <Show when={order() && !paid()}>
+        <DialogFooter>
+          <Button variant="ghost" size="large" type="button" onClick={() => setOrder(undefined)}>
+            {language.t("dialog.ktWallet.back")}
+          </Button>
+          <Button
+            variant="contrast"
+            size="large"
+            type="button"
+            disabled={checking()}
+            onClick={() => {
+              const current = order()
+              if (!current) return
+              setChecking(true)
+              void checkOrder(current, false).finally(() => setChecking(false))
+            }}
+          >
+            {language.t("dialog.ktWallet.confirmPaid")}
+          </Button>
+        </DialogFooter>
+      </Show>
+      <Show when={paid()}>
+        <DialogFooter>
+          <Button variant="contrast" size="large" type="button" onClick={close}>
+            {language.t("dialog.ktAccess.switch.ack")}
+          </Button>
+        </DialogFooter>
+      </Show>
     </Dialog>
   )
 }

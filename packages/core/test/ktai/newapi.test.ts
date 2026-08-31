@@ -2,13 +2,17 @@ import { expect, test } from "bun:test"
 import {
   addressLooksLikeChain,
   assetsForChain,
+  clearNewapiSpendableCache,
   createKtpayOrder,
   ensureManagedToken,
   fetchDepositAddress,
   fetchKtpayInfo,
   fetchKtpayStatus,
+  fetchNewapiSpendable,
   KTAI_MANAGED_TOKEN_NAME,
+  newapiQuotaToUsd,
   normalizeDepositChain,
+  pinEnsuredUserToDefault,
 } from "@opencode-ai/core/ktai/newapi"
 
 test("uses dedicated token ensure when NewAPI has the route", async () => {
@@ -94,6 +98,33 @@ test("normalizes deposit chain aliases onto Casio names", () => {
   expect(addressLooksLikeChain("0xAbc", "ethereum")).toBe(true)
   expect(addressLooksLikeChain("TAbc", "ethereum")).toBe(false)
   expect(addressLooksLikeChain("TAbc", "tron")).toBe(true)
+})
+
+test("skips a rate-limited IAM host and uses Casio", async () => {
+  const address = await fetchDepositAddress("identity-bearer", {
+    chain: "tron",
+    baseUrl: "https://newapi.test",
+    settlementBaseUrl: "https://casio.test",
+    fetchImpl: async (input) => {
+      const url = String(input)
+      if (url.includes("/api/iam/deposit-address") || url.includes("/wallet/v1/deposit-address")) {
+        return new Response("", { status: 429 })
+      }
+      if (url.includes("/identity/v1/account/me")) {
+        return new Response(JSON.stringify({ id: "8b5efc41-9914-4f9d-86f1-ac9e4d75d8c5", accountNo: "KT1" }), {
+          status: 200,
+        })
+      }
+      if (url.includes("/api/v1/address/list")) {
+        return new Response(
+          JSON.stringify({ code: 0, data: { list: [{ address: "TExampleAddress", chain: "tron" }] } }),
+          { status: 200 },
+        )
+      }
+      throw new Error(`unexpected ${url}`)
+    },
+  })
+  expect(address).toEqual({ chain: "tron", asset: "USDT", address: "TExampleAddress" })
 })
 
 test("reads deposit address from the Identity-gated NewAPI route", async () => {
@@ -210,18 +241,14 @@ test("creates one Ethereum address for ERC20 USDT and USDC when Casio has none",
   expect(address).toEqual({ chain: "ethereum", asset: "USDC", address: "0xCreatedErc20" })
 })
 
-test("falls back to the test NewAPI wallet host when production IAM 404s", async () => {
+test("keeps KTPay on production NewAPI and does not call the test host", async () => {
   const hosts: string[] = []
   const info = await fetchKtpayInfo("identity-bearer", {
     fetchImpl: async (input) => {
       const url = String(input)
       hosts.push(url)
-      if (url.startsWith("https://ktapi.cc")) {
-        return new Response(JSON.stringify({ error: { message: "Invalid URL (GET /api/iam/ktpay/info)" } }), {
-          status: 404,
-        })
-      }
-      expect(url).toBe("https://newapi-test.ktyun.cc/api/iam/ktpay/info")
+      expect(url.startsWith("https://ktapi.cc")).toBe(true)
+      expect(url.includes("newapi-test")).toBe(false)
       return new Response(
         JSON.stringify({
           success: true,
@@ -232,8 +259,7 @@ test("falls back to the test NewAPI wallet host when production IAM 404s", async
     },
   })
   expect(info.enabled).toBe(true)
-  expect(hosts[0]).toContain("https://ktapi.cc")
-  expect(hosts.at(-1)).toBe("https://newapi-test.ktyun.cc/api/iam/ktpay/info")
+  expect(hosts).toEqual(["https://ktapi.cc/api/iam/ktpay/info"])
 })
 
 test("surfaces NewAPI Invalid URL errors instead of a generic missing-route message", async () => {
@@ -308,6 +334,114 @@ test("creates a KTPay cashier order through the Identity route", async () => {
     requested: 10,
     status: "pending",
   })
+})
+
+test("converts NewAPI remaining quota to the wallet USD the console shows", () => {
+  expect(newapiQuotaToUsd(5_070_855_823)).toBe(10141.71)
+})
+
+function isolatedSpendablePath() {
+  clearNewapiSpendableCache()
+  process.env.OPENCODE_KTAI_SPENDABLE_PATH = `/tmp/ktai-spendable-${crypto.randomUUID()}.json`
+}
+
+test("reads spendable balance from Identity-gated Ensure", async () => {
+  isolatedSpendablePath()
+  const spendable = await fetchNewapiSpendable("identity-bearer", {
+    baseUrl: "https://newapi.test",
+    fetchImpl: async (input) => {
+      expect(String(input)).toBe("https://newapi.test/api/iam/ensure")
+      return new Response(JSON.stringify({ success: true, data: { id: 370, quota: 5_070_855_823, group: "default" } }), {
+        status: 200,
+      })
+    },
+  })
+  expect(spendable).toBe(10141.71)
+})
+
+test("reads spendable balance from /api/user/self when Ensure omits quota", async () => {
+  isolatedSpendablePath()
+  const calls: string[] = []
+  const spendable = await fetchNewapiSpendable("identity-bearer", {
+    baseUrl: "https://newapi.test",
+    fetchImpl: async (input) => {
+      const url = String(input)
+      calls.push(url)
+      if (url.endsWith("/api/iam/ensure")) {
+        return new Response(JSON.stringify({ success: true, data: { id: 370, group: "default", username: "KT260520XS3ADS" } }), {
+          status: 200,
+          headers: { "set-cookie": "session=abc; Path=/" },
+        })
+      }
+      expect(url).toBe("https://newapi.test/api/user/self")
+      return new Response(JSON.stringify({ success: true, data: { id: 370, quota: 5_070_849_219, used_quota: 4_150_781 } }), {
+        status: 200,
+      })
+    },
+  })
+  expect(spendable).toBe(10141.7)
+  expect(calls).toEqual(["https://newapi.test/api/iam/ensure", "https://newapi.test/api/user/self"])
+})
+
+test("reuses the Ensure session instead of calling Ensure again", async () => {
+  isolatedSpendablePath()
+  const calls: string[] = []
+  const fetchImpl = async (input: string | URL | Request) => {
+    const url = String(input)
+    calls.push(url)
+    if (url.endsWith("/api/iam/ensure")) {
+      return new Response(JSON.stringify({ success: true, data: { id: 370, quota: 5_070_855_823, group: "default" } }), {
+        status: 200,
+        headers: { "set-cookie": "session=abc; Path=/" },
+      })
+    }
+    expect(url).toBe("https://newapi.test/api/user/self")
+    return new Response(JSON.stringify({ success: true, data: { id: 370, quota: 5_070_849_219 } }), { status: 200 })
+  }
+  expect(await fetchNewapiSpendable("identity-bearer", { baseUrl: "https://newapi.test", fetchImpl })).toBe(10141.71)
+  expect(await fetchNewapiSpendable("identity-bearer", { baseUrl: "https://newapi.test", fetchImpl })).toBe(10141.7)
+  expect(calls).toEqual(["https://newapi.test/api/iam/ensure", "https://newapi.test/api/user/self"])
+})
+
+test("keeps the last spendable balance when Ensure is rate limited", async () => {
+  isolatedSpendablePath()
+  const first = await fetchNewapiSpendable("identity-bearer", {
+    baseUrl: "https://newapi.test",
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ success: true, data: { id: 370, quota: 5_070_855_823 } }), { status: 200 }),
+  })
+  expect(first).toBe(10141.71)
+  const again = await fetchNewapiSpendable("identity-bearer", {
+    baseUrl: "https://newapi.test",
+    fetchImpl: async () => new Response("rate limited", { status: 429 }),
+  })
+  expect(again).toBe(10141.71)
+})
+
+test("pins an Ensure user that still has ox-free back to default", async () => {
+  const calls: string[] = []
+  const result = await pinEnsuredUserToDefault("identity-bearer", {
+    baseUrl: "https://newapi.test",
+    fetchImpl: async (input, init) => {
+      const url = String(input)
+      calls.push(`${init?.method ?? "GET"} ${url}`)
+      if (url.endsWith("/api/iam/ensure")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: { id: 370, username: "KT260520XS3ADS", display_name: "芒 果果", group: "default,ox-free" },
+          }),
+          { status: 200, headers: { "set-cookie": "session=abc; Path=/" } },
+        )
+      }
+      expect(url).toBe("https://newapi.test/api/user/")
+      expect(init?.method).toBe("PUT")
+      expect(JSON.parse(String(init?.body))).toMatchObject({ id: 370, group: "default" })
+      return new Response(JSON.stringify({ success: true }), { status: 200 })
+    },
+  })
+  expect(result).toEqual({ pinned: true, group: "default" })
+  expect(calls).toEqual(["POST https://newapi.test/api/iam/ensure", "PUT https://newapi.test/api/user/"])
 })
 
 test("reads KTPay status from the Identity-gated NewAPI route", async () => {

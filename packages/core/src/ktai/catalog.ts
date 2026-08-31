@@ -1,3 +1,6 @@
+import path from "path"
+import { Global } from "@opencode-ai/util/global"
+
 export const KTAI_PRICING_URL = "https://ktapi.cc/api/pricing"
 export const KTAI_MODELS_URL = "https://ktapi.cc/v1/models"
 export const KTAI_API_URL = "https://ktapi.cc/v1"
@@ -11,13 +14,21 @@ export const DEFAULT_OUTPUT = 32_768
  * Order = product priority (cost-friendly first). Each group contributes at most
  * ONE id: the first alias that exists in the current `/v1/models` catalog.
  *
+ * Live default-group IDs are listed first. MiniMax is only shown when the live
+ * catalog lists it — do not inject paid `ktai` models for default-group users.
+ *
  * UI list order for these families lives in
  * `packages/app/src/utils/ktai-model-order.ts` — keep the two tables aligned.
  */
 export const KTAI_DEFAULT_VISIBLE_PICKS: readonly (readonly string[])[] = [
+  ["grok-4.6", "grok-4.5", "grok-latest", "grok"],
+  ["gpt-5.6", "openai/gpt-5.6", "gpt-5.5", "openai/gpt-5.5", "gpt-5.4", "openai/gpt-5.4", "gpt-5.4-mini"],
   [
+    "k3",
+    "k3-latest",
     "kimi-k3",
     "moonshotai/kimi-k3",
+    "kimi-for-coding",
     "kimi-k2.7-code",
     "moonshotai/kimi-k2.7-code",
     "kimi-k2.6",
@@ -25,25 +36,15 @@ export const KTAI_DEFAULT_VISIBLE_PICKS: readonly (readonly string[])[] = [
     "kimi-k2.5",
     "moonshotai/kimi-k2.5",
   ],
-  ["MiniMax-M3", "minimax/minimax-m3", "MiniMax-M2.7", "minimax/minimax-m2.7", "MiniMax-M2.5", "MiniMax-M2.1"],
-  ["deepseek-v4-flash", "deepseek/deepseek-v4-flash", "deepseek-v4-pro", "deepseek/deepseek-v4-pro"],
   [
-    "gemini-3.5-flash",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3.1-pro-preview",
-    "gemini-3-flash-preview",
-    "gemini-2.5-flash",
+    "deepseek-v4-flash-vision-exp",
+    "deepseek/deepseek-v4-flash-vision-exp",
+    "deepseek-v4-flash",
+    "deepseek/deepseek-v4-flash",
+    "deepseek-v4-pro",
+    "deepseek/deepseek-v4-pro",
   ],
-  ["gpt-5.6", "openai/gpt-5.6", "gpt-5.5", "openai/gpt-5.5", "gpt-5.4", "openai/gpt-5.4", "gpt-5.4-mini"],
-  [
-    "claude-sonnet-5",
-    "anthropic/claude-sonnet-5",
-    "claude-sonnet-4.6",
-    "anthropic/claude-sonnet-4.6",
-    "claude-sonnet-4-6",
-    "claude-sonnet-4.5",
-    "anthropic/claude-sonnet-4.5",
-  ],
+  ["MiniMax-M2.7", "minimax/minimax-m2.7", "MiniMax-M3", "minimax/minimax-m3", "MiniMax-M2.5", "MiniMax-M2.1"],
 ]
 
 export function pickDefaultVisibleModelIDs(catalogIDs: Iterable<string>): Set<string> {
@@ -91,18 +92,9 @@ export type RawModel = {
   defaultVisible?: boolean
 }
 
-const fallback: RawModel[] = [
-  { id: "gpt-5.4", name: "GPT-5.4", input: 2, output: 10, tags: "Reasoning,Tools,Vision,Files,400K" },
-  {
-    id: "gpt-5.4-mini",
-    name: "GPT-5.4 Mini",
-    input: 0.75,
-    output: 4.5,
-    tags: "Reasoning,Tools,Vision,Files,400K",
-  },
-  { id: "MiniMax-M2.7", input: 0.3, output: 1.2, tags: "Reasoning,Tools,200K" },
-  { id: "MiniMax-M2.7-highspeed", input: 0.6, output: 2.4, tags: "Reasoning,Tools,200K" },
-]
+function cachePath() {
+  return path.join(Global.Path.data, "ktai-models.json")
+}
 
 function number(input: unknown, value = 0) {
   const parsed = Number(input)
@@ -174,7 +166,7 @@ export function catalogModels(input: unknown, costs: Map<string, PricingCost>): 
       },
     ]
   })
-  return result.length ? result : fallback
+  return result
 }
 
 export function pricingModels(input: unknown): RawModel[] {
@@ -199,7 +191,7 @@ export function pricingModels(input: unknown): RawModel[] {
       },
     ]
   })
-  return result.length ? result : fallback
+  return result
 }
 
 export function label(id: string) {
@@ -219,26 +211,70 @@ export function withDefaultVisibility(list: RawModel[]): RawModel[] {
 }
 
 export async function fetchJson(url: string, init?: RequestInit) {
-  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(5_000) })
+  const response = await fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(15_000) })
   if (!response.ok) throw new Error(`${url} failed: ${response.status}`)
   return response.json()
 }
 
-export async function loadKtaiModels(apiKey?: string): Promise<RawModel[]> {
-  const pricing = await fetchJson(KTAI_PRICING_URL).catch(() => null)
-  const costs = pricing ? pricingIndex(pricing) : new Map<string, PricingCost>()
-
-  if (apiKey) {
-    const catalog = await fetchJson(KTAI_MODELS_URL, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-        "User-Agent": "Kito/2.0",
-      },
-    }).catch(() => null)
-    if (catalog) return withDefaultVisibility(catalogModels(catalog, costs))
+export function resolveKtaiModels(input: { catalog?: unknown; pricing?: unknown; cached?: RawModel[] }) {
+  const costs = input.pricing ? pricingIndex(input.pricing) : new Map<string, PricingCost>()
+  if (input.catalog != null) {
+    const live = catalogModels(input.catalog, costs)
+    if (live.length) return withDefaultVisibility(live)
   }
+  if (input.pricing != null) {
+    const priced = pricingModels(input.pricing)
+    if (priced.length) return withDefaultVisibility(priced)
+  }
+  if (input.cached?.length) return withDefaultVisibility(input.cached)
+  return []
+}
 
-  if (pricing) return withDefaultVisibility(pricingModels(pricing))
-  return withDefaultVisibility(fallback)
+export async function readCachedKtaiModels(file = cachePath()) {
+  try {
+    const data = (await Bun.file(file).json()) as { models?: unknown }
+    if (!Array.isArray(data.models)) return []
+    return data.models.flatMap((value): RawModel[] => {
+      if (!value || typeof value !== "object") return []
+      const row = value as RawModel
+      if (typeof row.id !== "string" || !row.id.trim()) return []
+      return [
+        {
+          id: row.id.trim(),
+          name: typeof row.name === "string" ? row.name : undefined,
+          input: number(row.input),
+          output: number(row.output),
+          tags: typeof row.tags === "string" ? row.tags : undefined,
+          context: typeof row.context === "number" ? row.context : undefined,
+        },
+      ]
+    })
+  } catch {
+    return []
+  }
+}
+
+export async function writeCachedKtaiModels(models: RawModel[], file = cachePath()) {
+  if (!models.length) return
+  await Bun.write(file, JSON.stringify({ models, updatedAt: Date.now() }))
+}
+
+export async function loadKtaiModels(apiKey?: string, options?: { cachePath?: string }) {
+  const file = options?.cachePath ?? cachePath()
+  const pricing = await fetchJson(KTAI_PRICING_URL).catch(() => null)
+  const catalog = apiKey
+    ? await fetchJson(KTAI_MODELS_URL, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+          "User-Agent": "Kito/2.0",
+        },
+      }).catch(() => null)
+    : undefined
+  const live = resolveKtaiModels({ catalog, pricing })
+  if (live.length) {
+    await writeCachedKtaiModels(live, file).catch(() => undefined)
+    return live
+  }
+  return resolveKtaiModels({ cached: await readCachedKtaiModels(file) })
 }

@@ -7,6 +7,9 @@ import { useSessionLayout } from "./session-layout"
 import { useDialog, useI18n } from "@opencode-ai/ui/context"
 import { DialogUsageExceeded } from "@/components/dialog-usage-exceeded"
 import { openKtAccessGuide } from "@/components/dialog-kt-access-guide"
+import { openKtWallet } from "@/components/dialog-kt-wallet"
+import { useKtaiAccount } from "@/utils/kt-signed-in"
+import { classifySessionErrorCta, sessionBillingCta } from "./timeline/session-error-cta"
 
 const GO_UPSELL_FREE_TIER_LAST_SEEN_AT = "go_upsell_last_seen_at"
 const GO_UPSELL_FREE_TIER_DONT_SHOW = "go_upsell_dont_show"
@@ -39,6 +42,7 @@ export function useUsageExceededDialogs() {
   const { params } = useSessionLayout()
   const { t, locale } = useI18n()
   const isEnglish = () => locale() === "en"
+  const account = useKtaiAccount()
 
   const [goUpsellState, setGoUpsellState] = persisted(
     Persist.global("go-upsell"),
@@ -50,44 +54,78 @@ export function useUsageExceededDialogs() {
     }),
   )
 
+  const billingKeys = {
+    lastSeenAt: GO_UPSELL_FREE_TIER_LAST_SEEN_AT,
+    dontShow: GO_UPSELL_FREE_TIER_DONT_SHOW,
+  } as const
+
+  const shouldShowBillingGuide = () => {
+    if (dialog.active) return false
+    const seen = goUpsellState[billingKeys.lastSeenAt]
+    if (seen && Date.now() - seen < GO_UPSELL_WINDOW) return false
+    if (goUpsellState[billingKeys.dontShow]) return false
+    return true
+  }
+
+  const markBillingSeen = (dontShowAgain?: boolean) => {
+    setGoUpsellState(billingKeys.lastSeenAt, Date.now())
+    if (dontShowAgain) setGoUpsellState(billingKeys.dontShow, Date.now())
+  }
+
+  const showBillingGuide = (text?: string) => {
+    if (!shouldShowBillingGuide()) return
+    const cta = sessionBillingCta(text ?? "Free usage exceeded", account.signedIn() ?? true, account.balance())
+    if (cta === "wallet") {
+      openKtWallet({ dialog, onClose: () => markBillingSeen(false) })
+      return
+    }
+    openKtAccessGuide({
+      dialog,
+      kind: "billing",
+      onClose: markBillingSeen,
+    })
+  }
+
   onCleanup(
     sdk().event.on("session.status", (evt) => {
       if (evt.data.sessionID !== params.id) return
       if (evt.data.status.type !== "retry") return
       const { action } = evt.data.status
       if (!action) return
-      if (dialog.active) return
 
       const keys = goUpsellKeys(evt.data.status)
       if (!keys) return
 
+      if (action.reason === "free_tier_limit") {
+        showBillingGuide()
+        return
+      }
+      if (action.reason !== "account_rate_limit") return
+      if (dialog.active) return
       const seen = goUpsellState[keys.lastSeenAt]
       if (seen && Date.now() - seen < GO_UPSELL_WINDOW) return
       if (goUpsellState[keys.dontShow]) return
 
-      if (action.reason === "free_tier_limit") {
-        openKtAccessGuide({
-          dialog,
-          kind: "billing",
-          onClose: (dontShowAgain) => {
+      dialog.show(() => (
+        <DialogUsageExceeded
+          title={isEnglish() ? action.title : t("dialog.usageExceeded.accountRateLimit.title")}
+          description={isEnglish() ? action.message : t("dialog.usageExceeded.accountRateLimit.description")}
+          actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.accountRateLimit.actionLabel")}
+          link={action.link}
+          onClose={(dontShowAgain) => {
             setGoUpsellState(keys.lastSeenAt, Date.now())
             if (dontShowAgain) setGoUpsellState(keys.dontShow, Date.now())
-          },
-        })
-      } else if (action.reason === "account_rate_limit") {
-        dialog.show(() => (
-          <DialogUsageExceeded
-            title={isEnglish() ? action.title : t("dialog.usageExceeded.accountRateLimit.title")}
-            description={isEnglish() ? action.message : t("dialog.usageExceeded.accountRateLimit.description")}
-            actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.accountRateLimit.actionLabel")}
-            link={action.link}
-            onClose={(dontShowAgain) => {
-              setGoUpsellState(keys.lastSeenAt, Date.now())
-              if (dontShowAgain) setGoUpsellState(keys.dontShow, Date.now())
-            }}
-          />
-        ))
-      }
+          }}
+        />
+      ))
+    }),
+  )
+
+  onCleanup(
+    sdk().event.on("session.step.failed", (evt) => {
+      if (evt.data.sessionID !== params.id) return
+      if (classifySessionErrorCta(evt.data.error.message) !== "billing") return
+      showBillingGuide(evt.data.error.message)
     }),
   )
 }
