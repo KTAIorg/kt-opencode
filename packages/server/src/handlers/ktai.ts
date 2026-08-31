@@ -1,4 +1,3 @@
-import { Integration } from "@opencode-ai/core/integration"
 import { fetchAccountSummary, externalIdentity, readPersistedIdentityToken, signOutIdentity } from "@opencode-ai/core/ktai/identity"
 import {
   clearManagedApiKey,
@@ -85,15 +84,6 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
       Effect.gen(function* () {
         yield* Effect.promise(() => signOutIdentity())
         yield* Effect.promise(() => clearManagedApiKey())
-        const integration = yield* Integration.Service
-        const info = yield* integration.get(Integration.ID.make("ktai"))
-        if (info) {
-          yield* Effect.forEach(
-            info.connections.filter((connection) => connection.type === "credential"),
-            (connection) => integration.connection.remove(connection.id),
-            { discard: true },
-          )
-        }
         return { ok: true as const }
       }),
     )
