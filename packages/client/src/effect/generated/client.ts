@@ -13,10 +13,11 @@ import type {
   Endpoint1_4Input,
   Endpoint1_4Output,
   Endpoint1_5Output,
-  Endpoint1_6Input,
   Endpoint1_6Output,
   Endpoint1_7Input,
   Endpoint1_7Output,
+  Endpoint1_8Input,
+  Endpoint1_8Output,
   Endpoint2_0Output,
   Endpoint3_0Input,
   Endpoint3_0Output,
@@ -279,17 +280,20 @@ const Endpoint1_4 = (raw: RawClient["server.ktai"]) => (input?: Endpoint1_4Input
   )
 
 const Endpoint1_5 = (raw: RawClient["server.ktai"]) => () =>
-  preserveEffect<Endpoint1_5Output>()(raw["ktai.wallet.ktpay.info"]({}).pipe(Effect.mapError(mapClientError)))
+  preserveEffect<Endpoint1_5Output>()(raw["ktai.wallet.cryptoStatus"]({}).pipe(Effect.mapError(mapClientError)))
 
-const Endpoint1_6 = (raw: RawClient["server.ktai"]) => (input: Endpoint1_6Input) =>
-  preserveEffect<Endpoint1_6Output>()(
+const Endpoint1_6 = (raw: RawClient["server.ktai"]) => () =>
+  preserveEffect<Endpoint1_6Output>()(raw["ktai.wallet.ktpay.info"]({}).pipe(Effect.mapError(mapClientError)))
+
+const Endpoint1_7 = (raw: RawClient["server.ktai"]) => (input: Endpoint1_7Input) =>
+  preserveEffect<Endpoint1_7Output>()(
     raw["ktai.wallet.ktpay.pay"]({ payload: { amount: input["amount"], method: input["method"] } }).pipe(
       Effect.mapError(mapClientError),
     ),
   )
 
-const Endpoint1_7 = (raw: RawClient["server.ktai"]) => (input: Endpoint1_7Input) =>
-  preserveEffect<Endpoint1_7Output>()(
+const Endpoint1_8 = (raw: RawClient["server.ktai"]) => (input: Endpoint1_8Input) =>
+  preserveEffect<Endpoint1_8Output>()(
     raw["ktai.wallet.ktpay.status"]({ params: { order_id: input["order_id"] } }).pipe(Effect.mapError(mapClientError)),
   )
 
@@ -300,7 +304,8 @@ const adaptGroup1 = (raw: RawClient["server.ktai"]) => ({
   logout: Endpoint1_3(raw),
   wallet: {
     depositAddress: Endpoint1_4(raw),
-    ktpay: { info: Endpoint1_5(raw), pay: Endpoint1_6(raw), status: Endpoint1_7(raw) },
+    cryptoStatus: Endpoint1_5(raw),
+    ktpay: { info: Endpoint1_6(raw), pay: Endpoint1_7(raw), status: Endpoint1_8(raw) },
   },
 })
 

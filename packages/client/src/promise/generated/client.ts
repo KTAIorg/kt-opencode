@@ -6,6 +6,7 @@ import type {
   ServerKtaiLogoutOutput,
   ServerKtaiWalletDepositAddressInput,
   ServerKtaiWalletDepositAddressOutput,
+  ServerKtaiWalletCryptoStatusOutput,
   ServerKtaiWalletKtpayInfoOutput,
   ServerKtaiWalletKtpayPayInput,
   ServerKtaiWalletKtpayPayOutput,
@@ -421,6 +422,17 @@ export function make(options: ClientOptions) {
               method: "GET",
               path: `/ktai/wallet/deposit-address`,
               query: { chain: input?.["chain"], asset: input?.["asset"] },
+              successStatus: 200,
+              declaredStatuses: [401, 503, 502, 400],
+              empty: false,
+            },
+            requestOptions,
+          ),
+        cryptoStatus: (requestOptions?: RequestOptions) =>
+          request<ServerKtaiWalletCryptoStatusOutput>(
+            {
+              method: "GET",
+              path: `/ktai/wallet/crypto/status`,
               successStatus: 200,
               declaredStatuses: [401, 503, 502, 400],
               empty: false,

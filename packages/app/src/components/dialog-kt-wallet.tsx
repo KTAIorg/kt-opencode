@@ -219,6 +219,37 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
     dialog.close()
   }
 
+  // crypto 到账检测：轮询轻量 /ktai/wallet/crypto/status（只查 Identity ledger，不打 NewAPI，
+  // 避免烧 NewAPI Ensure 限流桶）。到账（ledger 增加）→ 成功提示 + 刷新顶栏 + 关窗。
+  createEffect(() => {
+    if (tab() !== "crypto" || !visibleAddress() || paid() || addressError()) return
+    let baseline: number | undefined
+    let stopped = false
+    const tick = async () => {
+      if (stopped || paid() || tab() !== "crypto" || !visibleAddress()) return
+      const response = await request("/ktai/wallet/crypto/status").catch(() => undefined)
+      if (!response?.ok) return
+      const payload = (await response.json().catch(() => undefined)) as { ledgerBalance?: number } | undefined
+      const ledger = payload?.ledgerBalance
+      if (typeof ledger !== "number") return
+      if (baseline === undefined) {
+        baseline = ledger
+        return
+      }
+      if (ledger > baseline) {
+        baseline = ledger
+        markPaid()
+        close()
+      }
+    }
+    void tick()
+    const timer = window.setInterval(() => void tick(), 3000)
+    onCleanup(() => {
+      stopped = true
+      window.clearInterval(timer)
+    })
+  })
+
   createEffect(() => {
     network()
     setCopied(false)

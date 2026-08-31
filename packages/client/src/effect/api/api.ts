@@ -73,7 +73,10 @@ export type ServerKtaiWalletDepositAddressOperation<E = never> = (
   input?: Endpoint1_4Input,
 ) => Effect.Effect<Endpoint1_4Output, E>
 
-export type Endpoint1_5Output = {
+export type Endpoint1_5Output = { readonly ledgerBalance: number }
+export type ServerKtaiWalletCryptoStatusOperation<E = never> = () => Effect.Effect<Endpoint1_5Output, E>
+
+export type Endpoint1_6Output = {
   readonly enabled: boolean
   readonly methods: ReadonlyArray<{ readonly name: string; readonly type: string }>
   readonly minTopup: number
@@ -83,10 +86,10 @@ export type Endpoint1_5Output = {
   readonly defaultLang?: string | undefined
   readonly sdkUrl?: string | undefined
 }
-export type ServerKtaiWalletKtpayInfoOperation<E = never> = () => Effect.Effect<Endpoint1_5Output, E>
+export type ServerKtaiWalletKtpayInfoOperation<E = never> = () => Effect.Effect<Endpoint1_6Output, E>
 
-export type Endpoint1_6Input = { readonly amount: number; readonly method: string }
-export type Endpoint1_6Output = {
+export type Endpoint1_7Input = { readonly amount: number; readonly method: string }
+export type Endpoint1_7Output = {
   readonly orderId: string
   readonly cashierUrl: string
   readonly amount: number
@@ -94,19 +97,19 @@ export type Endpoint1_6Output = {
   readonly status: string
 }
 export type ServerKtaiWalletKtpayPayOperation<E = never> = (
-  input: Endpoint1_6Input,
-) => Effect.Effect<Endpoint1_6Output, E>
+  input: Endpoint1_7Input,
+) => Effect.Effect<Endpoint1_7Output, E>
 
-export type Endpoint1_7Input = { readonly order_id: string }
-export type Endpoint1_7Output = {
+export type Endpoint1_8Input = { readonly order_id: string }
+export type Endpoint1_8Output = {
   readonly orderId: string
   readonly status: string
   readonly localStatus: string
   readonly settled: boolean
 }
 export type ServerKtaiWalletKtpayStatusOperation<E = never> = (
-  input: Endpoint1_7Input,
-) => Effect.Effect<Endpoint1_7Output, E>
+  input: Endpoint1_8Input,
+) => Effect.Effect<Endpoint1_8Output, E>
 
 export interface ServerKtaiApi<E = never> {
   readonly account: { readonly get: ServerKtaiAccountGetOperation<E> }
@@ -115,6 +118,7 @@ export interface ServerKtaiApi<E = never> {
   readonly logout: ServerKtaiLogoutOperation<E>
   readonly wallet: {
     readonly depositAddress: ServerKtaiWalletDepositAddressOperation<E>
+    readonly cryptoStatus: ServerKtaiWalletCryptoStatusOperation<E>
     readonly ktpay: {
       readonly info: ServerKtaiWalletKtpayInfoOperation<E>
       readonly pay: ServerKtaiWalletKtpayPayOperation<E>

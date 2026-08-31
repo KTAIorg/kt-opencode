@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup } from "solid-js"
+import { createEffect, createSignal, onCleanup, onMount } from "solid-js"
 import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
 import type { KtaiAccountSummary } from "@/utils/kt-account"
@@ -45,8 +45,10 @@ export function useKtaiAccount() {
   const serverSDK = useServerSDK()
   const [account, setAccount] = createSignal<KtaiAccountSummary | undefined>()
   const [ready, setReady] = createSignal(false)
+  const [refresh, setRefresh] = createSignal(0)
 
   createEffect(() => {
+    refresh() // 订阅：kito-account-refresh 自增触发重拉
     if (serverSDK.connection.status() !== "connected") {
       setAccount(undefined)
       setReady(false)
@@ -73,6 +75,12 @@ export function useKtaiAccount() {
     onCleanup(() => {
       cancelled = true
     })
+  })
+
+  onMount(() => {
+    const bump = () => setRefresh((n) => n + 1)
+    window.addEventListener("kito-account-refresh", bump)
+    onCleanup(() => window.removeEventListener("kito-account-refresh", bump))
   })
 
   return {

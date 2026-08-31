@@ -10,6 +10,8 @@ export type KtaiLogout = { ok: true }
 
 export type KtaiDepositAddress = { chain: string; asset: string; address: string }
 
+export type KtaiCryptoStatus = { ledgerBalance: number }
+
 export type KtaiKtpayOrder = { orderId: string; cashierUrl: string; amount: number; requested: number; status: string }
 
 export type KtaiKtpayStatus = { orderId: string; status: string; localStatus: string; settled: boolean }
@@ -2338,6 +2340,8 @@ export type ServerKtaiWalletDepositAddressInput = {
 }
 
 export type ServerKtaiWalletDepositAddressOutput = KtaiDepositAddress
+
+export type ServerKtaiWalletCryptoStatusOutput = KtaiCryptoStatus
 
 export type ServerKtaiWalletKtpayInfoOutput = KtaiKtpayInfo
 

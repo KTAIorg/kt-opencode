@@ -61,14 +61,16 @@ describe("sessionAuthLeadKey", () => {
 })
 
 describe("sessionBillingCta", () => {
-  test("opens the model switcher when signed in with balance", () => {
+  test("opens the model switcher when signed in with a confirmed positive balance", () => {
     expect(sessionBillingCta("Free usage exceeded. Top up on KT to continue with paid models.", true, 10)).toBe(
       "switch",
     )
-    expect(sessionBillingCta("Free usage exceeded. Top up on KT to continue with paid models.", true)).toBe("switch")
   })
 
-  test("opens the wallet when balance is empty or the error is a paid-quota miss", () => {
+  test("opens the wallet when balance is empty, unknown, or the error is a paid-quota miss", () => {
+    // balance undefined（未查到 / /ktai/account 读取失败）不能被当成"有余额"，
+    // 否则会把"免费额度用尽"误引导去"切付费模型"。
+    expect(sessionBillingCta("Free usage exceeded. Top up on KT to continue with paid models.", true)).toBe("wallet")
     expect(sessionBillingCta("Free usage exceeded. Top up on KT to continue with paid models.", true, 0)).toBe(
       "wallet",
     )

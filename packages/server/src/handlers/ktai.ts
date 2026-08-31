@@ -1,4 +1,4 @@
-import { fetchAccountSummary, externalIdentity, readPersistedIdentityToken, signOutIdentity } from "@opencode-ai/core/ktai/identity"
+import { fetchAccountSummary, externalIdentity, fetchLedgerBalance, readPersistedIdentityToken, signOutIdentity } from "@opencode-ai/core/ktai/identity"
 import {
   clearManagedApiKey,
   createKtpayOrder,
@@ -6,6 +6,7 @@ import {
   fetchKtpayInfo,
   fetchKtpayStatus,
   fetchNewapiSpendable,
+  newapiQuotaToUsd,
   readCachedSpendable,
   readManagedApiKey,
   syncManagedToken,
@@ -43,7 +44,9 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
             const current = await fetchAccountSummary(token)
             if (!(await readManagedApiKey())) await syncManagedToken(token).catch(() => undefined)
             const spendable = await fetchNewapiSpendable(token).catch(() => undefined)
-            const balance = spendable ?? (await readCachedSpendable()) ?? 0
+            // 顶栏源是 NewAPI 可花额度（USD）。当 NewAPI 额度一时读不到（Ensure 429/超时/无缓存）
+            // 时，降级到 Identity ledger（换算成 USD），避免"明明有钱却显示 0"的假 0。
+            const balance = spendable ?? (await readCachedSpendable()) ?? newapiQuotaToUsd(current.balance)
             return { ...current, balance }
           },
           catch: (error) =>
@@ -93,6 +96,16 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
         return yield* Effect.tryPromise({
           try: () => fetchDepositAddress(token, { chain: ctx.query.chain, asset: ctx.query.asset }),
           catch: (error) => upstream(error, "Deposit address is unavailable"),
+        })
+      }),
+    )
+    .handle("ktai.wallet.cryptoStatus", () =>
+      Effect.gen(function* () {
+        const token = yield* identityToken()
+        return yield* Effect.tryPromise({
+          // 只查 Identity ledger（500k=$1），不打 NewAPI，避免烧 Ensure 限流桶。
+          try: async () => ({ ledgerBalance: await fetchLedgerBalance(token) }),
+          catch: (error) => upstream(error, "Crypto status is unavailable"),
         })
       }),
     )

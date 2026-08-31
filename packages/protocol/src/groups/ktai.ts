@@ -35,6 +35,10 @@ export const KtaiDepositAddress = Schema.Struct({
   address: Schema.String,
 }).annotate({ identifier: "KtaiDepositAddress" })
 
+export const KtaiCryptoStatus = Schema.Struct({
+  ledgerBalance: Schema.Number,
+}).annotate({ identifier: "KtaiCryptoStatus" })
+
 export const KtaiKtpayInfo = Schema.Struct({
   enabled: Schema.Boolean,
   methods: Schema.Array(
@@ -129,6 +133,18 @@ export const KtaiGroup = HttpApiGroup.make("server.ktai")
         identifier: "v2.ktai.wallet.depositAddress",
         summary: "Get deposit address",
         description: "Return a per-account deposit address for the requested chain.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("ktai.wallet.cryptoStatus", "/ktai/wallet/crypto/status", {
+      success: KtaiCryptoStatus,
+      error: [...walletErrors],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.ktai.wallet.cryptoStatus",
+        summary: "Get crypto recharge status",
+        description: "Return the Identity ledger balance used to detect an on-chain deposit.",
       }),
     ),
   )
