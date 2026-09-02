@@ -204,6 +204,7 @@ test("ignores a TRON address returned for Ethereum and uses the next matching ho
 })
 
 test("creates one Ethereum address for ERC20 USDT and USDC when Casio has none", async () => {
+  clearNewapiSpendableCache()
   const address = await fetchDepositAddress("identity-bearer", {
     chain: "erc20",
     asset: "USDC",
@@ -239,6 +240,31 @@ test("creates one Ethereum address for ERC20 USDT and USDC when Casio has none",
     },
   })
   expect(address).toEqual({ chain: "ethereum", asset: "USDC", address: "0xCreatedErc20" })
+})
+
+test("reuses the cached deposit address without calling the network again", async () => {
+  clearNewapiSpendableCache()
+  const calls: string[] = []
+  const fetchImpl = async (input: string | URL | Request) => {
+    calls.push(String(input))
+    return new Response(
+      JSON.stringify({ success: true, data: { chain: "tron", asset: "USDT", address: "TCachedAddress" } }),
+      { status: 200 },
+    )
+  }
+  const first = await fetchDepositAddress("identity-bearer", {
+    chain: "tron",
+    baseUrl: "https://newapi.test",
+    fetchImpl,
+  })
+  const second = await fetchDepositAddress("identity-bearer", {
+    chain: "tron",
+    baseUrl: "https://newapi.test",
+    fetchImpl,
+  })
+  expect(first).toEqual({ chain: "tron", asset: "USDT", address: "TCachedAddress" })
+  expect(second).toEqual(first)
+  expect(calls).toEqual(["https://newapi.test/api/iam/deposit-address?chain=tron&asset=USDT"])
 })
 
 test("keeps KTPay on production NewAPI and does not call the test host", async () => {

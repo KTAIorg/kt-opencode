@@ -352,9 +352,16 @@ type SpendableSession = {
 let spendableSession: SpendableSession | undefined
 let spendableUsd: number | undefined
 
+// Deposit addresses are reusable per kt_account_id + chain (settlement dedupes
+// by design), so cache them to avoid burning the NewAPI CriticalRateLimit
+// bucket that is shared with Ensure — repeated wallet-dialog opens would
+// otherwise trip "deposit address is rate limited" for minutes.
+let depositAddressCache: Map<string, DepositAddress> | undefined
+
 export function clearNewapiSpendableCache() {
   spendableSession = undefined
   spendableUsd = undefined
+  depositAddressCache = undefined
 }
 
 function spendableCachePath() {
@@ -620,6 +627,8 @@ export async function fetchDepositAddress(
   const chain = normalizeDepositChain(input.chain)
   const asset = input.asset?.trim().toUpperCase() || assetsForChain(chain)[0]
   const query = new URLSearchParams({ chain, asset })
+  const cached = depositAddressCache?.get(`${chain}:${asset}`)
+  if (cached) return cached
   const iamPaths = [`/api/iam/deposit-address?${query}`, `/wallet/v1/deposit-address?${query}`]
   const billingPaths = [`/recharge/crypto/address?${query}`, `/wallet/v1/deposit-address?${query}`]
   let last = "Deposit address API is not available yet"
@@ -641,7 +650,11 @@ export async function fetchDepositAddress(
         throw new Error(stringField(result.payload, "message", "error") ?? `Deposit address failed (${result.status})`)
       }
       const address = depositFromPayload(result.payload, chain, asset)
-      if (address) return address
+      if (address) {
+        depositAddressCache = depositAddressCache ?? new Map()
+        depositAddressCache.set(`${chain}:${asset}`, address)
+        return address
+      }
       last = "Deposit address does not match the requested network"
     }
   }
@@ -651,7 +664,11 @@ export async function fetchDepositAddress(
       fetchImpl,
       baseUrl: settlement,
     })
-    if (assigned) return assigned
+    if (assigned) {
+      depositAddressCache = depositAddressCache ?? new Map()
+      depositAddressCache.set(`${chain}:${asset}`, assigned)
+      return assigned
+    }
     last = "Deposit address does not match the requested network"
   }
   throw new Error(last)
