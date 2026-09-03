@@ -1,5 +1,6 @@
 import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { Menu } from "@opencode-ai/ui/menu"
 import { Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { openKtIdentityLogin } from "@/components/dialog-kt-identity-login"
 import { useLanguage } from "@/context/language"
@@ -7,6 +8,8 @@ import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
 import { formatKtaiBalance, titlebarAccountName, type KtaiAccountSummary } from "@/utils/kt-account"
 import { openKtWallet } from "@/components/dialog-kt-wallet"
+
+const KITO_CONSOLE_URL = "https://ktapi.cc"
 
 export function TitlebarAccountButton() {
   const language = useLanguage()
@@ -73,6 +76,10 @@ export function TitlebarAccountButton() {
     openKtWallet({ dialog })
   }
 
+  const openConsole = () => {
+    platform.openExternal(KITO_CONSOLE_URL)
+  }
+
   const onSignOut = async () => {
     if (signingOut()) return
     const input = {
@@ -95,24 +102,31 @@ export function TitlebarAccountButton() {
 
   return (
     <div data-slot="titlebar-account" class="flex shrink-0 items-center gap-1.5 mr-1.5">
-      <Show when={signedIn() && signedInLabel()}>
-        <span class="hidden sm:inline max-w-36 truncate text-[11px] tabular-nums text-v2-text-text-muted">
-          {signedInLabel()}
-        </span>
+      <Show when={signedIn()} fallback={<Show when={signedInLabel()}><span class="hidden sm:inline max-w-36 truncate text-[11px] tabular-nums text-v2-text-text-muted">{signedInLabel()}</span></Show>}>
+        <Menu placement="bottom-end" gutter={6}>
+          <Menu.Trigger
+            as="button"
+            type="button"
+            class="hidden sm:flex max-w-36 items-center gap-1 rounded-sm px-1 py-0.5 text-[11px] tabular-nums text-v2-text-text-muted outline-none hover:text-v2-text-text-base focus-visible:text-v2-text-text-base"
+            title={signedInLabel()}
+          >
+            <span class="truncate">{signedInLabel()}</span>
+          </Menu.Trigger>
+          <Menu.Portal>
+            <Menu.Content class="min-w-44 p-1">
+              <Menu.Item onSelect={openConsole}>{language.t("titlebar.account.console")}</Menu.Item>
+              <Menu.Item onSelect={() => openKtWallet({ dialog })}>{language.t("titlebar.account.topUp")}</Menu.Item>
+              <Menu.Separator />
+              <Menu.Item disabled={signingOut()} onSelect={() => void onSignOut()}>
+                {signingOut() ? language.t("titlebar.account.signingOut") : language.t("titlebar.account.signOut")}
+              </Menu.Item>
+            </Menu.Content>
+          </Menu.Portal>
+        </Menu>
       </Show>
-      <Button type="button" size="small" variant="contrast" class="shrink-0 px-2" onClick={onClick}>
-        {signedIn() ? language.t("titlebar.account.topUp") : language.t("titlebar.account.signIn")}
-      </Button>
-      <Show when={signedIn()}>
-        <Button
-          type="button"
-          size="small"
-          variant="ghost"
-          class="shrink-0 px-2"
-          disabled={signingOut()}
-          onClick={() => void onSignOut()}
-        >
-          {language.t("titlebar.account.signOut")}
+      <Show when={!signedIn()}>
+        <Button type="button" size="small" variant="contrast" class="shrink-0 px-2" onClick={onClick}>
+          {language.t("titlebar.account.signIn")}
         </Button>
       </Show>
     </div>

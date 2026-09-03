@@ -478,6 +478,16 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
                     ? language.t("dialog.ktWallet.hintErc20")
                     : language.t("dialog.ktWallet.hintTrc20")}
                 </p>
+                <div class="w-full rounded-md bg-background-stronger px-2.5 py-2 text-12-regular text-text-weak">
+                  <p>{language.t("dialog.ktWallet.cryptoTiming")}</p>
+                  <button
+                    type="button"
+                    class="mt-1 text-v2-text-text-muted underline outline-none hover:text-v2-text-text-base focus-visible:text-v2-text-text-base"
+                    onClick={() => platform.openExternal("https://ktapi.cc")}
+                  >
+                    {language.t("dialog.ktWallet.cryptoProgress")}
+                  </button>
+                </div>
               </div>
             )}
           </Show>

@@ -1249,6 +1249,8 @@ export const dict = {
   "titlebar.account.signIn": "Sign in",
   "titlebar.account.topUp": "Top up",
   "titlebar.account.signOut": "Sign out",
+  "titlebar.account.signingOut": "Signing out…",
+  "titlebar.account.console": "Open Kito console",
   "titlebar.account.signedIn": "{{name}} · {{balance}}",
   "dialog.ktWallet.title": "Top up Kito",
   "dialog.ktWallet.lead":
@@ -1286,6 +1288,9 @@ export const dict = {
   "dialog.ktWallet.hintErc20":
     "This Ethereum address accepts both USDT and USDC (ERC20). Do not send other chains or coins.",
   "dialog.ktWallet.sharedAddress": "USDT and USDC share this Ethereum address. Copy it once.",
+  "dialog.ktWallet.cryptoTiming":
+    "On-chain deposits usually take a few minutes, but can take longer depending on the network. This window closes as soon as the deposit is credited.",
+  "dialog.ktWallet.cryptoProgress": "Deposit not showing yet? Check your top-up history in the Kito console.",
   "dialog.ktWallet.networkMismatch": "This network is not ready yet. Use another network, or try again later.",
   "dialog.ktIdentity.title": "Sign in to Kito",
   "dialog.ktIdentity.lead": "Scan or open Telegram on this device. Confirm the login there.",
