@@ -385,6 +385,31 @@ test("reads spendable balance from Identity-gated Ensure", async () => {
   expect(spendable).toBe(10141.71)
 })
 
+test("reads spendable balance when Ensure nests the profile at data.user", async () => {
+  isolatedSpendablePath()
+  const spendable = await fetchNewapiSpendable("identity-bearer", {
+    baseUrl: "https://newapi.test",
+    fetchImpl: async (input) => {
+      expect(String(input)).toBe("https://newapi.test/api/iam/ensure")
+      // 生产 setupLogin 的真实形状：{"data":{"access_token":...,"user":{"quota":...}}}
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "",
+          data: {
+            access_token: "jwt",
+            token_type: "Bearer",
+            session: { sid: "s" },
+            user: { id: 370, quota: 5_070_855_823, group: "default", username: "KT260520XS3ADS" },
+          },
+        }),
+        { status: 200 },
+      )
+    },
+  })
+  expect(spendable).toBe(10141.71)
+})
+
 test("reads spendable balance from /api/user/self when Ensure omits quota", async () => {
   isolatedSpendablePath()
   const calls: string[] = []

@@ -323,16 +323,18 @@ export function newapiQuotaToUsd(quota: number) {
 function userSnapshotFrom(payload: unknown): NewapiUserSnapshot {
   const record = asRecord(payload)
   const data = asRecord(record?.data) ?? record
-  if (!data) return {}
-  const quota = numberField(data, "quota")
-  const id = typeof data.id === "number" && Number.isFinite(data.id) ? data.id : Number(data.id)
+  // Login/ensure bundles nest the profile at data.user ({"data":{"user":{...}}}).
+  const user = asRecord(data?.user) ?? data
+  if (!user) return {}
+  const quota = numberField(user, "quota")
+  const id = typeof user.id === "number" && Number.isFinite(user.id) ? user.id : Number(user.id)
   return {
     ...(Number.isFinite(id) ? { id } : {}),
-    username: stringField(data, "username"),
-    displayName: stringField(data, "display_name"),
-    group: stringField(data, "group"),
+    username: stringField(user, "username"),
+    displayName: stringField(user, "display_name"),
+    group: stringField(user, "group"),
     quota,
-    usedQuota: numberField(data, "used_quota"),
+    usedQuota: numberField(user, "used_quota"),
     remainingUsd: quota === undefined ? undefined : newapiQuotaToUsd(quota),
   }
 }
