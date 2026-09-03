@@ -1,6 +1,6 @@
 export type KtaiAccountSummary = {
   account: { accountNo: string; displayName?: string }
-  balance: number
+  balance?: number
 }
 
 export function isKitoProviderId(id: string) {

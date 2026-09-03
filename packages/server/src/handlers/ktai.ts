@@ -6,7 +6,6 @@ import {
   fetchKtpayInfo,
   fetchKtpayStatus,
   fetchNewapiSpendable,
-  newapiQuotaToUsd,
   readCachedSpendable,
   readManagedApiKey,
   syncManagedToken,
@@ -43,11 +42,15 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
           try: async () => {
             const current = await fetchAccountSummary(token)
             if (!(await readManagedApiKey())) await syncManagedToken(token).catch(() => undefined)
-            const spendable = await fetchNewapiSpendable(token).catch(() => undefined)
-            // 顶栏源是 NewAPI 可花额度（USD）。当 NewAPI 额度一时读不到（Ensure 429/超时/无缓存）
-            // 时，降级到 Identity ledger（换算成 USD），避免"明明有钱却显示 0"的假 0。
-            const balance = spendable ?? (await readCachedSpendable()) ?? newapiQuotaToUsd(current.balance)
-            return { ...current, balance }
+            // 顶栏只认 NewAPI 可花额度（USD）。读不到（Ensure 429/超时且无缓存）就不带 balance，
+            // 客户端只显示名字，绝不降级显示 Identity ledger，也不写假 0。
+            const spendable = (await fetchNewapiSpendable(token).catch(() => undefined)) ?? (await readCachedSpendable())
+            return {
+              account: current.account,
+              ...(spendable === undefined ? {} : { balance: spendable }),
+              ...(current.memberSince === undefined ? {} : { memberSince: current.memberSince }),
+              ...(current.joinedDays === undefined ? {} : { joinedDays: current.joinedDays }),
+            }
           },
           catch: (error) =>
             new ServiceUnavailableError({

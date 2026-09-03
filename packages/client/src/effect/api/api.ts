@@ -47,7 +47,7 @@ export interface HealthApi<E = never> {
 
 export type Endpoint1_0Output = {
   readonly account: { readonly id: string; readonly accountNo: string; readonly displayName?: string | undefined }
-  readonly balance: number
+  readonly balance?: number | undefined
   readonly memberSince?: string | undefined
   readonly joinedDays?: number | undefined
 }

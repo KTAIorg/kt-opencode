@@ -38,6 +38,8 @@ export function TitlebarAccountButton() {
     const current = account()
     const name = titlebarAccountName(current)
     if (!name || !current) return
+    // NewAPI 额度读不到时只显示名字：不显示 Identity ledger，也不显示假 0。
+    if (typeof current.balance !== "number") return name
     return language.t("titlebar.account.signedIn", { name, balance: formatKtaiBalance(current.balance) })
   })
 

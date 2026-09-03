@@ -199,7 +199,7 @@ export type WebSearchResult = { url: string; title?: string; content?: string; t
 
 export type KtaiAccount = {
   account: { id: string; accountNo: string; displayName?: string | undefined }
-  balance: number
+  balance?: number | undefined
   memberSince?: string | undefined
   joinedDays?: number | undefined
 }

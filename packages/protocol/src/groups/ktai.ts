@@ -8,7 +8,7 @@ export const KtaiAccount = Schema.Struct({
     accountNo: Schema.String,
     displayName: Schema.optional(Schema.String),
   }),
-  balance: Schema.Number,
+  balance: Schema.optional(Schema.Number),
   memberSince: Schema.optional(Schema.String),
   joinedDays: Schema.optional(Schema.Number),
 }).annotate({ identifier: "KtaiAccount" })
@@ -82,7 +82,7 @@ export const KtaiGroup = HttpApiGroup.make("server.ktai")
       OpenApi.annotations({
         identifier: "v2.ktai.account.get",
         summary: "Get Kito account",
-        description: "Return the signed-in KT Identity account and ledger balance.",
+        description: "Return the signed-in KT Identity account and the NewAPI spendable balance when it is readable.",
       }),
     ),
   )
