@@ -124,6 +124,11 @@ export function TitlebarAccountButton() {
           </Menu.Portal>
         </Menu>
       </Show>
+      <Show when={signedIn()}>
+        <Button type="button" size="small" variant="contrast" class="shrink-0 px-2" onClick={() => openKtWallet({ dialog })}>
+          {language.t("titlebar.account.topUp")}
+        </Button>
+      </Show>
       <Show when={!signedIn()}>
         <Button type="button" size="small" variant="contrast" class="shrink-0 px-2" onClick={onClick}>
           {language.t("titlebar.account.signIn")}
