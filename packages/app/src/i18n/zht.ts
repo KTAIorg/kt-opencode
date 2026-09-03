@@ -1233,6 +1233,7 @@ export const dict = {
   "titlebar.account.signIn": "登入",
   "titlebar.account.topUp": "儲值",
   "titlebar.account.signOut": "登出",
+  "titlebar.account.console": "Kito 錢包",
   "titlebar.account.signedIn": "{{name}} · {{balance}}",
   "dialog.ktWallet.title": "儲值 Kito",
   "dialog.ktWallet.lead": "用微信或支付寶付款，或轉入 TRC20 / ERC20 的 USDT、USDC。都記入同一條 Kito 餘額。",

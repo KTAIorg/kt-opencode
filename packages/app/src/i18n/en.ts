@@ -1250,7 +1250,7 @@ export const dict = {
   "titlebar.account.topUp": "Top up",
   "titlebar.account.signOut": "Sign out",
   "titlebar.account.signingOut": "Signing out…",
-  "titlebar.account.console": "Open Kito console",
+  "titlebar.account.console": "Kito wallet",
   "titlebar.account.signedIn": "{{name}} · {{balance}}",
   "dialog.ktWallet.title": "Top up Kito",
   "dialog.ktWallet.lead":
