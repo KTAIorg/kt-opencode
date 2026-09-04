@@ -140,6 +140,29 @@ describe("llm constructors", () => {
     expect(request.http).toBeUndefined()
   })
 
+  test("carries model defaults and compatibility through route model selection", () => {
+    const model = chatRoute.model({
+      id: "kimi-k2",
+      defaults: {
+        limits: { context: 128_000, output: 8_192 },
+        generation: { maxTokens: 1_024, stop: ["END"] },
+        providerOptions: { openai: { parallelToolCalls: false } },
+        http: { body: { extra_body: true } },
+      },
+      compatibility: { toolSchema: "moonshot" },
+    })
+    const request = LLM.request({ model, prompt: "Say hello." })
+
+    expect(request.model.defaults?.limits).toEqual({ context: 128_000, output: 8_192 })
+    expect(request.model.defaults?.generation).toEqual({ maxTokens: 1_024, stop: ["END"] })
+    expect(request.model.defaults?.providerOptions).toEqual({ openai: { parallelToolCalls: false } })
+    expect(request.model.defaults?.http).toEqual({ body: { extra_body: true } })
+    expect(request.model.compatibility).toEqual({ toolSchema: "moonshot" })
+    expect(request.generation).toBeUndefined()
+    expect(request.providerOptions).toBeUndefined()
+    expect(request.http).toBeUndefined()
+  })
+
   test("builds tool choices from names and tools", () => {
     const tool = ToolDefinition.make({ name: "lookup", description: "Lookup data", inputSchema: { type: "object" } })
 

@@ -76,9 +76,8 @@ export const dict = {
   "ui.sessionTurn.error.addCredits": "إضافة رصيد",
 
   "dialog.usageExceeded.freeTier.title": "تم الوصول إلى الحد المجاني",
-  "dialog.usageExceeded.freeTier.description":
-    "اشترك في OpenCode Go للحصول على وصول موثوق إلى أفضل النماذج مفتوحة المصدر، ابتداءً من $5/شهر.",
-  "dialog.usageExceeded.freeTier.actionLabel": "اشترك",
+  "dialog.usageExceeded.freeTier.description": "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+  "dialog.usageExceeded.freeTier.actionLabel": "Top up",
   "dialog.usageExceeded.accountRateLimit.title": "تم الوصول إلى حد Go",
   "dialog.usageExceeded.accountRateLimit.description":
     "تم الوصول إلى حد الاستخدام. لمتابعة استخدام هذا النموذج الآن، قم بتفعيل الاستخدام من رصيدك المتاح",

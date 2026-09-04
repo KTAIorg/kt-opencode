@@ -157,23 +157,12 @@ function LimitsGraph(props: { href: string }) {
                   <rect
                     x={left}
                     y={gy(i()) - bh / 2}
-                    width={Math.max(0, x(ratio(m.baseReq ?? m.req)) - left)}
+                    width={Math.max(0, x(ratio(m.req)) - left)}
                     height={bh}
                     data-bar
                     data-kind="go"
                     data-model={m.id}
                   />
-                  {m.baseReq && (
-                    <rect
-                      x={x(ratio(m.baseReq)) + 2}
-                      y={gy(i()) - bh / 2}
-                      width={Math.max(0, x(ratio(m.req)) - x(ratio(m.baseReq)) - 2)}
-                      height={bh}
-                      data-bar
-                      data-kind="promo"
-                      data-model={m.id}
-                    />
-                  )}
                 </g>
               )}
             </For>
@@ -258,12 +247,6 @@ export default function Home() {
 
         <div data-component="content">
           <section data-component="hero">
-            <div data-component="desktop-app-banner">
-              <span data-slot="badge">{i18n.t("home.banner.badge")}</span>
-              <div data-slot="content">
-                <span data-slot="text">{i18n.t("go.banner.text")}</span>
-              </div>
-            </div>
             <div data-slot="hero-copy">
               <img data-slot="zen logo light" src={goLogoLight} alt="" />
               <img data-slot="zen logo dark" src={goLogoDark} alt="" />

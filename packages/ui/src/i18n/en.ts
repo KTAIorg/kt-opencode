@@ -72,11 +72,18 @@ const source = {
   "ui.sessionTurn.retry.geminiHot": "gemini is way too hot right now",
   "ui.sessionTurn.error.freeUsageExceeded": "Free usage exceeded",
   "ui.sessionTurn.error.addCredits": "Add credits",
+  "ui.sessionTurn.error.authBilling":
+    "API key is invalid or expired. Register or sign in on KT AI (ktapi.cc), create a valid key, or top up to continue.",
+  "ui.sessionTurn.error.openKt": "Open KT AI",
 
   "dialog.usageExceeded.freeTier.title": "Free limit reached",
   "dialog.usageExceeded.freeTier.description":
-    "Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.",
-  "dialog.usageExceeded.freeTier.actionLabel": "Subscribe",
+    "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+  "dialog.usageExceeded.freeTier.actionLabel": "Top up",
+  "dialog.usageExceeded.authBilling.title": "Sign in or top up required",
+  "dialog.usageExceeded.authBilling.description":
+    "API key is invalid or expired, or your balance is insufficient. Register or sign in on KT AI (ktapi.cc), create a valid key, or top up to continue.",
+  "dialog.usageExceeded.authBilling.actionLabel": "Open KT AI",
   "dialog.usageExceeded.accountRateLimit.title": "Go limit reached",
   "dialog.usageExceeded.accountRateLimit.description":
     "Usage limit reached. To continue using this model now, enable usage from your available balance",

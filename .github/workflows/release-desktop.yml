@@ -1,0 +1,671 @@
+# Action baseline verified 2026-07-18 from each action's official GitHub release.
+name: Release · Desktop Installers
+
+run-name: >-
+  ${{ github.event_name == 'pull_request'
+      && format('Release | PR #{0} | {1}', github.event.pull_request.number, github.event.pull_request.title)
+      || github.event_name == 'workflow_dispatch'
+      && format('Release | Manual | {0}', github.sha)
+      || format('Release | main | {0}', github.event.head_commit.message) }}
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-version:
+    name: Resolve Version
+    runs-on: ubuntu-24.04
+    outputs:
+      ktai-version: ${{ steps.version.outputs.ktai_version }}
+      upstream-version: ${{ steps.version.outputs.upstream_version }}
+      release-tag: ${{ steps.version.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Resolve KTAI and upstream versions
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ktai_base="$(tr -d '[:space:]' < KTAI_VERSION)"
+          upstream_version="$(jq -r '.version' packages/desktop/package.json)"
+
+          if [[ ! "$ktai_base" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            echo "KTAI_VERSION must contain major.minor, got: $ktai_base" >&2
+            exit 1
+          fi
+
+          if [[ ! "$upstream_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid upstream version: $upstream_version" >&2
+            exit 1
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            ktai_version="0.0.${GITHUB_RUN_NUMBER}"
+            release_tag=""
+          else
+            ktai_version="${ktai_base}.${GITHUB_RUN_NUMBER}"
+            release_tag="ktai-v${ktai_version}-opencode-v${upstream_version}"
+          fi
+
+          echo "ktai_version=$ktai_version" >> "$GITHUB_OUTPUT"
+          echo "upstream_version=$upstream_version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "KTAI version: $ktai_version"
+          echo "OpenCode version: $upstream_version"
+          [[ -z "$release_tag" ]] || echo "Release tag: $release_tag"
+
+  build-windows:
+    name: Build Windows Installer
+    needs: resolve-version
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare desktop bundle
+        working-directory: packages/desktop
+        run: bun ./scripts/prepare.ts
+        env:
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - name: Build desktop application
+        working-directory: packages/desktop
+        run: bun run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - name: Package unsigned Windows installer
+        working-directory: packages/desktop
+        run: bunx electron-builder --win --publish never --config electron-builder.config.ts
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          KTAI_UNSIGNED_BUILD: "1"
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-windows-x64
+          path: packages/desktop/dist/*.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS PKG (${{ matrix.arch }})
+    needs: resolve-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare desktop bundle
+        working-directory: packages/desktop
+        run: bun ./scripts/prepare.ts
+        env:
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - name: Build desktop application
+        working-directory: packages/desktop
+        run: bun run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - name: Package unsigned macOS PKG
+        working-directory: packages/desktop
+        run: bun run package:mac:pkg:unsigned
+        env:
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-macos-${{ matrix.arch }}
+          path: |
+            packages/desktop/dist/*.pkg
+            packages/desktop/dist/*.dmg
+            packages/desktop/dist/*.zip
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - resolve-version
+      - build-windows
+      - build-macos
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-windows-x64
+          path: release-assets/windows-x64
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-macos-x64
+          path: release-assets/macos-x64
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-macos-arm64
+          path: release-assets/macos-arm64
+
+      - name: Prepare release assets and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets-flat
+          while IFS= read -r -d '' asset; do
+            destination="release-assets-flat/$(basename "$asset")"
+            if [[ -e "$destination" ]]; then
+              echo "Duplicate release asset name: $(basename "$asset")" >&2
+              exit 1
+            fi
+            cp "$asset" "$destination"
+          done < <(find release-assets -type f -print0)
+          (
+            cd release-assets-flat
+            sha256sum ./* > SHA256SUMS
+          )
+          find release-assets-flat -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF_NOTES'
+          ## 构建信息
+
+          - KTAI 版本：`${{ needs.resolve-version.outputs.ktai-version }}`
+          - OpenCode 上游版本：`${{ needs.resolve-version.outputs.upstream-version }}`
+          - 源 Commit：`${{ github.sha }}`
+          - 构建 Run：`${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
+
+          ## 安装包
+
+          - Windows x64：未签名 EXE
+          - macOS Intel：未签名 PKG、DMG、ZIP
+          - macOS Apple Silicon：未签名 PKG、DMG、ZIP
+          - `SHA256SUMS`：全部 Release 资产的 SHA256 校验值
+
+          ## 安全提示
+
+          当前构建未进行 Windows 代码签名、Apple Developer ID 签名或 macOS 公证，仅用于内部测试。安装时可能出现操作系统安全提示。
+          EOF_NOTES
+
+      - name: Publish versioned GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.resolve-version.outputs.release-tag }}
+          RELEASE_TITLE: KTAI OpenCode ${{ needs.resolve-version.outputs.ktai-version }} (OpenCode ${{ needs.resolve-version.outputs.upstream-version }})
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find release-assets-flat -maxdepth 1 -type f | sort)
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+            gh release edit "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md \
+              --prerelease=false \
+              --latest
+            exit 0
+          fi
+
+          gh release create "$RELEASE_TAG" "${assets[@]}" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TITLE" \
+            --notes-file release-notes.md \
+            --latest
+
+  publish-oss:
+    name: Publish to OSS
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - resolve-version
+      - build-windows
+      - build-macos
+      - publish-release
+    runs-on: ubuntu-24.04
+    # OIDC trust: repo:KTAIorg/kt-opencode:environment:prod
+    # (public fork also emits repo:KTAIorg@orgId/kt-opencode@repoId:environment:prod)
+    environment: prod
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-windows-x64
+          path: release-assets/windows-x64
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-macos-x64
+          path: release-assets/macos-x64
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ktai-desktop-${{ needs.resolve-version.outputs.ktai-version }}-macos-arm64
+          path: release-assets/macos-arm64
+
+      - name: Assume Aliyun OIDC role for OSS publish
+        id: aliyun-oidc
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6
+        with:
+          role-to-assume: acs:ram::5590716371345016:role/gha-ktaiorg-kt-opencode-prod
+          oidc-provider-arn: acs:ram::5590716371345016:oidc-provider/github-actions-KT-Settlement
+          audience: sts.aliyuncs.com
+          role-session-name: kt-opencode-oss-publish
+
+      - name: Export OSS STS credentials
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ steps.aliyun-oidc.outputs.aliyun-access-key-id }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ steps.aliyun-oidc.outputs.aliyun-access-key-secret }}
+          ALIYUN_SECURITY_TOKEN: ${{ steps.aliyun-oidc.outputs.aliyun-security-token }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ALIYUN_ACCESS_KEY_ID:-}" ] || [ -z "${ALIYUN_ACCESS_KEY_SECRET:-}" ] || [ -z "${ALIYUN_SECURITY_TOKEN:-}" ]; then
+            echo "OIDC STS outputs missing from configure-aliyun-credentials-action" >&2
+            exit 1
+          fi
+          {
+            echo "OSS_ACCESS_KEY_ID=${ALIYUN_ACCESS_KEY_ID}"
+            echo "OSS_ACCESS_KEY_SECRET=${ALIYUN_ACCESS_KEY_SECRET}"
+            echo "OSS_STS_TOKEN=${ALIYUN_SECURITY_TOKEN}"
+            echo "ALIBABA_CLOUD_ACCESS_KEY_ID=${ALIYUN_ACCESS_KEY_ID}"
+            echo "ALIBABA_CLOUD_ACCESS_KEY_SECRET=${ALIYUN_ACCESS_KEY_SECRET}"
+            echo "ALIBABA_CLOUD_SECURITY_TOKEN=${ALIYUN_SECURITY_TOKEN}"
+          } >> "$GITHUB_ENV"
+
+      # Versioned objects stay immutable. Stable latest/* + latest.json are
+      # overwritten on every main publish so nav sites can hardcode three URLs.
+      # CopyObject is not in the OSS write policy, so latest is a second Put.
+      - name: Publish installers to OSS
+        env:
+          RELEASE_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+          OSS_BUCKET: kontian-assets
+          OSS_REGION: oss-us-west-1
+          OSS_PUBLIC_BASE_URL: https://download.ktai.im
+        run: |
+          npm install --no-save ali-oss@6 @alicloud/pop-core@1.8.0
+          node <<'NODE_SCRIPT'
+          const OSS = require('ali-oss');
+          const crypto = require('crypto');
+          const fs = require('fs');
+          const path = require('path');
+
+          const version = process.env.RELEASE_VERSION;
+          const bucket = process.env.OSS_BUCKET;
+          const region = process.env.OSS_REGION;
+          const baseUrl = process.env.OSS_PUBLIC_BASE_URL;
+          const prefix = 'kt-opencode-desktop';
+
+          // Nav-site contract: these keys are overwritten every release.
+          const latestAliases = [
+            { platform: 'windows-x64', ext: '.exe', alias: 'windows-x64.exe' },
+            { platform: 'macos-x64', ext: '.pkg', alias: 'macos-x64.pkg' },
+            { platform: 'macos-arm64', ext: '.pkg', alias: 'macos-arm64.pkg' },
+          ];
+
+          const client = new OSS({
+            region,
+            accessKeyId: process.env.ALIBABA_CLOUD_ACCESS_KEY_ID,
+            accessKeySecret: process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET,
+            stsToken: process.env.ALIBABA_CLOUD_SECURITY_TOKEN || undefined,
+            bucket,
+            timeout: 3_600_000,
+          });
+
+          function sha256File(filePath) {
+            return new Promise((resolve, reject) => {
+              const hash = crypto.createHash('sha256');
+              const stream = fs.createReadStream(filePath);
+              stream.on('data', (chunk) => hash.update(chunk));
+              stream.on('error', reject);
+              stream.on('end', () => resolve(hash.digest('hex')));
+            });
+          }
+
+          function findOneByExt(dir, ext) {
+            if (!fs.existsSync(dir)) {
+              throw new Error(`Missing artifact directory: ${dir}`);
+            }
+            const files = fs.readdirSync(dir).filter((name) => !name.startsWith('.') && name.endsWith(ext));
+            if (files.length !== 1) {
+              throw new Error(`Expected exactly 1 *${ext} in ${dir}, found: ${files.join(', ') || '(none)'}`);
+            }
+            return files[0];
+          }
+
+          async function uploadFile(localPath, objectKey, extraHeaders = {}) {
+            const stats = fs.statSync(localPath);
+            const sizeMb = (stats.size / 1024 / 1024).toFixed(2);
+            console.log(`Uploading ${path.basename(localPath)} (${sizeMb} MB) -> ${objectKey}`);
+            const headers = { 'x-oss-object-acl': 'public-read', ...extraHeaders };
+            if (stats.size > 200 * 1024 * 1024) {
+              await client.multipartUpload(objectKey, localPath, { headers });
+            } else {
+              await client.put(objectKey, localPath, { headers });
+            }
+            const url = `${baseUrl}/${objectKey}`;
+            console.log(`  Public URL: ${url}`);
+            return { objectKey, url, size: stats.size };
+          }
+
+          async function main() {
+            if (!version) {
+              throw new Error('RELEASE_VERSION is required');
+            }
+
+            const uploads = [];
+            const platforms = [
+              { dir: 'release-assets/windows-x64', key: 'windows-x64' },
+              { dir: 'release-assets/macos-x64', key: 'macos-x64' },
+              { dir: 'release-assets/macos-arm64', key: 'macos-arm64' },
+            ];
+
+            for (const { dir, key } of platforms) {
+              if (!fs.existsSync(dir)) {
+                console.log(`Skipping ${key}: directory not found`);
+                continue;
+              }
+              const files = fs.readdirSync(dir).filter((name) => !name.startsWith('.'));
+              for (const file of files) {
+                const localPath = path.join(dir, file);
+                const objectKey = `${prefix}/${version}/${key}/${file}`;
+                uploads.push(await uploadFile(localPath, objectKey));
+              }
+            }
+
+            if (uploads.length === 0) {
+              console.error('No release artifacts found to upload');
+              process.exit(1);
+            }
+
+            const downloads = {};
+            const latestUploads = [];
+            for (const { platform, ext, alias } of latestAliases) {
+              const dir = `release-assets/${platform}`;
+              const file = findOneByExt(dir, ext);
+              const localPath = path.join(dir, file);
+              const digest = await sha256File(localPath);
+              const latestKey = `${prefix}/latest/${alias}`;
+              const versionedKey = `${prefix}/${version}/${platform}/${file}`;
+              const uploaded = await uploadFile(localPath, latestKey, {
+                'Cache-Control': 'public, max-age=300',
+                'Content-Disposition': `attachment; filename="${file}"`,
+              });
+              latestUploads.push({ ...uploaded, platform, filename: file, sha256: digest });
+              downloads[platform] = {
+                url: `${baseUrl}/${latestKey}`,
+                versionedUrl: `${baseUrl}/${versionedKey}`,
+                filename: file,
+                sha256: digest,
+                size: uploaded.size,
+              };
+            }
+
+            const latestJsonKey = `${prefix}/latest.json`;
+            const latestJson = {
+              name: 'kt-opencode-desktop',
+              version,
+              publishedAt: new Date().toISOString(),
+              publicBaseUrl: baseUrl,
+              downloads,
+            };
+            fs.writeFileSync('latest.json', `${JSON.stringify(latestJson, null, 2)}\n`);
+            const latestJsonUpload = await uploadFile('latest.json', latestJsonKey, {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'public, max-age=60, must-revalidate',
+            });
+
+            const refreshUrls = [
+              ...latestUploads.map((item) => item.url),
+              latestJsonUpload.url,
+            ];
+
+            const manifest = {
+              version,
+              publicBaseUrl: baseUrl,
+              uploads,
+              latest: {
+                json: latestJsonUpload.url,
+                aliases: latestUploads,
+                downloads,
+                refreshUrls,
+              },
+            };
+            fs.writeFileSync('oss-publish-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+
+            console.log('\n✅ Done. Versioned URLs:');
+            for (const upload of uploads) {
+              console.log(`  ${upload.url}`);
+            }
+            console.log('\nStable latest URLs:');
+            for (const url of refreshUrls) {
+              console.log(`  ${url}`);
+            }
+          }
+
+          main().catch((error) => {
+            console.error('OSS publish failed:', error?.message || error);
+            process.exit(1);
+          });
+          NODE_SCRIPT
+
+      # exe/pkg CDN TTL is 30 days, so latest aliases must be purged after overwrite.
+      - name: Refresh CDN cache for latest aliases
+        run: |
+          node <<'NODE_SCRIPT'
+          const Core = require('@alicloud/pop-core');
+          const fs = require('fs');
+
+          const manifest = JSON.parse(fs.readFileSync('oss-publish-manifest.json', 'utf8'));
+          const urls = (manifest.latest && manifest.latest.refreshUrls) || [];
+          if (urls.length === 0) {
+            console.error('No latest refresh URLs in oss-publish-manifest.json');
+            process.exit(1);
+          }
+
+          const cdn = new Core({
+            accessKeyId: process.env.ALIBABA_CLOUD_ACCESS_KEY_ID,
+            accessKeySecret: process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET,
+            securityToken: process.env.ALIBABA_CLOUD_SECURITY_TOKEN || undefined,
+            endpoint: 'https://cdn.aliyuncs.com',
+            apiVersion: '2018-05-10',
+          });
+
+          async function main() {
+            console.log('Refreshing CDN cache:\n' + urls.map((url) => `  ${url}`).join('\n'));
+            const result = await cdn.request('RefreshObjectCaches', {
+              ObjectPath: urls.join('\n'),
+              ObjectType: 'File',
+            }, { method: 'POST', timeout: 30000 });
+            console.log('CDN refresh accepted:', JSON.stringify(result));
+
+            const taskId = result.RefreshTaskId || result.TaskId;
+            if (!taskId) {
+              return;
+            }
+
+            const deadline = Date.now() + 90_000;
+            while (Date.now() < deadline) {
+              let status;
+              try {
+                status = await cdn.request('DescribeRefreshTaskById', {
+                  TaskId: taskId,
+                }, { method: 'POST', timeout: 15000 });
+              } catch (error) {
+                console.log(`CDN refresh poll skipped: ${error?.message || error}`);
+                return;
+              }
+              const tasks = status.Tasks && status.Tasks.CDNTask
+                ? [].concat(status.Tasks.CDNTask)
+                : [];
+              const states = tasks.map((task) => task.Status || task.Process || 'unknown');
+              console.log(`CDN refresh ${taskId} status: ${states.join(', ') || JSON.stringify(status)}`);
+              if (tasks.length > 0 && tasks.every((task) => /success|complete|failed|refreshfailed/i.test(String(task.Status || '')))) {
+                if (tasks.some((task) => /fail/i.test(String(task.Status || '')))) {
+                  throw new Error(`CDN refresh task failed: ${JSON.stringify(status)}`);
+                }
+                return;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+            console.log('CDN refresh still running after 90s; objects are on OSS and refresh was accepted.');
+          }
+
+          main().catch((error) => {
+            console.error('CDN refresh failed:', error?.message || error);
+            process.exit(1);
+          });
+          NODE_SCRIPT
+
+      - name: Append CDN download links to release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.resolve-version.outputs.release-tag }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+          manifest = json.load(open("oss-publish-manifest.json", encoding="utf-8"))
+          tag = os.environ["RELEASE_TAG"]
+
+          # Group versioned URLs by platform
+          by_platform = {}
+          for u in manifest["uploads"]:
+              platform = u["objectKey"].split("/")[-2]
+              if platform not in by_platform:
+                  by_platform[platform] = []
+              by_platform[platform].append(u["url"])
+
+          lines = ["## CDN Downloads", ""]
+          latest = manifest.get("latest") or {}
+          downloads = latest.get("downloads") or {}
+          if downloads or latest.get("json"):
+              lines.append("### Stable latest (overwrite on each release)")
+              lines.append("")
+              if latest.get("json"):
+                  lines.append(f"- **manifest**: {latest['json']}")
+              for platform in ["windows-x64", "macos-x64", "macos-arm64"]:
+                  item = downloads.get(platform)
+                  if item:
+                      lines.append(f"- **{platform}**: {item['url']}")
+              lines.append("")
+              lines.append("导航站请硬编码以上 latest 链接，不要跟版本号改 URL。")
+              lines.append("")
+          lines.append("### This version")
+          lines.append("")
+          for platform in ["windows-x64", "macos-x64", "macos-arm64"]:
+              if platform in by_platform:
+                  lines.append(f"- **{platform}**:")
+                  for url in by_platform[platform]:
+                      lines.append(f"  - {url}")
+          lines.append("")
+          lines.append(f"Public base: `{manifest['publicBaseUrl']}`")
+
+          cdn_section = "\n".join(lines)
+
+          try:
+              existing = subprocess.check_output(
+                  ["gh", "release", "view", tag, "--json", "body", "-q", ".body"],
+                  text=True,
+                  env=os.environ,
+              ).strip()
+          except subprocess.CalledProcessError:
+              existing = ""
+
+          marker = "## CDN Downloads"
+          if marker in existing:
+              pattern = r"\n?## CDN Downloads.*?\n(?=## |\Z)"
+              notes = re.sub(pattern, "\n" + cdn_section + "\n\n", existing, flags=re.S)
+          else:
+              notes = f"{existing}\n\n{cdn_section}\n" if existing else cdn_section + "\n"
+
+          subprocess.run(
+              ["gh", "release", "edit", tag, "--notes", notes],
+              check=True,
+              env=os.environ,
+          )
+          print(f"Updated release {tag} with CDN download links.")
+          PY
+
+  create-test-issue:
+    name: Create Release Test Issue
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - resolve-version
+      - publish-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Create or update release test issue
+        env:
+          ISSUE_TOKEN: ${{ github.token }}
+          PROJECT_TOKEN: ${{ secrets.KT_PROJECTS_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-version.outputs.release-tag }}
+          KTAI_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
+          UPSTREAM_VERSION: ${{ needs.resolve-version.outputs.upstream-version }}
+          RELEASE_COMMIT_SHA: ${{ github.sha }}
+          TEST_ASSIGNEE: 080618lxj
+        run: bun scripts/create-release-test-issue.mjs

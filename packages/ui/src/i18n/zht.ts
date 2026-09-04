@@ -73,11 +73,18 @@ export const dict = {
   "ui.sessionTurn.retry.attemptLine": "{{line}} - 第 {{attempt}} 次",
   "ui.sessionTurn.retry.geminiHot": "Gemini 目前負載過高",
   "ui.sessionTurn.error.freeUsageExceeded": "免費使用額度已用完",
-  "ui.sessionTurn.error.addCredits": "新增點數",
+  "ui.sessionTurn.error.addCredits": "去充值",
+  "ui.sessionTurn.error.authBilling":
+    "API 金鑰無效或已過期。請前往 KT AI（ktapi.cc）註冊/登入取得有效金鑰，或充值後繼續使用。",
+  "ui.sessionTurn.error.openKt": "開啟 KT AI",
 
   "dialog.usageExceeded.freeTier.title": "已達免費額度上限",
-  "dialog.usageExceeded.freeTier.description": "訂閱 OpenCode Go，可靠地使用最佳開源模型，每月 $5 起。",
-  "dialog.usageExceeded.freeTier.actionLabel": "訂閱",
+  "dialog.usageExceeded.freeTier.description": "免費模型額度已用完。請前往 KT AI 平台充值，繼續使用付費模型（KTAI / ktapi.cc）。",
+  "dialog.usageExceeded.freeTier.actionLabel": "去充值",
+  "dialog.usageExceeded.authBilling.title": "需要登入或充值",
+  "dialog.usageExceeded.authBilling.description":
+    "API 金鑰無效或已過期，或帳戶餘額不足。請前往 KT AI（ktapi.cc）註冊/登入取得有效金鑰，或充值後繼續使用。",
+  "dialog.usageExceeded.authBilling.actionLabel": "開啟 KT AI",
   "dialog.usageExceeded.accountRateLimit.title": "已達 Go 額度上限",
   "dialog.usageExceeded.accountRateLimit.description": "已達使用額度上限。若要立即繼續使用此模型，請啟用可用餘額計費",
   "dialog.usageExceeded.accountRateLimit.actionLabel": "開啟設定",

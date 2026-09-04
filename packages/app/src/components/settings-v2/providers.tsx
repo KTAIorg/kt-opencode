@@ -7,6 +7,7 @@ import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { useIntegrations } from "@/hooks/use-integrations"
 import { createMemo, type Component, For, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
 import { DialogConnectProvider, useProviderConnectController } from "../dialog-connect-provider"
 import { DialogCustomProvider } from "../dialog-custom-provider"
@@ -17,6 +18,7 @@ import "./settings-v2.css"
 
 type ProviderSource = "env" | "api" | "config" | "custom"
 type ProviderItem = ReturnType<ReturnType<typeof useProviders>["connected"]>[number]
+type KTAIAccount = { account: { accountNo: string; displayName?: string }; balance: number }
 
 const PROVIDER_NOTES = [
   { match: (id: string) => id === "opencode", key: "dialog.provider.opencode.note" },

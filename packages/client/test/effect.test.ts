@@ -149,6 +149,18 @@ test("session methods retain decoded Effect inputs and outputs", async () => {
         ),
       )
     }
+    if (url.includes("/history")) {
+      historyPage++
+      historyQueries.push(Object.fromEntries(request.urlParams.params))
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          Response.json(
+            historyPage === 1 ? { data: [modelSwitchedEvent], hasMore: true } : { data: [], hasMore: false },
+          ),
+        ),
+      )
+    }
     if (url.includes("/prompt")) {
       return Effect.succeed(HttpClientResponse.fromWeb(request, Response.json(admission)))
     }
