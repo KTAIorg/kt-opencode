@@ -1,219 +1,131 @@
-import { useSDK } from "@/context/sdk"
-import { useSync } from "@/context/sync"
+import { useWorkspaceLocation } from "@/context/location"
 import { Persist, persisted } from "@/utils/persist"
-import { findLast } from "@opencode-ai/core/util/array"
-import { SessionStatus } from "@opencode-ai/sdk/v2"
-import { batch, createEffect, onCleanup } from "solid-js"
+import type { SessionStatus } from "@opencode-ai/client/promise"
+import { onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useSessionLayout } from "./session-layout"
-import { useDialog } from "@opencode-ai/ui/context"
+import { useDialog, useI18n } from "@opencode-ai/ui/context"
 import { DialogUsageExceeded } from "@/components/dialog-usage-exceeded"
-import { DialogKtAccessGuide } from "@/components/dialog-kt-access-guide"
-import { classifySessionErrorCta, sessionErrorText } from "./timeline/session-error-cta"
-import { useI18n } from "@opencode-ai/ui/context"
+import { openKtAccessGuide } from "@/components/dialog-kt-access-guide"
+import { openKtWallet } from "@/components/dialog-kt-wallet"
+import { useKtaiAccount } from "@/utils/kt-signed-in"
+import { classifySessionErrorCta, sessionBillingCta } from "./timeline/session-error-cta"
 
-const KT_AUTH_BILLING_LAST_SEEN_AT = "kt_auth_billing_last_seen_at"
-const KT_AUTH_BILLING_DONT_SHOW = "kt_auth_billing_dont_show"
+const GO_UPSELL_FREE_TIER_LAST_SEEN_AT = "go_upsell_last_seen_at"
+const GO_UPSELL_FREE_TIER_DONT_SHOW = "go_upsell_dont_show"
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT = "go_upsell_account_rate_limit_last_seen_at"
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW = "go_upsell_account_rate_limit_dont_show"
-/** Billing / free-tier snooze. Persist key stays `kt_topup_*` so older profiles keep their value. */
-const KT_TOPUP_FREE_TIER_LAST_SEEN_AT = "kt_topup_last_seen_at"
-const KT_TOPUP_FREE_TIER_DONT_SHOW = "kt_topup_dont_show"
-const UPSELL_WINDOW = 86_400_000 // 24 hrs
-/** Providers that should surface KT wallet / register CTA. */
-const KT_CTA_PROVIDERS = new Set(["opencode", "opencode-go", "ktai", "ktapi"])
+const GO_UPSELL_WINDOW = 86_400_000 // 24 hrs
+const GO_UPSELL_PROVIDERS = new Set(["opencode", "opencode-go"])
 
-/**
- * Dedupe retry-flash + session.error for the same send.
- * A later send (after this window) can open the guide again.
- */
-const GUIDE_DEBOUNCE_MS = 2000
-const guideShownAt = new Map<string, { at: number; episode: string }>()
-
-function takeGuideEpisode(sessionID: string, kind: string, episode = "") {
-  const key = `${sessionID}:${kind}`
-  const prev = guideShownAt.get(key)
-  if (prev && Date.now() - prev.at < GUIDE_DEBOUNCE_MS) return false
-  guideShownAt.set(key, { at: Date.now(), episode })
-  return true
-}
-
-function latestFailedAssistant(messages: { id: string; role?: string; error?: { name?: string } }[] | undefined) {
-  if (!messages) return
-  return findLast(
-    messages,
-    (message) => message.role === "assistant" && !!message.error && message.error.name !== "MessageAbortedError",
-  )
-}
-
-function isKtCtaProvider(provider: string) {
-  return KT_CTA_PROVIDERS.has(provider) || provider.startsWith("ktai") || provider.startsWith("ktapi")
-}
-
-type UpsellKind = "free_tier_limit" | "auth_billing" | "account_rate_limit"
-type UpsellStoreKey =
-  | typeof KT_AUTH_BILLING_LAST_SEEN_AT
-  | typeof KT_AUTH_BILLING_DONT_SHOW
-  | typeof GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT
-  | typeof GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW
-
-function upsellKeys(status: SessionStatus):
-  | { lastSeenAt: UpsellStoreKey; dontShow: UpsellStoreKey; kind: UpsellKind }
-  | { kind: "free_tier_limit" }
-  | undefined {
+function goUpsellKeys(status: SessionStatus) {
   if (status.type !== "retry" || !status.action) return
   const { action } = status
-  if (!isKtCtaProvider(action.provider) && action.reason !== "account_rate_limit") return
+  if (!GO_UPSELL_PROVIDERS.has(action.provider)) return
   if (action.reason === "free_tier_limit") {
-    return { kind: "free_tier_limit" }
-  }
-  if (action.reason === "auth_billing") {
     return {
-      lastSeenAt: KT_AUTH_BILLING_LAST_SEEN_AT,
-      dontShow: KT_AUTH_BILLING_DONT_SHOW,
-      kind: "auth_billing",
-    }
+      lastSeenAt: GO_UPSELL_FREE_TIER_LAST_SEEN_AT,
+      dontShow: GO_UPSELL_FREE_TIER_DONT_SHOW,
+    } as const
   }
   if (action.reason === "account_rate_limit") {
     return {
       lastSeenAt: GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT,
       dontShow: GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW,
-      kind: "account_rate_limit",
-    }
+    } as const
   }
 }
 
 export function useUsageExceededDialogs() {
-  const sdk = useSDK()
-  const sync = useSync()
+  const sdk = useWorkspaceLocation()
   const dialog = useDialog()
   const { params } = useSessionLayout()
   const { t, locale } = useI18n()
   const isEnglish = () => locale() === "en"
+  const account = useKtaiAccount()
 
-  const [upsellState, setUpsellState] = persisted(
-    Persist.global("kt-topup-upsell"),
+  const [goUpsellState, setGoUpsellState] = persisted(
+    Persist.global("go-upsell"),
     createStore({
-      // Legacy free-tier keys retained so older profiles don't throw on hydrate.
-      [KT_TOPUP_FREE_TIER_LAST_SEEN_AT]: null as null | number,
-      [KT_TOPUP_FREE_TIER_DONT_SHOW]: null as null | number,
-      [KT_AUTH_BILLING_LAST_SEEN_AT]: null as null | number,
-      [KT_AUTH_BILLING_DONT_SHOW]: null as null | number,
+      [GO_UPSELL_FREE_TIER_LAST_SEEN_AT]: null as null | number,
+      [GO_UPSELL_FREE_TIER_DONT_SHOW]: null as null | number,
       [GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT]: null as null | number,
       [GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW]: null as null | number,
     }),
   )
 
-  const guideSnoozed = (kind: "auth" | "billing") => {
-    const lastSeen = kind === "auth" ? KT_AUTH_BILLING_LAST_SEEN_AT : KT_TOPUP_FREE_TIER_LAST_SEEN_AT
-    const dontShow = kind === "auth" ? KT_AUTH_BILLING_DONT_SHOW : KT_TOPUP_FREE_TIER_DONT_SHOW
-    const seen = upsellState[lastSeen]
-    if (seen && Date.now() - seen < UPSELL_WINDOW) return true
-    return Boolean(upsellState[dontShow])
+  const billingKeys = {
+    lastSeenAt: GO_UPSELL_FREE_TIER_LAST_SEEN_AT,
+    dontShow: GO_UPSELL_FREE_TIER_DONT_SHOW,
+  } as const
+
+  const shouldShowBillingGuide = () => {
+    if (dialog.active) return false
+    const seen = goUpsellState[billingKeys.lastSeenAt]
+    if (seen && Date.now() - seen < GO_UPSELL_WINDOW) return false
+    if (goUpsellState[billingKeys.dontShow]) return false
+    return true
   }
 
-  const snoozeGuide = (kind: "auth" | "billing") => (dontShowAgain?: boolean) => {
-    const lastSeen = kind === "auth" ? KT_AUTH_BILLING_LAST_SEEN_AT : KT_TOPUP_FREE_TIER_LAST_SEEN_AT
-    const dontShow = kind === "auth" ? KT_AUTH_BILLING_DONT_SHOW : KT_TOPUP_FREE_TIER_DONT_SHOW
-    batch(() => {
-      setUpsellState(lastSeen, Date.now())
-      if (dontShowAgain) setUpsellState(dontShow, Date.now())
+  const markBillingSeen = (dontShowAgain?: boolean) => {
+    setGoUpsellState(billingKeys.lastSeenAt, Date.now())
+    if (dontShowAgain) setGoUpsellState(billingKeys.dontShow, Date.now())
+  }
+
+  const showBillingGuide = (text?: string) => {
+    if (!shouldShowBillingGuide()) return
+    const cta = sessionBillingCta(text ?? "Free usage exceeded", account.signedIn() ?? true, account.balance())
+    if (cta === "wallet") {
+      openKtWallet({ dialog, onClose: () => markBillingSeen(false) })
+      return
+    }
+    openKtAccessGuide({
+      dialog,
+      kind: "billing",
+      onClose: markBillingSeen,
     })
   }
 
-  const maybeShow = (sessionID: string | undefined, status: SessionStatus | undefined) => {
-    if (!sessionID || !status) return
-    if (status.type !== "retry") return
-    const { action } = status
-    if (!action) return
-    if (dialog.active) return
-
-    const keys = upsellKeys(status)
-    if (!keys) return
-
-    if (keys.kind === "free_tier_limit") {
-      if (guideSnoozed("billing")) return
-      if (!takeGuideEpisode(sessionID, "billing", String(status.next))) return
-      void dialog.show(
-        () => <DialogKtAccessGuide kind="billing" onClose={snoozeGuide("billing")} />,
-        () => snoozeGuide("billing")(false),
-      )
-      return
-    }
-
-    const seen = upsellState[keys.lastSeenAt]
-    if (seen && Date.now() - seen < UPSELL_WINDOW) return
-    if (upsellState[keys.dontShow]) return
-
-    const onClose = (dontShowAgain?: boolean) => {
-      setUpsellState(keys.lastSeenAt, Date.now())
-      if (dontShowAgain) {
-        setUpsellState(keys.dontShow, Date.now())
-      }
-    }
-
-    // Pass show(onClose) so X / overlay / Escape also snooze (fixes reopen loops).
-    if (keys.kind === "auth_billing") {
-      if (guideSnoozed("auth")) return
-      if (!takeGuideEpisode(sessionID, "auth")) return
-      void dialog.show(
-        () => <DialogKtAccessGuide kind="auth" onClose={snoozeGuide("auth")} />,
-        () => snoozeGuide("auth")(false),
-      )
-      return
-    }
-
-    if (keys.kind === "account_rate_limit") {
-      void dialog.show(
-        () => (
-          <DialogUsageExceeded
-            title={isEnglish() ? action.title : t("dialog.usageExceeded.accountRateLimit.title")}
-            description={isEnglish() ? action.message : t("dialog.usageExceeded.accountRateLimit.description")}
-            actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.accountRateLimit.actionLabel")}
-            link={action.link}
-            onClose={onClose}
-          />
-        ),
-        () => onClose(false),
-      )
-    }
-  }
-
-  const maybeShowFromError = (sessionID: string | undefined, error: unknown, episode = "") => {
-    // New-session sends often emit session.error before the route id is set.
-    if (!sessionID || (params.id && sessionID !== params.id)) return
-    const kind = classifySessionErrorCta(sessionErrorText(error))
-    if (!kind) return
-    if (dialog.active) return
-    if (guideSnoozed(kind)) return
-    if (!takeGuideEpisode(sessionID, kind, episode)) return
-    void dialog.show(
-      () => <DialogKtAccessGuide kind={kind} onClose={snoozeGuide(kind)} />,
-      () => snoozeGuide(kind)(false),
-    )
-  }
-
-  // Live events. session.error is durable; session.status retry is a brief flash
-  // that production builds often miss because the server immediately returns to idle.
   onCleanup(
     sdk().event.on("session.status", (evt) => {
-      if (evt.properties.sessionID !== params.id) return
-      maybeShow(evt.properties.sessionID, evt.properties.status)
-    }),
-  )
-  onCleanup(
-    sdk().event.on("session.error", (evt) => {
-      maybeShowFromError(evt.properties.sessionID, evt.properties.error)
+      if (evt.data.sessionID !== params.id) return
+      if (evt.data.status.type !== "retry") return
+      const { action } = evt.data.status
+      if (!action) return
+
+      const keys = goUpsellKeys(evt.data.status)
+      if (!keys) return
+
+      if (action.reason === "free_tier_limit") {
+        showBillingGuide()
+        return
+      }
+      if (action.reason !== "account_rate_limit") return
+      if (dialog.active) return
+      const seen = goUpsellState[keys.lastSeenAt]
+      if (seen && Date.now() - seen < GO_UPSELL_WINDOW) return
+      if (goUpsellState[keys.dontShow]) return
+
+      dialog.show(() => (
+        <DialogUsageExceeded
+          title={isEnglish() ? action.title : t("dialog.usageExceeded.accountRateLimit.title")}
+          description={isEnglish() ? action.message : t("dialog.usageExceeded.accountRateLimit.description")}
+          actionLabel={isEnglish() ? action.label : t("dialog.usageExceeded.accountRateLimit.actionLabel")}
+          link={action.link}
+          onClose={(dontShowAgain) => {
+            setGoUpsellState(keys.lastSeenAt, Date.now())
+            if (dontShowAgain) setGoUpsellState(keys.dontShow, Date.now())
+          }}
+        />
+      ))
     }),
   )
 
-  // Store is durable. New-session navigates onto the session after the live
-  // event already fired; the error card reads this same assistant.error.
-  createEffect(() => {
-    const id = params.id
-    if (!id) return
-    maybeShow(id, sync().data.session_status[id])
-    const failed = latestFailedAssistant(sync().data.message[id])
-    maybeShowFromError(id, failed?.error, failed?.id)
-  })
+  onCleanup(
+    sdk().event.on("session.step.failed", (evt) => {
+      if (evt.data.sessionID !== params.id) return
+      if (classifySessionErrorCta(evt.data.error.message) !== "billing") return
+      showBillingGuide(evt.data.error.message)
+    }),
+  )
 }

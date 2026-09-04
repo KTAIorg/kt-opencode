@@ -25,7 +25,7 @@ Release Service **已经有** app `kito`。复用它，不要再造 `kt-opencode
 
 ## 何时用
 
-- 给 Kito 桌面打 `v*` tag、注册 GitHub Release 产物、`rolloutPercent=0` 发布
+- 给 Kito 桌面打 `kito-v*` tag、注册 GitHub Release 产物、`rolloutPercent=0` 发布
 - 查为什么客户端还在走 GitHub、为什么 `kt component` 口径不适用于 Kito
 - 改 `.github/workflows/release-kito.yml` 或 `packages/desktop/scripts/kito-release.ts`
 
@@ -38,11 +38,13 @@ Release Service **已经有** app `kito`。复用它，不要再造 `kt-opencode
 3. **先核字节再注册。** 本机/CI 对每个安装包算 size、sha256 hex、sha512 base64。`signatureStatus` 默认 `unknown`。
 4. **不要打印 token。** `KT_RELEASE_SERVICE_ADMIN_TOKEN` 来自 GitHub secret / KTSecret `kt-release-service` `/runtime/`。
 5. **不要自动 promote。** 灰度 / 白名单 / `confirmHighRisk` 全是人工步骤。
+6. **Kito tag 只用 `kito-v*`。** 仓库里普通 `v*` 已被上游 opencode 的 tag 占用（v1.18.x 还在涨），不许触发 Kito 管线。
 
 ## 现行流水线
 
 ```text
-GitHub tag vX.Y.Z + Release 资产
+打 kito-vX.Y.Z tag
+  -> release-kito-installers.yml 构建未签名安装包 + 发布 GitHub Release
   -> release-kito.yml 下载资产
   -> bun packages/desktop/scripts/kito-release.ts register
   -> 复用 app kito

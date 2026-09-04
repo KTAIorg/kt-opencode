@@ -1,11 +1,11 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, Show, type JSX } from "solid-js"
-import type { SessionStatus } from "@opencode-ai/sdk/v2/client"
+import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js"
+import type { SessionStatus } from "@opencode-ai/client/promise"
 import { useI18n } from "@opencode-ai/ui/context/i18n"
 import { Card } from "@opencode-ai/ui/card"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { Spinner } from "@opencode-ai/ui/spinner"
 
-export function SessionRetry(props: { status: SessionStatus; show?: boolean; actions?: JSX.Element }) {
+export function SessionRetry(props: { status: SessionStatus; show?: boolean }) {
   const i18n = useI18n()
   const retry = createMemo(() => {
     if (props.status.type !== "retry") return
@@ -54,25 +54,18 @@ export function SessionRetry(props: { status: SessionStatus; show?: boolean; act
     <Show when={retry() && (props.show ?? true)}>
       <div data-slot="session-turn-retry">
         <Card variant="error" class="error-card">
-          <div class="flex flex-col gap-3">
-            <div class="flex items-start gap-2">
-              <Spinner class="size-4 mt-0.5" />
-              <div class="min-w-0">
-                <Show when={truncated()} fallback={<div data-slot="session-turn-retry-message">{message()}</div>}>
-                  <Tooltip value={retry()?.message ?? ""} placement="top">
-                    <div data-slot="session-turn-retry-message" class="cursor-help truncate">
-                      {message()}
-                    </div>
-                  </Tooltip>
-                </Show>
-                <Show when={info()}>{(line) => <div data-slot="session-turn-retry-info">{line()}</div>}</Show>
-              </div>
+          <div class="flex items-start gap-2">
+            <Spinner class="size-4 mt-0.5" />
+            <div class="min-w-0">
+              <Show when={truncated()} fallback={<div data-slot="session-turn-retry-message">{message()}</div>}>
+                <Tooltip appearance="standard" value={retry()?.message ?? ""} placement="top">
+                  <div data-slot="session-turn-retry-message" class="cursor-help truncate">
+                    {message()}
+                  </div>
+                </Tooltip>
+              </Show>
+              <Show when={info()}>{(line) => <div data-slot="session-turn-retry-info">{line()}</div>}</Show>
             </div>
-            <Show when={props.actions}>
-              <div data-slot="session-turn-retry-actions" class="flex justify-end">
-                {props.actions}
-              </div>
-            </Show>
           </div>
         </Card>
       </div>

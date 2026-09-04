@@ -1,11 +1,10 @@
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { batch, createEffect, createMemo, createRoot, on, onCleanup } from "solid-js"
-import { useParams } from "@solidjs/router"
-import { useSDK, type DirectorySDK } from "./sdk"
+import { useWorkspaceLocation, type LocationContext } from "./location"
 import type { Platform } from "./platform"
 import { useServerSDK } from "./server-sdk"
-import { base64Encode } from "@opencode-ai/core/util/encode"
+import { base64Encode } from "@opencode-ai/util/encode"
 import { defaultTitle, titleNumber } from "./terminal-title"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { ScopedKey, ServerScope, type ServerScope as ServerScopeValue } from "@/utils/server-scope"
@@ -89,11 +88,6 @@ export function getWorkspaceTerminalCacheKey(dir: string, scope: ServerScopeValu
   return ScopedKey.from(scope, dir, WORKSPACE_KEY)
 }
 
-export function getLegacyTerminalStorageKeys(dir: string, legacySessionID?: string) {
-  if (!legacySessionID) return [`${dir}/terminal.v1`]
-  return [`${dir}/terminal/${legacySessionID}.v1`, `${dir}/terminal.v1`]
-}
-
 type TerminalSession = ReturnType<typeof createWorkspaceTerminalSession>
 
 type TerminalCacheEntry = {
@@ -113,47 +107,33 @@ const trimTerminal = (pty: LocalPTY) => {
   }
 }
 
-function terminalPersistTarget(scope: ServerScopeValue, dir: string, legacy?: string[]) {
-  return Persist.serverWorkspace(scope, dir, "terminal", legacy)
+function terminalPersistTarget(scope: ServerScopeValue, dir: string) {
+  return Persist.serverWorkspace(scope, dir, "terminal")
 }
 
-export function clearWorkspaceTerminals(
-  dir: string,
-  sessionIDs?: string[],
-  platform?: Platform,
-  scope: ServerScopeValue = ServerScope.local,
-) {
-  const key = getWorkspaceTerminalCacheKey(dir, scope)
+export function clearWorkspaceTerminals(dir: string, platform?: Platform, scope: ServerScopeValue = ServerScope.local) {
+  const storageDir = base64Encode(dir)
+  const key = getWorkspaceTerminalCacheKey(storageDir, scope)
   for (const cache of caches) {
     const entry = cache.get(key)
     entry?.value.clear()
   }
 
-  void removePersisted(terminalPersistTarget(scope, dir), platform)
-
-  if (scope !== ServerScope.local) return
-  const legacy = new Set(getLegacyTerminalStorageKeys(dir))
-  for (const id of sessionIDs ?? []) {
-    for (const key of getLegacyTerminalStorageKeys(dir, id)) {
-      legacy.add(key)
-    }
-  }
-  for (const key of legacy) {
-    void removePersisted({ key }, platform)
-  }
+  const target = terminalPersistTarget(scope, storageDir)
+  void removePersisted({ storage: target.storage, key: target.key }, platform)
 }
 
 function createWorkspaceTerminalSession(
-  sdk: DirectorySDK,
+  sdk: LocationContext,
+  serverSDK: ReturnType<typeof useServerSDK>,
   dir: string,
   scope: ServerScopeValue,
-  legacySessionID?: string,
 ) {
-  const legacy = scope === ServerScope.local ? getLegacyTerminalStorageKeys(dir, legacySessionID) : []
+  const location = { directory: sdk.directory }
 
   const [store, setStore, _, ready] = persisted(
     {
-      ...terminalPersistTarget(scope, dir, legacy),
+      ...terminalPersistTarget(scope, dir),
       migrate: migrateTerminalState,
     },
     createStore<{
@@ -235,52 +215,53 @@ function createWorkspaceTerminalSession(
     })
   }
 
-  const unsub = sdk.event.on("pty.exited", (event: { properties: { id: string } }) => {
-    removeExited(event.properties.id)
+  const unsub = sdk.event.on("pty.exited", (event) => {
+    removeExited(event.data.id)
   })
   onCleanup(unsub)
 
-  const update = (client: DirectorySDK["client"], pty: Partial<LocalPTY> & { id: string }) => {
+  const update = (pty: Partial<LocalPTY> & { id: string }) => {
     const index = store.all.findIndex((x) => x.id === pty.id)
     const previous = index >= 0 ? store.all[index] : undefined
     if (index >= 0) {
       setStore("all", index, (item) => ({ ...item, ...pty }))
     }
-    client.pty
-      .update({
+    const doUpdate = async () => {
+      await serverSDK.api.pty.update({
         ptyID: pty.id,
+        location,
         title: pty.title,
         size: pty.cols && pty.rows ? { rows: pty.rows, cols: pty.cols } : undefined,
       })
-      .catch((error: unknown) => {
-        if (previous) {
-          const currentIndex = store.all.findIndex((item) => item.id === pty.id)
-          if (currentIndex >= 0) setStore("all", currentIndex, previous)
-        }
-        console.error("Failed to update terminal", error)
-      })
+    }
+    doUpdate().catch((error: unknown) => {
+      if (previous) {
+        const currentIndex = store.all.findIndex((item) => item.id === pty.id)
+        if (currentIndex >= 0) setStore("all", currentIndex, previous)
+      }
+      console.error("Failed to update terminal", error)
+    })
   }
 
-  const clone = async (client: DirectorySDK["client"], id: string) => {
+  const clone = async (id: string) => {
     const index = store.all.findIndex((x) => x.id === id)
     const pty = store.all[index]
     if (!pty) return
-    const next = await client.pty
-      .create({
-        title: pty.title,
-      })
+    const data = await serverSDK.api.pty
+      .create({ location, title: pty.title })
+      .then((result) => result.data)
       .catch((error: unknown) => {
         console.error("Failed to clone terminal", error)
         return undefined
       })
-    if (!next?.data) return
+    if (!data?.id) return
 
     const active = store.active === pty.id
 
     batch(() => {
       setStore("all", index, {
-        id: next.data.id,
-        title: next.data.title ?? pty.title,
+        id: data.id,
+        title: data.title ?? pty.title,
         titleNumber: pty.titleNumber,
         buffer: undefined,
         cursor: undefined,
@@ -289,7 +270,7 @@ function createWorkspaceTerminalSession(
         cols: undefined,
       })
       if (active) {
-        setStore("active", next.data.id)
+        setStore("active", data.id)
       }
     })
   }
@@ -308,17 +289,19 @@ function createWorkspaceTerminalSession(
       const nextNumber = pickNextTerminalNumber()
       const focusRequest = options?.focus ? requestFocus(undefined, true) : undefined
 
-      sdk.client.pty
-        .create({ title: defaultTitle(nextNumber) })
-        .then((pty: { data?: { id?: string; title?: string } }) => {
-          const id = pty.data?.id
+      const doCreate = async () => {
+        return serverSDK.api.pty.create({ location, title: defaultTitle(nextNumber) }).then((result) => result.data)
+      }
+      doCreate()
+        .then((data) => {
+          const id = data?.id
           if (!id) {
             if (focusRequest !== undefined) cancelFocus(focusRequest)
             return
           }
           const newTerminal = {
             id,
-            title: pty.data?.title ?? defaultTitle(nextNumber),
+            title: data?.title ?? defaultTitle(nextNumber),
             titleNumber: nextNumber,
           }
           batch(() => {
@@ -335,7 +318,7 @@ function createWorkspaceTerminalSession(
         })
     },
     update(pty: Partial<LocalPTY> & { id: string }) {
-      update(sdk.client, pty)
+      update(pty)
     },
     trim(id: string) {
       const index = store.all.findIndex((x) => x.id === id)
@@ -350,10 +333,9 @@ function createWorkspaceTerminalSession(
       })
     },
     async clone(id: string) {
-      await clone(sdk.client, id)
+      await clone(id)
     },
     bind() {
-      const client = sdk.client
       return {
         trim(id: string) {
           const index = store.all.findIndex((x) => x.id === id)
@@ -361,10 +343,10 @@ function createWorkspaceTerminalSession(
           setStore("all", index, (pty) => trimTerminal(pty))
         },
         update(pty: Partial<LocalPTY> & { id: string }) {
-          update(client, pty)
+          update(pty)
         },
         async clone(id: string) {
-          await clone(client, id)
+          await clone(id)
         },
       }
     },
@@ -412,7 +394,7 @@ function createWorkspaceTerminalSession(
         })
       }
 
-      await sdk.client.pty.remove({ ptyID: id }).catch((error: unknown) => {
+      await serverSDK.api.pty.remove({ ptyID: id, location }).catch((error: unknown) => {
         console.error("Failed to close terminal", error)
       })
     },
@@ -433,11 +415,10 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
   name: "Terminal",
   gate: false,
   init: () => {
-    const sdk = useSDK()
+    const sdk = useWorkspaceLocation()
     const serverSDK = useServerSDK()
-    const params = useParams()
     const cache = new Map<string, TerminalCacheEntry>()
-    const scope = () => serverSDK().scope
+    const scope = () => serverSDK.scope
     const directory = createMemo(() => base64Encode(sdk().directory))
 
     caches.add(cache)
@@ -462,7 +443,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       }
     }
 
-    const loadWorkspace = (dir: string, legacySessionID: string | undefined, serverScope: ServerScopeValue) => {
+    const loadWorkspace = (dir: string, serverScope: ServerScopeValue) => {
       // Terminals are workspace-scoped so tabs persist while switching sessions in the same directory.
       const key = getWorkspaceTerminalCacheKey(dir, serverScope)
       const existing = cache.get(key)
@@ -473,7 +454,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       }
 
       const entry = createRoot((dispose) => ({
-        value: createWorkspaceTerminalSession(sdk(), dir, serverScope, legacySessionID),
+        value: createWorkspaceTerminalSession(sdk(), serverSDK, dir, serverScope),
         dispose,
       }))
 
@@ -482,16 +463,15 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       return entry.value
     }
 
-    const workspace = createMemo(() => loadWorkspace(directory(), params.id, scope()))
+    const workspace = createMemo(() => loadWorkspace(directory(), scope()))
 
     createEffect(
       on(
-        () => ({ dir: directory(), id: params.id, scope: scope() }),
+        () => ({ dir: directory(), scope: scope() }),
         (next, prev) => {
           if (!prev?.dir) return
-          if (next.dir === prev.dir && next.id === prev.id && next.scope === prev.scope) return
-          if (next.dir === prev.dir && next.id && next.scope === prev.scope) return
-          loadWorkspace(prev.dir, prev.id, prev.scope).trimAll()
+          if (next.dir === prev.dir && next.scope === prev.scope) return
+          loadWorkspace(prev.dir, prev.scope).trimAll()
         },
         { defer: true },
       ),

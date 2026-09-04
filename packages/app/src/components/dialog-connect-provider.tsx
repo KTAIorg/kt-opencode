@@ -1,36 +1,28 @@
-import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@opencode-ai/sdk/v2/client"
 import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { Dialog } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
-import { IconButton } from "@opencode-ai/ui/icon-button"
-import { List, type ListRef } from "@opencode-ai/ui/list"
+import { List } from "@opencode-ai/ui/list"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Spinner } from "@opencode-ai/ui/spinner"
-import { Tag } from "@opencode-ai/ui/tag"
 import { TextField } from "@opencode-ai/ui/text-field"
+import { DialogBody, DialogHeader, DialogTitle, Dialog } from "@opencode-ai/ui/dialog"
+import { TextInput } from "@opencode-ai/ui/text-input"
 import { showToast } from "@/utils/toast"
-import {
-  type Accessor,
-  type Component,
-  createEffect,
-  createMemo,
-  createResource,
-  Match,
-  onCleanup,
-  onMount,
-  Show,
-  Switch,
-} from "solid-js"
-import { createStore, produce } from "solid-js/store"
-import { Link } from "@/components/link"
-import { useServerSDK } from "@/context/server-sdk"
-import { useServerSync } from "@/context/server-sync"
+import { type Component, createMemo, createUniqueId, For, Match, onMount, Show, Switch } from "solid-js"
+import { createStore } from "solid-js/store"
+import { useParams } from "@solidjs/router"
+import { ExternalLink } from "@/components/external-link"
 import { useLanguage } from "@/context/language"
-import { popularProviders, useProviders } from "@/hooks/use-providers"
+import { useProviders } from "@/hooks/use-providers"
+import { useIntegrations } from "@/hooks/use-integrations"
 import { CustomProviderForm } from "./dialog-custom-provider"
+import { decode64 } from "@/utils/base64"
+import { createProviderConnectionController, type ProviderConnectMethod } from "./provider-connection-controller"
+import { customerFacingProviderName, isCustomerFacingProvider } from "@/utils/kt-settlement"
 
 const CUSTOM_ID = "_custom"
+type IntegrationForm = NonNullable<ProviderConnectMethod["form"]>[number]
+type StringForm = Extract<IntegrationForm, { type: "string" }>
 
 export function useProviderConnectController(options: { onBack?: () => void } = {}) {
   const [store, setStore] = createStore({ selected: undefined as string | undefined })
@@ -44,7 +36,7 @@ export function useProviderConnectController(options: { onBack?: () => void } = 
 }
 
 export const DialogConnectProvider: Component<{
-  directory?: Accessor<string | undefined>
+  directory?: string
   controller?: ReturnType<typeof useProviderConnectController>
 }> = (props) => {
   const fallback = useProviderConnectController()
@@ -52,30 +44,18 @@ export const DialogConnectProvider: Component<{
   const language = useLanguage()
   const reset = controller.back
   const back = { current: reset }
+  let focusHost: HTMLDivElement | undefined
+  const holdFocus = () => focusHost?.focus({ preventScroll: true })
   const select = (provider?: string) => {
     back.current = reset
     controller.select(provider)
   }
 
-  return (
-    <Dialog
-      class="h-full"
-      transition
-      title={
-        <Show when={controller.selected()} fallback={language.t("command.provider.connect")}>
-          <IconButton
-            tabIndex={-1}
-            icon="arrow-left"
-            variant="ghost"
-            onClick={() => back.current()}
-            aria-label={language.t("common.goBack")}
-          />
-        </Show>
-      }
-    >
+  function Content() {
+    return (
       <Switch>
         <Match when={controller.selected() === CUSTOM_ID}>
-          <CustomProviderForm />
+          <CustomProviderForm autofocus={false} />
         </Match>
         <Match when={controller.selected() && controller.selected() !== CUSTOM_ID ? controller.selected() : undefined}>
           {(provider) => (
@@ -88,375 +68,348 @@ export const DialogConnectProvider: Component<{
           )}
         </Match>
         <Match when={true}>
-          <ProviderPicker directory={props.directory} onSelect={select} />
+          <ProviderPicker directory={props.directory} onSelect={select} onPrepare={holdFocus} />
         </Match>
       </Switch>
+    )
+  }
+
+  return (
+    <Dialog
+      containerClass="!h-[min(calc(100vh_-_16px),512px)] !w-[min(calc(100vw_-_16px),640px)]"
+      class="[font-family:var(--v2-font-family-sans)] [&_[data-slot=dialog-header]]:!px-5 [&_[data-slot=dialog-header-title]]:!text-[15px] [&_[data-slot=dialog-header-title]]:!tracking-[-0.13px]"
+    >
+      <DialogHeader closeLabel={language.t("common.close")}>
+        <Show
+          when={controller.selected()}
+          fallback={<DialogTitle>{language.t("command.provider.connect")}</DialogTitle>}
+        >
+          <button
+            type="button"
+            class="flex size-5 items-center justify-center rounded-sm text-v2-icon-icon-muted hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
+            onClick={() => back.current()}
+            aria-label={language.t("common.goBack")}
+          >
+            <Icon name="arrow-left" size="small" />
+          </button>
+        </Show>
+      </DialogHeader>
+      <DialogBody class="min-h-0 flex-1 overflow-hidden px-2 pb-2">
+        <div ref={focusHost} tabIndex={-1} class="flex min-h-0 flex-1 flex-col outline-none">
+          <Content />
+        </div>
+      </DialogBody>
     </Dialog>
   )
 }
 
-function ProviderPicker(props: { directory?: Accessor<string | undefined>; onSelect: (provider: string) => void }) {
-  const providers = useProviders(props.directory)
+function ProviderPicker(props: { directory?: string; onSelect: (provider: string) => void; onPrepare?: () => void }) {
+  const integrations = useIntegrations(() => props.directory)
   const language = useLanguage()
-  const popularGroup = () => language.t("dialog.provider.group.popular")
-  const otherGroup = () => language.t("dialog.provider.group.other")
-  const customLabel = () => language.t("settings.providers.tag.custom")
-  const note = (id: string) => {
-    if (id === "anthropic") return language.t("dialog.provider.anthropic.note")
-    if (id === "openai") return language.t("dialog.provider.openai.note")
-    if (id.startsWith("github-copilot")) return language.t("dialog.provider.copilot.note")
-    if (id === "opencode-go") return language.t("dialog.provider.opencodeGo.tagline")
-    return undefined
+  const [store, setStore] = createStore({
+    filter: "",
+    active: undefined as string | undefined,
+    connecting: undefined as string | undefined,
+  })
+  const featured = ["ktai", "opencode"]
+  const custom = () => ({ id: CUSTOM_ID, name: language.t("dialog.provider.custom.label") })
+  const all = createMemo(() => {
+    language.locale()
+    const query = store.filter.trim().toLowerCase()
+    const values = [
+      custom(),
+      ...integrations
+        .list()
+        .filter((provider) => isCustomerFacingProvider(provider.id))
+        .map((provider) => ({
+          id: provider.id,
+          name: customerFacingProviderName(provider.id, provider.name),
+        })),
+    ]
+    if (!query) return values
+    return values.filter((provider) => `${provider.id} ${provider.name}`.toLowerCase().includes(query))
+  })
+  const popular = createMemo(() =>
+    all()
+      .filter((provider) => featured.includes(provider.id))
+      .sort((a, b) => featured.indexOf(a.id) - featured.indexOf(b.id)),
+  )
+  const other = createMemo(() =>
+    all()
+      .filter((provider) => !featured.includes(provider.id))
+      .sort((a, b) => {
+        if (a.id === CUSTOM_ID) return -1
+        if (b.id === CUSTOM_ID) return 1
+        return a.name.localeCompare(b.name)
+      }),
+  )
+  const rows = createMemo(() => [...popular(), ...other()])
+  let picker: HTMLDivElement | undefined
+  let search: HTMLInputElement | undefined
+
+  onMount(() => search?.focus({ preventScroll: true }))
+
+  const connect = (provider: string) => {
+    props.onPrepare?.()
+    props.onSelect(provider)
+  }
+
+  const move = (event: KeyboardEvent, direction: number) => {
+    const items = rows()
+    if (items.length === 0) return
+    const index = items.findIndex((provider) => provider.id === store.active)
+    const next = index < 0 ? (direction > 0 ? 0 : items.length - 1) : (index + direction + items.length) % items.length
+    setStore("active", items[next].id)
+    picker
+      ?.querySelector<HTMLElement>(`[data-provider-id="${CSS.escape(items[next].id)}"]`)
+      ?.focus({ preventScroll: true })
+    event.preventDefault()
+  }
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "ArrowDown") return move(event, 1)
+    if (event.key === "ArrowUp") return move(event, -1)
+    if (event.key !== "Enter" || !store.active) return
+    connect(store.active)
+    event.preventDefault()
   }
 
   return (
-    <List
-      class="px-3"
-      search={{ placeholder: language.t("dialog.provider.search.placeholder"), autofocus: true }}
-      emptyMessage={language.t("dialog.provider.empty")}
-      activeIcon="plus-small"
-      key={(x) => x?.id}
-      items={() => {
-        language.locale()
-        return [{ id: CUSTOM_ID, name: customLabel() }, ...providers.all().values()]
-      }}
-      filterKeys={["id", "name"]}
-      groupBy={(x) => (popularProviders.includes(x.id) ? popularGroup() : otherGroup())}
-      sortBy={(a, b) => {
-        if (a.id === CUSTOM_ID) return -1
-        if (b.id === CUSTOM_ID) return 1
-        if (popularProviders.includes(a.id) && popularProviders.includes(b.id))
-          return popularProviders.indexOf(a.id) - popularProviders.indexOf(b.id)
-        return a.name.localeCompare(b.name)
-      }}
-      sortGroupsBy={(a, b) => {
-        const popular = popularGroup()
-        if (a.category === popular && b.category !== popular) return -1
-        if (b.category === popular && a.category !== popular) return 1
-        return 0
-      }}
-      onSelect={(x) => {
-        if (!x) return
-        props.onSelect(x.id)
-      }}
-    >
-      {(i) => (
-        <div class="px-1.25 w-full flex items-center gap-x-3">
-          <ProviderIcon data-slot="list-item-extra-icon" id={i.id} />
-          <span>{i.name}</span>
-          <Show when={i.id === "opencode"}>
-            <div class="text-14-regular text-text-weak">{language.t("dialog.provider.opencode.tagline")}</div>
-          </Show>
-          <Show when={i.id === CUSTOM_ID}>
-            <Tag>{language.t("settings.providers.tag.custom")}</Tag>
-          </Show>
-          <Show when={i.id === "opencode"}>
-            <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
-          </Show>
-          <Show when={note(i.id)}>{(value) => <div class="text-14-regular text-text-weak">{value()}</div>}</Show>
-          <Show when={i.id === "opencode-go"}>
-            <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
+    <div ref={picker} class="flex min-h-0 flex-1 flex-col gap-4" onKeyDown={handleKeyDown}>
+      <div class="shrink-0 px-1 pt-px">
+        <TextInput
+          ref={search}
+          type="search"
+          class="!w-full [font-family:var(--v2-font-family-sans)]"
+          leadingIcon={<Icon name="magnifying-glass" size="small" />}
+          placeholder={language.t("dialog.provider.search.placeholder")}
+          value={store.filter}
+          onInput={(event) => {
+            setStore({ filter: event.currentTarget.value, active: undefined })
+          }}
+        />
+      </div>
+      <div class="relative min-h-0 flex-1">
+        <div class="flex size-full min-h-0 flex-col gap-4 overflow-y-auto pb-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <For
+            each={[
+              { title: language.t("dialog.provider.group.popular"), items: popular },
+              { title: language.t("dialog.provider.group.other"), items: other },
+            ]}
+          >
+            {(group) => (
+              <Show when={group.items().length > 0}>
+                <section class="flex flex-col">
+                  <div class="px-3 pb-2 text-[13px] font-[440] leading-none tracking-[-0.04px] text-v2-text-text-muted">
+                    {group.title}
+                  </div>
+                  <For each={group.items()}>
+                    {(provider) => (
+                      <button
+                        type="button"
+                        data-provider-id={provider.id}
+                        class="flex min-h-9 w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-[13px] leading-none tracking-[-0.04px] hover:bg-v2-overlay-simple-overlay-hover focus:bg-v2-overlay-simple-overlay-hover focus:outline-none"
+                        classList={{ "bg-v2-overlay-simple-overlay-hover": store.active === provider.id }}
+                        onMouseEnter={() => setStore("active", provider.id)}
+                        disabled={store.connecting !== undefined}
+                        aria-busy={store.connecting === provider.id}
+                        onClick={() => connect(provider.id)}
+                      >
+                        <ProviderIcon id={provider.id} class="size-4 shrink-0 text-v2-icon-icon-base" />
+                        <span class="min-w-0 truncate font-[530] text-v2-text-text-base">{provider.name}</span>
+                        <Show when={provider.id === "opencode" || provider.id === "opencode-go"}>
+                          <span class="min-w-0 truncate font-[440] text-v2-text-text-muted">
+                            {language.t(
+                              provider.id === "opencode"
+                                ? "dialog.provider.opencode.tagline"
+                                : "dialog.provider.opencodeGo.tagline",
+                            )}
+                          </span>
+                          <span class="flex h-4 shrink-0 items-center rounded-xs border-[0.5px] border-v2-border-border-base bg-v2-background-bg-layer-03 px-1 text-[11px] font-[530] leading-none tracking-[0.05px] text-v2-text-text-muted">
+                            {language.t("dialog.provider.tag.recommended")}
+                          </span>
+                        </Show>
+                        <Show when={provider.id === CUSTOM_ID}>
+                          <span class="flex h-4 shrink-0 items-center rounded-xs border-[0.5px] border-v2-border-border-base bg-v2-background-bg-layer-03 px-1 text-[11px] font-[530] leading-none tracking-[0.05px] text-v2-text-text-muted">
+                            {language.t("settings.providers.tag.custom")}
+                          </span>
+                        </Show>
+                        <Show when={store.connecting === provider.id}>
+                          <Spinner class="ml-auto size-4 shrink-0 text-v2-icon-icon-muted" />
+                        </Show>
+                      </button>
+                    )}
+                  </For>
+                </section>
+              </Show>
+            )}
+          </For>
+          <Show when={rows().length === 0}>
+            <div class="flex h-24 items-center justify-center text-[13px] font-[440] text-v2-text-text-muted">
+              {language.t("dialog.provider.empty")}
+            </div>
           </Show>
         </div>
-      )}
-    </List>
+        <div
+          class="pointer-events-none absolute inset-x-0 bottom-0 h-10"
+          style={{ background: "linear-gradient(to bottom, transparent, var(--v2-background-bg-layer-01))" }}
+        />
+      </div>
+    </div>
   )
 }
 
 function ProviderConnection(props: {
   provider: string
-  directory?: Accessor<string | undefined>
+  directory?: string
   onBack: () => void
   setBack: (handler: () => void) => void
 }) {
   const dialog = useDialog()
-  const serverSync = useServerSync()
-  const serverSDK = useServerSDK()
+  const params = useParams()
   const language = useLanguage()
-  const providers = useProviders(props.directory)
+  const providers = useProviders(() => props.directory)
+  const directory = () => props.directory ?? decode64(params.dir)
 
-  const alive = { value: true }
-  const timer = { current: undefined as ReturnType<typeof setTimeout> | undefined }
-
-  onCleanup(() => {
-    alive.value = false
-    if (timer.current === undefined) return
-    clearTimeout(timer.current)
-    timer.current = undefined
-  })
-
-  const provider = createMemo(
-    () => providers.all().get(props.provider) ?? serverSync().data.provider.all.get(props.provider)!,
-  )
-  const fallback = createMemo<ProviderAuthMethod[]>(() => [
-    {
-      type: "api" as const,
-      label: language.t("provider.connect.method.apiKey"),
+  const controller = createProviderConnectionController({
+    provider: () => props.provider,
+    directory,
+    onComplete: () => {
+      dialog.close()
+      showToast({
+        variant: "success",
+        icon: "circle-check",
+        title: language.t("provider.connect.toast.connected.title", { provider: provider().name }),
+        description: language.t("provider.connect.toast.connected.description", { provider: provider().name }),
+      })
     },
-  ])
-  const [auth] = createResource(
-    () => props.provider,
-    async () => {
-      const cached = serverSync().data.provider_auth[props.provider]
-      if (cached) return cached
-      const res = await serverSDK().client.provider.auth()
-      if (!alive.value) return fallback()
-      serverSync().set("provider_auth", res.data ?? {})
-      return res.data?.[props.provider] ?? fallback()
-    },
-  )
-  const loading = createMemo(() => auth.loading && !serverSync().data.provider_auth[props.provider])
-  const methods = createMemo(() => auth.latest ?? serverSync().data.provider_auth[props.provider] ?? fallback())
-  const [store, setStore] = createStore({
-    methodIndex: undefined as undefined | number,
-    authorization: undefined as undefined | ProviderAuthAuthorization,
-    promptInputs: undefined as undefined | Record<string, string>,
-    state: "pending" as undefined | "pending" | "complete" | "error" | "prompt",
-    error: undefined as string | undefined,
   })
-
-  type Action =
-    | { type: "method.select"; index: number }
-    | { type: "method.reset" }
-    | { type: "auth.prompt" }
-    | { type: "auth.inputs"; inputs: Record<string, string> }
-    | { type: "auth.pending" }
-    | { type: "auth.complete"; authorization: ProviderAuthAuthorization }
-    | { type: "auth.error"; error: string }
-
-  function dispatch(action: Action) {
-    setStore(
-      produce((draft) => {
-        if (action.type === "method.select") {
-          draft.methodIndex = action.index
-          draft.authorization = undefined
-          draft.promptInputs = undefined
-          draft.state = undefined
-          draft.error = undefined
-          return
-        }
-        if (action.type === "method.reset") {
-          draft.methodIndex = undefined
-          draft.authorization = undefined
-          draft.promptInputs = undefined
-          draft.state = undefined
-          draft.error = undefined
-          return
-        }
-        if (action.type === "auth.prompt") {
-          draft.state = "prompt"
-          draft.error = undefined
-          return
-        }
-        if (action.type === "auth.inputs") {
-          draft.promptInputs = action.inputs
-          draft.state = undefined
-          draft.error = undefined
-          return
-        }
-        if (action.type === "auth.pending") {
-          draft.state = "pending"
-          draft.error = undefined
-          return
-        }
-        if (action.type === "auth.complete") {
-          draft.state = "complete"
-          draft.authorization = action.authorization
-          draft.error = undefined
-          return
-        }
-        draft.state = "error"
-        draft.error = action.error
-      }),
-    )
-  }
-
-  const method = createMemo(() => (store.methodIndex !== undefined ? methods().at(store.methodIndex!) : undefined))
-
+  const provider = createMemo(() => ({
+    id: props.provider,
+    name: providers.all().get(props.provider)?.name ?? controller.integration()?.name ?? props.provider,
+  }))
   const methodLabel = (value?: { type?: string; label?: string }) => {
     if (!value) return ""
-    if (value.type === "api") return language.t("provider.connect.method.apiKey")
+    if (value.type === "key") return language.t("provider.connect.method.apiKey")
     return value.label ?? ""
   }
 
-  function formatError(value: unknown, fallback: string): string {
-    if (value && typeof value === "object" && "data" in value) {
-      const data = (value as { data?: { message?: unknown } }).data
-      if (typeof data?.message === "string" && data.message) return data.message
-    }
-    if (value && typeof value === "object" && "error" in value) {
-      const nested = formatError((value as { error?: unknown }).error, "")
-      if (nested) return nested
-    }
-    if (value && typeof value === "object" && "message" in value) {
-      const message = (value as { message?: unknown }).message
-      if (typeof message === "string" && message) return message
-    }
-    if (value instanceof Error && value.message) return value.message
-    if (typeof value === "string" && value) return value
-    return fallback
-  }
-
-  async function selectMethod(index: number, inputs?: Record<string, string>) {
-    if (timer.current !== undefined) {
-      clearTimeout(timer.current)
-      timer.current = undefined
-    }
-
-    const method = methods()[index]
-    dispatch({ type: "method.select", index })
-
-    if (method.type === "api" && method.prompts?.length) {
-      if (!inputs) {
-        dispatch({ type: "auth.prompt" })
-        return
-      }
-      dispatch({ type: "auth.inputs", inputs })
-      return
-    }
-
-    if (method.type === "oauth") {
-      if (method.prompts?.length && !inputs) {
-        dispatch({ type: "auth.prompt" })
-        return
-      }
-      dispatch({ type: "auth.pending" })
-      const start = Date.now()
-      await serverSDK()
-        .client.provider.oauth.authorize(
-          {
-            providerID: props.provider,
-            method: index,
-            inputs,
-          },
-          { throwOnError: true },
-        )
-        .then((x) => {
-          if (!alive.value) return
-          const elapsed = Date.now() - start
-          const delay = 1000 - elapsed
-
-          if (delay > 0) {
-            if (timer.current !== undefined) clearTimeout(timer.current)
-            timer.current = setTimeout(() => {
-              timer.current = undefined
-              if (!alive.value) return
-              dispatch({ type: "auth.complete", authorization: x.data! })
-            }, delay)
-            return
-          }
-          dispatch({ type: "auth.complete", authorization: x.data! })
-        })
-        .catch((e) => {
-          if (!alive.value) return
-          dispatch({ type: "auth.error", error: formatError(e, language.t("common.requestFailed")) })
-        })
+  const methodDetails = (value?: { type?: string; label?: string }) => {
+    const label = methodLabel(value)
+    const suffix = value?.label?.match(/\s+\((browser|headless)\)$/i)
+    const hint = suffix?.[1]
+    return {
+      label: suffix ? label.slice(0, -suffix[0].length) : label,
+      hint:
+        hint?.toLowerCase() === "headless"
+          ? language.t("provider.connect.method.headless")
+          : hint?.toLowerCase() === "browser" || (!hint && value?.type === "key")
+            ? language.t("provider.connect.method.browser")
+            : undefined,
     }
   }
 
-  function AuthPromptsView() {
+  function AuthFormView() {
     const [formStore, setFormStore] = createStore({
       value: {} as Record<string, string>,
       index: 0,
     })
 
-    const prompts = createMemo<NonNullable<ProviderAuthMethod["prompts"]>>(() => {
-      const value = method()
-      return value?.prompts ?? []
+    const fields = createMemo<StringForm[]>(() => {
+      const value = controller.currentMethod()
+      return (value?.form ?? []).flatMap((field) => (field.type === "string" ? [field] : []))
     })
-    const matches = (prompt: NonNullable<ReturnType<typeof prompts>[number]>, value: Record<string, string>) => {
-      if (!prompt.when) return true
-      const actual = value[prompt.when.key]
-      if (actual === undefined) return false
-      return prompt.when.op === "eq" ? actual === prompt.when.value : actual !== prompt.when.value
+    const matches = (field: StringForm, value: Record<string, string>) => {
+      return (field.when ?? []).every((condition) => {
+        const actual = value[condition.key]
+        if (actual === undefined) return false
+        return condition.op === "eq" ? actual === condition.value : actual !== condition.value
+      })
     }
     const current = createMemo(() => {
-      const all = prompts()
-      const index = all.findIndex((prompt, index) => index >= formStore.index && matches(prompt, formStore.value))
-      if (index === -1) return
+      const all = fields()
+      const index = all.findIndex((field, index) => index >= formStore.index && matches(field, formStore.value))
+      if (index === -1) return undefined
       return {
         index,
-        prompt: all[index],
+        field: all[index],
       }
     })
     const valid = createMemo(() => {
       const item = current()
-      if (!item || item.prompt.type !== "text") return false
-      const value = formStore.value[item.prompt.key] ?? ""
-      return value.trim().length > 0
+      if (!item || item.field.options) return false
+      if (!item.field.required) return true
+      return (formStore.value[item.field.key] ?? "").trim().length > 0
     })
 
     async function next(index: number, value: Record<string, string>) {
-      if (store.methodIndex === undefined) return
-      const next = prompts().findIndex((prompt, i) => i > index && matches(prompt, value))
+      const selected = controller.methodIndex()
+      if (selected === undefined) return
+      const next = fields().findIndex((field, i) => i > index && matches(field, value))
       if (next !== -1) {
         setFormStore("index", next)
         return
       }
-      if (method()?.type === "api") {
-        dispatch({ type: "auth.inputs", inputs: value })
-        return
-      }
-      await selectMethod(store.methodIndex, value)
+      await controller.auth.select(selected, value)
     }
 
     async function handleSubmit(e: SubmitEvent) {
       e.preventDefault()
       const item = current()
-      if (!item || item.prompt.type !== "text") return
+      if (!item || item.field.options) return
       if (!valid()) return
       await next(item.index, formStore.value)
     }
 
     const item = () => current()
     const text = createMemo(() => {
-      const prompt = item()?.prompt
-      if (!prompt || prompt.type !== "text") return
-      return prompt
+      const field = item()?.field
+      if (!field || field.options) return undefined
+      return field
     })
     const select = createMemo(() => {
-      const prompt = item()?.prompt
-      if (!prompt || prompt.type !== "select") return
-      return prompt
+      const field = item()?.field
+      if (!field?.options) return undefined
+      return field
     })
 
     return (
       <form onSubmit={handleSubmit} class="flex flex-col items-start gap-4">
         <Switch>
-          <Match when={item()?.prompt.type === "text"}>
+          <Match when={item()?.field.options === undefined}>
             <TextField
               type="text"
-              label={text()?.message ?? ""}
+              label={text()?.title ?? ""}
               placeholder={text()?.placeholder}
               value={text() ? (formStore.value[text()!.key] ?? "") : ""}
               onChange={(value) => {
-                const prompt = text()
-                if (!prompt) return
-                setFormStore("value", prompt.key, value)
+                const field = text()
+                if (!field) return
+                setFormStore("value", field.key, value)
               }}
             />
-            <Button class="w-auto" type="submit" size="large" variant="primary" disabled={!valid()}>
+            <Button class="w-auto" type="submit" size="large" variant="contrast" disabled={!valid()}>
               {language.t("common.continue")}
             </Button>
           </Match>
-          <Match when={item()?.prompt.type === "select"}>
+          <Match when={item()?.field.options !== undefined}>
             <div class="w-full flex flex-col gap-1.5">
-              <div class="text-14-regular text-text-base">{select()?.message}</div>
+              <div class="text-14-regular text-text-base">{select()?.title}</div>
               <div>
                 <List
                   class="px-3"
                   items={select()?.options ?? []}
                   key={(x) => x.value}
-                  current={select()?.options.find((x) => x.value === formStore.value[select()!.key])}
+                  current={select()?.options?.find((x) => x.value === formStore.value[select()!.key])}
                   onSelect={(value) => {
                     if (!value) return
-                    const prompt = select()
-                    if (!prompt) return
+                    const field = select()
+                    if (!field) return
                     const nextValue = {
                       ...formStore.value,
-                      [prompt.key]: value.value,
+                      [field.key]: value.value,
                     }
-                    setFormStore("value", prompt.key, value.value)
+                    setFormStore("value", field.key, value.value)
                     void next(item()!.index, nextValue)
                   }}
                 >
@@ -466,7 +419,7 @@ function ProviderConnection(props: {
                         <div class="w-2.5 h-0.5 ml-0 bg-icon-strong-base hidden" data-slot="list-item-extra-icon" />
                       </div>
                       <span>{option.label}</span>
-                      <span class="text-14-regular text-text-weak">{option.hint}</span>
+                      <span class="text-14-regular text-text-weak">{option.description}</span>
                     </div>
                   )}
                 </List>
@@ -478,39 +431,9 @@ function ProviderConnection(props: {
     )
   }
 
-  let listRef: ListRef | undefined
-  function handleKey(e: KeyboardEvent) {
-    if (e.key === "Enter" && e.target instanceof HTMLInputElement) {
-      return
-    }
-    if (e.key === "Escape") return
-    listRef?.onKeyDown(e)
-  }
-
-  let auto = false
-  createEffect(() => {
-    if (auto) return
-    if (loading()) return
-    if (methods().length === 1) {
-      auto = true
-      void selectMethod(0)
-    }
-  })
-
-  async function complete() {
-    await serverSDK().client.global.dispose()
-    dialog.close()
-    showToast({
-      variant: "success",
-      icon: "circle-check",
-      title: language.t("provider.connect.toast.connected.title", { provider: provider().name }),
-      description: language.t("provider.connect.toast.connected.description", { provider: provider().name }),
-    })
-  }
-
   function goBack() {
-    if (methods().length > 1 && store.methodIndex !== undefined) {
-      dispatch({ type: "method.reset" })
+    if (controller.methods().length > 1 && controller.methodIndex() !== undefined) {
+      controller.auth.reset()
       return
     }
     props.onBack()
@@ -520,49 +443,54 @@ function ProviderConnection(props: {
 
   function MethodSelection() {
     return (
-      <>
-        <div class="text-14-regular text-text-base">
+      <div class="flex flex-col gap-2">
+        <div class="px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-muted">
           {language.t("provider.connect.selectMethod", { provider: provider().name })}
         </div>
-        <div>
-          <List
-            class="px-3"
-            ref={(ref) => {
-              listRef = ref
+        <div class="flex flex-col">
+          <For each={controller.methods()}>
+            {(item, index) => {
+              const details = () => methodDetails(item)
+              return (
+                <button
+                  type="button"
+                  class="group flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-[13px] leading-5 tracking-[-0.04px] hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
+                  onClick={() => void controller.auth.select(index())}
+                >
+                  <span class="flex h-2 w-4 shrink-0 items-center justify-center rounded-[1px] bg-v2-background-bg-base shadow-[var(--v2-elevation-button-neutral)]">
+                    <span class="hidden h-0.5 w-2.5 bg-v2-icon-icon-base group-hover:block group-focus-visible:block" />
+                  </span>
+                  <span class="font-[530] text-v2-text-text-base">{details().label}</span>
+                  <Show when={details().hint}>
+                    {(hint) => <span class="font-[440] text-v2-text-text-muted">{hint()}</span>}
+                  </Show>
+                </button>
+              )
             }}
-            items={methods}
-            key={(m) => m?.label}
-            onSelect={async (selected, index) => {
-              if (!selected) return
-              void selectMethod(index)
-            }}
-          >
-            {(i) => (
-              <div class="w-full flex items-center gap-x-2">
-                <div class="w-4 h-2 rounded-[1px] bg-input-base shadow-xs-border-base flex items-center justify-center">
-                  <div class="w-2.5 h-0.5 ml-0 bg-icon-strong-base hidden" data-slot="list-item-extra-icon" />
-                </div>
-                <span>{methodLabel(i)}</span>
-              </div>
-            )}
-          </List>
+          </For>
         </div>
-      </>
+      </div>
     )
   }
 
   function ApiAuthView() {
+    let apiKey: HTMLInputElement | undefined
+    const errorID = createUniqueId()
     const [formStore, setFormStore] = createStore({
       value: "",
       error: undefined as string | undefined,
     })
 
+    onMount(() => {
+      apiKey?.focus({ preventScroll: true })
+    })
+
     async function handleSubmit(e: SubmitEvent) {
       e.preventDefault()
 
-      const form = e.currentTarget as HTMLFormElement
-      const formData = new FormData(form)
-      const apiKey = formData.get("apiKey") as string
+      if (!(e.currentTarget instanceof HTMLFormElement)) return
+      const value = new FormData(e.currentTarget).get("apiKey")
+      const apiKey = typeof value === "string" ? value : ""
 
       if (!apiKey?.trim()) {
         setFormStore("error", language.t("provider.connect.apiKey.required"))
@@ -570,52 +498,55 @@ function ProviderConnection(props: {
       }
 
       setFormStore("error", undefined)
-      await serverSDK().client.auth.set({
-        providerID: props.provider,
-        auth: {
-          type: "api",
-          key: apiKey,
-          ...(store.promptInputs ? { metadata: store.promptInputs } : {}),
-        },
-      })
-      await complete()
+      await controller.auth.connectKey(apiKey)
     }
 
     return (
-      <div class="flex flex-col gap-6">
-        <Switch>
-          <Match when={provider().id === "opencode"}>
-            <div class="flex flex-col gap-4">
-              <div class="text-14-regular text-text-base">{language.t("provider.connect.opencodeZen.line1")}</div>
-              <div class="text-14-regular text-text-base">{language.t("provider.connect.opencodeZen.line2")}</div>
-              <div class="text-14-regular text-text-base">
-                {language.t("provider.connect.opencodeZen.visit.prefix")}
-                <Link href="https://opencode.ai/zen" tabIndex={-1}>
-                  {language.t("provider.connect.opencodeZen.visit.link")}
-                </Link>
-                {language.t("provider.connect.opencodeZen.visit.suffix")}
+      <div class="flex flex-col gap-5 px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-muted">
+        <Show
+          when={provider().id === "opencode"}
+          fallback={language.t("provider.connect.apiKey.description", { provider: provider().name })}
+        >
+          <div class="flex flex-col gap-5">
+            <div>{language.t("provider.connect.opencodeZen.line1")}</div>
+            <div>{language.t("provider.connect.opencodeZen.line2")}</div>
+            <div>
+              {language.t("provider.connect.opencodeZen.visit.prefix")}
+              <ExternalLink
+                href="https://opencode.ai/zen"
+                class="text-v2-text-text-base focus-visible:rounded-xs focus-visible:outline-2 focus-visible:outline-v2-border-border-focus"
+              >
+                {language.t("provider.connect.opencodeZen.visit.link")}
+              </ExternalLink>
+              {language.t("provider.connect.opencodeZen.visit.suffix")}
+            </div>
+          </div>
+        </Show>
+        <form onSubmit={handleSubmit} class="flex flex-col items-start gap-5 self-stretch">
+          <label class="flex w-full flex-col gap-1 font-[530] leading-4 text-v2-text-text-base">
+            {language.t("provider.connect.apiKey.label", { provider: provider().name })}
+            <TextInput
+              ref={apiKey}
+              class="!w-full"
+              name="apiKey"
+              data-input="provider-api-key"
+              placeholder={language.t("provider.connect.apiKey.placeholder")}
+              value={formStore.value}
+              invalid={formStore.error !== undefined}
+              aria-describedby={formStore.error ? errorID : undefined}
+              autocomplete="off"
+              spellcheck={false}
+              onInput={(event) => setFormStore("value", event.currentTarget.value)}
+            />
+          </label>
+          <Show when={formStore.error}>
+            {(error) => (
+              <div id={errorID} role="alert" class="-mt-4 text-xs text-v2-state-fg-danger">
+                {error()}
               </div>
-            </div>
-          </Match>
-          <Match when={true}>
-            <div class="text-14-regular text-text-base">
-              {language.t("provider.connect.apiKey.description", { provider: provider().name })}
-            </div>
-          </Match>
-        </Switch>
-        <form onSubmit={handleSubmit} class="flex flex-col items-start gap-4">
-          <TextField
-            autofocus
-            type="text"
-            label={language.t("provider.connect.apiKey.label", { provider: provider().name })}
-            placeholder={language.t("provider.connect.apiKey.placeholder")}
-            name="apiKey"
-            value={formStore.value}
-            onChange={(v) => setFormStore("value", v)}
-            validationState={formStore.error ? "invalid" : undefined}
-            error={formStore.error}
-          />
-          <Button class="w-auto" type="submit" size="large" variant="primary">
+            )}
+          </Show>
+          <Button type="submit" variant="contrast" data-action="provider-connect-submit">
             {language.t("common.continue")}
           </Button>
         </form>
@@ -624,17 +555,23 @@ function ProviderConnection(props: {
   }
 
   function OAuthCodeView() {
+    let codeInput: HTMLInputElement | undefined
+    const errorID = createUniqueId()
     const [formStore, setFormStore] = createStore({
       value: "",
       error: undefined as string | undefined,
     })
 
+    onMount(() => {
+      codeInput?.focus({ preventScroll: true })
+    })
+
     async function handleSubmit(e: SubmitEvent) {
       e.preventDefault()
 
-      const form = e.currentTarget as HTMLFormElement
-      const formData = new FormData(form)
-      const code = formData.get("code") as string
+      if (!(e.currentTarget instanceof HTMLFormElement)) return
+      const value = new FormData(e.currentTarget).get("code")
+      const code = typeof value === "string" ? value : ""
 
       if (!code?.trim()) {
         setFormStore("error", language.t("provider.connect.oauth.code.required"))
@@ -642,41 +579,42 @@ function ProviderConnection(props: {
       }
 
       setFormStore("error", undefined)
-      const result = await serverSDK()
-        .client.provider.oauth.callback({
-          providerID: props.provider,
-          method: store.methodIndex,
-          code,
-        })
-        .then((value) => (value.error ? { ok: false as const, error: value.error } : { ok: true as const }))
-        .catch((error) => ({ ok: false as const, error }))
-      if (result.ok) {
-        await complete()
-        return
-      }
-      setFormStore("error", formatError(result.error, language.t("provider.connect.oauth.code.invalid")))
+      setFormStore("error", await controller.auth.completeCode(code))
     }
 
     return (
-      <div class="flex flex-col gap-6">
-        <div class="text-14-regular text-text-base">
+      <div class="flex flex-col gap-5 px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-muted">
+        <div>
           {language.t("provider.connect.oauth.code.visit.prefix")}
-          <Link href={store.authorization!.url}>{language.t("provider.connect.oauth.code.visit.link")}</Link>
+          <ExternalLink href={controller.authorization()!.url} class="text-v2-text-text-base">
+            {language.t("provider.connect.oauth.code.visit.link")}
+          </ExternalLink>
           {language.t("provider.connect.oauth.code.visit.suffix", { provider: provider().name })}
         </div>
-        <form onSubmit={handleSubmit} class="flex flex-col items-start gap-4">
-          <TextField
-            autofocus
-            type="text"
-            label={language.t("provider.connect.oauth.code.label", { method: method()?.label ?? "" })}
-            placeholder={language.t("provider.connect.oauth.code.placeholder")}
-            name="code"
-            value={formStore.value}
-            onChange={(v) => setFormStore("value", v)}
-            validationState={formStore.error ? "invalid" : undefined}
-            error={formStore.error}
-          />
-          <Button class="w-auto" type="submit" size="large" variant="primary">
+        <form onSubmit={handleSubmit} class="flex flex-col items-start gap-5 self-stretch">
+          <label class="flex w-full flex-col gap-1 font-[530] leading-4 text-v2-text-text-base">
+            {language.t("provider.connect.oauth.code.label", { method: controller.currentMethod()?.label ?? "" })}
+            <TextInput
+              ref={codeInput}
+              class="!w-full"
+              name="code"
+              placeholder={language.t("provider.connect.oauth.code.placeholder")}
+              value={formStore.value}
+              invalid={formStore.error !== undefined}
+              aria-describedby={formStore.error ? errorID : undefined}
+              autocomplete="off"
+              spellcheck={false}
+              onInput={(event) => setFormStore("value", event.currentTarget.value)}
+            />
+          </label>
+          <Show when={formStore.error}>
+            {(error) => (
+              <div id={errorID} role="alert" class="-mt-4 text-xs text-v2-state-fg-danger">
+                {error()}
+              </div>
+            )}
+          </Show>
+          <Button type="submit" variant="contrast">
             {language.t("common.continue")}
           </Button>
         </form>
@@ -686,40 +624,20 @@ function ProviderConnection(props: {
 
   function OAuthAutoView() {
     const code = createMemo(() => {
-      const instructions = store.authorization?.instructions
+      const instructions = controller.authorization()?.instructions
       if (instructions?.includes(":")) {
         return instructions.split(":").pop()?.trim()
       }
       return instructions
     })
 
-    onMount(() => {
-      void (async () => {
-        const result = await serverSDK()
-          .client.provider.oauth.callback({
-            providerID: props.provider,
-            method: store.methodIndex,
-          })
-          .then((value) => (value.error ? { ok: false as const, error: value.error } : { ok: true as const }))
-          .catch((error) => ({ ok: false as const, error }))
-
-        if (!alive.value) return
-
-        if (!result.ok) {
-          const message = formatError(result.error, language.t("common.requestFailed"))
-          dispatch({ type: "auth.error", error: message })
-          return
-        }
-
-        await complete()
-      })()
-    })
-
     return (
       <div class="flex flex-col gap-6">
         <div class="text-14-regular text-text-base">
           {language.t("provider.connect.oauth.auto.visit.prefix")}
-          <Link href={store.authorization!.url}>{language.t("provider.connect.oauth.auto.visit.link")}</Link>
+          <ExternalLink href={controller.authorization()!.url}>
+            {language.t("provider.connect.oauth.auto.visit.link")}
+          </ExternalLink>
           {language.t("provider.connect.oauth.auto.visit.suffix", { provider: provider().name })}
         </div>
         <TextField
@@ -738,22 +656,24 @@ function ProviderConnection(props: {
   }
 
   return (
-    <div class="flex flex-col gap-6 px-2.5 pb-3">
-      <div class="px-2.5 flex gap-4 items-center">
-        <ProviderIcon id={props.provider} class="size-5 shrink-0 icon-strong-base" />
-        <div class="text-16-medium text-text-strong">
+    <div class="flex min-h-0 flex-1 flex-col">
+      <div class="flex h-10 shrink-0 items-start gap-2 px-3">
+        <ProviderIcon id={props.provider} class="mt-0.5 size-4 shrink-0 text-v2-icon-icon-base" />
+        <div class="text-[15px] font-[530] leading-5 tracking-[-0.13px] text-v2-text-text-base">
           <Switch>
-            <Match when={props.provider === "anthropic" && method()?.label?.toLowerCase().includes("max")}>
+            <Match
+              when={props.provider === "anthropic" && controller.currentMethod()?.label?.toLowerCase().includes("max")}
+            >
               {language.t("provider.connect.title.anthropicProMax")}
             </Match>
             <Match when={true}>{language.t("provider.connect.title", { provider: provider().name })}</Match>
           </Switch>
         </div>
       </div>
-      <div class="px-2.5 pb-10 flex flex-col gap-6">
-        <div onKeyDown={handleKey} tabIndex={0} autofocus={store.methodIndex === undefined ? true : undefined}>
+      <div class="flex min-h-0 flex-1 flex-col">
+        <div>
           <Switch>
-            <Match when={loading()}>
+            <Match when={controller.loading()}>
               <div class="text-14-regular text-text-base">
                 <div class="flex items-center gap-x-2">
                   <Spinner />
@@ -761,10 +681,10 @@ function ProviderConnection(props: {
                 </div>
               </div>
             </Match>
-            <Match when={store.methodIndex === undefined}>
+            <Match when={controller.methodIndex() === undefined}>
               <MethodSelection />
             </Match>
-            <Match when={store.state === "pending"}>
+            <Match when={controller.auth.state() === "pending"}>
               <div class="text-14-regular text-text-base">
                 <div class="flex items-center gap-x-2">
                   <Spinner />
@@ -772,26 +692,26 @@ function ProviderConnection(props: {
                 </div>
               </div>
             </Match>
-            <Match when={store.state === "prompt"}>
-              <AuthPromptsView />
+            <Match when={controller.auth.state() === "form"}>
+              <AuthFormView />
             </Match>
-            <Match when={store.state === "error"}>
+            <Match when={controller.auth.state() === "error"}>
               <div class="text-14-regular text-text-base">
                 <div class="flex items-center gap-x-2">
                   <Icon name="circle-ban-sign" class="text-icon-critical-base" />
-                  <span>{language.t("provider.connect.status.failed", { error: store.error ?? "" })}</span>
+                  <span>{language.t("provider.connect.status.failed", { error: controller.auth.error() ?? "" })}</span>
                 </div>
               </div>
             </Match>
-            <Match when={method()?.type === "api"}>
+            <Match when={controller.currentMethod()?.type === "key"}>
               <ApiAuthView />
             </Match>
-            <Match when={method()?.type === "oauth"}>
+            <Match when={controller.currentMethod()?.type === "oauth"}>
               <Switch>
-                <Match when={store.authorization?.method === "code"}>
+                <Match when={controller.authorization()?.mode === "code"}>
                   <OAuthCodeView />
                 </Match>
-                <Match when={store.authorization?.method === "auto"}>
+                <Match when={controller.authorization()?.mode === "auto"}>
                   <OAuthAutoView />
                 </Match>
               </Switch>

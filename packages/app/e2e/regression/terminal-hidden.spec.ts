@@ -6,6 +6,7 @@ const directory = "C:/OpenCode/HiddenTerminalRegression"
 const projectID = "proj_hidden_terminal_regression"
 const sessionID = "ses_hidden_terminal_regression"
 const title = "Hidden terminal regression"
+const server = `http://${process.env.PLAYWRIGHT_SERVER_HOST ?? "127.0.0.1"}:${process.env.PLAYWRIGHT_SERVER_PORT ?? "4096"}`
 
 test("unmounts the terminal panel while it is hidden", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
@@ -43,19 +44,55 @@ test("unmounts the terminal panel while it is hidden", async ({ page }) => {
     ],
     pageMessages: () => ({ items: [] }),
   })
-  await page.route("**/pty", (route) =>
+  await page.route("**/api/pty*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ id: "pty_hidden_terminal", title: "Terminal 1" }),
+      body: JSON.stringify({
+        location: { directory, project: { id: projectID, directory } },
+        data: {
+          id: "pty_hidden_terminal",
+          title: "Terminal 1",
+          command: "cmd.exe",
+          args: [],
+          cwd: directory,
+          status: "running",
+          pid: 1,
+        },
+      }),
     }),
   )
-  await page.route("**/pty/pty_hidden_terminal", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  await page.route("**/api/pty/pty_hidden_terminal*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        location: { directory, project: { id: projectID, directory } },
+        data: {
+          id: "pty_hidden_terminal",
+          title: "Terminal 1",
+          command: "cmd.exe",
+          args: [],
+          cwd: directory,
+          status: "running",
+          pid: 1,
+        },
+      }),
+    }),
   )
-  await page.routeWebSocket("**/pty/pty_hidden_terminal/connect", () => undefined)
+  await page.route("**/api/pty/pty_hidden_terminal/connect-token*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        location: { directory, project: { id: projectID, directory } },
+        data: { ticket: "e2e-ticket", expires_in: 60 },
+      }),
+    }),
+  )
+  await page.routeWebSocket("**/api/pty/pty_hidden_terminal/connect", () => undefined)
 
-  await page.goto(`/${base64Encode(directory)}/session/${sessionID}`)
+  await page.goto(`/server/${base64Encode(server)}/session/${sessionID}`)
   await expectSessionTitle(page, title)
 
   await page.keyboard.press("Control+Backquote")

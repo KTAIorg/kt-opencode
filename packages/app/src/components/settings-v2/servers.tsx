@@ -1,7 +1,7 @@
-import { Tag } from "@opencode-ai/ui/v2/badge-v2"
-import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
-import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
-import { TextInputV2 } from "@opencode-ai/ui/v2/text-input-v2"
+import { Badge } from "@opencode-ai/ui/badge"
+import { Icon } from "@opencode-ai/ui/icon"
+import { IconButton } from "@opencode-ai/ui/icon-button"
+import { TextInput } from "@opencode-ai/ui/text-input"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import fuzzysort from "fuzzysort"
 import { type Component, For, Show, createMemo } from "solid-js"
@@ -9,8 +9,8 @@ import { createStore } from "solid-js/store"
 import { ServerRowMenu } from "@/components/server/server-row-menu"
 import { ServerHealthIndicator } from "@/components/server/server-row"
 import { useLanguage } from "@/context/language"
-import { ServerConnection, serverName } from "@/context/server"
-import { useServerManagementController } from "../dialog-select-server"
+import { ServerConnection, serverName } from "@/context/servers"
+import { useServerCollectionController } from "../server/server-management-controller"
 import { DialogServerV2 } from "./dialog-server-v2"
 import { SettingsListV2 } from "./parts/list"
 import { AddServerMenu, isWslServer, useFilteredWslServers, WslServerSettings } from "@/wsl/settings"
@@ -19,16 +19,16 @@ import "./settings-v2.css"
 export const SettingsServersV2: Component = () => {
   const dialog = useDialog()
   const language = useLanguage()
-  const controller = useServerManagementController()
+  const controller = useServerCollectionController()
   const [store, setStore] = createStore({ filter: "" })
   const wslServers = useFilteredWslServers(() => store.filter)
 
   const showSearch = createMemo(
-    () => controller.sortedItems().filter((item) => !isWslServer(item)).length + wslServers().length > 1,
+    () => controller.collection.items().filter((item) => !isWslServer(item)).length + wslServers().length > 1,
   )
 
   const filtered = createMemo(() => {
-    const items = controller.sortedItems().filter((item) => !isWslServer(item))
+    const items = controller.collection.items().filter((item) => !isWslServer(item))
     const query = store.filter.trim()
     if (!query) return items
     return fuzzysort
@@ -39,11 +39,11 @@ export const SettingsServersV2: Component = () => {
   })
 
   const openAdd = () => {
-    dialog.push(() => <DialogServerV2 mode="add" />)
+    void dialog.push(() => <DialogServerV2 mode="add" />)
   }
 
   const openEdit = (server: ServerConnection.Http) => {
-    dialog.push(() => <DialogServerV2 mode="edit" server={server} />)
+    void dialog.push(() => <DialogServerV2 mode="edit" server={server} />)
   }
 
   return (
@@ -53,12 +53,15 @@ export const SettingsServersV2: Component = () => {
         classList={{ "settings-v2-tab-header--stacked": showSearch() }}
       >
         <div class="settings-v2-tab-header-row">
-          <h2 class="settings-v2-tab-title">{language.t("status.popover.tab.servers")}</h2>
+          <div class="flex flex-col gap-1">
+            <h2 class="settings-v2-tab-title">{language.t("status.popover.tab.servers")}</h2>
+            <span class="text-11-regular text-v2-text-text-muted">{language.t("settings.servers.description")}</span>
+          </div>
           <AddServerMenu onAddServer={openAdd} />
         </div>
         <Show when={showSearch()}>
           <div class="settings-v2-tab-search">
-            <TextInputV2
+            <TextInput
               type="search"
               appearance="base"
               value={store.filter}
@@ -71,12 +74,12 @@ export const SettingsServersV2: Component = () => {
               aria-label={language.t("dialog.server.search.placeholder")}
             />
             <Show when={store.filter}>
-              <IconButtonV2
+              <IconButton
                 type="button"
                 variant="ghost-muted"
                 size="small"
                 class="settings-v2-tab-search-clear"
-                icon={<IconV2 name="close" size="large" class="text-v2-icon-icon-muted" />}
+                icon={<Icon name="close" size="large" class="text-v2-icon-icon-muted" />}
                 onClick={() => setStore("filter", "")}
               />
             </Show>
@@ -97,12 +100,12 @@ export const SettingsServersV2: Component = () => {
           }
         >
           <SettingsListV2>
-            <WslServerSettings controller={controller} servers={wslServers} />
+            <WslServerSettings domain={controller} servers={wslServers} />
             <For each={filtered()}>
               {(item) => {
                 const key = ServerConnection.key(item)
-                const health = () => controller.status()[key]
-                const isDefault = () => controller.defaultKey() === key
+                const health = () => controller.collection.health()[key]
+                const isDefault = () => controller.defaults.key() === key
                 return (
                   <div class="settings-v2-servers-row">
                     <div class="settings-v2-servers-lead">
@@ -122,10 +125,10 @@ export const SettingsServersV2: Component = () => {
                       </div>
                     </div>
                     <div class="settings-v2-servers-actions">
-                      <Show when={controller.canDefault() && isDefault()}>
-                        <Tag>{language.t("dialog.server.status.default")}</Tag>
+                      <Show when={controller.defaults.available() && isDefault()}>
+                        <Badge>{language.t("dialog.server.status.default")}</Badge>
                       </Show>
-                      <ServerRowMenu server={item} controller={controller} onEdit={openEdit} />
+                      <ServerRowMenu server={item} domain={controller} onEdit={openEdit} />
                     </div>
                   </div>
                 )

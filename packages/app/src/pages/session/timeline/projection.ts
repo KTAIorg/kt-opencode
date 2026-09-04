@@ -1,76 +1,85 @@
-import { Binary } from "@opencode-ai/core/util/binary"
-import type { AssistantMessage, Message, Part, SessionStatus, UserMessage } from "@opencode-ai/sdk/v2"
-import { createMemo, mapArray, type Accessor } from "solid-js"
+import type { ModelRef, SessionMessageInfo, SessionStatus } from "@opencode-ai/client/promise"
+import { createMemo, type Accessor } from "solid-js"
 import { reuseTimelineRows } from "./row-reconciliation"
 import { Timeline, TimelineRow } from "./rows"
 
 export { reuseTimelineRows } from "./row-reconciliation"
 
-const emptyAssistantMessages: AssistantMessage[] = []
-
 export function createTimelineProjection(input: {
-  messages: Accessor<Message[]>
-  userMessages: Accessor<UserMessage[]>
-  parts: (messageID: string) => Part[]
+  sessionMessages: Accessor<SessionMessageInfo[]>
   status: Accessor<SessionStatus>
   showReasoningSummaries: Accessor<boolean>
-  inlineComments: Accessor<boolean>
 }) {
-  const messageByID = createMemo(() => new Map(input.messages().map((message) => [message.id, message] as const)))
+  const sessionMessageByID = createMemo(
+    () => new Map(input.sessionMessages().map((message) => [message.id, message] as const)),
+  )
+  const userContextByID = createMemo(() => {
+    const result = new Map<string, { agent: string; model: ModelRef }>()
+    let agent = ""
+    let model: ModelRef = { id: "", providerID: "" }
+    let userID: string | undefined
+    input.sessionMessages().forEach((message) => {
+      if (message.type === "agent-switched") agent = message.agent
+      if (message.type === "model-switched") model = message.model
+      if (message.type === "user") {
+        userID = message.id
+        const metadata = message.metadata
+        const localAgent = typeof metadata?.agent === "string" ? metadata.agent : agent
+        const localModel = metadata?.model
+        const localModelID =
+          localModel && typeof localModel === "object" && !Array.isArray(localModel)
+            ? typeof localModel.id === "string"
+              ? localModel.id
+              : typeof localModel.modelID === "string"
+                ? localModel.modelID
+                : undefined
+            : undefined
+        result.set(message.id, {
+          agent: localAgent,
+          model:
+            localModel &&
+            typeof localModel === "object" &&
+            !Array.isArray(localModel) &&
+            localModelID &&
+            typeof localModel.providerID === "string"
+              ? {
+                  id: localModelID,
+                  providerID: localModel.providerID,
+                  variant: typeof localModel.variant === "string" ? localModel.variant : undefined,
+                }
+              : model,
+        })
+      }
+      if (message.type === "shell") userID = undefined
+      if (message.type !== "assistant") return
+      agent = message.agent
+      model = message.model
+      if (userID) result.set(userID, { agent, model })
+    })
+    return result
+  })
   const assistantMessagesByParent = createMemo(() => {
-    const result = new Map<string, AssistantMessage[]>()
-    input.messages().forEach((message) => {
-      if (message.role !== "assistant") return
-      const messages = result.get(message.parentID)
+    const result = new Map<string, Extract<SessionMessageInfo, { type: "assistant" }>[]>()
+    let userID: string | undefined
+    input.sessionMessages().forEach((message) => {
+      if (message.type === "user") userID = message.id
+      if (message.type === "shell") userID = undefined
+      if (message.type !== "assistant" || !userID) return
+      const messages = result.get(userID)
       if (messages) {
         messages.push(message)
         return
       }
-      result.set(message.parentID, [message])
+      result.set(userID, [message])
     })
     return result
   })
-  const activeMessageID = createMemo(() => {
-    const parentID = input
-      .messages()
-      .findLast(
-        (message): message is AssistantMessage =>
-          message.role === "assistant" && typeof message.time.completed !== "number",
-      )?.parentID
-    if (parentID) {
-      const messages = input.messages()
-      const result = Binary.search(messages, parentID, (message) => message.id)
-      const message = result.found ? messages[result.index] : messages.find((item) => item.id === parentID)
-      if (message?.role === "user") return message.id
-    }
-
-    if (input.status().type === "idle") return
-    return input.messages().findLast((message) => message.role === "user")?.id
-  })
-  const messageRowMemos = createMemo(
-    mapArray(input.userMessages, (userMessage, indexAccessor) =>
-      createMemo((previous: TimelineRow.TimelineRow[] | undefined) =>
-        reuseTimelineRows(
-          previous,
-          Timeline.constructMessageRows(
-            userMessage,
-            input.parts,
-            assistantMessagesByParent().get(userMessage.id) ?? emptyAssistantMessages,
-            indexAccessor(),
-            input.showReasoningSummaries(),
-            input.status().type,
-            activeMessageID() === userMessage.id,
-            input.inlineComments(),
-          ),
-        ),
-      ),
-    ),
+  const projection = createMemo(() =>
+    Timeline.constructSessionMessageRows(input.sessionMessages(), input.showReasoningSummaries(), input.status().type),
   )
+  const activeMessageID = createMemo(() => projection().activeMessageID)
   const rows = createMemo((previous: TimelineRow.TimelineRow[] | undefined) =>
-    reuseTimelineRows(
-      previous,
-      messageRowMemos().flatMap((memo) => memo()),
-    ),
+    reuseTimelineRows(previous, projection().rows),
   )
   const rowByKey = createMemo(() => new Map(rows().map((row) => [TimelineRow.key(row), row] as const)))
   const messageRowIndex = createMemo(() => {
@@ -100,10 +109,12 @@ export function createTimelineProjection(input: {
     activeMessageID,
     assistantMessagesByParent,
     lastAssistantGroupKey,
-    messageByID,
+    messageByID: sessionMessageByID,
     messageRowIndex,
     messageLastRowIndex,
     rowByKey,
     rows,
+    sessionMessageByID,
+    userContextByID,
   }
 }

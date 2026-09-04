@@ -11,7 +11,7 @@ import {
   Show,
 } from "solid-js"
 import { useLanguage } from "@/context/language"
-import { type ServerConnection, serverName } from "@/context/server"
+import { type ServerConnection, serverName } from "@/context/servers"
 import type { ServerHealth } from "@/utils/server-health"
 
 interface ServerRowProps extends ParentProps {
@@ -64,6 +64,7 @@ export function ServerRow(props: ServerRowProps) {
 
   return (
     <Tooltip
+      appearance="standard"
       class="flex-1 min-w-0"
       value={tooltipValue()}
       contentStyle={{ "max-width": "none", "white-space": "nowrap" }}
@@ -96,13 +97,16 @@ export function ServerRow(props: ServerRowProps) {
             {(conn) => (
               <div class="flex flex-row gap-3">
                 <span>
-                  {conn().http.username ? (
+                  <Show
+                    when={conn().http.username}
+                    fallback={<span class="text-text-weaker">{language.t("server.row.noUsername")}</span>}
+                  >
                     <span class="text-text-weak">{conn().http.username}</span>
-                  ) : (
-                    <span class="text-text-weaker">{language.t("server.row.noUsername")}</span>
-                  )}
+                  </Show>
                 </span>
-                {conn().http.password && <span class="text-text-weak">••••••••</span>}
+                <Show when={conn().http.password}>
+                  <span class="text-text-weak">••••••••</span>
+                </Show>
               </div>
             )}
           </Show>

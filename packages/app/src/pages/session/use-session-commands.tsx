@@ -1,31 +1,40 @@
-import { useNavigate } from "@solidjs/router"
 import { useCommand, type CommandOption } from "@/context/command"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { previewSelectedLines } from "@opencode-ai/session-ui/pierre/selection-bridge"
 import { useFile, selectionFromLines, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
-import { useLocal } from "@/context/local"
 import { usePermission } from "@/context/permission"
 import { usePrompt } from "@/context/prompt"
-import { useSDK } from "@/context/sdk"
+import { useWorkspaceLocation } from "@/context/location"
+import { useData } from "@/context/server"
+import { useServerSDK } from "@/context/server-sdk"
 import { useSettings } from "@/context/settings"
-import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
 import { showToast } from "@/utils/toast"
-import { findLast } from "@opencode-ai/core/util/array"
-import { createSessionTabs } from "@/pages/session/helpers"
-import { extractPromptFromParts } from "@/utils/prompt"
-import { UserMessage } from "@opencode-ai/sdk/v2"
-import { useSessionLayout } from "@/pages/session/session-layout"
-import { createSessionOwnership } from "./session-ownership"
+import { downloadSessionExport, fetchSessionExport, sessionExportFilename } from "@/utils/session-export"
+import { extractPromptComments, extractPromptFromMessage } from "@/utils/prompt"
+import type { SessionMessageUser } from "@opencode-ai/client/promise"
+import type { SessionController } from "./session-controller"
+
+type SessionCommandSource = {
+  identity: SessionController["identity"]
+  data: Pick<SessionController["data"], "info" | "revertMessageID">
+  history: Pick<SessionController["history"], "userMessages" | "visibleUserMessages">
+  layout: SessionController["layout"]
+  ownership: SessionController["ownership"]
+  tabs: Pick<SessionController["tabs"], "activeFileTab" | "closableTab">
+}
 
 export type SessionCommandContext = {
+  session: SessionCommandSource
+  background: {
+    blocking: () => boolean
+    move: () => Promise<void>
+  }
   navigateMessageByOffset: (offset: number) => void
-  setActiveMessage: (message: UserMessage | undefined) => void
+  setActiveMessage: (message: SessionMessageUser | undefined) => void
   focusInput: () => void
-  review?: () => boolean
-  fileBrowser?: () => boolean
 }
 
 const withCategory = (category: string) => {
@@ -40,24 +49,21 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const dialog = useDialog()
   const file = useFile()
   const language = useLanguage()
-  const local = useLocal()
   const permission = usePermission()
   const prompt = usePrompt()
-  const sdk = useSDK()
+  const sdk = useWorkspaceLocation()
+  const serverSDK = useServerSDK()
+  const data = useData()
   const settings = useSettings()
-  const sync = useSync()
   const terminal = useTerminal()
   const layout = useLayout()
-  const navigate = useNavigate()
-  const { params, sessionKey, tabs, view } = useSessionLayout()
-  const sessionOwnership = createSessionOwnership(sessionKey)
   const openDialog = async <T,>(load: () => Promise<T>, show: (value: T) => void) => {
-    const owner = sessionOwnership.capture()
+    const owner = actions.session.ownership.capture()
     const value = await load()
     owner.run(() => show(value))
   }
   const runCommand = async <T,>(input: {
-    owner: ReturnType<ReturnType<typeof createSessionOwnership>["capture"]>
+    owner: ReturnType<SessionController["ownership"]["capture"]>
     prompt: T
     request: () => Promise<unknown>
     updatePrompt: (prompt: T) => void
@@ -67,40 +73,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     input.updatePrompt(input.prompt)
     input.owner.run(input.updateViewport)
   }
-
-  const info = () => {
-    const id = params.id
-    if (!id) return
-    return sync().session.get(id)
-  }
-  const hasReview = () => !!params.id
-  const normalizeTab = (tab: string) => {
-    if (!tab.startsWith("file://")) return tab
-    return file.tab(tab)
-  }
-  const tabState = createSessionTabs({
-    tabs,
-    pathFromTab: file.pathFromTab,
-    normalizeTab,
-    review: actions.review,
-    hasReview,
-    fileBrowser: actions.fileBrowser,
-  })
-  const activeFileTab = tabState.activeFileTab
-  const closableTab = tabState.closableTab
   const shown = settings.visibility.fileTree
-
-  const messages = () => {
-    const id = params.id
-    if (!id) return []
-    return sync().data.message[id] ?? []
-  }
-  const userMessages = () => messages().filter((m) => m.role === "user") as UserMessage[]
-  const visibleUserMessages = () => {
-    const revert = info()?.revert?.messageID
-    if (!revert) return userMessages()
-    return userMessages().filter((m) => m.id < revert)
-  }
 
   const showAllFiles = () => {
     if (layout.fileTree.tab() !== "changes") return
@@ -119,7 +92,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   }
 
   const canAddSelectionContext = () => {
-    const tab = activeFileTab()
+    const tab = actions.session.tabs.activeFileTab()
     if (!tab) return false
     const path = file.pathFromTab(tab)
     if (!path) return false
@@ -139,7 +112,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const permissionsCommand = withCategory(language.t("command.category.permissions"))
 
   const isAutoAcceptActive = () => {
-    const sessionID = params.id
+    const sessionID = actions.session.identity.params.id
     if (sessionID) return permission.isAutoAccepting(sessionID, sdk().directory)
     return permission.isAutoAcceptingDirectory(sdk().directory)
   }
@@ -184,19 +157,17 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   }
 
   const share = async () => {
-    const sessionID = params.id
+    const sessionID = actions.session.identity.params.id
     if (!sessionID) return
 
-    const existing = info()?.share?.url
+    const existing = undefined
     if (existing) {
       await copyShare(existing, true)
       return
     }
 
-    const url = await sdk()
-      .client.session.share({ sessionID })
-      .then((res) => res.data?.share?.url)
-      .catch(() => undefined)
+    // TODO: Restore sharing when the V2 client exposes a session sharing API.
+    const url = undefined
     if (!url) {
       showToast({
         title: language.t("toast.session.share.failed.title"),
@@ -210,42 +181,57 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   }
 
   const unshare = async () => {
-    const sessionID = params.id
+    const sessionID = actions.session.identity.params.id
     if (!sessionID) return
 
-    await sdk()
-      .client.session.unshare({ sessionID })
-      .then(() =>
-        showToast({
-          title: language.t("toast.session.unshare.success.title"),
-          description: language.t("toast.session.unshare.success.description"),
-          variant: "success",
-        }),
-      )
-      .catch(() =>
-        showToast({
-          title: language.t("toast.session.unshare.failed.title"),
-          description: language.t("toast.session.unshare.failed.description"),
-          variant: "error",
-        }),
-      )
+    // TODO: Restore unsharing when the V2 client exposes a session sharing API.
+    showToast({
+      title: language.t("toast.session.unshare.failed.title"),
+      description: language.t("toast.session.unshare.failed.description"),
+      variant: "error",
+    })
+  }
+
+  const exportSession = async () => {
+    const sessionID = actions.session.identity.params.id
+    if (!sessionID) return
+    try {
+      const data = await fetchSessionExport({
+        sessionID,
+        api: serverSDK.api,
+      })
+      const filename = sessionExportFilename(data.info)
+      downloadSessionExport(filename, data)
+      showToast({
+        variant: "success",
+        icon: "circle-check",
+        title: language.t("toast.session.export.success.title"),
+        description: language.t("toast.session.export.success.description", { filename }),
+      })
+    } catch (err) {
+      showToast({
+        variant: "error",
+        title: language.t("toast.session.export.failed.title"),
+        description: err instanceof Error ? err.message : language.t("toast.session.export.failed.description"),
+      })
+    }
   }
 
   const openFile = () => {
     void openDialog(
-      () => import("@/components/dialog-select-file"),
-      (x) => dialog.show(() => <x.DialogSelectFile onOpenFile={showAllFiles} />),
+      () => import("@/components/dialog-command-palette-v2"),
+      (x) => dialog.show(() => <x.DialogCommandPaletteV2 onOpenFile={showAllFiles} />),
     )
   }
 
   const closeTab = () => {
-    const tab = closableTab()
+    const tab = actions.session.tabs.closableTab()
     if (!tab) return
-    tabs().close(tab)
+    actions.session.layout.tabs().close(tab)
   }
 
   const addSelection = () => {
-    const tab = activeFileTab()
+    const tab = actions.session.tabs.activeFileTab()
     if (!tab) return
 
     const path = file.pathFromTab(tab)
@@ -266,7 +252,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const openTerminal = () => {
     if (terminal.all().length > 0) terminal.new({ focus: true })
     if (terminal.all().length === 0) terminal.requestFocus()
-    view().terminal.open()
+    actions.session.layout.view().terminal.open()
   }
 
   const closeTerminal = () => {
@@ -274,7 +260,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     if (!id) return
     const last = terminal.all().length === 1
     void terminal.close(id)
-    if (last) view().terminal.close()
+    if (last) actions.session.layout.view().terminal.close()
   }
 
   const chooseMcp = () => {
@@ -285,7 +271,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   }
 
   const toggleAutoAccept = () => {
-    const sessionID = params.id
+    const sessionID = actions.session.identity.params.id
     if (sessionID) permission.toggleAutoAccept(sessionID, sdk().directory)
     else permission.toggleAutoAcceptDirectory(sdk().directory)
 
@@ -303,52 +289,61 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   }
 
   const undo = async () => {
-    const sessionID = params.id
+    const sessionID = actions.session.identity.params.id
     if (!sessionID) return
-    const owner = sessionOwnership.capture()
-    const client = sdk().client
-    const directory = sdk().directory
+    const owner = actions.session.ownership.capture()
+    const session = serverSDK.api.session
     const promptSession = prompt.capture()
-    const revert = info()?.revert?.messageID
-    const messages = userMessages()
-    const message = findLast(messages, (x) => !revert || x.id < revert)
+    const revert = actions.session.data.revertMessageID()
+    const messages = actions.session.history.userMessages()
+    const boundary = revert ? messages.findIndex((message) => message.id === revert) : messages.length
+    if (boundary < 0) return
+    const message = messages[boundary - 1]
     if (!message) return
-    const parts = sync().data.part[message.id]
 
-    if (sync().data.session_working(sessionID)) {
-      await client.session.abort({ sessionID }).catch(() => {})
-    }
+    if (data.session.status(sessionID) === "running") await session.interrupt({ sessionID }).catch(() => {})
 
     await runCommand({
       owner,
       prompt: promptSession,
-      request: () => client.session.revert({ sessionID, messageID: message.id }),
-      updatePrompt: (promptSession) => {
-        if (parts) promptSession.set(extractPromptFromParts(parts, { directory }))
+      request: () => session.revert.stage({ sessionID, messageID: message.id }),
+      updatePrompt: (target) => {
+        target.set(extractPromptFromMessage(message, { directory: sdk().directory }))
+        target.context.replaceComments(
+          extractPromptComments(message).map((comment) => ({
+            type: "file",
+            path: comment.path,
+            selection: comment.selection,
+            comment: comment.comment,
+            preview: comment.preview,
+            commentOrigin: comment.origin,
+          })),
+        )
       },
-      updateViewport: () => setActiveMessage(findLast(messages, (x) => x.id < message.id)),
+      updateViewport: () => setActiveMessage(messages[boundary - 2]),
     })
   }
 
   const redo = async () => {
-    const sessionID = params.id
+    const sessionID = actions.session.identity.params.id
     if (!sessionID) return
-    const owner = sessionOwnership.capture()
-    const client = sdk().client
-    const messages = userMessages()
+    const owner = actions.session.ownership.capture()
+    const session = serverSDK.api.session
+    const messages = actions.session.history.userMessages()
     const promptSession = prompt.capture()
-
-    const revertMessageID = info()?.revert?.messageID
+    const revertMessageID = actions.session.data.revertMessageID()
     if (!revertMessageID) return
 
-    const next = messages.find((x) => x.id > revertMessageID)
+    const boundary = messages.findIndex((message) => message.id === revertMessageID)
+    if (boundary < 0) return
+    const next = messages[boundary + 1]
     if (!next) {
       await runCommand({
         owner,
         prompt: promptSession,
-        request: () => client.session.unrevert({ sessionID }),
-        updatePrompt: (promptSession) => promptSession.reset(),
-        updateViewport: () => setActiveMessage(findLast(messages, (x) => x.id >= revertMessageID)),
+        request: () => session.revert.clear({ sessionID }),
+        updatePrompt: (target) => target.reset(),
+        updateViewport: () => setActiveMessage(messages.at(-1)),
       })
       return
     }
@@ -356,33 +351,22 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     await runCommand({
       owner,
       prompt: promptSession,
-      request: () => client.session.revert({ sessionID, messageID: next.id }),
+      request: () => session.revert.stage({ sessionID, messageID: next.id }),
       updatePrompt: () => undefined,
-      updateViewport: () => setActiveMessage(findLast(messages, (x) => x.id < next.id)),
+      updateViewport: () => setActiveMessage(messages[boundary]),
     })
   }
 
   const compact = async () => {
-    const sessionID = params.id
+    const sessionID = actions.session.identity.params.id
     if (!sessionID) return
 
-    const model = local.model.current()
-    if (!model) {
-      showToast({
-        title: language.t("toast.model.none.title"),
-        description: language.t("toast.model.none.description"),
-      })
-      return
-    }
-
-    await sdk().client.session.summarize({
-      sessionID,
-      modelID: model.id,
-      providerID: model.provider.id,
-    })
+    await serverSDK.api.session.compact({ sessionID })
   }
 
   const fork = () => {
+    const sessionID = actions.session.identity.params.id
+    if (!sessionID) return
     void openDialog(
       () => import("@/components/dialog-fork"),
       (x) => dialog.show(() => <x.DialogFork />),
@@ -390,16 +374,21 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   }
 
   const shareCmds = () => {
-    if (sync().data.config.share === "disabled") return []
+    // TODO: Restore these commands when the V2 client exposes session sharing.
+    // Sharing remains disabled until the current API exposes it.
+    return []
+    /*
     return [
       sessionCommand({
         id: "session.share",
-        title: info()?.share?.url ? language.t("session.share.copy.copyLink") : language.t("command.session.share"),
-        description: info()?.share?.url
+        title: actions.session.data.info()?.share?.url
+          ? language.t("session.share.copy.copyLink")
+          : language.t("command.session.share"),
+        description: actions.session.data.info()?.share?.url
           ? language.t("toast.session.share.success.description")
           : language.t("command.session.share.description"),
         slash: "share",
-        disabled: !params.id,
+        disabled: !actions.session.identity.params.id,
         onSelect: share,
       }),
       sessionCommand({
@@ -407,10 +396,11 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         title: language.t("command.session.unshare"),
         description: language.t("command.session.unshare.description"),
         slash: "unshare",
-        disabled: !params.id || !info()?.share?.url,
+        disabled: !actions.session.identity.params.id || !actions.session.data.info()?.share?.url,
         onSelect: unshare,
       }),
     ]
+    */
   }
 
   const sessionCmds = () => [
@@ -419,20 +409,14 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       title: language.t("command.session.new"),
       keybind: "mod+shift+s",
       slash: "new",
-      onSelect: (source) => {
-        if (settings.general.newLayoutDesigns()) {
-          command.trigger("tab.new", source)
-          return
-        }
-        navigate(`/${params.dir}/session`)
-      },
+      onSelect: (source) => command.trigger("tab.new", source),
     }),
     sessionCommand({
       id: "session.undo",
       title: language.t("command.session.undo"),
       description: language.t("command.session.undo.description"),
       slash: "undo",
-      disabled: !params.id || visibleUserMessages().length === 0,
+      disabled: !actions.session.identity.params.id || actions.session.history.visibleUserMessages().length === 0,
       onSelect: undo,
     }),
     sessionCommand({
@@ -440,7 +424,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       title: language.t("command.session.redo"),
       description: language.t("command.session.redo.description"),
       slash: "redo",
-      disabled: !params.id || !info()?.revert?.messageID,
+      disabled: !actions.session.identity.params.id || !actions.session.data.revertMessageID(),
       onSelect: redo,
     }),
     sessionCommand({
@@ -448,21 +432,36 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       title: language.t("command.session.compact"),
       description: language.t("command.session.compact.description"),
       slash: "compact",
-      disabled: !params.id || visibleUserMessages().length === 0,
+      disabled: !actions.session.identity.params.id || actions.session.history.visibleUserMessages().length === 0,
       onSelect: compact,
+    }),
+    sessionCommand({
+      id: "session.background",
+      title: language.t("command.session.background"),
+      keybind: "ctrl+b",
+      disabled: !actions.background.blocking(),
+      onSelect: actions.background.move,
     }),
     sessionCommand({
       id: "session.fork",
       title: language.t("command.session.fork"),
       description: language.t("command.session.fork.description"),
       slash: "fork",
-      disabled: !params.id || visibleUserMessages().length === 0,
+      disabled: !actions.session.identity.params.id || actions.session.history.visibleUserMessages().length === 0,
       onSelect: fork,
+    }),
+    sessionCommand({
+      id: "session.export",
+      title: language.t("command.session.export"),
+      description: language.t("command.session.export.description"),
+      slash: "export",
+      disabled: !actions.session.identity.params.id,
+      onSelect: exportSession,
     }),
   ]
 
   const fileCmds = () => {
-    const tab = closableTab()
+    const tab = actions.session.tabs.closableTab()
     return [
       fileCommand({
         id: "file.open",
@@ -500,20 +499,20 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       keybind: "ctrl+`",
       slash: "terminal",
       onSelect: () => {
-        if (view().terminal.opened()) {
+        if (actions.session.layout.view().terminal.opened()) {
           terminal.cancelFocus()
-          view().terminal.close()
+          actions.session.layout.view().terminal.close()
           return
         }
         terminal.requestFocus(terminal.active())
-        view().terminal.open()
+        actions.session.layout.view().terminal.open()
       },
     }),
     viewCommand({
       id: "review.toggle",
       title: language.t("command.review.toggle"),
       keybind: "mod+shift+r",
-      onSelect: () => view().reviewPanel.toggle(),
+      onSelect: () => actions.session.layout.view().reviewPanel.toggle(),
     }),
     ...(shown()
       ? [
@@ -557,7 +556,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       title: language.t("command.message.previous"),
       description: language.t("command.message.previous.description"),
       keybind: "mod+alt+[",
-      disabled: !params.id,
+      disabled: !actions.session.identity.params.id,
       onSelect: () => navigateMessageByOffset(-1),
     }),
     sessionCommand({
@@ -565,7 +564,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       title: language.t("command.message.next"),
       description: language.t("command.message.next.description"),
       keybind: "mod+alt+]",
-      disabled: !params.id,
+      disabled: !actions.session.identity.params.id,
       onSelect: () => navigateMessageByOffset(1),
     }),
   ]

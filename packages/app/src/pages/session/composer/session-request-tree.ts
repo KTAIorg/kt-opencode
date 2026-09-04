@@ -1,8 +1,8 @@
-import type { PermissionRequest, QuestionRequest, Session } from "@opencode-ai/sdk/v2/client"
+import type { FormInfo, PermissionRequest, SessionInfo } from "@opencode-ai/client/promise"
 
 function sessionTreeRequest<T>(
-  session: Session[],
-  request: Record<string, T[] | undefined>,
+  session: SessionInfo[],
+  request: Record<string, T[] | undefined> | ((sessionID: string) => T[] | undefined),
   sessionID?: string,
   include: (item: T) => boolean = () => true,
 ) {
@@ -28,25 +28,25 @@ function sessionTreeRequest<T>(
     }
   }
 
-  const id = ids.find((id) => request[id]?.some(include))
+  const list = (id: string) => (typeof request === "function" ? request(id) : request[id])
+  const id = ids.find((id) => list(id)?.some(include))
   if (!id) return
-  return request[id]?.find(include)
+  return list(id)?.find(include)
 }
 
 export function sessionPermissionRequest(
-  session: Session[],
-  request: Record<string, PermissionRequest[] | undefined>,
+  session: SessionInfo[],
+  request: Record<string, PermissionRequest[] | undefined> | ((sessionID: string) => PermissionRequest[] | undefined),
   sessionID?: string,
   include?: (item: PermissionRequest) => boolean,
 ) {
   return sessionTreeRequest(session, request, sessionID, include)
 }
 
-export function sessionQuestionRequest(
-  session: Session[],
-  request: Record<string, QuestionRequest[] | undefined>,
+export function sessionQuestionForm(
+  session: SessionInfo[],
+  request: Record<string, FormInfo[] | undefined> | ((sessionID: string) => FormInfo[] | undefined),
   sessionID?: string,
-  include?: (item: QuestionRequest) => boolean,
 ) {
-  return sessionTreeRequest(session, request, sessionID, include)
+  return sessionTreeRequest(session, request, sessionID, (item) => item.metadata?.kind === "question")
 }

@@ -1,9 +1,12 @@
-import type { Message, Session, Part, SnapshotFileDiff, SessionStatus, Provider } from "@opencode-ai/sdk/v2"
+import type { FileDiffInfo, SessionInfo, SessionStatus } from "@opencode-ai/client/promise"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
+import type { Message, Part, PresentationFileDiff } from "../presentation"
 
-export type NormalizedProviderListResponse = {
-  all: Map<string, Provider>
+export type SessionSummary = Pick<SessionInfo, "id" | "parentID" | "title" | "time">
+
+type ProviderCatalog = {
+  all: Map<string, { models: Record<string, { name: string }> }>
   default: {
     [key: string]: string
   }
@@ -15,21 +18,19 @@ type Data = {
     name: string
     color?: string
   }[]
-  provider?: NormalizedProviderListResponse
-  session: Session[]
+  provider?: ProviderCatalog
+  session: SessionSummary[]
   session_status: {
     [sessionID: string]: SessionStatus
   }
   session_diff: {
-    [sessionID: string]: SnapshotFileDiff[]
+    [sessionID: string]: (PresentationFileDiff | FileDiffInfo)[]
   }
   session_diff_preload?: {
     [sessionID: string]: PreloadMultiFileDiffResult<any>[]
   }
-  message: {
-    [sessionID: string]: Message[]
-  }
-  part: {
+  message?: Record<string, Message[]>
+  part?: {
     [messageID: string]: Part[]
   }
   part_text_accum_delta?: {
@@ -46,6 +47,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
   init: (props: {
     data: Data
     directory: string
+    sessionID?: string
     onNavigateToSession?: NavigateToSessionFn
     onSessionHref?: SessionHrefFn
   }) => {
@@ -55,6 +57,9 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       },
       get directory() {
         return props.directory
+      },
+      get sessionID() {
+        return props.sessionID
       },
       navigateToSession: props.onNavigateToSession,
       sessionHref: props.onSessionHref,

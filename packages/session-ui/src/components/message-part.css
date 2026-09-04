@@ -30,7 +30,7 @@
     gap: 8px;
     width: fit-content;
     max-width: min(82%, 64ch);
-    margin-left: auto;
+    margin-inline-start: auto;
   }
 
   [data-slot="user-message-attachment"] {
@@ -94,7 +94,7 @@
     justify-content: center;
     color: var(--icon-weak);
 
-    [data-component="icon"] {
+    [data-slot="icon-svg"] {
       width: 20px;
       height: 20px;
     }
@@ -127,7 +127,7 @@
   [data-slot="user-message-body"] {
     width: fit-content;
     max-width: min(82%, 64ch);
-    margin-left: auto;
+    margin-inline-start: auto;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -138,6 +138,7 @@
     white-space: pre-wrap;
     word-break: break-word;
     overflow: hidden;
+    unicode-bidi: plaintext;
     background: var(--v2-background-bg-layer-02);
     border: none;
     padding: 8px 12px;
@@ -145,10 +146,14 @@
 
     [data-highlight="file"] {
       color: var(--syntax-property);
+      direction: ltr;
+      unicode-bidi: isolate;
     }
 
     [data-highlight="agent"] {
       color: var(--syntax-type);
+      direction: ltr;
+      unicode-bidi: isolate;
     }
 
     max-width: 100%;
@@ -167,7 +172,7 @@
     transition: opacity 0.15s ease;
     will-change: opacity;
 
-    [data-component="tooltip-trigger"] {
+    [data-component="tooltip-v2-trigger"] {
       display: inline-flex;
       width: fit-content;
     }
@@ -175,7 +180,7 @@
 
   [data-slot="user-message-meta"] {
     user-select: none;
-    text-align: right;
+    text-align: end;
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -197,7 +202,7 @@
     user-select: none;
     flex: 0 0 auto;
     white-space: nowrap;
-    text-align: right;
+    text-align: end;
   }
 
   &:hover [data-slot="user-message-copy-wrapper"],
@@ -235,7 +240,7 @@
     transition: opacity 0.15s ease;
     will-change: opacity;
 
-    [data-component="tooltip-trigger"] {
+    [data-component="tooltip-v2-trigger"] {
       display: inline-flex;
       width: fit-content;
     }
@@ -364,6 +369,8 @@
 }
 
 [data-component="bash-output"] {
+  direction: ltr;
+  unicode-bidi: isolate;
   width: 100%;
   border: 0.5px solid var(--v2-border-border-base);
   border-radius: 6px;
@@ -410,6 +417,10 @@
     line-height: var(--line-height-large);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  [data-slot="bash-prompt"] {
+    user-select: none;
   }
 }
 
@@ -473,6 +484,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: var(--font-weight-regular);
+    direction: ltr;
+    unicode-bidi: isolate;
   }
 
   [data-slot="message-part-path"] {
@@ -480,6 +493,8 @@
     flex-grow: 1;
     min-width: 0;
     font-weight: var(--font-weight-regular);
+    direction: ltr;
+    unicode-bidi: isolate;
   }
 
   [data-slot="message-part-directory"] {
@@ -751,7 +766,7 @@
     justify-content: center;
   }
 
-  [data-slot="permission-icon"] [data-component="icon"] {
+  [data-slot="permission-icon"] [data-slot="icon-svg"] {
     color: var(--icon-warning-base);
   }
 
@@ -818,7 +833,7 @@
     align-items: center;
     gap: 8px;
 
-    [data-component="button"] {
+    [data-component="button-v2"] {
       padding-left: 12px;
       padding-right: 12px;
     }
@@ -891,7 +906,7 @@
       width: 16px;
       height: 2px;
       border-radius: 999px;
-      background-color: var(--icon-weak-base);
+      background-color: var(--v2-icon-icon-muted);
       transition: background-color 0.2s ease;
     }
 
@@ -1009,7 +1024,7 @@
       background-color 0.15s ease,
       border-color 0.15s ease;
 
-    [data-component="icon"] {
+    [data-slot="icon-svg"] {
       opacity: 0;
       color: var(--icon-base);
     }
@@ -1029,7 +1044,7 @@
     &[data-picked="true"] {
       border-color: var(--icon-interactive-base);
 
-      [data-component="icon"] {
+      [data-slot="icon-svg"] {
         opacity: 1;
         color: var(--icon-invert-base);
       }
@@ -1155,7 +1170,7 @@
       opacity: 0.6;
     }
 
-    [data-component="icon"] {
+    [data-slot="icon-svg"] {
       transform: rotate(180deg);
     }
   }
@@ -1240,6 +1255,8 @@
     flex-grow: 1;
     min-width: 0;
     overflow: hidden;
+    direction: ltr;
+    unicode-bidi: isolate;
   }
 
   [data-slot="apply-patch-directory"] {
@@ -1314,13 +1331,13 @@
   line-height: var(--line-height-large);
   color: var(--v2-text-text-muted);
 
-  [data-component="icon"] {
+  [data-slot="icon-svg"] {
     flex-shrink: 0;
     color: var(--icon-weak);
   }
 }
 
-body[data-new-layout] [data-component="user-message"] {
+:root body [data-component="user-message"] {
   font-weight: 440;
 
   [data-slot="user-message-text"] {
@@ -1365,205 +1382,11 @@ body[data-new-layout] [data-component="user-message"] {
   }
 }
 
-[data-color-scheme="light"] body[data-new-layout] [data-component="user-message"] [data-slot="user-message-text"] {
+:root[data-color-scheme="light"] body [data-component="user-message"] [data-slot="user-message-text"] {
   background: var(--v2-background-bg-layer-02);
 }
 
-body:not([data-new-layout]) {
-  [data-component="user-message"] {
-    color: var(--text-strong);
-
-    [data-slot="user-message-attachments"] + [data-slot="user-message-body"] {
-      margin-top: 8px;
-    }
-
-    [data-slot="user-message-attachment"] {
-      background: var(--surface-weak);
-      border: 1px solid var(--border-weak-base);
-
-      &:hover {
-        border-color: var(--border-strong-base);
-      }
-
-      &[data-type="image"] {
-        width: 48px;
-        height: 48px;
-        border: 1px solid var(--border-weak-base);
-
-        &::after {
-          content: none;
-        }
-      }
-    }
-
-    [data-slot="user-message-attachment-name"] {
-      color: var(--text-base);
-    }
-
-    [data-slot="user-message-text"] {
-      background: var(--surface-base);
-      border: 1px solid var(--border-weak-base);
-      border-radius: 6px;
-    }
-
-    .text-text-strong {
-      color: var(--text-strong);
-    }
-  }
-
-  [data-slot="compaction-part-line"] {
-    background: var(--border-weak-base);
-  }
-
-  [data-component="reasoning-part"] {
-    color: var(--text-base);
-
-    [data-component="markdown"],
-    [data-component="markdown"] :is(strong, b) {
-      color: var(--text-weak);
-    }
-  }
-
-  [data-component="bash-output"] {
-    border: 1px solid var(--border-weak-base);
-  }
-
-  [data-component="edit-trigger"],
-  [data-component="write-trigger"] {
-    [data-slot="message-part-title"] {
-      color: var(--text-base);
-    }
-
-    [data-slot="message-part-title-spinner"],
-    [data-slot="message-part-directory"] {
-      color: var(--text-weak);
-    }
-
-    [data-slot="message-part-title-text"],
-    [data-slot="message-part-filename"] {
-      color: var(--text-strong);
-    }
-  }
-
-  [data-component="edit-content"],
-  [data-component="write-content"] {
-    border-top: 1px solid var(--border-weaker-base);
-  }
-
-  [data-component="exa-tool-output"] {
-    color: var(--text-base);
-  }
-
-  [data-slot="exa-tool-link"],
-  [data-slot="exa-tool-link"]:hover,
-  [data-slot="exa-tool-link"]:visited {
-    color: var(--text-interactive-base);
-  }
-
-  [data-slot="message-part-todo-content"][data-completed="completed"] {
-    color: var(--text-weaker);
-  }
-
-  [data-component="diagnostics"] {
-    background-color: var(--surface-critical-weak);
-    border-top: 1px solid var(--border-critical-base);
-
-    [data-slot="diagnostic-label"],
-    [data-slot="diagnostic-message"] {
-      color: var(--text-on-critical-base);
-    }
-
-    [data-slot="diagnostic-location"] {
-      color: var(--text-on-critical-weak);
-    }
-  }
-
-  [data-component="dock-prompt"][data-kind="permission"] {
-    [data-slot="permission-header-title"] {
-      color: var(--text-strong);
-    }
-
-    [data-slot="permission-hint"] {
-      color: var(--text-weak);
-    }
-  }
-
-  [data-component="dock-prompt"][data-kind="question"] {
-    [data-slot="question-header-title"],
-    [data-slot="question-text"],
-    [data-slot="option-label"] {
-      color: var(--text-strong);
-    }
-
-    [data-slot="question-hint"] {
-      color: var(--text-weak);
-    }
-
-    [data-slot="question-option"] {
-      background-color: var(--surface-raised-stronger-non-alpha);
-      border: 1px solid var(--border-weak-base);
-
-      &:hover:not([data-picked="true"]) {
-        background-color: var(--background-base);
-      }
-
-      &[data-picked="true"] {
-        background-color: var(--surface-interactive-weak);
-      }
-    }
-
-    [data-slot="question-option-box"] {
-      border: 1px solid var(--border-weak-base);
-
-      [data-slot="question-option-radio-dot"] {
-        background-color: var(--background-stronger);
-      }
-    }
-
-    [data-slot="option-description"],
-    [data-slot="question-custom-input"] {
-      color: var(--text-base);
-    }
-
-    [data-slot="question-custom-input"] {
-      &::placeholder {
-        color: var(--text-weak);
-      }
-
-      &:focus-visible {
-        outline: 1px solid var(--border-interactive-base);
-      }
-    }
-  }
-
-  [data-component="question-answers"] {
-    [data-slot="question-text"] {
-      color: var(--text-weak);
-    }
-
-    [data-slot="answer-text"] {
-      color: var(--text-strong);
-    }
-  }
-
-  :is([data-component="edit-tool"], [data-component="write-tool"], [data-component="apply-patch-tool"])
-    > [data-component="collapsible"]
-    > [data-slot="collapsible-trigger"][aria-expanded="true"],
-  [data-component="accordion"][data-scope="apply-patch"] [data-slot="accordion-trigger"] {
-    background-color: var(--background-stronger) !important;
-  }
-
-  [data-component="accordion"][data-scope="apply-patch"] {
-    [data-slot="apply-patch-directory"] {
-      color: var(--text-base);
-    }
-
-    [data-slot="apply-patch-filename"] {
-      color: var(--text-strong);
-    }
-  }
-
-  [data-component="tool-loaded-file"] {
-    color: var(--text-weak);
-  }
+:root body [data-workspace-session] [data-component="user-message"] [data-slot="user-message-text"] {
+  background: var(--v2-background-bg-accent);
+  color: var(--v2-text-text-contrast);
 }

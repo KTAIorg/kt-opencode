@@ -98,8 +98,8 @@
   ol {
     margin-top: 8px;
     margin-bottom: 12px;
-    margin-left: 0;
-    padding-left: 32px;
+    margin-inline-start: 0;
+    padding-inline-start: 32px;
     list-style-position: outside;
   }
 
@@ -109,7 +109,7 @@
 
   ol {
     list-style-type: decimal;
-    padding-left: 2.25rem;
+    padding-inline-start: 2.25rem;
   }
 
   li {
@@ -131,7 +131,7 @@
   li > p > input[type="checkbox"] {
     position: absolute;
     top: 4px;
-    left: -20px;
+    inset-inline-start: -20px;
     margin: 0;
   }
 
@@ -149,18 +149,18 @@
   li > ol {
     margin-top: 0.25rem;
     margin-bottom: 0.25rem;
-    padding-left: 1rem; /* Minimal indent for nesting only */
+    padding-inline-start: 1rem; /* Minimal indent for nesting only */
   }
 
   li > ol {
-    padding-left: 1.75rem;
+    padding-inline-start: 1.75rem;
   }
 
   /* Blockquotes */
   blockquote {
-    border-left: 0.5px solid var(--v2-border-border-base);
+    border-inline-start: 0.5px solid var(--v2-border-border-base);
     margin: 1rem 0;
-    padding-left: 0.5rem;
+    padding-inline-start: 0.5rem;
     color: var(--v2-text-text-muted);
     font-style: normal;
   }
@@ -183,6 +183,35 @@
 
   [data-component="markdown-code"] {
     position: relative;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  [data-component="markdown-mermaid"] {
+    min-height: 96px;
+    margin: 12px 0 24px;
+    padding: 16px;
+    overflow: auto;
+    border: 0.5px solid var(--v2-border-border-base);
+    border-radius: 6px;
+    background: var(--v2-background-bg-layer-02);
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  [data-component="markdown-mermaid"] > svg {
+    display: block;
+    width: 100%;
+    min-width: 480px;
+    height: auto;
+    margin: 0 auto;
+  }
+
+  [data-component="markdown-code"][data-mermaid-pending="true"] > pre,
+  [data-component="markdown-code"][data-mermaid-pending="true"] > [data-slot="markdown-copy-button"],
+  [data-component="markdown-code"][data-mermaid-ready="true"] > pre,
+  [data-component="markdown-code"][data-mermaid-ready="true"] > [data-slot="markdown-copy-button"] {
+    display: none;
   }
 
   [data-component="markdown-code"][data-code-kind="shell"] .shiki {
@@ -202,7 +231,7 @@
   [data-slot="markdown-copy-button"] {
     position: absolute;
     top: 4px;
-    right: 4px;
+    inset-inline-end: 4px;
     opacity: 0;
     transition: opacity 0.15s ease;
     z-index: 1;
@@ -237,6 +266,8 @@
   }
 
   :not(pre) > code {
+    direction: ltr;
+    unicode-bidi: isolate;
     font-family: var(--font-family-mono);
     font-feature-settings: var(--font-family-mono--font-feature-settings);
     color: var(--v2-text-text-base);
@@ -278,7 +309,7 @@
     /* Minimal borders for structure, matching TUI "lines" roughly but keeping it web-clean */
     border-bottom: 0.5px solid var(--v2-border-border-muted);
     padding: 12px;
-    text-align: left;
+    text-align: start;
     vertical-align: top;
   }
 
@@ -298,7 +329,11 @@
   }
 }
 
-body[data-new-layout] [data-component="markdown"] {
+[data-component="markdown"] > * {
+  unicode-bidi: plaintext;
+}
+
+:root body [data-component="markdown"] {
   [data-slot="markdown-copy-button"]::after {
     box-sizing: border-box;
     display: inline-flex;
@@ -318,56 +353,6 @@ body[data-new-layout] [data-component="markdown"] {
     letter-spacing: 0.05px;
     font-variant-numeric: tabular-nums;
     font-variation-settings: "slnt" 0;
-  }
-}
-
-body:not([data-new-layout]) [data-component="markdown"] {
-  color: var(--text-strong);
-
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    font-size: 14px;
-    color: var(--text-strong);
-    font-weight: var(--font-weight-medium);
-  }
-
-  strong,
-  b {
-    color: var(--text-strong);
-  }
-
-  li::marker {
-    color: var(--text-weak);
-  }
-
-  blockquote {
-    border-left: 2px solid var(--border-weak-base);
-    color: var(--text-weak);
-  }
-
-  .shiki {
-    border-color: var(--border-weak-base);
-  }
-
-  :not(pre) > code {
-    color: var(--syntax-string);
-    padding: 0;
-    border-radius: 0;
-    background: none;
-  }
-
-  th,
-  td {
-    border-bottom: 1px solid var(--border-weaker-base);
-  }
-
-  th {
-    color: var(--text-strong);
-    border-bottom-color: var(--border-weak-base);
   }
 }
 

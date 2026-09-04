@@ -1,52 +1,68 @@
-import { useServerSync } from "@/context/server-sync"
-import { decode64 } from "@/utils/base64"
-import { useParams } from "@solidjs/router"
+import { useData } from "@/context/server"
+import { useServerSDK } from "@/context/server-sdk"
+import { normalizeProviderList } from "@/context/global-sync/utils"
 import { Iterable, pipe } from "effect"
-import type { Accessor } from "solid-js"
-import { selectProviderCatalog } from "./provider-catalog"
+import { createEffect, createMemo, type Accessor } from "solid-js"
+import { emptyProviderCatalog } from "./provider-catalog"
+import { useIntegrations } from "./use-integrations"
+import { customerFacingProviderName } from "@/utils/kt-settlement"
 
-export const popularProviders = [
-  "opencode",
-  "opencode-go",
-  "anthropic",
-  "github-copilot",
-  "openai",
-  "google",
-  "openrouter",
-  "vercel",
-]
+export const popularProviders = ["ktai", "opencode"]
 const popularProviderSet = new Set(popularProviders)
 
-export function useProviders(directory?: Accessor<string | undefined>) {
-  const serverSync = useServerSync()
-  const params = useParams()
-  const dir = () => (directory ? directory() : decode64(params.dir))
-  const providers = () => {
-    const value = dir()
-    const projectStore = value ? serverSync().child(value)[0] : undefined
-    if (directory)
-      return selectProviderCatalog({
-        explicit: true,
-        directory: value,
-        catalog: projectStore && { ready: projectStore.provider_ready, providers: projectStore.provider },
-      })
-    return selectProviderCatalog({
-      explicit: false,
-      directory: value,
-      catalog: projectStore && { ready: projectStore.provider_ready, providers: projectStore.provider },
-      global: serverSync().data.provider,
-    })
+export function useProviders(directory: Accessor<string | undefined>) {
+  const data = useData()
+  const sdk = useServerSDK()
+  const location = () => {
+    const dir = directory()
+    return dir ? { directory: dir } : undefined
   }
+
+  createEffect(() => {
+    if (sdk.connection.status() !== "connected") return
+    const ref = location()
+    void (async () => {
+      if (!ref) await data.location.syncInfo()
+      const resolved = ref ?? data.location.default()
+      await Promise.all([data.location.provider.sync(resolved), data.location.model.sync(resolved)])
+    })().catch(() => undefined)
+  })
+  const integrations = useIntegrations(directory)
+
+  const providers = createMemo(() => {
+    const ref = location()
+    const provider = data.location.provider.list(ref)
+    const model = data.location.model.list(ref)
+    if (!provider || !model) return emptyProviderCatalog
+    return normalizeProviderList(provider, model)
+  })
+
   return {
+    ready: () => {
+      const ref = location()
+      return data.location.provider.list(ref) !== undefined && data.location.model.list(ref) !== undefined
+    },
     all: () => providers().all,
     default: () => providers().default,
-    popular: () =>
-      pipe(
+    // V2 servers list only available providers, so the connectable catalog
+    // comes from the integration list, with the provider catalog as fallback.
+    popular: () => {
+      const catalog = integrations
+        .list()
+        .filter((integration) => popularProviderSet.has(integration.id))
+        .map((integration) => ({
+          id: integration.id,
+          name: customerFacingProviderName(integration.id, integration.name),
+        }))
+      const seen = new Set(catalog.map((integration) => integration.id))
+      return pipe(
         providers().all,
         Iterable.map(([, p]) => p),
-        Iterable.filter((p) => popularProviderSet.has(p.id)),
-        (v) => Array.from(v),
-      ),
+        Iterable.filter((p) => popularProviderSet.has(p.id) && !seen.has(p.id)),
+        Iterable.map((p) => ({ id: p.id, name: customerFacingProviderName(p.id, p.name) })),
+        (v) => [...catalog, ...v],
+      )
+    },
     connected: () => {
       const connected = new Set(providers().connected)
       return pipe(
@@ -58,7 +74,7 @@ export function useProviders(directory?: Accessor<string | undefined>) {
     },
     paid: () => {
       const connected = new Set(providers().connected)
-      return [
+      const paid = [
         ...Iterable.filter(
           providers().all,
           ([id]) =>
@@ -66,6 +82,7 @@ export function useProviders(directory?: Accessor<string | undefined>) {
             (id !== "opencode" || Object.values(providers().all.get(id)?.models ?? {}).some((m) => m.cost?.input)),
         ),
       ]
+      return paid
     },
   }
 }

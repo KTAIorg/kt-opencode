@@ -1,9 +1,10 @@
 import type { Page } from "@playwright/test"
+import type { OpenCodeEvent } from "@opencode-ai/client/promise"
 
 export type SseConnectionRecord = {
   id: number
   url: string
-  path: "/global/event" | "/event"
+  path: "/api/event"
   headers: Record<string, string>
   openedAt: number
   endedAt?: number
@@ -27,7 +28,7 @@ export type SseEventOptions = {
   marker?: string
 }
 
-export type SseTransport<T> = {
+export type SseTransport<T extends OpenCodeEvent> = {
   server: string
   waitForConnection(options?: { after?: number; timeout?: number }): Promise<SseConnectionRecord>
   send(payload: T, options?: SseEventOptions): Promise<SseDeliveryAcknowledgement>
@@ -55,7 +56,7 @@ type BrowserTransport = Window & {
   }
 }
 
-export async function installSseTransport<T>(
+export async function installSseTransport<T extends OpenCodeEvent = OpenCodeEvent>(
   page: Page,
   options: { server: string; retry?: number },
 ): Promise<SseTransport<T>> {
@@ -142,13 +143,12 @@ export async function installSseTransport<T>(
         }
         const encoded = input.deliveries.map((delivery) => ({
           delivery,
+          payload: delivery.payload,
           bytes: encoder.encode(frame(delivery.payload, delivery.options)),
         }))
         encoded.forEach((item) => marker(item.delivery.options?.marker))
         if (input.burst) {
-          const bytes = encoder.encode(
-            encoded.map((item) => frame(item.delivery.payload, item.delivery.options)).join(""),
-          )
+          const bytes = encoder.encode(encoded.map((item) => new TextDecoder().decode(item.bytes)).join(""))
           connection.controller.enqueue(bytes)
           return encoded.map((item) => acknowledge(connection, item.bytes.byteLength, 1, item.delivery.options?.id))
         }
@@ -161,8 +161,7 @@ export async function installSseTransport<T>(
       const fetch = (input: RequestInfo | URL, init?: RequestInit) => {
         const request = new Request(input, init)
         const url = new URL(request.url)
-        if (url.origin !== server || (url.pathname !== "/global/event" && url.pathname !== "/event"))
-          return originalFetch(request)
+        if (url.origin !== server || url.pathname !== "/api/event") return originalFetch(request)
 
         const id = ++nextConnectionID
         const record = {
@@ -177,6 +176,9 @@ export async function installSseTransport<T>(
             record.controller = controller
             connections.push(record)
             if (retry !== undefined) controller.enqueue(encoder.encode(`retry: ${retry}\n\n`))
+            controller.enqueue(
+              encoder.encode(frame({ id: `evt_mock_connected_${id}`, type: "server.connected", data: {} })),
+            )
             request.signal.addEventListener(
               "abort",
               () => {
@@ -219,18 +221,23 @@ export async function installSseTransport<T>(
   return {
     server,
     async waitForConnection(input = {}) {
-      await page.waitForFunction(
+      const connection = await page.waitForFunction(
         (after) => {
           const transport = (window as BrowserTransport).__testSseTransport
           const connections = transport?.command({ type: "connections" }) as SseConnectionRecord[] | undefined
-          return connections?.some((connection) => connection.id > after)
+          return connections?.findLast((connection) => connection.id > after && connection.endedAt === undefined)
         },
         input.after ?? 0,
         { timeout: input.timeout },
       )
-      return (await command<SseConnectionRecord[]>({ type: "connections" })).findLast(
-        (connection) => connection.id > (input.after ?? 0),
-      )!
+      let result: SseConnectionRecord | undefined
+      try {
+        result = await connection.jsonValue()
+      } finally {
+        await connection.dispose()
+      }
+      if (!result) throw new Error("SSE transport connection disappeared while waiting")
+      return result
     },
     send(payload, eventOptions) {
       return command({ type: "send", deliveries: [{ payload, options: eventOptions }], burst: false })
@@ -246,15 +253,11 @@ export async function installSseTransport<T>(
       return command({ type: "send", deliveries: [{ payload, options: eventOptions }], burst: false, cuts: [...cuts] })
     },
     heartbeat(eventOptions) {
+      const bytes = new TextEncoder().encode(": heartbeat\n\n")
       return command({
-        type: "send",
-        deliveries: [
-          {
-            payload: { directory: "global", payload: { type: "server.heartbeat", properties: {} } } as T,
-            options: eventOptions,
-          },
-        ],
-        burst: false,
+        type: "raw",
+        bytes: Array.from(bytes),
+        marker: eventOptions?.marker,
       })
     },
     writeRaw(value, cuts, marker) {

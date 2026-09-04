@@ -1,6 +1,7 @@
 import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { Dialog } from "@opencode-ai/ui/dialog"
+import { Dialog, DialogBody, DialogHeader, DialogTitle } from "@opencode-ai/ui/dialog"
+import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { useMutation } from "@tanstack/solid-query"
@@ -8,9 +9,8 @@ import { TextField } from "@opencode-ai/ui/text-field"
 import { showToast } from "@/utils/toast"
 import { batch, For } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { Link } from "@/components/link"
-import { useServerSDK } from "@/context/server-sdk"
-import { useServerSync } from "@/context/server-sync"
+import { ExternalLink } from "@/components/external-link"
+import { useData } from "@/context/server"
 import { useLanguage } from "@/context/language"
 import { type FormState, headerRow, modelRow, validateCustomProvider } from "./dialog-custom-provider-form"
 
@@ -22,28 +22,28 @@ export function DialogCustomProvider(props: Props) {
   const language = useLanguage()
 
   return (
-    <Dialog
-      class="h-full"
-      title={
-        <IconButton
-          tabIndex={-1}
-          icon="arrow-left"
-          variant="ghost"
-          onClick={props.onBack}
-          aria-label={language.t("common.goBack")}
-        />
-      }
-      transition
-    >
-      <CustomProviderForm />
+    <Dialog class="h-full">
+      <DialogHeader>
+        <DialogTitle>
+          <IconButton
+            tabIndex={-1}
+            icon={<Icon name="arrow-left" />}
+            variant="ghost"
+            onClick={props.onBack}
+            aria-label={language.t("common.goBack")}
+          />
+        </DialogTitle>
+      </DialogHeader>
+      <DialogBody>
+        <CustomProviderForm />
+      </DialogBody>
     </Dialog>
   )
 }
 
-export function CustomProviderForm() {
+export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
   const dialog = useDialog()
-  const serverSync = useServerSync()
-  const serverSDK = useServerSDK()
+  const data = useData()
   const language = useLanguage()
 
   const [form, setForm] = createStore<FormState>({
@@ -118,8 +118,9 @@ export function CustomProviderForm() {
     const output = validateCustomProvider({
       form,
       t: language.t,
-      disabledProviders: serverSync().data.config.disabled_providers ?? [],
-      existingProviderIDs: new Set(serverSync().data.provider.all.keys()),
+      // TODO: Restore disabled-provider validation when V2 exposes config reads.
+      disabledProviders: [],
+      existingProviderIDs: new Set((data.location.provider.list() ?? []).map((provider) => provider.id)),
     })
     batch(() => {
       setForm("err", output.err)
@@ -130,25 +131,9 @@ export function CustomProviderForm() {
   }
 
   const saveMutation = useMutation(() => ({
-    mutationFn: async (result: NonNullable<ReturnType<typeof validate>>) => {
-      const disabledProviders = serverSync().data.config.disabled_providers ?? []
-      const nextDisabled = disabledProviders.filter((id) => id !== result.providerID)
-
-      if (result.key) {
-        await serverSDK().client.auth.set({
-          providerID: result.providerID,
-          auth: {
-            type: "api",
-            key: result.key,
-          },
-        })
-      }
-
-      await serverSync().updateConfig({
-        provider: { [result.providerID]: result.config },
-        disabled_providers: nextDisabled,
-      })
-      return result
+    mutationFn: async (result: NonNullable<ReturnType<typeof validate>>): Promise<typeof result> => {
+      // TODO: Restore custom providers when V2 exposes config and arbitrary credential APIs.
+      throw new Error(language.t("provider.custom.unavailable"))
     },
     onSuccess: (result) => {
       dialog.close()
@@ -184,15 +169,15 @@ export function CustomProviderForm() {
       <form onSubmit={save} class="px-2.5 pb-6 flex flex-col gap-6">
         <p class="text-14-regular text-text-base">
           {language.t("provider.custom.description.prefix")}
-          <Link href="https://opencode.ai/docs/providers/#custom-provider" tabIndex={-1}>
+          <ExternalLink href="https://opencode.ai/docs/providers/#custom-provider" tabIndex={-1}>
             {language.t("provider.custom.description.link")}
-          </Link>
+          </ExternalLink>
           {language.t("provider.custom.description.suffix")}
         </p>
 
         <div class="flex flex-col gap-4">
           <TextField
-            autofocus
+            autofocus={props.autofocus ?? true}
             label={language.t("provider.custom.field.providerID.label")}
             placeholder={language.t("provider.custom.field.providerID.placeholder")}
             description={language.t("provider.custom.field.providerID.description")}
@@ -255,7 +240,7 @@ export function CustomProviderForm() {
                 </div>
                 <IconButton
                   type="button"
-                  icon="trash"
+                  icon={<Icon name="trash" />}
                   variant="ghost"
                   class="mt-1.5"
                   onClick={() => removeModel(i())}
@@ -299,7 +284,7 @@ export function CustomProviderForm() {
                 </div>
                 <IconButton
                   type="button"
-                  icon="trash"
+                  icon={<Icon name="trash" />}
                   variant="ghost"
                   class="mt-1.5"
                   onClick={() => removeHeader(i())}
@@ -318,7 +303,7 @@ export function CustomProviderForm() {
           class="w-auto self-start"
           type="submit"
           size="large"
-          variant="primary"
+          variant="contrast"
           disabled={saveMutation.isPending}
         >
           {saveMutation.isPending ? language.t("common.saving") : language.t("common.submit")}

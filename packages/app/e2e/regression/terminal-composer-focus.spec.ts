@@ -1,4 +1,4 @@
-import { base64Encode } from "@opencode-ai/core/util/encode"
+import { base64Encode, checksum } from "@opencode-ai/util/encode"
 import { expect, test, type Page } from "@playwright/test"
 import { mockOpenCodeServer } from "../utils/mock-server"
 import { expectSessionTitle } from "../utils/waits"
@@ -8,6 +8,7 @@ const projectID = "proj_terminal_composer_focus"
 const sessionID = "ses_terminal_composer_focus"
 const ptyID = "pty_terminal_composer_focus"
 const newPtyID = "pty_terminal_composer_focus_new"
+const server = `http://${process.env.PLAYWRIGHT_SERVER_HOST ?? "127.0.0.1"}:${process.env.PLAYWRIGHT_SERVER_PORT ?? "4096"}`
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
@@ -46,32 +47,34 @@ test.beforeEach(async ({ page }) => {
     ],
     pageMessages: () => ({ items: [] }),
   })
-  await page.route("**/pty", (route) =>
+  await page.route("**/api/pty*", (route) => {
+    expect(new URL(route.request().url()).searchParams.get("location[directory]")).toBe(directory)
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ location: ptyLocation(), data: ptyInfo(ptyID, "Terminal 1") }),
+    })
+  })
+  await page.route(`**/api/pty/${ptyID}*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ id: ptyID, title: "Terminal 1" }),
+      body: JSON.stringify({ location: ptyLocation(), data: ptyInfo(ptyID, "Terminal 1") }),
     }),
   )
-  await page.route(`**/pty/${ptyID}`, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
-  )
-  await page.route(`**/pty/${ptyID}/connect-token*`, (route) =>
+  await page.route(`**/api/pty/${ptyID}/connect-token*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "access-control-allow-origin": "*" },
-      body: JSON.stringify({ ticket: "e2e-ticket" }),
+      body: JSON.stringify({ location: ptyLocation(), data: { ticket: "e2e-ticket", expires_in: 60 } }),
     }),
   )
-  await page.routeWebSocket(new RegExp(`/pty/${ptyID}/connect`), () => undefined)
-  await page.addInitScript(() => {
-    localStorage.setItem("settings.v3", JSON.stringify({ general: { newLayoutDesigns: true } }))
-  })
+  await page.routeWebSocket(new RegExp(`/api/pty/${ptyID}/connect`), () => undefined)
 })
 
 test("routes typing to the composer unless the open terminal is focused", async ({ page }) => {
-  await page.goto(`/${base64Encode(directory)}/session/${sessionID}`)
+  await page.goto(`/server/${base64Encode(server)}/session/${sessionID}`)
   await expectSessionTitle(page, "Terminal composer focus")
 
   const composer = page.locator('[data-component="prompt-input"]')
@@ -95,12 +98,12 @@ test("keeps composer focus when a cached terminal finishes mounting", async ({ p
   const ghostty = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()
   const created = { count: 0 }
-  await page.route("**/pty", (route) => {
+  await page.route("**/api/pty*", (route) => {
     created.count += 1
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ id: ptyID, title: "Terminal 1" }),
+      body: JSON.stringify({ location: ptyLocation(), data: ptyInfo(ptyID, "Terminal 1") }),
     })
   })
   await page.route(/ghostty-web/, async (route) => {
@@ -110,7 +113,7 @@ test("keeps composer focus when a cached terminal finishes mounting", async ({ p
   })
   await seedCachedTerminal(page)
 
-  await page.goto(`/${base64Encode(directory)}/session/${sessionID}`, { waitUntil: "commit" })
+  await page.goto(`/server/${base64Encode(server)}/session/${sessionID}`, { waitUntil: "commit" })
   await expectSessionTitle(page, "Terminal composer focus")
 
   const composer = page.locator('[data-component="prompt-input"]')
@@ -136,7 +139,7 @@ test("keeps newer composer focus while an explicit terminal open finishes", asyn
     await route.continue()
   })
 
-  await page.goto(`/${base64Encode(directory)}/session/${sessionID}`)
+  await page.goto(`/server/${base64Encode(server)}/session/${sessionID}`)
   await expectSessionTitle(page, "Terminal composer focus")
 
   const composer = page.locator('[data-component="prompt-input"]')
@@ -155,29 +158,33 @@ test("keeps newer composer focus while an explicit terminal open finishes", asyn
 
 test("focuses a terminal created from the new-terminal button", async ({ page }) => {
   const created = { count: 0 }
-  await page.route("**/pty", (route) => {
+  await page.route("**/api/pty*", (route) => {
     created.count += 1
-    const next = created.count === 1 ? { id: ptyID, title: "Terminal 1" } : { id: newPtyID, title: "Terminal 2" }
+    const next = created.count === 1 ? ptyInfo(ptyID, "Terminal 1") : ptyInfo(newPtyID, "Terminal 2")
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(next),
+      body: JSON.stringify({ location: ptyLocation(), data: next }),
     })
   })
-  await page.route(`**/pty/${newPtyID}`, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  await page.route(`**/api/pty/${newPtyID}*`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ location: ptyLocation(), data: ptyInfo(newPtyID, "Terminal 2") }),
+    }),
   )
-  await page.route(`**/pty/${newPtyID}/connect-token*`, (route) =>
+  await page.route(`**/api/pty/${newPtyID}/connect-token*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "access-control-allow-origin": "*" },
-      body: JSON.stringify({ ticket: "e2e-ticket" }),
+      body: JSON.stringify({ location: ptyLocation(), data: { ticket: "e2e-ticket", expires_in: 60 } }),
     }),
   )
-  await page.routeWebSocket(new RegExp(`/pty/${newPtyID}/connect`), () => undefined)
+  await page.routeWebSocket(new RegExp(`/api/pty/${newPtyID}/connect`), () => undefined)
 
-  await page.goto(`/${base64Encode(directory)}/session/${sessionID}`)
+  await page.goto(`/server/${base64Encode(server)}/session/${sessionID}`)
   await expectSessionTitle(page, "Terminal composer focus")
 
   const composer = page.locator('[data-component="prompt-input"]')
@@ -204,6 +211,20 @@ function seedCachedTerminal(page: Page) {
         }),
       )
     },
-    { terminalKey: `${base64Encode(directory)}/terminal.v1`, ptyID },
+    { terminalKey: terminalStorageKey(), ptyID },
   )
+}
+
+function terminalStorageKey() {
+  const dir = base64Encode(directory)
+  const head = dir.slice(0, 12).replace(/[^a-zA-Z0-9._-]/g, "-")
+  return `opencode.workspace.${head}.${checksum(dir) ?? "0"}.dat:workspace:terminal`
+}
+
+function ptyLocation() {
+  return { directory, project: { id: projectID, directory, canonical: directory } }
+}
+
+function ptyInfo(id: string, title: string) {
+  return { id, title, command: "cmd.exe", args: [], cwd: directory, status: "running", pid: 1 }
 }

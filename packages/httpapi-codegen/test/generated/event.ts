@@ -3,7 +3,7 @@ import { Effect, Schema, Stream } from "effect"
 import { Sse } from "effect/unstable/encoding"
 import { HttpClientError } from "effect/unstable/http"
 import { HttpApiClient, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "effect/unstable/httpapi"
-import { ClientError } from "./client-error"
+import { ClientError } from "./client-error.js"
 
 const Endpoint0SuccessData = Schema.Struct({ type: Schema.String })
 
@@ -19,7 +19,7 @@ export const Group1 = HttpApiGroup.make("event", { topLevel: false }).add(
   }),
 )
 
-type RawGroup = HttpApiClient.Client.Group<typeof Group1, "event", never, never>
+type RawGroup = HttpApiClient.Client.Group<typeof Group1, never, never>
 
 const Endpoint0DeclaredError = Schema.Union([Endpoint0SuccessError])
 const mapEndpoint0Error = (error: unknown) =>

@@ -1,34 +1,23 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
-import {
-  Component,
-  ComponentProps,
-  createEffect,
-  createMemo,
-  For,
-  JSX,
-  onCleanup,
-  Show,
-  ValidComponent,
-} from "solid-js"
+import { Component, ComponentProps, createEffect, createMemo, For, JSX, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { popularProviders } from "@/hooks/use-providers"
 import { Button } from "@opencode-ai/ui/button"
+import { Badge } from "@opencode-ai/ui/badge"
+import { Dialog, DialogBody, DialogHeader, DialogTitle } from "@opencode-ai/ui/dialog"
+import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { ScrollView } from "@opencode-ai/ui/scroll-view"
-import { Tag } from "@opencode-ai/ui/tag"
-import { Dialog } from "@opencode-ai/ui/dialog"
 import { List } from "@opencode-ai/ui/list"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
-import { Icon } from "@opencode-ai/ui/v2/icon"
-import { Tag as TagV2 } from "@opencode-ai/ui/v2/badge-v2"
-import { MenuV2 } from "@opencode-ai/ui/v2/menu-v2"
-import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
+import { Menu } from "@opencode-ai/ui/menu"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
 import { decode64 } from "@/utils/base64"
 import { handleDocumentSearchKeydown } from "@/utils/search-keydown"
+import { createMenuDismissController } from "@/utils/menu-dismiss-controller"
 import { createEventListener } from "@solid-primitives/event-listener"
 import { matchesModelSearch } from "./dialog-select-model-search"
 import { compareKtaiModelOrder, isKtaiProviderID } from "@/utils/ktai-model-order"
@@ -38,13 +27,6 @@ const isFree = (provider: string, cost: { input: number } | undefined) =>
 
 type ModelState = ReturnType<typeof useLocal>["model"]
 type ModelItem = ReturnType<ModelState["list"]>[number]
-
-const compareModelItems = (a: ModelItem, b: ModelItem) => {
-  if (isKtaiProviderID(a.provider.id) && isKtaiProviderID(b.provider.id)) {
-    return compareKtaiModelOrder(a, b)
-  }
-  return a.name.localeCompare(b.name)
-}
 
 const modelKey = (model: ModelItem) => `${model.provider.id}:${model.id}`
 const manageKey = "action:manage"
@@ -61,7 +43,7 @@ const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { categ
   return a.items[0].provider.name.localeCompare(b.items[0].provider.name)
 }
 
-export const ModelList: Component<{
+const ModelList: Component<{
   provider?: string
   class?: string
   onSelect: () => void
@@ -74,8 +56,8 @@ export const ModelList: Component<{
   const models = createMemo(() =>
     model
       .list()
-      .filter((m) => model.visible({ modelID: m.id, providerID: m.provider.id }))
-      .filter((m) => (props.provider ? m.provider.id === props.provider : true)),
+      .filter((m) => (props.provider ? m.provider.id === props.provider : true))
+      .filter((m) => props.provider || model.visible({ modelID: m.id, providerID: m.provider.id })),
   )
 
   return (
@@ -87,7 +69,10 @@ export const ModelList: Component<{
       items={models}
       current={model.current()}
       filterKeys={["provider.name", "name", "id"]}
-      sortBy={compareModelItems}
+      sortBy={(a, b) => {
+        if (isKtaiProviderID(a.provider.id) && isKtaiProviderID(b.provider.id)) return compareKtaiModelOrder(a, b)
+        return a.name.localeCompare(b.name)
+      }}
       groupBy={(x) => x.provider.name}
       sortGroupsBy={(a, b) => {
         const aProvider = a.items[0].provider.id
@@ -98,6 +83,7 @@ export const ModelList: Component<{
       }}
       itemWrapper={(item, node) => (
         <Tooltip
+          appearance="standard"
           class="w-full"
           placement="right-start"
           gutter={12}
@@ -118,10 +104,10 @@ export const ModelList: Component<{
         <div class="w-full flex items-center gap-x-2 text-13-regular">
           <span class="truncate">{i.name}</span>
           <Show when={isFree(i.provider.id, i.cost)}>
-            <Tag>{language.t("model.tag.free")}</Tag>
+            <Badge appearance="standard">{language.t("model.tag.free")}</Badge>
           </Show>
           <Show when={i.latest}>
-            <Tag>{language.t("model.tag.latest")}</Tag>
+            <Badge appearance="standard">{language.t("model.tag.latest")}</Badge>
           </Show>
         </div>
       )}
@@ -130,14 +116,13 @@ export const ModelList: Component<{
 }
 
 type ModelSelectorTriggerProps = Omit<ComponentProps<typeof Kobalte.Trigger>, "as" | "ref">
+type ModelSelectorTrigger = (props: ModelSelectorTriggerProps) => JSX.Element
 type Dismiss = "escape" | "outside" | "select" | "manage" | "provider"
 
 export function ModelSelectorPopover(props: {
   provider?: string
   model?: ModelState
-  children?: JSX.Element
-  triggerAs?: ValidComponent
-  triggerProps?: ModelSelectorTriggerProps
+  trigger: ModelSelectorTrigger
   onClose?: (cause: "escape" | "select") => void
 }) {
   const [store, setStore] = createStore<{
@@ -166,7 +151,7 @@ export function ModelSelectorPopover(props: {
   const handleConnectProvider = () => {
     close("provider")
     void import("./dialog-connect-provider").then((x) => {
-      void dialog.show(() => <x.DialogConnectProvider directory={directory} />)
+      void dialog.show(() => <x.DialogConnectProvider directory={directory()} />)
     })
   }
   const language = useLanguage()
@@ -182,9 +167,7 @@ export function ModelSelectorPopover(props: {
       placement="top-start"
       gutter={4}
     >
-      <Kobalte.Trigger as={props.triggerAs ?? "div"} {...props.triggerProps}>
-        {props.children}
-      </Kobalte.Trigger>
+      <Kobalte.Trigger as={props.trigger} />
       <Kobalte.Portal>
         <Kobalte.Content
           class="w-72 h-80 flex flex-col p-2 rounded-md border border-border-base bg-surface-raised-stronger-non-alpha shadow-md z-50 outline-none overflow-hidden"
@@ -213,21 +196,19 @@ export function ModelSelectorPopover(props: {
             class="p-1"
             action={
               <div class="flex items-center gap-1">
-                <Tooltip placement="top" value={language.t("command.provider.connect")}>
+                <Tooltip appearance="standard" placement="top" value={language.t("command.provider.connect")}>
                   <IconButton
-                    icon="plus-small"
+                    icon={<Icon name="plus-small" />}
                     variant="ghost"
-                    iconSize="normal"
                     class="size-6"
                     aria-label={language.t("command.provider.connect")}
                     onClick={handleConnectProvider}
                   />
                 </Tooltip>
-                <Tooltip placement="top" value={language.t("dialog.model.manage")}>
+                <Tooltip appearance="standard" placement="top" value={language.t("dialog.model.manage")}>
                   <IconButton
-                    icon="sliders"
+                    icon={<Icon name="sliders" />}
                     variant="ghost"
-                    iconSize="normal"
                     class="size-6"
                     aria-label={language.t("dialog.model.manage")}
                     onClick={handleManage}
@@ -245,69 +226,101 @@ export function ModelSelectorPopover(props: {
 export function ModelSelectorPopoverV2(props: {
   provider?: string
   model?: ModelState
-  children?: JSX.Element
-  triggerAs?: ValidComponent
-  triggerProps?: ModelSelectorTriggerProps
+  trigger: ModelSelectorTrigger
   onClose?: () => void
 }) {
-  const model = props.model ?? useLocal().model
-  const language = useLanguage()
   const dialog = useDialog()
-  const [store, setStore] = createStore({ open: false, search: "", active: "" })
-  let searchRef: HTMLInputElement | undefined
-  let contentRef: HTMLDivElement | undefined
-  let restoreTrigger = true
+  const controller = createModelSelectorController({
+    model: props.model,
+    provider: () => props.provider,
+    onSelect: () => props.onClose?.(),
+  })
 
+  return (
+    <ModelSelectorPopoverV2View
+      trigger={props.trigger}
+      models={controller.models}
+      groups={controller.groups}
+      current={controller.current()}
+      select={controller.select}
+      onManage={() => {
+        void import("./dialog-manage-models").then((module) => {
+          void dialog.show(() => <module.DialogManageModelsV2 />)
+        })
+      }}
+      onClose={() => props.onClose?.()}
+    />
+  )
+}
+
+function createModelSelectorController(input: {
+  provider: () => string | undefined
+  model?: ModelState
+  onSelect: () => void
+}) {
+  const model = input.model ?? useLocal().model
   const allModels = createMemo(() =>
     model
       .list()
       .filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id }))
-      .filter((item) => (props.provider ? item.provider.id === props.provider : true)),
+      .filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
   )
-  const models = createMemo(() => {
-    const search = store.search.trim()
-    const filtered = search
-      ? allModels().filter((item) => matchesModelSearch(search, [item.name, item.id, item.provider.name]))
-      : allModels()
 
-    return [...filtered].sort(compareModelItems)
-  })
-  const groups = createMemo(() => {
-    const byProvider = new Map<string, ModelItem[]>()
-    for (const item of models()) {
-      byProvider.set(item.provider.id, [...(byProvider.get(item.provider.id) ?? []), item])
-    }
-    return Array.from(byProvider, ([category, items]) => ({
-      category,
-      items: [...items].sort(compareModelItems),
-    })).sort(sortModelGroups)
-  })
-  const keys = () => [...models().map(modelKey), manageKey]
-  const current = () => {
-    const value = model.current()
-    return value ? `${value.provider.id}:${value.id}` : undefined
+  return {
+    models: (search: string) => {
+      const query = search.trim()
+      const filtered = query
+        ? allModels().filter((item) => matchesModelSearch(query, [item.name, item.id, item.provider.name]))
+        : allModels()
+      return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+    },
+    groups: (models: ModelItem[]) => {
+      const byProvider = new Map<string, ModelItem[]>()
+      for (const item of models) {
+        byProvider.set(item.provider.id, [...(byProvider.get(item.provider.id) ?? []), item])
+      }
+      return Array.from(byProvider, ([category, items]) => ({ category, items })).sort(sortModelGroups)
+    },
+    current: () => {
+      const value = model.current()
+      return value ? modelKey(value) : undefined
+    },
+    select: (item: ModelItem) => {
+      model.set({ modelID: item.id, providerID: item.provider.id }, { recent: true })
+      input.onSelect()
+    },
   }
+}
+
+function ModelSelectorPopoverV2View(props: {
+  trigger: ModelSelectorTrigger
+  models: (search: string) => ModelItem[]
+  groups: (models: ModelItem[]) => { category: string; items: ModelItem[] }[]
+  current: string | undefined
+  select: (item: ModelItem) => void
+  onManage: () => void
+  onClose: () => void
+}) {
+  const language = useLanguage()
+  const [store, setStore] = createStore({ open: false, search: "", active: "" })
+  let searchRef: HTMLInputElement | undefined
+  let contentRef: HTMLDivElement | undefined
+  const dismiss = createMenuDismissController(() => contentRef)
+
+  const models = createMemo(() => props.models(store.search))
+  const groups = createMemo(() => props.groups(models()))
+  const keys = () => [...models().map(modelKey), manageKey]
   const initialActive = () => {
-    const selected = current()
+    const selected = props.current
     const options = keys()
     if (selected && options.includes(selected)) return selected
     return options[0] ?? ""
   }
   const activeItem = () =>
     store.active ? contentRef?.querySelector<HTMLElement>(`[data-option-key="${CSS.escape(store.active)}"]`) : undefined
-  const afterClose = (callback: () => void) => {
-    const complete = () => {
-      if (contentRef?.isConnected) {
-        requestAnimationFrame(complete)
-        return
-      }
-      requestAnimationFrame(() => requestAnimationFrame(callback))
-    }
-    requestAnimationFrame(complete)
-  }
   const setOpen = (open: boolean) => {
     if (open) {
-      restoreTrigger = true
+      dismiss.allowTriggerRestore()
       setStore({ open: true, active: initialActive() })
       setTimeout(() =>
         requestAnimationFrame(() => {
@@ -319,23 +332,15 @@ export function ModelSelectorPopoverV2(props: {
     }
     setStore({ open: false, search: "", active: "" })
   }
-  const select = (item: ModelItem) => {
-    model.set({ modelID: item.id, providerID: item.provider.id }, { recent: true })
-    props.onClose?.()
-  }
   const selectModel = (item: ModelItem) => {
-    restoreTrigger = false
+    dismiss.preventTriggerRestore()
     setOpen(false)
-    afterClose(() => select(item))
+    dismiss.afterClose(() => props.select(item))
   }
   const manage = () => {
-    restoreTrigger = false
+    dismiss.preventTriggerRestore()
     setOpen(false)
-    afterClose(() => {
-      void import("./dialog-manage-models").then((x) => {
-        dialog.show(() => <x.DialogManageModelsV2 />)
-      })
-    })
+    dismiss.afterClose(props.onManage)
   }
   const selectActive = () => {
     const item = models().find((item) => modelKey(item) === store.active)
@@ -354,10 +359,7 @@ export function ModelSelectorPopoverV2(props: {
     queueMicrotask(() => activeItem()?.scrollIntoView({ block: "nearest" }))
   }
   const setSearch = (value: string) => {
-    const search = value.trim()
-    const first = [...allModels()]
-      .sort(compareModelItems)
-      .find((item) => matchesModelSearch(search, [item.name, item.id, item.provider.name]))
+    const first = props.models(value)[0]
     setStore({ search: value, active: first ? modelKey(first) : manageKey })
   }
 
@@ -372,19 +374,15 @@ export function ModelSelectorPopoverV2(props: {
   })
 
   return (
-    <MenuV2 open={store.open} modal={false} placement="top-start" gutter={6} onOpenChange={setOpen}>
-      <MenuV2.Trigger as={props.triggerAs ?? "div"} {...props.triggerProps}>
-        {props.children}
-      </MenuV2.Trigger>
-      <MenuV2.Portal>
-        <MenuV2.Content
-          ref={(el: HTMLDivElement) => (contentRef = el)}
+    <Menu open={store.open} modal={false} placement="top-start" gutter={6} onOpenChange={setOpen}>
+      <Menu.Trigger as={props.trigger} />
+      <Menu.Portal>
+        <Menu.Content
+          ref={(element: HTMLDivElement) => (contentRef = element)}
           class="w-[284px] overflow-hidden rounded-md border-0 bg-v2-background-bg-layer-01 !p-0 shadow-[var(--v2-elevation-floating)] focus:outline-none"
-          onPointerDownOutside={() => (restoreTrigger = false)}
-          onFocusOutside={() => (restoreTrigger = false)}
-          onCloseAutoFocus={(event) => {
-            if (!restoreTrigger) event.preventDefault()
-          }}
+          onPointerDownOutside={dismiss.preventTriggerRestore}
+          onFocusOutside={dismiss.preventTriggerRestore}
+          onCloseAutoFocus={dismiss.onCloseAutoFocus}
         >
           <div class="flex flex-col p-0.5">
             <div class="flex h-7 items-center gap-2 rounded-sm pl-3 pr-2.5 text-v2-icon-icon-muted">
@@ -404,9 +402,9 @@ export function ModelSelectorPopoverV2(props: {
                   event.stopPropagation()
                   if (event.key === "Escape") {
                     event.preventDefault()
-                    restoreTrigger = false
+                    dismiss.preventTriggerRestore()
                     setOpen(false)
-                    afterClose(() => props.onClose?.())
+                    dismiss.afterClose(props.onClose)
                     return
                   }
                   if (event.altKey || event.metaKey) return
@@ -452,14 +450,14 @@ export function ModelSelectorPopoverV2(props: {
               >
                 <For each={groups()}>
                   {(group) => (
-                    <MenuV2.Group>
-                      <MenuV2.GroupLabel class="gap-2 px-3">
+                    <Menu.Group>
+                      <Menu.GroupLabel class="gap-2 px-3">
                         <span class="min-w-0 truncate">{group.items[0].provider.name}</span>
-                      </MenuV2.GroupLabel>
-                      <MenuV2.RadioGroup value={current()}>
+                      </Menu.GroupLabel>
+                      <Menu.RadioGroup value={props.current}>
                         <For each={group.items}>
                           {(item) => (
-                            <TooltipV2
+                            <Tooltip
                               class="w-full"
                               placement="right-start"
                               gutter={6}
@@ -473,10 +471,10 @@ export function ModelSelectorPopoverV2(props: {
                                 />
                               }
                             >
-                              <MenuV2.RadioItem
+                              <Menu.RadioItem
                                 value={modelKey(item)}
                                 data-option-key={modelKey(item)}
-                                data-selected-model={current() === modelKey(item) ? true : undefined}
+                                data-selected-model={props.current === modelKey(item) ? true : undefined}
                                 class="scroll-my-6 w-full"
                                 classList={{ "!bg-v2-overlay-simple-overlay-hover": store.active === modelKey(item) }}
                                 onMouseEnter={() => {
@@ -487,17 +485,17 @@ export function ModelSelectorPopoverV2(props: {
                               >
                                 <span class="min-w-0 truncate leading-5">{item.name}</span>
                                 <Show when={isFree(item.provider.id, item.cost)}>
-                                  <TagV2 class="shrink-0">{language.t("model.tag.free")}</TagV2>
+                                  <Badge class="shrink-0">{language.t("model.tag.free")}</Badge>
                                 </Show>
                                 <Show when={item.latest}>
-                                  <TagV2 class="shrink-0">{language.t("model.tag.latest")}</TagV2>
+                                  <Badge class="shrink-0">{language.t("model.tag.latest")}</Badge>
                                 </Show>
-                              </MenuV2.RadioItem>
-                            </TooltipV2>
+                              </Menu.RadioItem>
+                            </Tooltip>
                           )}
                         </For>
-                      </MenuV2.RadioGroup>
-                    </MenuV2.Group>
+                      </Menu.RadioGroup>
+                    </Menu.Group>
                   )}
                 </For>
               </Show>
@@ -505,7 +503,7 @@ export function ModelSelectorPopoverV2(props: {
           </ScrollView>
           <div class="h-px bg-v2-border-border-muted" />
           <div class="flex flex-col p-0.5">
-            <MenuV2.Item
+            <Menu.Item
               data-option-key={manageKey}
               classList={{ "!bg-v2-overlay-simple-overlay-hover": store.active === manageKey }}
               onMouseEnter={() => {
@@ -516,11 +514,11 @@ export function ModelSelectorPopoverV2(props: {
             >
               <Icon name="outline-sliders" size="small" />
               <span class="min-w-0 flex-1 truncate leading-5">{language.t("dialog.model.manage")}</span>
-            </MenuV2.Item>
+            </Menu.Item>
           </div>
-        </MenuV2.Content>
-      </MenuV2.Portal>
-    </MenuV2>
+        </Menu.Content>
+      </Menu.Portal>
+    </Menu>
   )
 }
 
@@ -532,7 +530,7 @@ export const DialogSelectModel: Component<{ provider?: string; model?: ModelStat
 
   const provider = () => {
     void import("./dialog-connect-provider").then((x) => {
-      void dialog.show(() => <x.DialogConnectProvider directory={directory} />)
+      void dialog.show(() => <x.DialogConnectProvider directory={directory()} />)
     })
   }
 
@@ -543,18 +541,19 @@ export const DialogSelectModel: Component<{ provider?: string; model?: ModelStat
   }
 
   return (
-    <Dialog
-      title={language.t("dialog.model.select.title")}
-      action={
+    <Dialog>
+      <DialogHeader hideClose>
+        <DialogTitle>{language.t("dialog.model.select.title")}</DialogTitle>
         <Button class="h-7 -my-1 text-14-medium" icon="plus-small" tabIndex={-1} onClick={provider}>
           {language.t("command.provider.connect")}
         </Button>
-      }
-    >
-      <ModelList provider={props.provider} model={props.model} onSelect={() => dialog.close()} />
-      <Button variant="ghost" class="ml-3 mt-5 mb-6 text-text-base self-start" onClick={manage}>
-        {language.t("dialog.model.manage")}
-      </Button>
+      </DialogHeader>
+      <DialogBody>
+        <ModelList provider={props.provider} model={props.model} onSelect={() => dialog.close()} />
+        <Button variant="ghost" class="ml-3 mt-5 mb-6 text-text-base self-start" onClick={manage}>
+          {language.t("dialog.model.manage")}
+        </Button>
+      </DialogBody>
     </Dialog>
   )
 }

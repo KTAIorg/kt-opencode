@@ -1,18 +1,34 @@
-export * as SessionCompaction from "./compaction"
+export * as SessionCompaction from "./compaction.js"
 
-import { LLM, LLMError, LLMEvent, Message, type LLMRequest, type Model } from "@opencode-ai/llm"
-import { DateTime, Effect, Stream } from "effect"
-import type { Config } from "../config"
-import type { EventV2 } from "../event"
-import { SessionEvent } from "./event"
-import { SessionMessage } from "./message"
-import { SessionSchema } from "./schema"
-import { Token } from "../util/token"
+import { LLM, LLMClient, AIError, LLMEvent, Message, type LLMRequest, type LanguageModel } from "@opencode-ai/ai"
+import type { StreamOptions } from "@opencode-ai/ai/route"
+import { SessionError } from "@opencode-ai/schema/session-error"
+import { Document, type Entry } from "@opencode-ai/schema/config"
+import { Context, Effect, Layer, Stream } from "effect"
+import { Config } from "../config.js"
+import { Bus } from "../bus.js"
+import { makeLocationNode } from "@opencode-ai/util/effect/app-node"
+import { llmClient } from "../effect/app-node-platform.js"
+import { SessionEvent } from "./event.js"
+import type { SessionMessage } from "./message.js"
+import { SessionModelHeaders } from "./model-headers.js"
+import { SessionModelHook } from "./model-hook.js"
+import { SessionModelHttp } from "./model-http.js"
+import { SessionPromptCacheKey } from "./prompt-cache-key.js"
+import { App } from "../app.js"
+import { SessionRunnerModel } from "./runner/model.js"
+import { SessionSchema } from "./schema.js"
+import { toSessionError } from "./to-session-error.js"
+import { Token } from "../util/token.js"
+import type { Info, Ref } from "../model.js"
+import { SessionUsage } from "./usage.js"
+import { PluginHooks } from "../plugin/hooks.js"
+import { Agent } from "../agent.js"
 
 const DEFAULT_BUFFER = 20_000
-const DEFAULT_KEEP_TOKENS = 8_000
+const DEFAULT_KEEP_TOKENS = 15_000
+const OUTPUT_TOKEN_MAX = 32_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
-const SUMMARY_OUTPUT_TOKENS = 4_096
 const SUMMARY_TEMPLATE = `Output exactly the Markdown structure shown inside <template> and keep the section order unchanged. Do not include the <template> tags in your response.
 <template>
 ## Objective
@@ -45,11 +61,6 @@ Rules:
 - Preserve exact file paths, symbols, commands, error strings, URLs, and identifiers when known.
 - Do not mention the summary process or that context was compacted.`
 
-type Entry = {
-  readonly seq: number
-  readonly message: SessionMessage.Message
-}
-
 type Settings = {
   readonly auto: boolean
   readonly buffer: number
@@ -57,21 +68,56 @@ type Settings = {
 }
 
 type Dependencies = {
-  readonly events: EventV2.Interface
+  readonly app: App.Info
+  readonly bus: Bus.Interface
   readonly llm: {
-    readonly stream: (request: LLMRequest) => Stream.Stream<LLMEvent, LLMError>
+    readonly stream: (request: LLMRequest, options?: StreamOptions) => Stream.Stream<LLMEvent, AIError>
   }
-  readonly config: readonly Config.Entry[]
+  readonly models: SessionRunnerModel.Interface
+  readonly config: Settings
+  readonly hooks: PluginHooks.Interface
 }
 
-type Input = {
-  readonly sessionID: SessionSchema.ID
-  readonly entries: readonly Entry[]
-  readonly model: Model
-  readonly request: LLMRequest
+export type AutoInput = {
+  readonly session: SessionSchema.Info
+  readonly messages: readonly SessionMessage.Info[]
+  readonly model: LanguageModel
+  readonly ref: Ref
+  readonly cost: Info["cost"]
 }
 
-const estimate = (value: unknown) => Token.estimate(JSON.stringify(value))
+export type ManualInput = {
+  readonly session: SessionSchema.Info
+  readonly messages: readonly SessionMessage.Info[]
+  readonly inputID: SessionMessage.ID
+  readonly started?: boolean
+}
+
+type RequiredInput = Omit<AutoInput, "ref">
+
+type Plan = {
+  readonly session: SessionSchema.Info
+  readonly model: LanguageModel
+  readonly ref: Ref
+  readonly cost: Info["cost"]
+  readonly reason: SessionMessage.Compaction["reason"]
+  readonly prompt: string
+  readonly recent: string
+  readonly inputID?: SessionMessage.ID
+  readonly started?: boolean
+}
+
+export type Outcome =
+  | Pick<SessionMessage.CompactionCompleted, "status">
+  | Pick<SessionMessage.CompactionFailed, "status" | "error">
+
+export interface Interface {
+  readonly required: (input: RequiredInput) => boolean
+  readonly compact: (input: AutoInput) => Effect.Effect<Outcome>
+  readonly compactManual: (input: ManualInput) => Effect.Effect<Outcome>
+}
+
+export class Service extends Context.Service<Service, Interface>()("@opencode/SessionCompaction") {}
 
 const truncate = (value: string) =>
   value.length <= TOOL_OUTPUT_MAX_CHARS ? value : `${value.slice(0, TOOL_OUTPUT_MAX_CHARS)}\n[truncated]`
@@ -83,11 +129,18 @@ export const serializeToolContent = (content: SessionMessage.ToolStateCompleted[
     )
     .join("\n")
 
-const serialize = (message: SessionMessage.Message) => {
+const serialize = (message: SessionMessage.Info) => {
   if (message.type === "user") {
-    const files = message.files?.map((file) => `[Attached ${file.mime}: ${file.name ?? file.uri}]`) ?? []
-    return [`[User]: ${message.text}`, ...files].join("\n")
+    const files =
+      message.files?.map(
+        (file) =>
+          `[Attached ${file.mime}: ${file.name ?? (file.source.type === "uri" ? file.source.uri : "inline attachment")}]`,
+      ) ?? []
+    const skills = message.skills?.map((skill) => `[Attached skill: ${skill.name}]\n${skill.text}`) ?? []
+    return [`[User]: ${message.text}`, ...skills, ...files].join("\n")
   }
+  if (message.type === "location-switched")
+    return `[User]: The working directory has been changed to ${message.location.directory}.`
   if (message.type === "assistant") {
     return message.content
       .flatMap((part) => {
@@ -107,54 +160,55 @@ const serialize = (message: SessionMessage.Message) => {
   }
   if (message.type === "system") return `[System update]: ${message.text}`
   if (message.type === "synthetic") return `[Synthetic context]: ${message.text}`
-  if (message.type === "shell") return `[Shell]: ${message.command}\n${truncate(message.output)}`
+  if (message.type === "skill") return `[Skill activated: ${message.name}]\n${message.text}`
+  if (message.type === "shell") return `[Shell]: ${message.command}\n${truncate(message.output?.output ?? "")}`
   return ""
 }
 
-const settings = (documents: readonly Config.Entry[]) => {
+const settings = (documents: readonly Entry[]) => {
   const configured = documents
-    .filter((entry): entry is Config.Document => entry.type === "document")
+    .filter((entry): entry is Document => entry.type === "document")
     .flatMap((entry) => (entry.info.compaction ? [entry.info.compaction] : []))
-  return configured.reduce<Settings>(
-    (result, current) => ({
-      auto: current.auto ?? result.auto,
-      buffer: current.buffer ?? result.buffer,
-      tokens: current.keep?.tokens ?? result.tokens,
-    }),
-    { auto: true, buffer: DEFAULT_BUFFER, tokens: DEFAULT_KEEP_TOKENS },
-  )
+  return {
+    auto: configured.findLast((value) => value.auto !== undefined)?.auto ?? true,
+    buffer: configured.findLast((value) => value.buffer !== undefined)?.buffer ?? DEFAULT_BUFFER,
+    tokens: configured.findLast((value) => value.keep?.tokens !== undefined)?.keep?.tokens ?? DEFAULT_KEEP_TOKENS,
+  }
 }
 
 const select = (
-  entries: readonly Entry[],
+  messages: readonly SessionMessage.Info[],
   tokens: number,
 ): { readonly head: string; readonly recent: string } | undefined => {
-  const conversation = entries
-    .filter((entry) => entry.message.type !== "compaction")
-    .map((entry) => serialize(entry.message))
-    .filter(Boolean)
-  if (conversation.length === 0) return
+  const conversation = messages
+    .filter((message) => message.type !== "compaction" && message.type !== "system")
+    .flatMap((message) => {
+      const text = serialize(message)
+      return text ? [{ message, text }] : []
+    })
+  if (conversation.length === 0) return undefined
   let total = 0
   let split = conversation.length
-  let splitPrefix = ""
-  let splitSuffix = ""
   for (let index = conversation.length - 1; index >= 0; index--) {
-    const next = total + Token.estimate(conversation[index])
-    if (next > tokens) {
-      const remaining = Math.max(0, tokens - total) * 4
-      if (remaining > 0) {
-        splitPrefix = conversation[index].slice(0, -remaining)
-        splitSuffix = conversation[index].slice(-remaining)
-        split = index + 1
-      }
-      break
-    }
+    const next = total + Token.estimate(conversation[index].text)
+    if (split < conversation.length && next > tokens) break
     total = next
     split = index
   }
+  while (split > 0 && conversation[split].message.type !== "user") split--
+  if (split === 0) {
+    const latestUser = conversation.findLastIndex((item) => item.message.type === "user")
+    if (latestUser > 0) split = latestUser
+  }
   return {
-    head: [...conversation.slice(0, split), splitPrefix].filter(Boolean).join("\n\n"),
-    recent: [splitSuffix, ...conversation.slice(split)].filter(Boolean).join("\n\n"),
+    head: conversation
+      .slice(0, split)
+      .map((item) => item.text)
+      .join("\n\n"),
+    recent: conversation
+      .slice(split)
+      .map((item) => item.text)
+      .join("\n\n"),
   }
 }
 
@@ -164,78 +218,228 @@ export const buildPrompt = (input: { readonly previousSummary?: string; readonly
       ? `Update the anchored summary below using the conversation history above.\nPreserve still-true details, remove stale details, and merge in the new facts.\n<previous-summary>\n${input.previousSummary}\n</previous-summary>`
       : "Create a new anchored summary from the conversation history.",
     SUMMARY_TEMPLATE,
+    "The following is the conversation history:",
     ...input.context,
   ].join("\n\n")
 
-export const make = (dependencies: Dependencies) => {
-  const config = settings(dependencies.config)
-  const compactAfterOverflow = Effect.fn("SessionCompaction.compactAfterOverflow")(function* (input: Input) {
-    const context = input.model.route.defaults.limits?.context
-    if (context === undefined || context <= 0) return false
-    const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
-    const selected = select(input.entries, config.tokens)
-    const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
-    if (!selected || (selected.head.length === 0 && previousSummary?.type !== "compaction")) return false
-    const summaryPrompt = buildPrompt({
+const planContent = (messages: readonly SessionMessage.Info[], tokens: number) => {
+  const selected = select(messages, tokens)
+  if (!selected) return
+  const previousSummary = messages.findLast(
+    (message) => message.type === "compaction" && message.status === "completed",
+  )
+  const previousRecent = previousSummary?.type === "compaction" ? previousSummary.recent : ""
+  const summarizeRecent = !previousRecent && !selected.head
+  return {
+    prompt: buildPrompt({
       previousSummary: previousSummary?.type === "compaction" ? previousSummary.summary : undefined,
-      context: [previousSummary?.type === "compaction" ? previousSummary.recent : "", selected.head].filter(Boolean),
-    })
-    const summaryOutput = Math.min(output || SUMMARY_OUTPUT_TOKENS, SUMMARY_OUTPUT_TOKENS)
-    if (Token.estimate(summaryPrompt) > context - summaryOutput) return false
-    const messageID = SessionMessage.ID.create()
-    yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
-      sessionID: input.sessionID,
-      messageID,
-      timestamp: yield* DateTime.now,
-      reason: "auto",
-    })
+      context: summarizeRecent ? [selected.recent] : [previousRecent, selected.head].filter(Boolean),
+    }),
+    recent: summarizeRecent ? "" : selected.recent,
+  }
+}
+
+const make = (dependencies: Dependencies) => {
+  const config = dependencies.config
+  const failed = Effect.fnUntraced(function* (input: {
+    readonly sessionID: SessionSchema.ID
+    readonly reason: SessionMessage.Compaction["reason"]
+    readonly error: SessionError.Error
+    readonly inputID?: SessionMessage.ID
+  }) {
+    yield* dependencies.bus.publish(SessionEvent.Compaction.Failed, input)
+    return { status: "failed" as const, error: input.error }
+  })
+  const execute = Effect.fn("SessionCompaction.execute")(function* (plan: Plan) {
+    if (!plan.started)
+      yield* dependencies.bus.publish(SessionEvent.Compaction.Started, {
+        sessionID: plan.session.id,
+        reason: plan.reason,
+        recent: plan.recent,
+        inputID: plan.inputID,
+      })
 
     const chunks: string[] = []
-    let failed = false
-    const summarized = yield* dependencies.llm
-      .stream(
-        LLM.request({
-          model: input.model,
-          messages: [Message.user(summaryPrompt)],
-          tools: [],
-          generation: { maxTokens: summaryOutput },
+    let failure: SessionError.Error | undefined
+    let usage: SessionUsage.Recorded | undefined
+    const recordUsage = Effect.suspend(() =>
+      usage
+        ? dependencies.bus.publish(SessionEvent.UsageRecorded, {
+            sessionID: plan.session.id,
+            source: "compaction",
+            ...usage,
+          })
+        : Effect.void,
+    )
+    const request = yield* SessionModelHook.apply(
+      dependencies.hooks,
+      { sessionID: plan.session.id, agent: Agent.ID.make("compaction"), model: plan.ref },
+      LLM.request({
+        model: plan.model,
+        promptCacheKey: SessionPromptCacheKey.make(plan.session.id),
+        http: { headers: SessionModelHeaders.make(plan.session, dependencies.app) },
+        messages: [Message.user(plan.prompt)],
+        tools: [],
+      }),
+    )
+    yield* dependencies.llm
+      .stream(request, {
+        http: SessionModelHttp.middleware(dependencies.hooks, {
+          sessionID: plan.session.id,
+          agent: Agent.ID.make("compaction"),
+          model: plan.ref,
         }),
-      )
+      })
       .pipe(
         Stream.runForEach((event) => {
-          if (LLMEvent.is.providerError(event)) failed = true
-          if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
+          if (LLMEvent.is.providerError(event))
+            failure = {
+              type: event.classification === "context-overflow" ? "provider.invalid-request" : "provider.error",
+              message: event.message,
+            }
+          if (LLMEvent.is.textDelta(event)) {
+            chunks.push(event.text)
+            return dependencies.bus.publish(SessionEvent.Compaction.Delta, {
+              sessionID: plan.session.id,
+              text: event.text,
+            })
+          }
+          if (LLMEvent.is.stepFinish(event)) {
+            const step = SessionUsage.record(event.usage, plan.cost)
+            usage = usage ? SessionUsage.add(usage, step) : step
+          }
           return Effect.void
         }),
-        Effect.as(true),
-        Effect.catchTag("LLM.Error", () => Effect.succeed(false)),
+        Effect.catchTag("AI.Error", (error) =>
+          Effect.sync(() => {
+            failure = toSessionError(error)
+          }),
+        ),
+        Effect.onInterrupt(() =>
+          recordUsage.pipe(
+            Effect.andThen(
+              plan.reason === "auto"
+                ? failed({
+                    sessionID: plan.session.id,
+                    reason: plan.reason,
+                    error: { type: "compaction.interrupted", message: "Compaction was interrupted" },
+                    inputID: plan.inputID,
+                  }).pipe(Effect.asVoid)
+                : Effect.void,
+            ),
+          ),
+        ),
       )
+    yield* recordUsage
     const summary = chunks.join("")
-    if (!summarized || failed || !summary.trim()) return false
-    yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
-      sessionID: input.sessionID,
-      messageID,
-      timestamp: yield* DateTime.now,
-      reason: "auto",
+    if (failure || !summary.trim()) {
+      const error = failure ?? { type: "compaction.failed" as const, message: "Compaction produced no summary" }
+      return yield* failed({
+        sessionID: plan.session.id,
+        reason: plan.reason,
+        error,
+        inputID: plan.inputID,
+      })
+    }
+    yield* dependencies.bus.publish(SessionEvent.Compaction.Ended, {
+      sessionID: plan.session.id,
+      reason: plan.reason,
       text: summary,
-      recent: selected.recent,
+      recent: plan.recent,
     })
-    return true
+    return { status: "completed" as const }
   })
-  const compactIfNeeded = Effect.fn("SessionCompaction.compactIfNeeded")(function* (input: Input) {
+  const compact = Effect.fn("SessionCompaction.compact")(function* (input: AutoInput) {
+    const content = planContent(input.messages, config.tokens)
+    if (content)
+      return yield* execute({
+        session: input.session,
+        model: input.model,
+        ref: input.ref,
+        cost: input.cost,
+        reason: "auto",
+        ...content,
+      })
+    const error = { type: "compaction.unavailable" as const, message: "Nothing to compact yet" }
+    return yield* failed({
+      sessionID: input.session.id,
+      reason: "auto",
+      error,
+    })
+  })
+  const required = (input: RequiredInput) => {
     if (!config.auto) return false
     const context = input.model.route.defaults.limits?.context
     if (context === undefined || context <= 0) return false
-    const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
-    if (
-      estimate({ system: input.request.system, messages: input.request.messages, tools: input.request.tools }) <=
-      context - Math.max(output, config.buffer)
+    const last = input.messages.findLast(
+      (message): message is SessionMessage.Assistant & { tokens: NonNullable<SessionMessage.Assistant["tokens"]> } =>
+        message.type === "assistant" && message.tokens !== undefined,
     )
-      return false
-    return yield* compactAfterOverflow(input)
-  })
-  return {
-    compactIfNeeded,
-    compactAfterOverflow,
+    if (!last) return false
+    const limits = input.model.route.defaults.limits
+    const output = Math.min(limits?.output ?? 0, OUTPUT_TOKEN_MAX)
+    const promptCeiling = Math.min(
+      limits?.input === undefined ? Number.POSITIVE_INFINITY : limits.input - config.buffer,
+      context - Math.max(output, config.buffer),
+    )
+    const used =
+      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
+    if (used <= 0) return false
+    return used >= promptCeiling
   }
+  const compactManual = Effect.fn("SessionCompaction.compactManual")(function* (input: ManualInput) {
+    const content = planContent(input.messages, config.tokens)
+    if (!content)
+      return yield* failed({
+        sessionID: input.session.id,
+        reason: "manual",
+        error: { type: "compaction.unavailable", message: "Nothing to compact yet" },
+        inputID: input.inputID,
+      })
+    const resolved = yield* dependencies.models.resolve(input.session).pipe(
+      Effect.catch((cause) =>
+        failed({
+          sessionID: input.session.id,
+          reason: "manual",
+          error: toSessionError(cause),
+          inputID: input.inputID,
+        }),
+      ),
+    )
+    if ("status" in resolved) return resolved
+    return yield* execute({
+      session: input.session,
+      model: resolved.model,
+      ref: resolved.ref,
+      cost: resolved.cost,
+      reason: "manual",
+      inputID: input.inputID,
+      started: input.started,
+      ...content,
+    })
+  })
+  return Service.of({
+    required,
+    compact,
+    compactManual,
+  })
 }
+
+export const layer = Layer.effect(
+  Service,
+  Effect.gen(function* () {
+    const bus = yield* Bus.Service
+    const llm = yield* LLMClient.Service
+    const config = yield* Config.Service
+    const models = yield* SessionRunnerModel.Service
+    const app = yield* App.Metadata
+    const hooks = yield* PluginHooks.Service
+    return make({ bus, llm, models, config: settings(yield* config.entries()), app, hooks })
+  }),
+)
+
+export const node = makeLocationNode({
+  service: Service,
+  layer,
+  deps: [Bus.node, llmClient, Config.node, SessionRunnerModel.node, App.node, PluginHooks.node],
+})

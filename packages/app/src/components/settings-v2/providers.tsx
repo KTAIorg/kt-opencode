@@ -1,16 +1,18 @@
-import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
-import { Tag } from "@opencode-ai/ui/v2/badge-v2"
+import { Button } from "@opencode-ai/ui/button"
+import { Badge } from "@opencode-ai/ui/badge"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { showToast } from "@/utils/toast"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
-import { createMemo, createResource, type Component, For, Show } from "solid-js"
+import { useIntegrations } from "@/hooks/use-integrations"
+import { createMemo, type Component, For, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
-import { useServerSync } from "@/context/server-sync"
 import { DialogConnectProvider, useProviderConnectController } from "../dialog-connect-provider"
 import { DialogCustomProvider } from "../dialog-custom-provider"
+import { SettingsServerScope } from "../settings-server-picker"
+import { InlineServerSelect } from "./parts/server-select"
 import { SettingsListV2 } from "./parts/list"
 import "./settings-v2.css"
 
@@ -31,36 +33,34 @@ const PROVIDER_NOTES = [
 
 const PROVIDER_ICON_SIZE = 16
 
-export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) => {
+export const SettingsProvidersV2: Component<{
+  directory: string | undefined
+  onBack?: () => void
+}> = (props) => {
   const dialog = useDialog()
   const language = useLanguage()
   const serverSdk = useServerSDK()
-  const serverSync = useServerSync()
-  const providers = useProviders()
-  const platform = usePlatform()
+  const providers = useProviders(() => props.directory)
+  const integrations = useIntegrations(() => props.directory)
   const providerConnect = useProviderConnectController({ onBack: props.onBack })
-  const [ktaiAccount] = createResource(() =>
-    (platform.fetch ?? fetch)(`${serverSdk().url.replace(/\/+$/, "")}/ktai/account`, {
-      headers:
-        serverSdk().server.http.username && serverSdk().server.http.password
-          ? {
-              authorization: `Basic ${btoa(`${serverSdk().server.http.username}:${serverSdk().server.http.password}`)}`,
-            }
-          : undefined,
-    })
-      .then((response) => (response.ok ? (response.json() as Promise<KTAIAccount>) : undefined))
-      .catch(() => undefined),
-  )
+  const integration = (providerID: string) => integrations.list().find((item) => item.id === providerID)
 
   const connect = (provider?: string) => {
     providerConnect.select(provider)
-    void dialog.show(() => <DialogConnectProvider controller={providerConnect} />)
+    void dialog.show(() => (
+      <SettingsServerScope directory={props.directory}>
+        <DialogConnectProvider directory={props.directory} controller={providerConnect} />
+      </SettingsServerScope>
+    ))
   }
 
   const connected = createMemo(() => {
     return providers
       .connected()
-      .filter((p) => p.id !== "opencode" || Object.values(p.models).find((m) => m.cost?.input))
+      .filter(
+        (provider) =>
+          provider.id !== "opencode" || Object.values(provider.models).some((model) => model.cost.input > 0),
+      )
   })
 
   const popular = createMemo(() => {
@@ -73,7 +73,14 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
     return items
   })
 
+  // Connection state comes from the integration list like the TUI: credential
+  // connections mean an API key or OAuth grant, env connections mean detected
+  // environment variables, and a connectionless integration is config-provided.
   const source = (item: ProviderItem): ProviderSource | undefined => {
+    const current = integration(item.id)
+    if (current?.connections.some((connection) => connection.type === "credential")) return "api"
+    if (current?.connections.some((connection) => connection.type === "env")) return "env"
+    if (current) return "config"
     if (!("source" in item)) return
     const value = item.source
     if (value === "env" || value === "api" || value === "config" || value === "custom") return value
@@ -84,60 +91,30 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
     const current = source(item)
     if (current === "env") return language.t("settings.providers.tag.environment")
     if (current === "api") return language.t("provider.connect.method.apiKey")
-    if (current === "config") {
-      if (isConfigCustom(item.id)) return language.t("settings.providers.tag.custom")
-      return language.t("settings.providers.tag.config")
-    }
+    if (current === "config") return language.t("settings.providers.tag.config")
     if (current === "custom") return language.t("settings.providers.tag.custom")
     return language.t("settings.providers.tag.other")
   }
 
-  const canDisconnect = (item: ProviderItem) => source(item) !== "env"
+  const canDisconnect = (item: ProviderItem) => {
+    const current = integration(item.id)
+    if (current) return current.connections.some((connection) => connection.type === "credential")
+    const currentSource = source(item)
+    return currentSource !== "env" && currentSource !== "config"
+  }
 
   const note = (id: string) => PROVIDER_NOTES.find((item) => item.match(id))?.key
 
-  const isConfigCustom = (providerID: string) => {
-    const provider = serverSync().data.config.provider?.[providerID]
-    if (!provider) return false
-    if (provider.npm !== "@ai-sdk/openai-compatible") return false
-    if (!provider.models || Object.keys(provider.models).length === 0) return false
-    return true
-  }
-
-  const disableProvider = async (providerID: string, name: string) => {
-    const before = serverSync().data.config.disabled_providers ?? []
-    const next = before.includes(providerID) ? before : [...before, providerID]
-    serverSync().set("config", "disabled_providers", next)
-
-    await serverSync()
-      .updateConfig({ disabled_providers: next })
-      .then(() => {
-        showToast({
-          variant: "success",
-          icon: "circle-check",
-          title: language.t("provider.disconnect.toast.disconnected.title", { provider: name }),
-          description: language.t("provider.disconnect.toast.disconnected.description", { provider: name }),
-        })
-      })
-      .catch((err: unknown) => {
-        serverSync().set("config", "disabled_providers", before)
-        const message = err instanceof Error ? err.message : String(err)
-        showToast({ title: language.t("common.requestFailed"), description: message })
-      })
-  }
-
   const disconnect = async (providerID: string, name: string) => {
-    if (isConfigCustom(providerID)) {
-      await serverSdk()
-        .client.auth.remove({ providerID })
-        .catch(() => undefined)
-      await disableProvider(providerID, name)
-      return
-    }
-    await serverSdk()
-      .client.auth.remove({ providerID })
-      .then(async () => {
-        await serverSdk().client.global.dispose()
+    const location = props.directory ? { directory: props.directory } : undefined
+    await serverSdk.api.integration
+      .get({ integrationID: providerID, location })
+      .then(async (integration) => {
+        const credentials = integration.data?.connections.filter((item) => item.type === "credential") ?? []
+        if (credentials.length === 0) throw new Error(`No removable credentials found for ${name}`)
+        await Promise.all(
+          credentials.map((credential) => serverSdk.api.credential.remove({ credentialID: credential.id, location })),
+        )
         showToast({
           variant: "success",
           icon: "circle-check",
@@ -154,7 +131,13 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
   return (
     <>
       <div class="settings-v2-tab-header">
-        <h2 class="settings-v2-tab-title">{language.t("settings.providers.title")}</h2>
+        <div class="settings-v2-tab-header-row">
+          <div class="flex flex-col gap-1">
+            <h2 class="settings-v2-tab-title">{language.t("settings.providers.title")}</h2>
+            <span class="text-11-regular text-v2-text-text-muted">{language.t("settings.providers.description")}</span>
+          </div>
+          <InlineServerSelect />
+        </div>
       </div>
 
       <div class="settings-v2-tab-body settings-v2-providers">
@@ -177,18 +160,9 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
                         height={PROVIDER_ICON_SIZE}
                         class="settings-v2-provider-icon shrink-0"
                       />
-                      <div class="settings-v2-provider-copy">
-                        <div class="settings-v2-provider-main">
-                          <span class="settings-v2-provider-name truncate">{item.name}</span>
-                          <Tag>{type(item)}</Tag>
-                        </div>
-                        <Show when={item.id === "ktai" && ktaiAccount()}>
-                          {(account) => (
-                            <p class="settings-v2-provider-description">
-                              {account().account.displayName ?? account().account.accountNo} · {account().balance}
-                            </p>
-                          )}
-                        </Show>
+                      <div class="settings-v2-provider-main">
+                        <span class="settings-v2-provider-name truncate">{item.name}</span>
+                        <Badge>{type(item)}</Badge>
                       </div>
                     </div>
                     <Show
@@ -199,9 +173,9 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
                         </span>
                       }
                     >
-                      <ButtonV2 size="normal" variant="ghost-muted" onClick={() => void disconnect(item.id, item.name)}>
+                      <Button size="normal" variant="ghost-muted" onClick={() => void disconnect(item.id, item.name)}>
                         {language.t("common.disconnect")}
-                      </ButtonV2>
+                      </Button>
                     </Show>
                   </div>
                 )}
@@ -227,7 +201,7 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
                       <div class="settings-v2-provider-main">
                         <span class="settings-v2-provider-name">{item.name}</span>
                         <Show when={item.id === "opencode" || item.id === "opencode-go"}>
-                          <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
+                          <Badge>{language.t("dialog.provider.tag.recommended")}</Badge>
                         </Show>
                       </div>
                       <Show when={note(item.id)}>
@@ -235,40 +209,48 @@ export const SettingsProvidersV2: Component<{ onBack?: () => void }> = (props) =
                       </Show>
                     </div>
                   </div>
-                  <ButtonV2 size="normal" variant="neutral" icon="plus" onClick={() => connect(item.id)}>
+                  <Button size="normal" variant="neutral" icon="plus" onClick={() => connect(item.id)}>
                     {language.t("common.connect")}
-                  </ButtonV2>
+                  </Button>
                 </div>
               )}
             </For>
 
-            <div class="settings-v2-provider-row" data-component="custom-provider-section">
-              <div class="settings-v2-provider-lead">
-                <ProviderIcon
-                  id="synthetic"
-                  width={PROVIDER_ICON_SIZE}
-                  height={PROVIDER_ICON_SIZE}
-                  class="settings-v2-provider-icon shrink-0"
-                />
-                <div class="settings-v2-provider-copy">
-                  <div class="settings-v2-provider-main">
-                    <span class="settings-v2-provider-name">{language.t("provider.custom.title")}</span>
-                    <Tag>{language.t("settings.providers.tag.custom")}</Tag>
+            <Show when={false}>
+              <div class="settings-v2-provider-row" data-component="custom-provider-section">
+                <div class="settings-v2-provider-lead">
+                  <ProviderIcon
+                    id="synthetic"
+                    width={PROVIDER_ICON_SIZE}
+                    height={PROVIDER_ICON_SIZE}
+                    class="settings-v2-provider-icon shrink-0"
+                  />
+                  <div class="settings-v2-provider-copy">
+                    <div class="settings-v2-provider-main">
+                      <span class="settings-v2-provider-name">{language.t("provider.custom.title")}</span>
+                      <Badge>{language.t("settings.providers.tag.custom")}</Badge>
+                    </div>
+                    <p class="settings-v2-provider-description">
+                      {language.t("settings.providers.custom.description")}
+                    </p>
                   </div>
-                  <p class="settings-v2-provider-description">{language.t("settings.providers.custom.description")}</p>
                 </div>
+                <Button
+                  size="normal"
+                  variant="neutral"
+                  icon="plus"
+                  onClick={() => {
+                    dialog.show(() => (
+                      <SettingsServerScope directory={props.directory}>
+                        <DialogCustomProvider onBack={dialog.close} />
+                      </SettingsServerScope>
+                    ))
+                  }}
+                >
+                  {language.t("common.connect")}
+                </Button>
               </div>
-              <ButtonV2
-                size="normal"
-                variant="neutral"
-                icon="plus"
-                onClick={() => {
-                  dialog.show(() => <DialogCustomProvider onBack={dialog.close} />)
-                }}
-              >
-                {language.t("common.connect")}
-              </ButtonV2>
-            </div>
+            </Show>
           </SettingsListV2>
 
           <button type="button" class="settings-v2-providers-view-all" onClick={() => connect()}>

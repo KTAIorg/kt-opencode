@@ -1,16 +1,16 @@
-import { getDirectory, getFilename } from "@opencode-ai/core/util/path"
+import { getDirectory, getFilename } from "@opencode-ai/util/path"
 import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { ScrollView } from "@opencode-ai/ui/scroll-view"
-import { Dialog, DialogBody } from "@opencode-ai/ui/v2/dialog-v2"
-import { Icon } from "@opencode-ai/ui/v2/icon"
-import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
-import { TextInputV2 } from "@opencode-ai/ui/v2/text-input-v2"
+import { Dialog, DialogBody } from "@opencode-ai/ui/dialog"
+import { Icon } from "@opencode-ai/ui/icon"
+import { Keybind } from "@opencode-ai/ui/keybind"
+import { TextInput } from "@opencode-ai/ui/text-input"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { createEffect, createMemo, createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { commandPaletteOptions, formatKeybindParts, useCommand } from "@/context/command"
 import { useGlobal } from "@/context/global"
 import { useLanguage } from "@/context/language"
-import { ServerConnection } from "@/context/server"
+import { ServerConnection } from "@/context/servers"
 import { useTabs } from "@/context/tabs"
 import { SessionTabAvatar } from "@/pages/layout/session-tab-avatar"
 import { getRelativeTime } from "@/utils/time"
@@ -79,8 +79,7 @@ export function DialogHomeCommandPaletteV2(props: {
     server: ServerConnection.key(props.server),
     opened: serverCtx.projects.list,
     stored: () => serverCtx.sync.data.project,
-    load: (search, signal) =>
-      serverCtx.sdk.client.experimental.session.list({ roots: true, search, limit: 50 }, { signal }),
+    load: (search, signal) => serverCtx.sdk.api.session.list({ parentID: null, search, limit: 50 }, { signal }),
     untitled: () => language.t("command.session.new"),
     category: () => language.t("command.category.session"),
   })
@@ -192,7 +191,7 @@ function CommandPaletteView(props: {
     <Dialog class="command-palette-v2" size="large">
       <DialogBody class="command-palette-v2-body">
         <div class="command-palette-v2-search">
-          <TextInputV2
+          <TextInput
             value={query()}
             autofocus
             autocomplete="off"
@@ -296,7 +295,7 @@ function PaletteRow(props: {
             </div>
           </div>
           <Show when={props.item.keybind}>
-            <KeybindV2 keys={formatKeybindParts(props.item.keybind ?? "", props.language.t)} variant="neutral" />
+            <Keybind keys={formatKeybindParts(props.item.keybind ?? "", props.language.t)} variant="neutral" />
           </Show>
         </Match>
         <Match when={props.item.type === "session"}>

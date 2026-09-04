@@ -1,56 +1,32 @@
+import { For, Show, createMemo } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { Dialog } from "@opencode-ai/ui/dialog"
-import { TextField } from "@opencode-ai/ui/text-field"
-import { Show, createMemo } from "solid-js"
-import { createStore } from "solid-js/store"
-import { usePlatform } from "@/context/platform"
+import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode-ai/ui/dialog"
 import { useLanguage } from "@/context/language"
-import { useServerSDK } from "@/context/server-sdk"
 import { useLocal } from "@/context/local"
-import { useProviders } from "@/hooks/use-providers"
-import { showToast } from "@/utils/toast"
-import { ModelList } from "@/components/dialog-select-model"
-
-export const KT_WALLET_URL = "https://www.ktapi.cc/wallet"
+import { openKtWallet } from "@/components/dialog-kt-wallet"
+import { openKtIdentityLogin } from "@/components/dialog-kt-identity-login"
+import { compareKtaiModelOrder, isKtaiProviderID } from "@/utils/ktai-model-order"
+import { useKtaiSignedIn } from "@/utils/kt-signed-in"
 
 export type DialogKtAccessGuideProps = {
-  /** auth = invalid token; billing = quota / balance */
   kind?: "auth" | "billing"
   onClose?: (dontShowAgain?: boolean) => void
 }
 
-/** Guided KT onboarding: paste key, or switch to paid KTAI when key already exists. */
 export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
   const dialog = useDialog()
-  const platform = usePlatform()
   const language = useLanguage()
-  const serverSDK = useServerSDK()
   const local = useLocal()
-  const providers = useProviders()
   const kind = () => props.kind ?? "auth"
-  /** Real credential — not the config-only discovery catalog (always present without a key). */
-  const ktaiHasCredential = () =>
-    providers.connected().some((p) => {
-      if (!(p.id === "ktai" || p.id === "ktapi" || p.id.startsWith("ktai"))) return false
-      if (p.source === "api" || p.source === "env") return true
-      return Boolean(p.key)
-    })
-  /** Soft-quota with an existing key → pick a paid KTAI model in-dialog (not text-only steps). */
-  const switchMode = () => kind() === "billing" && ktaiHasCredential()
-  const ktaiModelCount = createMemo(
-    () =>
-      local.model
-        .list()
-        .filter((m) => m.provider.id === "ktai" || m.provider.id === "ktapi" || m.provider.id.startsWith("ktai"))
-        .filter((m) => local.model.visible({ modelID: m.id, providerID: m.provider.id })).length,
+  const signedIn = useKtaiSignedIn()
+  const billingSignedIn = () => kind() === "billing" && signedIn() === true
+  const kitoModels = createMemo(() =>
+    local.model
+      .list()
+      .filter((item) => isKtaiProviderID(item.provider.id))
+      .toSorted(compareKtaiModelOrder),
   )
-
-  const [form, setForm] = createStore({
-    value: "",
-    error: undefined as string | undefined,
-    saving: false,
-  })
 
   const close = (dontShowAgain?: boolean) => {
     props.onClose?.(dontShowAgain)
@@ -58,149 +34,121 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
   }
 
   const openWallet = () => {
-    platform.openLink(KT_WALLET_URL)
+    openKtWallet({ dialog, onClose: () => props.onClose?.(false) })
   }
 
-  const openFullModelPicker = async () => {
-    const { DialogSelectModel } = await import("@/components/dialog-select-model")
-    void dialog.show(() => <DialogSelectModel provider="ktai" />)
+  const startTelegramLogin = () => {
+    openKtIdentityLogin({ dialog, onClose: () => props.onClose?.(false) })
   }
 
-  const saveKey = async (e: SubmitEvent) => {
-    e.preventDefault()
-    const apiKey = form.value.trim()
-    if (!apiKey) {
-      setForm("error", language.t("provider.connect.apiKey.required"))
-      return
-    }
-    setForm({ error: undefined, saving: true })
-    try {
-      await serverSDK().client.auth.set({
-        providerID: "ktai",
-        auth: { type: "api", key: apiKey },
-      })
-      await serverSDK().client.global.dispose()
-      props.onClose?.(false)
-      dialog.close()
-      showToast({
-        variant: "success",
-        icon: "circle-check",
-        title: language.t("provider.connect.toast.connected.title", { provider: "KTAI" }),
-        description: language.t("provider.connect.toast.connected.description", { provider: "KTAI" }),
-      })
-    } catch (err) {
-      const message = err instanceof Error && err.message ? err.message : language.t("provider.connect.apiKey.required")
-      setForm({ error: message, saving: false })
-    }
+  const pickModel = (item: ReturnType<typeof kitoModels>[number]) => {
+    local.model.set({ modelID: item.id, providerID: item.provider.id }, { recent: true })
+    close(false)
+  }
+
+  const openAllModels = () => {
+    close(false)
+    void import("./dialog-select-model").then((x) => {
+      dialog.show(() => <x.DialogSelectModel provider="ktai" />)
+    })
   }
 
   return (
-    <Show
-      when={switchMode()}
-      fallback={
-        <Dialog
-          fit
+    <Dialog fit>
+      <DialogHeader>
+        <DialogTitleGroup
           title={
-            kind() === "billing"
-              ? language.t("dialog.ktAccess.billing.title")
-              : language.t("dialog.ktAccess.auth.title")
+            billingSignedIn()
+              ? language.t("dialog.ktAccess.switch.title")
+              : kind() === "billing"
+                ? language.t("dialog.ktAccess.billing.title")
+                : language.t("dialog.ktAccess.auth.title")
           }
           description={
-            kind() === "billing"
-              ? language.t("dialog.ktAccess.billing.lead")
-              : language.t("dialog.ktAccess.auth.lead")
+            billingSignedIn()
+              ? language.t("dialog.ktAccess.switch.lead")
+              : kind() === "billing"
+                ? language.t("dialog.ktAccess.billing.lead")
+                : language.t("dialog.ktAccess.auth.lead")
           }
-        >
-          <form class="flex flex-col gap-4 pl-6 pr-2.5 pb-3" onSubmit={saveKey}>
-            <ol class="list-decimal pl-5 flex flex-col gap-2 text-14-regular text-text-base">
-              <li>{language.t("dialog.ktAccess.step1")}</li>
-              <li>{language.t("dialog.ktAccess.step2")}</li>
-              <li>{language.t("dialog.ktAccess.step3")}</li>
-            </ol>
-            <TextField
-              autofocus
-              type="text"
-              label={language.t("provider.connect.apiKey.label", { provider: "KTAI" })}
-              placeholder={language.t("provider.connect.apiKey.placeholder")}
-              name="apiKey"
-              value={form.value}
-              onChange={(v) => setForm({ value: v, error: undefined })}
-              validationState={form.error ? "invalid" : undefined}
-              error={form.error}
-            />
-            <p class="text-12-regular text-text-weak">{language.t("dialog.ktAccess.hint")}</p>
-            <div class="flex flex-wrap justify-end gap-2">
-              <Button variant="ghost" size="large" type="button" onClick={() => close(kind() !== "billing")}>
-                {kind() === "billing"
-                  ? language.t("dialog.ktAccess.snooze")
-                  : language.t("dialog.ktAccess.dismiss")}
-              </Button>
-              <Button variant="secondary" size="large" type="button" onClick={openWallet}>
-                {language.t("dialog.ktAccess.openWallet")}
-              </Button>
-              <Button variant="primary" size="large" type="submit" disabled={form.saving}>
-                {language.t("dialog.ktAccess.saveKey")}
-              </Button>
-            </div>
-          </form>
-        </Dialog>
-      }
-    >
-      <Dialog
-        size="large"
-        title={language.t("dialog.ktAccess.switch.title")}
-        description={language.t("dialog.ktAccess.switch.lead")}
-      >
-        <div class="flex flex-col gap-3 pb-3 min-h-0">
-          <p class="px-6 text-13-regular text-text-weak">{language.t("dialog.ktAccess.switch.pickHint")}</p>
+        />
+      </DialogHeader>
+      <DialogBody>
+        <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
           <Show
-            when={ktaiModelCount() > 0}
+            when={billingSignedIn()}
             fallback={
-              <div class="px-6 flex flex-col gap-3">
-                <p class="text-14-regular text-text-base">{language.t("dialog.ktAccess.switch.empty")}</p>
-                <div class="flex flex-wrap justify-end gap-2">
-                  <Button variant="ghost" size="large" type="button" onClick={() => close(false)}>
-                    {language.t("dialog.ktAccess.snooze")}
-                  </Button>
-                  <Button variant="secondary" size="large" type="button" onClick={openWallet}>
-                    {language.t("dialog.ktAccess.openWallet")}
-                  </Button>
-                  <Button variant="primary" size="large" type="button" autofocus onClick={() => void openFullModelPicker()}>
-                    {language.t("dialog.ktAccess.switch.browseAll")}
-                  </Button>
-                </div>
-              </div>
+              <>
+                <ol class="list-decimal pl-5 flex flex-col gap-2 text-14-regular text-text-base">
+                  <li>{language.t("dialog.ktAccess.step1")}</li>
+                  <li>{language.t("dialog.ktAccess.step2")}</li>
+                  <li>{language.t("dialog.ktAccess.step3")}</li>
+                </ol>
+                <p class="text-12-regular text-text-weak">{language.t("dialog.ktAccess.hint")}</p>
+              </>
             }
           >
-            <div class="min-h-[220px] max-h-[360px] flex flex-col">
-              <ModelList provider="ktai" onSelect={() => close(false)} />
-            </div>
-            <div class="flex flex-wrap justify-between gap-2 px-6 pt-1">
-              <Button variant="ghost" size="large" type="button" onClick={() => void openFullModelPicker()}>
+            <p class="text-12-regular text-text-weak">{language.t("dialog.ktAccess.switch.pickHint")}</p>
+            <Show
+              when={kitoModels().length > 0}
+              fallback={<p class="text-14-regular text-text-base">{language.t("dialog.ktAccess.switch.empty")}</p>}
+            >
+              <div class="flex max-h-64 flex-col gap-1 overflow-y-auto pr-1">
+                <For each={kitoModels()}>
+                  {(item) => (
+                    <button
+                      type="button"
+                      class="flex w-full items-center rounded-md px-3 py-2 text-left text-14-regular text-text-base hover:bg-surface-raised-base-hover"
+                      onClick={() => pickModel(item)}
+                    >
+                      <span class="min-w-0 truncate">{item.name}</span>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </Show>
+          <div class="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" size="large" type="button" onClick={() => close(kind() !== "billing")}>
+              {kind() === "billing" ? language.t("dialog.ktAccess.snooze") : language.t("dialog.ktAccess.dismiss")}
+            </Button>
+            <Show when={billingSignedIn()}>
+              <Button variant="ghost" size="large" type="button" onClick={openAllModels}>
                 {language.t("dialog.ktAccess.switch.browseAll")}
               </Button>
-              <div class="flex flex-wrap justify-end gap-2">
-                <Button variant="ghost" size="large" type="button" onClick={() => close(false)}>
-                  {language.t("dialog.ktAccess.snooze")}
-                </Button>
-                <Button variant="secondary" size="large" type="button" onClick={openWallet}>
-                  {language.t("dialog.ktAccess.openWallet")}
-                </Button>
-              </div>
-            </div>
-          </Show>
+              <Button variant="outline" size="large" type="button" onClick={openWallet}>
+                {language.t("dialog.ktAccess.openWallet")}
+              </Button>
+            </Show>
+            <Show when={kind() === "billing" && signedIn() === false}>
+              <Button variant="contrast" size="large" type="button" onClick={startTelegramLogin}>
+                {language.t("dialog.ktAccess.telegram")}
+              </Button>
+            </Show>
+            <Show when={kind() !== "billing"}>
+              <Button variant="outline" size="large" type="button" onClick={openWallet}>
+                {language.t("dialog.ktAccess.openWallet")}
+              </Button>
+              <Button variant="contrast" size="large" type="button" onClick={startTelegramLogin}>
+                {language.t("dialog.ktAccess.telegram")}
+              </Button>
+            </Show>
+          </div>
         </div>
-      </Dialog>
-    </Show>
+      </DialogBody>
+    </Dialog>
   )
 }
 
-/** Open the guided connect flow for KTAI API key (used by error cards / CTAs). */
 export function openKtAccessGuide(input: {
   dialog: ReturnType<typeof useDialog>
   kind?: "auth" | "billing"
   onClose?: (dontShowAgain?: boolean) => void
 }) {
+  if ((input.kind ?? "auth") === "auth") {
+    openKtIdentityLogin({ dialog: input.dialog, onClose: () => input.onClose?.(false) })
+    return
+  }
   void input.dialog.show(
     () => <DialogKtAccessGuide kind={input.kind} onClose={input.onClose} />,
     () => input.onClose?.(false),

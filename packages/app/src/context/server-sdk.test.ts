@@ -1,160 +1,86 @@
 import { describe, expect, test } from "bun:test"
-import { coalesceServerEvents, enqueueServerEvent, resumeStreamAfterPageShow } from "./server-sdk"
-import type { Event } from "@opencode-ai/sdk/v2/client"
+import type { OpenCodeEvent } from "@opencode-ai/client/promise"
+import { createRoot } from "solid-js"
+import { createOpenCodeEventSource } from "./server-sdk"
 
-describe("resumeStreamAfterPageShow", () => {
-  test("restarts a stream only after a back-forward cache restore", () => {
-    let starts = 0
-    const start = () => starts++
+const permission = {
+  id: "evt_permission",
+  created: 1,
+  type: "permission.asked",
+  location: { directory: "/repo", workspaceID: "workspace_1" },
+  data: {
+    id: "perm_1",
+    sessionID: "ses_1",
+    action: "read",
+    resources: ["src/**"],
+    source: { type: "tool", messageID: "msg_1", id: "call_1" },
+  },
+} satisfies Extract<OpenCodeEvent, { type: "permission.asked" }>
 
-    resumeStreamAfterPageShow({ persisted: false } as PageTransitionEvent, start)
-    resumeStreamAfterPageShow({ persisted: true } as PageTransitionEvent, start)
+function setup() {
+  return createRoot((dispose) => ({ ...createOpenCodeEventSource(), dispose }))
+}
 
-    expect(starts).toBe(1)
-  })
-})
+describe("server event stream", () => {
+  test("publishes the original current event with exact data", () => {
+    const server = setup()
+    const received: OpenCodeEvent[] = []
+    let requestID: string | undefined
 
-describe("coalesceServerEvents", () => {
-  const delta = (value: string, field = "text", partID = "part") => ({
-    directory: "/repo",
-    payload: {
-      type: "message.part.delta",
-      properties: { messageID: "msg", partID, field, delta: value },
-    } as Event,
-  })
+    server.event.on("permission.asked", (event) => {
+      requestID = event.data.id
+    })
+    server.event.listen((event) => received.push(event))
+    server.publish(permission)
 
-  test("merges adjacent deltas for the same field", () => {
-    const first = delta("hello ")
-    const second = delta("world")
-    first.payload.id = "first"
-    second.payload.id = "second"
-    const result = coalesceServerEvents([first, second])
-
-    expect(result).toHaveLength(1)
-    expect(result[0]?.payload).toMatchObject({ id: "second", properties: { delta: "hello world" } })
-  })
-
-  test("preserves event boundaries and distinct fields", () => {
-    const status = {
-      directory: "/repo",
-      payload: { type: "session.status", properties: { sessionID: "ses", status: { type: "idle" } } } as Event,
-    }
-    const result = coalesceServerEvents([delta("a"), delta("b", "metadata"), status, delta("c")])
-
-    expect(result.map((event) => event.payload.type)).toEqual([
-      "message.part.delta",
-      "message.part.delta",
-      "session.status",
-      "message.part.delta",
-    ])
+    expect(requestID).toBe("perm_1")
+    expect(received).toEqual([permission])
+    expect(received[0]).toBe(permission)
+    server.dispose()
   })
 
-  test("preserves event ID order across interleaved deltas", () => {
-    const first = delta("a")
-    const other = delta("b", "text", "other")
-    const last = delta("c")
-    first.payload.id = "1"
-    other.payload.id = "2"
-    last.payload.id = "3"
+  test("filters locations without changing workspace identity", () => {
+    const server = setup()
+    const repo: OpenCodeEvent[] = []
+    const other: OpenCodeEvent[] = []
+    const all: OpenCodeEvent[] = []
+    let workspaceID: string | undefined
+    const global = {
+      id: "evt_connected",
+      type: "server.connected",
+      data: {},
+    } satisfies Extract<OpenCodeEvent, { type: "server.connected" }>
 
-    const result = coalesceServerEvents([first, other, last])
+    const repoEvents = server.event.location("/repo")
+    repoEvents.on("permission.asked", (event) => {
+      workspaceID = event.location?.workspaceID
+    })
+    repoEvents.listen((event) => repo.push(event))
+    server.event.location("/other").listen((event) => other.push(event))
+    server.event.listen((event) => all.push(event))
+    server.publish(permission)
+    server.publish(global)
 
-    expect(result.map((event) => event.payload.id)).toEqual(["1", "2", "3"])
-  })
-})
-
-describe("enqueueServerEvent", () => {
-  const partUpdated = (text: string) =>
-    ({
-      type: "message.part.updated",
-      properties: {
-        sessionID: "session",
-        part: { id: "part", sessionID: "session", messageID: "message", type: "text", text },
-      },
-    }) as Event
-
-  test("preserves part updates across message remove and re-add barriers", () => {
-    const events: Array<{ directory: string; payload: Event }> = []
-    const enqueue = (payload: Event) => enqueueServerEvent(events, { directory: "/repo", payload })
-
-    enqueue(partUpdated("old"))
-    enqueue({ type: "message.removed", properties: { sessionID: "session", messageID: "message" } } as Event)
-    enqueue({
-      type: "message.updated",
-      properties: {
-        sessionID: "session",
-        info: {
-          id: "message",
-          sessionID: "session",
-          role: "user",
-          time: { created: 1 },
-          agent: "build",
-          model: { providerID: "provider", modelID: "model" },
-        },
-      },
-    } as Event)
-    enqueue(partUpdated("new"))
-
-    expect(events.map((event) => event.payload.type)).toEqual([
-      "message.part.updated",
-      "message.removed",
-      "message.updated",
-      "message.part.updated",
-    ])
+    expect(repo).toEqual([permission])
+    expect(workspaceID).toBe("workspace_1")
+    expect(other).toEqual([])
+    expect(all).toEqual([permission, global])
+    server.dispose()
   })
 
-  test("preserves deltas after a replacement snapshot", () => {
-    const events: Array<{ directory: string; payload: Event }> = []
-    const enqueue = (payload: Event) => enqueueServerEvent(events, { directory: "/repo", payload })
+  test("isolates servers and clears subscriptions with their owner", () => {
+    const first = setup()
+    const second = setup()
+    const received = { first: 0, second: 0 }
 
-    enqueue(partUpdated("a"))
-    enqueue(partUpdated("ab"))
-    enqueue({
-      type: "message.part.delta",
-      properties: { sessionID: "session", messageID: "message", partID: "part", field: "text", delta: "c" },
-    } as Event)
+    first.event.listen(() => received.first++)
+    second.event.listen(() => received.second++)
+    first.publish(permission)
+    first.dispose()
+    first.publish(permission)
+    second.publish(permission)
 
-    const result = coalesceServerEvents(events)
-    expect(result.map((event) => event.payload.type)).toEqual(["message.part.updated", "message.part.delta"])
-    expect(result[0]?.payload).toMatchObject({ properties: { part: { text: "ab" } } })
-    expect(result[1]?.payload).toMatchObject({ properties: { delta: "c" } })
-  })
-
-  test("preserves updates after session deletion", () => {
-    const events: Array<{ directory: string; payload: Event }> = []
-    const enqueue = (payload: Event) => enqueueServerEvent(events, { directory: "/repo", payload })
-
-    enqueue(partUpdated("old"))
-    enqueue({
-      type: "session.deleted",
-      properties: { sessionID: "session", info: { id: "session" } },
-    } as Event)
-    enqueue(partUpdated("new"))
-
-    expect(events.map((event) => event.payload.type)).toEqual([
-      "message.part.updated",
-      "session.deleted",
-      "message.part.updated",
-    ])
-  })
-
-  test("does not coalesce edge-triggered session statuses", () => {
-    const events: Array<{ directory: string; payload: Event }> = []
-    const enqueue = (status: "retry" | "busy") =>
-      enqueueServerEvent(events, {
-        directory: "/repo",
-        payload: {
-          type: "session.status",
-          properties: {
-            sessionID: "session",
-            status: status === "retry" ? { type: "retry", attempt: 1, message: "retry", next: 1 } : { type: "busy" },
-          },
-        } as Event,
-      })
-
-    enqueue("retry")
-    enqueue("busy")
-
-    expect(events).toHaveLength(2)
+    expect(received).toEqual({ first: 1, second: 1 })
+    second.dispose()
   })
 })

@@ -15,6 +15,9 @@ const signScript = path.join(rootDir, "script", "sign-windows.ps1")
 const legacyDesktopEntry = path.join(packageDir, "resources", "linux", "opencode-desktop.desktop")
 const legacyDesktopEntryFpm = `${legacyDesktopEntry}=/usr/share/applications/opencode-desktop.desktop`
 
+const metainfoFpm = (appId: string) =>
+  `${path.join(packageDir, "resources", `${appId}.metainfo.xml`)}=/usr/share/metainfo/${appId}.metainfo.xml`
+
 async function signWindows(configuration: { path: string }) {
   if (process.platform !== "win32") return
   if (process.env.GITHUB_ACTIONS !== "true") return
@@ -55,8 +58,17 @@ const getBase = (appId: string): Configuration => ({
   extraMetadata: {
     desktopName: `${appId}.desktop`,
   },
-  files: ["out/**/*", "resources/**/*"],
+  files: ["out/**/*", "resources/**/*", "!resources/opencode-cli*"],
   extraResources: [
+    ...(channel !== "prod"
+      ? [
+          {
+            from: "resources/",
+            to: "",
+            filter: ["opencode-cli*"],
+          },
+        ]
+      : []),
     {
       from: "native/",
       to: "native/",
@@ -119,29 +131,31 @@ function getConfig() {
       return {
         ...base,
         appId,
-        productName: "KTAI Dev",
-        rpm: { packageName: "ktai-dev" },
+        productName: "Kito Dev",
+        deb: { fpm: [metainfoFpm(appId)] },
+        rpm: { packageName: "opencode-dev", fpm: [metainfoFpm(appId)] },
       }
     }
     case "beta": {
       return {
         ...base,
         appId,
-        productName: "KTAI Beta",
-        protocols: { name: "KTAI Beta", schemes: ["ktai"] },
-        publish: { provider: "github", owner: "KTAIorg", repo: "kt-opencode", channel: "beta" },
-        rpm: { packageName: "ktai-beta" },
+        productName: "Kito Beta",
+        protocols: { name: "Kito Beta", schemes: ["ktai", "opencode"] },
+        publish: { provider: "github", owner: "ktaiorg", repo: "kt-opencode", channel: "latest" },
+        deb: { fpm: [metainfoFpm(appId)] },
+        rpm: { packageName: "opencode-beta", fpm: [metainfoFpm(appId)] },
       }
     }
     case "prod": {
       return {
         ...base,
         appId,
-        productName: "KTAI",
-        protocols: { name: "KTAI", schemes: ["ktai"] },
-        publish: { provider: "github", owner: "KTAIorg", repo: "kt-opencode", channel: "latest" },
-        deb: { fpm: [legacyDesktopEntryFpm] },
-        rpm: { packageName: "ktai", fpm: [legacyDesktopEntryFpm] },
+        productName: "Kito",
+        protocols: { name: "Kito", schemes: ["ktai", "opencode"] },
+        publish: { provider: "github", owner: "ktaiorg", repo: "kt-opencode", channel: "latest" },
+        deb: { fpm: [metainfoFpm(appId), legacyDesktopEntryFpm] },
+        rpm: { packageName: "opencode", fpm: [metainfoFpm(appId), legacyDesktopEntryFpm] },
       }
     }
   }

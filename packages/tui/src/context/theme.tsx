@@ -1,92 +1,129 @@
 import { CliRenderEvents, SyntaxStyle, type TerminalColors } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import {
+  generateSyntax,
+  resolveThemeDocument,
+  themeModes,
+  type ResolvedTheme,
+  type ContextName,
+} from "@opencode-ai/theme/tui"
+import {
   DEFAULT_THEMES,
   addTheme,
   allThemes,
-  generateSubtleSyntax,
-  generateSyntax,
-  generateSystem,
   hasTheme,
-  isTheme,
-  resolveTheme,
+  parseTheme,
   selectedForeground,
   setCustomThemes,
   setSystemTheme,
   subscribeThemes,
-  terminalMode,
-  tint,
   upsertTheme,
-  type ThemeJson,
+  type Theme,
+  type ThemeDocumentSource,
 } from "../theme"
-import { createEffect, createMemo, onCleanup, onMount } from "solid-js"
+import { generateSystem, terminalMode } from "../theme/system"
+import { discoverThemes } from "../theme/discovery"
+import { createComponentTheme, type ComponentTheme } from "../theme/component"
+import { createEffect, createMemo, onCleanup, onMount, type Accessor, type ParentProps } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "./helper"
-import { useKV } from "./kv"
-import { useTuiConfig } from "../config"
-import { Global } from "@opencode-ai/core/global"
-import { Glob } from "@opencode-ai/core/util/glob"
-import { readFile } from "node:fs/promises"
-import path from "node:path"
+import { useConfig } from "../config"
+import { DevTools } from "../devtools"
+import { configDirectories } from "../util/config-directories"
+
+const themePerformance = DevTools.register({ id: "theme-performance", title: "Theme performance" })
+export type ThemeError = { name: string; error: Error }
+type ThemeErrorHandler = (event: ThemeError) => void
+
+function createThemeErrors() {
+  let handler: ThemeErrorHandler | undefined
+  let pending: ThemeError | undefined
+
+  return {
+    emit(name: string, cause: unknown) {
+      const event = { name, error: cause instanceof Error ? cause : new Error(String(cause)) }
+      if (handler) {
+        handler(event)
+        return
+      }
+      pending = event
+    },
+    onError(next: ThemeErrorHandler) {
+      handler = next
+      if (pending) {
+        next(pending)
+        pending = undefined
+      }
+      return () => {
+        if (handler === next) handler = undefined
+      }
+    },
+  }
+}
+
+const themeErrors = createThemeErrors()
 
 export type ThemeSource = Readonly<{
   discover(): Promise<Record<string, unknown>>
   subscribeRefresh?(refresh: () => void): () => void
 }>
 
-const themeSource: ThemeSource = {
+export const createThemeSource = (config: string): ThemeSource => ({
   async discover() {
-    const directories = [Global.Path.config]
-    for (let current = process.cwd(); ; current = path.dirname(current)) {
-      directories.push(path.join(current, ".opencode"))
-      if (path.dirname(current) === current) break
-    }
-    return discoverThemes(directories)
+    return discoverThemes(configDirectories(config, process.cwd()))
   },
   subscribeRefresh(refresh) {
     process.on("SIGUSR2", refresh)
     return () => process.off("SIGUSR2", refresh)
   },
-}
+})
 
-export async function discoverThemes(directories: string[]) {
-  const result: Record<string, unknown> = {}
-  for (const directory of directories) {
-    const files = await Glob.scan("themes/*.json", { cwd: directory, absolute: true, dot: true, symlink: true })
-    for (const file of files) {
-      result[path.basename(file, ".json")] = JSON.parse(await readFile(file, "utf8")) as unknown
-    }
-  }
-  return result
-}
+export { discoverThemes } from "../theme/discovery"
 
 export {
   DEFAULT_THEMES,
   addTheme,
   allThemes,
-  generateSubtleSyntax,
   generateSyntax,
-  generateSystem,
   hasTheme,
-  isTheme,
-  resolveTheme,
   selectedForeground,
-  terminalMode,
-  tint,
   upsertTheme,
   type Theme,
-  type ThemeJson,
-  type SyntaxStyleOverrides,
 } from "../theme"
 
 const THEME_REFRESH_DELAYS = [250, 1000] as const
 
 type State = {
-  themes: Record<string, ThemeJson>
+  themes: Record<string, ThemeDocumentSource>
   mode: "dark" | "light"
   lock: "dark" | "light" | undefined
   active: string
   ready: boolean
+}
+
+type Themes = {
+  current: ComponentTheme
+  currentTokens: Accessor<ResolvedTheme>
+  readonly selected: string
+  all: typeof allThemes
+  has: typeof hasTheme
+  currentSyntax: Accessor<SyntaxStyle>
+  mode: Accessor<"dark" | "light">
+  modes: Accessor<readonly ("dark" | "light")[]>
+  supports(mode: "dark" | "light"): boolean
+  locked: Accessor<boolean>
+  lock(): void
+  unlock(): void
+  setMode(mode?: "dark" | "light", persist?: boolean): boolean
+  set(theme: string): boolean
+  onError(handler: ThemeErrorHandler): () => void
+  readonly ready: boolean
+}
+
+type ThemeContextValue = {
+  current: ComponentTheme["contextual"][ContextName]
+  themes: Themes
+  readonly ready: boolean
 }
 
 const [store, setStore] = createStore<State>({
@@ -99,13 +136,13 @@ const [store, setStore] = createStore<State>({
 
 subscribeThemes((themes) => setStore("themes", themes))
 
-export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
+const themeContext = createSimpleContext({
   name: "Theme",
-  init: (props: { mode: "dark" | "light"; source?: ThemeSource }) => {
+  init: (props: { mode: "dark" | "light"; source: ThemeSource }): ThemeContextValue => {
     const renderer = useRenderer()
-    const config = useTuiConfig()
-    const kv = useKV()
-    const themes = props.source ?? themeSource
+    const configState = useConfig()
+    const config = configState.data
+    const themes = props.source
     const pick = (value: unknown) => {
       if (value === "dark" || value === "light") return value
       return
@@ -113,38 +150,42 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
 
     setStore(
       produce((draft) => {
-        const lock = pick(kv.get("theme_mode_lock"))
+        const lock = pick(config.theme?.mode)
         const mode = lock ?? pick(renderer.themeMode) ?? props.mode
-        if (!lock && pick(kv.get("theme_mode")) !== undefined) kv.set("theme_mode", undefined)
         draft.mode = mode
         draft.lock = lock
-        const active = config.theme ?? kv.get("theme", "opencode")
+        const active = config.theme?.name ?? "opencode"
         draft.active = typeof active === "string" ? active : "opencode"
         draft.ready = false
       }),
     )
 
     createEffect(() => {
-      const theme = config.theme
+      const theme = config.theme?.name
       if (theme) setStore("active", theme)
+    })
+
+    createEffect(() => {
+      const mode = config.theme?.mode
+      if (mode === "dark" || mode === "light") {
+        pin(mode, false)
+        return
+      }
+      if (mode === "system" && store.lock !== undefined) free(false)
     })
 
     function syncCustomThemes() {
       return themes
         .discover()
         .then((themes) => {
-          setCustomThemes(
-            Object.entries(themes).reduce<Record<string, ThemeJson>>((result, [name, theme]) => {
-              if (isTheme(theme)) result[name] = theme
-              return result
-            }, {}),
-          )
+          setCustomThemes(themes)
         })
         .catch(() => setStore("active", "opencode"))
     }
 
     onMount(() => {
       void Promise.allSettled([resolveSystemTheme(store.mode), syncCustomThemes()]).finally(() => {
+        valuesV2()
         setStore("ready", true)
       })
     })
@@ -200,23 +241,31 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     }
 
     function apply(mode: "dark" | "light") {
-      if (store.lock !== undefined) kv.set("theme_mode", mode)
       if (store.mode === mode) return
       setStore("mode", mode)
       refreshSystemTheme(mode)
     }
 
-    function pin(mode: "dark" | "light" = store.mode) {
+    function pin(mode: "dark" | "light" = store.mode, persist = true) {
       setStore("lock", mode)
-      kv.set("theme_mode_lock", mode)
       apply(mode)
+      if (!persist) return
+      void configState
+        .update((draft) => {
+          draft.theme = { ...draft.theme, mode }
+        })
+        .catch(() => {})
     }
 
-    function free() {
+    function free(persist = true) {
       setStore("lock", undefined)
-      kv.set("theme_mode_lock", undefined)
-      kv.set("theme_mode", undefined)
       refreshSystemTheme(renderer.themeMode ?? store.mode)
+      if (!persist) return
+      void configState
+        .update((draft) => {
+          draft.theme = { ...draft.theme, mode: "system" }
+        })
+        .catch(() => {})
     }
 
     const handle = (mode: "dark" | "light") => {
@@ -253,55 +302,101 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       themeRefreshTimeouts.length = 0
     })
 
-    const values = createMemo(() => {
-      const active = store.themes[store.active]
-      if (active) return resolveTheme(active, store.mode)
-
-      const saved = kv.get("theme")
-      if (typeof saved === "string") {
-        const theme = store.themes[saved]
-        if (theme) return resolveTheme(theme, store.mode)
+    const initStarted = performance.now()
+    const selected = createMemo(() => {
+      const name = store.themes[store.active] ? store.active : "opencode"
+      try {
+        return loadTheme(store.themes[name], name, store.mode)
+      } catch (error) {
+        if (name === "opencode") throw error
+        themeErrors.emit(name, error)
+        setStore("active", "opencode")
+        return loadTheme(store.themes.opencode, "opencode", store.mode)
       }
-
-      return resolveTheme(store.themes.opencode, store.mode)
     })
+    const modes = () => selected().modes
+    const mode = () => selected().mode
+    const valuesV2 = () => selected().theme
+    valuesV2()
+    themePerformance.set("Init", `${(performance.now() - initStarted).toFixed(2)} ms`)
+    const current = createComponentTheme(valuesV2, mode)
 
-    createEffect(() => renderer.setBackgroundColor(values().background))
+    createEffect(() => renderer.setBackgroundColor(valuesV2().background.default))
 
-    const syntax = createSyntaxStyleMemo(() => generateSyntax(values()))
-    const subtleSyntax = createSyntaxStyleMemo(() => generateSubtleSyntax(values()))
-
-    return {
-      theme: new Proxy(values(), {
-        get(_target, prop) {
-          // @ts-expect-error Properties are forwarded to the current reactive value.
-          return values()[prop]
-        },
-      }),
+    const currentSyntax = createSyntaxStyleMemo(() => generateSyntax(valuesV2(), mode()))
+    const service: Themes = {
+      current,
+      currentTokens: valuesV2,
+      currentSyntax,
       get selected() {
         return store.active
       },
       all: allThemes,
       has: hasTheme,
-      syntax,
-      subtleSyntax,
-      mode: () => store.mode,
+      mode,
+      modes,
+      supports: (requested) => modes().includes(requested),
       locked: () => store.lock !== undefined,
-      lock: () => pin(store.mode),
+      lock: () => pin(mode()),
       unlock: free,
-      setMode: pin,
+      setMode(requested = mode(), persist = true) {
+        if (!modes().includes(requested)) return false
+        pin(requested, persist)
+        return true
+      },
       set(theme: string) {
         if (!hasTheme(theme)) return false
         setStore("active", theme)
-        kv.set("theme", theme)
+        void configState
+          .update((draft) => {
+            draft.theme = { ...draft.theme, name: theme }
+          })
+          .catch(() => {})
         return true
       },
+      onError: themeErrors.onError,
       get ready() {
         return store.ready
       },
     }
+    return {
+      current,
+      themes: service,
+      get ready() {
+        return service.ready
+      },
+    }
   },
 })
+
+export function useThemes() {
+  return themeContext.use().themes
+}
+export function useTheme(): ComponentTheme
+export function useTheme(context: ContextName): ComponentTheme["contextual"][ContextName]
+export function useTheme(context?: ContextName) {
+  const value = themeContext.use()
+  return context ? value.themes.current.contextual[context] : value.current
+}
+export const ThemeProvider = themeContext.provider
+
+export function ThemeContextProvider(props: ParentProps<{ context: ContextName }>) {
+  const value = themeContext.use()
+  return (
+    <themeContext.context.Provider
+      value={{ current: value.themes.current.contextual[props.context], themes: value.themes, ready: value.ready }}
+    >
+      {props.children}
+    </themeContext.context.Provider>
+  )
+}
+
+function loadTheme(source: ThemeDocumentSource, name: string, requested: "dark" | "light") {
+  const document = parseTheme(source, name)
+  const modes = themeModes(document)
+  const mode = modes.includes(requested) ? requested : (modes[0] ?? requested)
+  return { modes, mode, theme: resolveThemeDocument(document, mode) }
+}
 
 export function createSyntaxStyleMemo(factory: () => SyntaxStyle) {
   const renderer = useRenderer()

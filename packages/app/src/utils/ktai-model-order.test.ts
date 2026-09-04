@@ -3,30 +3,28 @@ import { compareKtaiModelOrder, ktaiModelOrderKey } from "./ktai-model-order"
 
 describe("ktaiModelOrderKey", () => {
   test("follows curated family priority", () => {
-    expect(ktaiModelOrderKey("kimi-k2.5")[0]).toBe(0)
-    expect(ktaiModelOrderKey("MiniMax-M2.7")[0]).toBe(1)
-    expect(ktaiModelOrderKey("deepseek-v4-flash")[0]).toBe(2)
-    expect(ktaiModelOrderKey("gemini-2.5-flash")[0]).toBe(3)
-    expect(ktaiModelOrderKey("gpt-5.6")[0]).toBe(4)
-    expect(ktaiModelOrderKey("claude-sonnet-4.6")[0]).toBe(5)
+    expect(ktaiModelOrderKey("grok-4.6")[0]).toBe(0)
+    expect(ktaiModelOrderKey("gpt-5.6")[0]).toBe(1)
+    expect(ktaiModelOrderKey("k3")[0]).toBe(2)
+    expect(ktaiModelOrderKey("deepseek-v4-flash-vision-exp")[0]).toBe(3)
+    expect(ktaiModelOrderKey("MiniMax-M2.7")[0]).toBe(4)
+    expect(ktaiModelOrderKey("gemini-2.5-flash")[0]).toBe(5)
   })
 
-  test("sorts picker rows Kimi → MiniMax → … → Claude", () => {
+  test("sorts picker rows Grok → GPT → K3 → DeepSeek → MiniMax", () => {
     const rows = [
-      { id: "claude-sonnet-4.6", name: "Claude Sonnet 4 6" },
-      { id: "gpt-5.6", name: "Gpt 5 6" },
-      { id: "kimi-k2.5", name: "Kimi K2 5" },
       { id: "MiniMax-M2.7", name: "MiniMax M2 7" },
-      { id: "deepseek-v4-flash", name: "Deepseek V4 Flash" },
-      { id: "gemini-2.5-flash", name: "Gemini 2 5 Flash" },
+      { id: "deepseek-v4-flash-vision-exp", name: "Deepseek V4 Flash Vision Exp" },
+      { id: "k3", name: "K3" },
+      { id: "gpt-5.6", name: "Gpt 5 6" },
+      { id: "grok-4.6", name: "Grok 4 6" },
     ]
     expect([...rows].sort(compareKtaiModelOrder).map((row) => row.id)).toEqual([
-      "kimi-k2.5",
-      "MiniMax-M2.7",
-      "deepseek-v4-flash",
-      "gemini-2.5-flash",
+      "grok-4.6",
       "gpt-5.6",
-      "claude-sonnet-4.6",
+      "k3",
+      "deepseek-v4-flash-vision-exp",
+      "MiniMax-M2.7",
     ])
   })
 })

@@ -1,59 +1,98 @@
-import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
-import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
-import { MenuV2 } from "@opencode-ai/ui/v2/menu-v2"
+import { Icon } from "@opencode-ai/ui/icon"
+import { IconButton } from "@opencode-ai/ui/icon-button"
+import { Menu } from "@opencode-ai/ui/menu"
 import { type Component, Show } from "solid-js"
-import { useServerManagementController } from "@/components/dialog-select-server"
+import type { ServerActionsController } from "@/components/server/server-management-controller"
 import { useLanguage } from "@/context/language"
-import { ServerConnection } from "@/context/server"
+import { ServerConnection } from "@/context/servers"
 
 export const ServerRowMenu: Component<{
   server: ServerConnection.Any
-  controller: ReturnType<typeof useServerManagementController>
+  domain: ServerActionsController
   onEdit: (server: ServerConnection.Http) => void
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }> = (props) => {
   const language = useLanguage()
   const key = ServerConnection.key(props.server)
-  const builtin = ServerConnection.builtin(props.server)
-  const isDefault = () => props.controller.defaultKey() === key
-
   return (
-    <MenuV2 gutter={6} modal={false} placement="bottom-end" open={props.open} onOpenChange={props.onOpenChange}>
-      <MenuV2.Trigger
-        as={IconButtonV2}
+    <ServerRowMenuView
+      server={props.server}
+      labels={serverMenuLabels(language)}
+      canDefault={props.domain.defaults.available()}
+      isDefault={props.domain.defaults.key() === key}
+      canRemove={props.domain.connection.canRemove(key)}
+      onEdit={props.onEdit}
+      onSetDefault={() => props.domain.defaults.set(key)}
+      onRemoveDefault={() => props.domain.defaults.set(null)}
+      onRemove={() => props.domain.connection.remove(key)}
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+    />
+  )
+}
+
+export function serverMenuLabels(language: ReturnType<typeof useLanguage>) {
+  return {
+    more: language.t("common.moreOptions"),
+    server: language.t("settings.section.server"),
+    edit: language.t("dialog.server.menu.edit"),
+    default: language.t("dialog.server.menu.default"),
+    defaultRemove: language.t("dialog.server.menu.defaultRemove"),
+    delete: language.t("dialog.server.menu.delete"),
+  }
+}
+
+export const ServerRowMenuView: Component<{
+  server: ServerConnection.Any
+  labels: ReturnType<typeof serverMenuLabels>
+  canDefault: boolean
+  isDefault: boolean
+  canRemove: boolean
+  onEdit: (server: ServerConnection.Http) => void
+  onSetDefault: () => void
+  onRemoveDefault: () => void
+  onRemove: () => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}> = (props) => {
+  const builtin = () => ServerConnection.builtin(props.server)
+  const httpServer = () => (props.server.type === "http" ? props.server : undefined)
+  return (
+    <Menu gutter={6} modal={false} placement="bottom-end" open={props.open} onOpenChange={props.onOpenChange}>
+      <Menu.Trigger
+        as={IconButton}
         variant="ghost-muted"
         size="small"
-        icon={<IconV2 name="outline-dots" />}
-        aria-label={language.t("common.moreOptions")}
+        icon={<Icon name="outline-dots" />}
+        aria-label={props.labels.more}
       />
-      <MenuV2.Portal>
-        <MenuV2.Content>
-          <MenuV2.Group>
-            <MenuV2.GroupLabel>{language.t("settings.section.server")}</MenuV2.GroupLabel>
-            <MenuV2.Item
-              disabled={builtin || props.server.type !== "http"}
-              onSelect={() => props.onEdit(props.server as ServerConnection.Http)}
+      <Menu.Portal>
+        <Menu.Content>
+          <Menu.Group>
+            <Menu.GroupLabel>{props.labels.server}</Menu.GroupLabel>
+            <Menu.Item
+              disabled={builtin() || !httpServer()}
+              onSelect={() => {
+                const server = httpServer()
+                if (server) props.onEdit(server)
+              }}
             >
-              {language.t("dialog.server.menu.edit")}
-            </MenuV2.Item>
-            <Show when={props.controller.canDefault() && !isDefault()}>
-              <MenuV2.Item onSelect={() => props.controller.setDefault(key)}>
-                {language.t("dialog.server.menu.default")}
-              </MenuV2.Item>
+              {props.labels.edit}
+            </Menu.Item>
+            <Show when={props.canDefault && !props.isDefault}>
+              <Menu.Item onSelect={props.onSetDefault}>{props.labels.default}</Menu.Item>
             </Show>
-            <Show when={props.controller.canDefault() && isDefault()}>
-              <MenuV2.Item onSelect={() => props.controller.setDefault(null)}>
-                {language.t("dialog.server.menu.defaultRemove")}
-              </MenuV2.Item>
+            <Show when={props.canDefault && props.isDefault}>
+              <Menu.Item onSelect={props.onRemoveDefault}>{props.labels.defaultRemove}</Menu.Item>
             </Show>
-            <MenuV2.Separator />
-            <MenuV2.Item disabled={builtin} onSelect={() => props.controller.handleRemove(key)}>
-              {language.t("dialog.server.menu.delete")}
-            </MenuV2.Item>
-          </MenuV2.Group>
-        </MenuV2.Content>
-      </MenuV2.Portal>
-    </MenuV2>
+            <Show when={props.canRemove}>
+              <Menu.Separator />
+              <Menu.Item onSelect={props.onRemove}>{props.labels.delete}</Menu.Item>
+            </Show>
+          </Menu.Group>
+        </Menu.Content>
+      </Menu.Portal>
+    </Menu>
   )
 }

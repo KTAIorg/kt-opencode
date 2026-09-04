@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test"
 import { createRoot, getOwner, type Owner } from "solid-js"
 import { createStore } from "solid-js/store"
-import type { NormalizedProviderListResponse } from "@opencode-ai/session-ui/context"
 import type { State } from "./types"
 import type { QueryOptionsApi } from "../server-sync"
 import { ServerScope } from "@/utils/server-scope"
+import type { Data } from "@opencode-ai/client/solid"
 
 let createChildStoreManager: typeof import("./child-store").createChildStoreManager
 const querySingles: Array<() => { queryKey?: unknown[]; enabled?: boolean }> = []
@@ -16,12 +16,26 @@ const persist: typeof import("@/utils/persist").persisted = (_target, store) => 
 ]
 
 const child = () => createStore({} as State)
-const provider = { all: new Map(), connected: [], default: {} } satisfies NormalizedProviderListResponse
+const path = { state: "", config: "", worktree: "", directory: "", home: "" }
+const data = {
+  location: {
+    info: () => undefined,
+    agent: { list: () => undefined },
+    command: { list: () => undefined },
+    reference: { list: () => undefined },
+    provider: { list: () => undefined },
+    model: { list: () => undefined, default: () => undefined },
+    mcp: {
+      server: { list: () => undefined },
+      resource: { list: () => undefined },
+    },
+    vcs: { info: () => undefined },
+  },
+} as unknown as Data
 
 const queryOptionsApi = {
   globalConfig: () => ({ queryKey: ["globalConfig"], queryFn: async () => ({}) }),
   projects: () => ({ queryKey: ["projects"], queryFn: async () => [] }),
-  providers: (directory: string | null) => ({ queryKey: [directory, "providers"], queryFn: async () => provider }),
   path: (directory: string | null) => ({
     queryKey: [directory, "path"],
     queryFn: async () => ({
@@ -58,11 +72,16 @@ beforeAll(async () => {
         get isLoading() {
           return options().queryKey?.[1] === "path"
         },
+        get isSuccess() {
+          return false
+        },
+        get isRefetchError() {
+          return false
+        },
         get data() {
           if (options().queryKey?.[1] === "path") throw new Error("pending path data read")
           if (options().queryKey?.[1] === "mcp") return options().enabled ? { demo: { status: "disabled" } } : undefined
           if (options().queryKey?.[1] === "lsp") return []
-          if (options().queryKey?.[1] === "providers") return provider
           return undefined
         },
       }
@@ -83,6 +102,7 @@ describe("createChildStoreManager", () => {
 
     const manager = createChildStoreManager({
       owner,
+      connected: () => true,
       scope: ServerScope.local,
       persist,
       isBooting: () => false,
@@ -92,7 +112,8 @@ describe("createChildStoreManager", () => {
       onDispose() {},
       translate: (key) => key,
       queryOptions: queryOptionsApi,
-      global: { provider },
+      data,
+      global: { path },
     })
 
     Array.from({ length: 30 }, (_, index) => `/pinned-${index}`).forEach((directory) => {
@@ -114,6 +135,7 @@ describe("createChildStoreManager", () => {
     const dispose = createOwner((owner) => {
       manager = createChildStoreManager({
         owner,
+        connected: () => true,
         scope: ServerScope.local,
         persist,
         isBooting: () => false,
@@ -125,7 +147,8 @@ describe("createChildStoreManager", () => {
         onDispose() {},
         translate: (key) => key,
         queryOptions: queryOptionsApi,
-        global: { provider },
+        data,
+        global: { path },
       })
     })
 
@@ -135,7 +158,6 @@ describe("createChildStoreManager", () => {
       const [store] = manager.child("/project")
 
       expect(store.status).toBe("loading")
-      expect(store.limit).toBe(5)
       expect(bootstraps).toEqual(["/project"])
     } finally {
       dispose()
@@ -148,6 +170,7 @@ describe("createChildStoreManager", () => {
     const dispose = createOwner((owner) => {
       manager = createChildStoreManager({
         owner,
+        connected: () => true,
         scope: ServerScope.local,
         persist,
         isBooting: () => false,
@@ -157,7 +180,8 @@ describe("createChildStoreManager", () => {
         onDispose() {},
         translate: (key) => key,
         queryOptions: queryOptionsApi,
-        global: { provider },
+        data,
+        global: { path },
       })
     })
 
@@ -173,7 +197,39 @@ describe("createChildStoreManager", () => {
     }
   })
 
-  test("enables MCP only when requested for the directory", () => {
+  test("writes refreshed VCS data to the child store", () => {
+    let manager: ReturnType<typeof createChildStoreManager> | undefined
+    const dispose = createOwner((owner) => {
+      manager = createChildStoreManager({
+        owner,
+        connected: () => true,
+        scope: ServerScope.local,
+        persist,
+        isBooting: () => false,
+        isLoadingSessions: () => false,
+        onBootstrap() {},
+        onMcp() {},
+        onDispose() {},
+        translate: (key) => key,
+        queryOptions: queryOptionsApi,
+        data,
+        global: { path },
+      })
+    })
+
+    try {
+      if (!manager) throw new Error("manager required")
+      const [store] = manager.child("/project", { bootstrap: false })
+
+      manager.vcs("/project", { branch: "feature", default_branch: "main" })
+
+      expect(store.vcs).toEqual({ branch: "feature", default_branch: "main" })
+    } finally {
+      dispose()
+    }
+  })
+
+  test("syncs MCP only when requested for the directory", () => {
     let manager: ReturnType<typeof createChildStoreManager> | undefined
     const offset = querySingles.length
     const mcpLoads: string[] = []
@@ -181,6 +237,7 @@ describe("createChildStoreManager", () => {
     const dispose = createOwner((owner) => {
       manager = createChildStoreManager({
         owner,
+        connected: () => true,
         scope: ServerScope.local,
         persist,
         isBooting: () => false,
@@ -192,30 +249,21 @@ describe("createChildStoreManager", () => {
         onDispose() {},
         translate: (key) => key,
         queryOptions: queryOptionsApi,
-        global: { provider },
+        data,
+        global: { path },
       })
     })
 
     try {
       if (!manager) throw new Error("manager required")
-      const [store, setStore] = manager.child("/project", { bootstrap: false })
-      expect(querySingles.length - offset).toBe(6)
-      const query = querySingles[offset + 1]
-      const resourceQuery = querySingles[offset + 2]
-      if (!query) throw new Error("query required")
-      if (!resourceQuery) throw new Error("resource query required")
-      expect(query().enabled).toBe(false)
-      expect(resourceQuery().enabled).toBe(false)
+      const [, setStore] = manager.child("/project", { bootstrap: false })
+      expect(querySingles.length - offset).toBe(1)
 
       setStore("status", "complete")
       manager.child("/project", { bootstrap: false, mcp: true })
-      expect(query().enabled).toBe(true)
-      expect(resourceQuery().enabled).toBe(true)
-      expect(store.mcp).toEqual({ demo: { status: "disabled" } })
       expect(mcpLoads).toEqual(["/project"])
 
       manager.disableMcp("/project")
-      expect(query().enabled).toBe(false)
       expect(manager.mcp("/project")).toBe(false)
     } finally {
       dispose()
@@ -230,6 +278,7 @@ describe("createChildStoreManager", () => {
     const dispose = createOwner((owner) => {
       manager = createChildStoreManager({
         owner,
+        connected: () => true,
         scope: ServerScope.local,
         persist,
         isBooting: () => false,
@@ -241,7 +290,8 @@ describe("createChildStoreManager", () => {
         onDispose() {},
         translate: (key) => key,
         queryOptions: queryOptionsApi,
-        global: { provider },
+        data,
+        global: { path },
       })
     })
 
@@ -250,11 +300,8 @@ describe("createChildStoreManager", () => {
       const [store] = manager.child("/project", { bootstrap: false })
       const queries = querySingles.slice(offset)
 
-      expect(queries).toHaveLength(6)
+      expect(queries).toHaveLength(1)
       expect(queries[0]?.().enabled).toBe(false)
-      expect(queries[3]?.().enabled).toBe(false)
-      expect(queries[4]?.().enabled).toBe(false)
-      expect(queries[5]?.().enabled).toBe(false)
       expect(store.path.directory).toBe("/project")
       expect(store.provider_ready).toBe(false)
       expect(store.lsp_ready).toBe(false)
@@ -262,12 +309,74 @@ describe("createChildStoreManager", () => {
 
       manager.child("/project")
       expect(queries[0]?.().enabled).toBe(true)
-      expect(queries[3]?.().enabled).toBe(true)
-      expect(queries[4]?.().enabled).toBe(true)
-      expect(queries[5]?.().enabled).toBe(true)
       expect(bootstraps).toEqual(["/project"])
 
       manager.child("/project", { bootstrap: false })
+      expect(queries[0]?.().enabled).toBe(true)
+    } finally {
+      dispose()
+    }
+  })
+
+  test("does not mark unsynced provider data as ready", () => {
+    let manager: ReturnType<typeof createChildStoreManager> | undefined
+
+    const dispose = createOwner((owner) => {
+      manager = createChildStoreManager({
+        owner,
+        connected: () => true,
+        scope: ServerScope.local,
+        persist,
+        isBooting: () => false,
+        isLoadingSessions: () => false,
+        onBootstrap() {},
+        onMcp() {},
+        onDispose() {},
+        translate: (key) => key,
+        queryOptions: queryOptionsApi,
+        data,
+        global: { path },
+      })
+    })
+
+    try {
+      if (!manager) throw new Error("manager required")
+      const [store] = manager.child("/cancelled")
+      expect(store.provider_ready).toBe(false)
+    } finally {
+      dispose()
+    }
+  })
+
+  test("does not enable location queries before the event handshake", () => {
+    let manager: ReturnType<typeof createChildStoreManager> | undefined
+    let connected = false
+    const offset = querySingles.length
+    const dispose = createOwner((owner) => {
+      manager = createChildStoreManager({
+        owner,
+        connected: () => connected,
+        scope: ServerScope.local,
+        persist,
+        isBooting: () => false,
+        isLoadingSessions: () => false,
+        onBootstrap() {},
+        onMcp() {},
+        onDispose() {},
+        translate: (key) => key,
+        queryOptions: queryOptionsApi,
+        data,
+        global: { path },
+      })
+    })
+
+    try {
+      if (!manager) throw new Error("manager required")
+      manager.child("/handshake")
+      const queries = querySingles.slice(offset)
+      expect(queries[0]?.().enabled).toBe(false)
+
+      connected = true
       expect(queries[0]?.().enabled).toBe(true)
     } finally {
       dispose()

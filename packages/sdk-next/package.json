@@ -5,19 +5,25 @@
   "type": "module",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./workerd": "./src/workerd.ts"
   },
   "scripts": {
     "test": "bun test --timeout 5000",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo -b"
   },
   "dependencies": {
     "@opencode-ai/client": "workspace:*",
     "@opencode-ai/core": "workspace:*",
+    "@opencode-ai/plugin": "workspace:*",
+    "@opencode-ai/schema": "workspace:*",
     "@opencode-ai/server": "workspace:*",
+    "@opencode-ai/util": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@opencode-ai/httpapi-codegen": "workspace:*",
+    "@opencode-ai/protocol": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@typescript/native-preview": "catalog:"

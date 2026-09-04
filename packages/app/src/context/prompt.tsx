@@ -1,13 +1,13 @@
-import { base64Encode } from "@opencode-ai/core/util/encode"
+import { base64Encode } from "@opencode-ai/util/encode"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useParams, useSearchParams } from "@solidjs/router"
-import { createMemo, createRoot, getOwner, onCleanup } from "solid-js"
+import { createMemo, createResource, createRoot, getOwner, onCleanup } from "solid-js"
 import { requireServerKey } from "@/utils/session-route"
-import { ServerConnection } from "./server"
+import { ServerConnection } from "./servers"
 import { useServerSDK } from "./server-sdk"
-import { useSettings } from "./settings"
-import { useSDK } from "./sdk"
+import { useWorkspaceLocation } from "./location"
 import { useTabs, type Tab } from "./tabs"
+import type { ServerScope } from "@/utils/server-scope"
 import {
   createPromptReady,
   createPromptSession,
@@ -36,6 +36,7 @@ export type {
   ImageAttachmentPart,
   Prompt,
   PromptModel,
+  PromptStore,
   PromptScope,
   PromptSession,
   TextPart,
@@ -74,11 +75,10 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
   gate: false,
   init: () => {
     const params = useParams<{ serverKey?: string; id?: string }>()
-    const sdk = useSDK()
+    const sdk = useWorkspaceLocation()
     const [search] = useSearchParams<{ draftId?: string }>()
     const serverSDK = useServerSDK()
     const tabs = useTabs()
-    const settings = useSettings()
     const cache = new Map<string, PromptCacheEntry>()
 
     const disposeAll = () => {
@@ -100,14 +100,14 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
 
     const owner = getOwner()
     const serverKey = () =>
-      params.serverKey ? requireServerKey(params.serverKey) : ServerConnection.key(serverSDK().server)
+      params.serverKey ? requireServerKey(params.serverKey) : ServerConnection.key(serverSDK.server)
     const scope = (): PromptScope =>
       search.draftId ? { draftID: search.draftId } : { dir: base64Encode(sdk().directory), id: params.id }
-    const load = (scope: PromptScope) => {
-      const current = settings.general.newLayoutDesigns() ? selectPromptTab(tabs.store, scope, serverKey()) : undefined
-      if (current) return createTabPromptState(tabs, current, serverSDK().scope, scope)
+    const load = (scope: PromptScope, target?: { server?: ServerConnection.Key; scope: ServerScope }) => {
+      const current = selectPromptTab(tabs.store, scope, target?.server ?? serverKey())
+      if (current) return createTabPromptState(tabs, current, target?.scope ?? serverSDK.scope, scope)
 
-      const key = scopeKey(scope)
+      const key = target ? `${target.scope}:${scopeKey(scope)}` : scopeKey(scope)
       const existing = cache.get(key)
       if (existing) {
         cache.delete(key)
@@ -117,7 +117,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
 
       const entry = createRoot(
         (dispose) => ({
-          value: createPromptSession(serverSDK().scope, scope),
+          value: createPromptSession(target?.scope ?? serverSDK.scope, scope),
           dispose,
         }),
         owner,
@@ -129,21 +129,34 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
     }
 
     const session = createMemo(() => load(scope()))
-    const pick = (scope?: PromptScope) => (scope ? load(scope) : session())
+    const pick = (scope?: PromptScope, target?: { server?: ServerConnection.Key; scope: ServerScope }) =>
+      scope ? load(scope, target) : session()
     const ready = createPromptReady(session)
+
+    const withSuspense = <T,>(cb: () => T): (() => T) =>
+      createResource(
+        async () => {
+          const value = cb()
+          await session().ready.promise
+          return value
+        },
+        cb,
+        { initialValue: cb() },
+      )[0]
 
     return {
       ready,
-      capture: (scope?: PromptScope) => pick(scope).capture(),
-      current: () => session().current(),
-      cursor: () => session().cursor(),
-      dirty: () => session().dirty(),
+      capture: (scope?: PromptScope, target?: { server?: ServerConnection.Key; scope: ServerScope }) =>
+        pick(scope, target).capture(),
+      current: withSuspense(() => session().current()),
+      cursor: withSuspense(() => session().cursor()),
+      dirty: withSuspense(() => session().dirty()),
       model: {
-        current: () => session().model.current(),
+        current: withSuspense(() => session().model.current()),
         set: (model: PromptModel | undefined) => session().model.set(model),
       },
       context: {
-        items: () => session().context.items(),
+        items: withSuspense(() => session().context.items()),
         add: (item: ContextItem) => session().context.add(item),
         remove: (key: string) => session().context.remove(key),
         removeComment: (path: string, commentID: string) => session().context.removeComment(path, commentID),

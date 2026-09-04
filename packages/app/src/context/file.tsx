@@ -3,10 +3,9 @@ import { createStore, produce, reconcile } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { showToast } from "@/utils/toast"
 import { useParams } from "@solidjs/router"
-import { base64Encode } from "@opencode-ai/core/util/encode"
-import { getFilename } from "@opencode-ai/core/util/path"
-import { useSDK } from "./sdk"
-import { useSync } from "./sync"
+import { base64Encode } from "@opencode-ai/util/encode"
+import { getFilename } from "@opencode-ai/util/path"
+import { useWorkspaceLocation } from "./location"
 import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { createPathHelpers } from "./file/path"
@@ -56,8 +55,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
   name: "File",
   gate: false,
   init: () => {
-    const sdk = useSDK()
-    useSync()
+    const sdk = useWorkspaceLocation()
     const params = useParams()
     const serverSDK = useServerSDK()
     const language = useLanguage()
@@ -66,7 +64,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     const scope = createMemo(() => sdk().directory)
     const path = createPathHelpers(scope)
     const tabs = layout.tabs(() =>
-      SessionStateKey.from(serverSDK().scope, SessionRouteKey.fromRoute(base64Encode(sdk().directory), params.id)),
+      SessionStateKey.from(serverSDK.scope, SessionRouteKey.fromRoute(base64Encode(sdk().directory), params.id)),
     )
 
     const inflight = new Map<string, Promise<void>>()
@@ -80,9 +78,14 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       scope,
       normalizeDir: path.normalizeDir,
       list: (dir) =>
-        sdk()
-          .client.file.list({ path: dir })
-          .then((x) => x.data ?? []),
+        serverSDK.api.file.list({ path: dir, location: { directory: scope() } }).then((x) =>
+          x.data.map((entry) => ({
+            ...entry,
+            name: entry.path.split("/").at(-1) ?? entry.path,
+            absolute: `${scope()}/${entry.path}`,
+            ignored: false,
+          })),
+        ),
       onError: (message) => {
         showToast({
           variant: "error",
@@ -116,7 +119,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       })
     })
 
-    const viewCache = createFileViewCache(serverSDK().scope)
+    const viewCache = createFileViewCache(serverSDK.scope)
     const view = createMemo(() => viewCache.load(scope(), params.id))
 
     const ensure = (file: string) => {
@@ -180,11 +183,11 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
 
       setLoading(file)
 
-      const promise = sdk()
-        .client.file.read({ path: file })
-        .then((x) => {
+      const promise = serverSDK.api.file
+        .read({ path: file, location: { directory } })
+        .then((data) => {
           if (scope() !== directory) return
-          const content = x.data
+          const content = { type: "text" as const, content: new TextDecoder().decode(data) }
           setLoaded(file, content)
 
           if (!content) return
@@ -204,18 +207,26 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     }
 
     const search = (query: string, dirs: "true" | "false", options?: { limit?: number; signal?: AbortSignal }) =>
-      sdk()
-        .client.find.files({ query, dirs, limit: options?.limit }, { signal: options?.signal })
+      serverSDK.api.file
+        .find(
+          {
+            location: { directory: sdk().directory },
+            query,
+            type: dirs === "true" ? "directory" : "file",
+            limit: options?.limit,
+          },
+          { signal: options?.signal },
+        )
         .then(
-          (x) => (x.data ?? []).map(path.normalize),
+          (x) => x.data.map((entry) => path.normalize(entry.path)),
           (error) => {
             if (options?.signal?.aborted) throw error
             return []
           },
         )
 
-    const stop = sdk().event.listen((e) => {
-      invalidateFromWatcher(e.details, {
+    const stop = sdk().event.on("filesystem.changed", (event) => {
+      invalidateFromWatcher(event, {
         normalize: path.normalize,
         hasFile: (file) => Boolean(store.file[file]),
         isOpen: (file) => tabs.all().some((tab) => path.pathFromTab(tab) === file),
@@ -271,13 +282,6 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
         children: tree.children,
         expand: tree.expandDir,
         collapse: tree.collapseDir,
-        toggle(input: string) {
-          if (tree.dirState(input)?.expanded) {
-            tree.collapseDir(input)
-            return
-          }
-          tree.expandDir(input)
-        },
       },
       get,
       load,

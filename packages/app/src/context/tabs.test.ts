@@ -3,13 +3,31 @@ import { createRoot, getOwner, onCleanup } from "solid-js"
 import { createTabMemory } from "./tab-memory"
 import { nextTabAfterClose, pushClosedTab, removeClosedTabs, takeClosedTab, type ClosedTab } from "./closed-tabs"
 import type { SessionTab, Tab } from "./tabs"
-import type { ServerConnection } from "./server"
+import { migrateTabs } from "./tab-migration"
+import type { ServerConnection } from "./servers"
 
 const server = "local\nhttp://localhost:4096" as ServerConnection.Key
 
 function sessionTab(sessionId: string): SessionTab {
   return { type: "session", server, sessionId }
 }
+
+describe("tab migration", () => {
+  test("drops null and malformed persisted tabs", () => {
+    expect(
+      migrateTabs([null, sessionTab("a"), { type: "session", server }, { type: "unknown", server }, "invalid"]),
+    ).toEqual([sessionTab("a")])
+  })
+
+  test("drops persisted tabs without a server", () => {
+    expect(migrateTabs([{ type: "session", sessionId: "a" }])).toEqual([])
+  })
+
+  test("replaces invalid top-level persisted data", () => {
+    expect(migrateTabs(null)).toEqual([])
+    expect(migrateTabs({})).toEqual([])
+  })
+})
 
 describe("tab memory", () => {
   test("keeps state until its tab is removed", () => {

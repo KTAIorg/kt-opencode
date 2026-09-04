@@ -29,19 +29,19 @@ GitHub Release 文件名现在是 `ktai-desktop-<version>-<os>-<arch>.<ext>`，�
 `releaseId = rel_kito_<version_underscores>_stable`  
 `artifactId = art_<releaseId>_<platform>_<arch>_<kind>`
 
-下载 URL：`https://github.com/ktaiorg/kt-opencode/releases/download/v<VERSION>/<fileName>`
+下载 URL：`https://github.com/ktaiorg/kt-opencode/releases/download/kito-v<VERSION>/<fileName>`
 
 ## CI
 
 仓库：`KTAIorg/kt-opencode`  
 Workflow：`.github/workflows/release-kito.yml`（`Release · Kito`）  
-触发：`v*` tag、GitHub Release published、`workflow_dispatch`  
+触发：`kito-v*` tag、GitHub Release published（仅 `kito-v*` tag 的 release）、`workflow_dispatch`  
 脚本：`packages/desktop/scripts/kito-release.ts`
 
 ```bash
 bun ./packages/desktop/scripts/kito-release.ts register \
   --version 1.18.3 \
-  --tag v1.18.3 \
+  --tag kito-v1.18.3 \
   --channel stable \
   --repo ktaiorg/kt-opencode \
   --dir /tmp/kito-release-assets
