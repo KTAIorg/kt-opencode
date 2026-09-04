@@ -649,9 +649,13 @@ jobs:
       - resolve-version
       - publish-release
     runs-on: ubuntu-24.04
+    # OIDC trust: repo:KTAIorg/kt-opencode:environment:prod
+    # (public fork also emits repo:KTAIorg@orgId/kt-opencode@repoId:environment:prod)
+    environment: prod
     permissions:
       contents: read
       issues: write
+      id-token: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -659,14 +663,36 @@ jobs:
         with:
           bun-version: 1.3.14
 
+      # CI broker passport (kt-cli/kt-secrets#100): project placement goes
+      # through kt-gh (OIDC → aliyun STS → broker), replacing the revoked
+      # long-lived PAT. Version + sha256 pinned from download.ktcli.com.
+      - name: Assume Aliyun OIDC role for broker passport
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6
+        with:
+          role-to-assume: acs:ram::5590716371345016:role/gha-ktaiorg-kt-opencode-prod
+          oidc-provider-arn: acs:ram::5590716371345016:oidc-provider/github-actions-KT-Settlement
+          audience: sts.aliyuncs.com
+          role-session-name: kt-opencode-test-issue
+
+      - name: Install pinned kt-gh
+        env:
+          KT_GH_VERSION: "0.4.0"
+          KT_GH_SHA256: 9fb89cf73a6915bce3221a1f4a5949849b101cb5923668f7e96ce55b32f316fe
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --connect-timeout 10 --max-time 120 \
+            "https://download.ktcli.com/components/kt-gh/${KT_GH_VERSION}/kt-gh_${KT_GH_VERSION}_linux_amd64.tar.gz" -o /tmp/kt-gh.tgz
+          echo "${KT_GH_SHA256}  /tmp/kt-gh.tgz" | sha256sum -c -
+          tar -xzf /tmp/kt-gh.tgz -C /tmp
+          sudo install -m 0755 "$(find /tmp -maxdepth 3 -name kt-gh -type f | head -1)" /usr/local/bin/kt-gh
+          kt-gh version
+
       - name: Create or update release test issue
         env:
           ISSUE_TOKEN: ${{ github.token }}
-          # Optional: org-project PAT. When revoked/absent the script skips
-          # project placement with a warning instead of failing the job;
-          # board placement is backfilled via `kt gh` (broker) until the CI
-          # broker passport lands.
-          PROJECT_TOKEN: ${{ secrets.KT_PROJECTS_TOKEN || '' }}
+          # Thin CLI auth priority 1: explicit STS badge (no ~/.kt-auth on runner;
+          # machine subject is device-gate exempt).
+          KT_SECRET_AUTH: aliyun-sts
           RELEASE_TAG: ${{ needs.resolve-version.outputs.release-tag }}
           KTAI_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
           UPSTREAM_VERSION: ${{ needs.resolve-version.outputs.upstream-version }}
