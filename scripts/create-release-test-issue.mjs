@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { spawnSync } from "node:child_process"
+
 const owner = process.env.GITHUB_REPOSITORY_OWNER || "KTAIorg"
 const repo = process.env.GITHUB_REPOSITORY?.split("/")[1] || "kt-opencode"
 const releaseTag = requiredEnv("RELEASE_TAG")
@@ -7,10 +9,13 @@ const ktaiVersion = requiredEnv("KTAI_VERSION")
 const upstreamVersion = requiredEnv("UPSTREAM_VERSION")
 const commitSha = requiredEnv("RELEASE_COMMIT_SHA")
 const issueToken = requiredEnv("ISSUE_TOKEN")
-// KT_PROJECTS_TOKEN is a long-lived PAT in repo secrets (zero-trust debt).
-// Keep it optional: when missing/revoked the issue is still created+assigned,
-// project placement degrades to a warning and is backfilled via `kt gh`.
-const projectToken = process.env.PROJECT_TOKEN?.trim() || ""
+// Project placement runs through the kt-gh broker proxy (zero-trust CI passport,
+// kt-cli/kt-secrets#100): the runner assumes gha-ktaiorg-kt-opencode-prod via
+// OIDC and kt-gh exchanges the STS badge for broker execution. No long-lived
+// PAT (KT_PROJECTS_TOKEN is revoked and slated for removal). Placement stays
+// best-effort: without a passport (local runs, pre-reconcile) it degrades to a
+// warning and is backfilled via `kt gh`.
+const ktGhBin = process.env.KT_GH_BIN?.trim() || "kt-gh"
 const testAssignee = process.env.TEST_ASSIGNEE?.trim() || ""
 
 const projectOwner = "KTAIorg"
@@ -92,16 +97,16 @@ async function main() {
   const issue = existing ? await updateIssue(existing.number, body) : await createIssue(title, body)
 
   await assignIssue(issue.number)
-  if (projectToken) {
-    // Best-effort: a revoked/expired PAT must not fail the job — the issue is
-    // already created+assigned, and placement is backfilled via `kt gh`.
+  // Best-effort through the broker proxy: the issue is already created+assigned,
+  // so a missing passport or a broker hiccup must not fail the job.
+  if (commandExists(ktGhBin)) {
     try {
       await ensureProjectPlacement(issue.id, issue.number)
     } catch (error) {
       console.warn(`Project placement failed (issue still created+assigned): ${error.message}`)
     }
   } else {
-    console.warn("PROJECT_TOKEN not configured; skipping project placement (backfill via kt gh).")
+    console.warn(`${ktGhBin} not available; skipping project placement (backfill via kt gh).`)
   }
   console.log(`${existing ? "Updated" : "Created"} test issue #${issue.number}: ${issue.url}`)
 }
@@ -135,6 +140,33 @@ async function githubGraphql(token, query, variables = {}) {
   })
   if (payload.errors?.length) throw new Error(`GitHub GraphQL failed: ${JSON.stringify(payload.errors)}`)
   return payload.data
+}
+
+// Broker proxy for project placement: kt-gh exchanges the runner's aliyun STS
+// badge for broker execution (no PAT on the runner). Only the GraphQL calls
+// that need org-project scope go through here.
+async function ktGhGraphql(query, variables = {}) {
+  const args = [
+    "--path", "/broker/",
+    "--key", "GITHUB_CLASSIC__BROKER",
+    "--owner", owner,
+    "--repo", repo,
+    "api", "graphql",
+    "-f", `query=${query}`,
+  ]
+  for (const [name, value] of Object.entries(variables)) {
+    args.push("-f", `${name}=${value}`)
+  }
+  const result = spawnSync(ktGhBin, args, { encoding: "utf8", timeout: 30_000 })
+  if (result.error) throw new Error(`kt-gh spawn failed: ${result.error.message}`)
+  if (result.status !== 0) throw new Error(`kt-gh failed (exit ${result.status}): ${result.stderr || result.stdout}`)
+  const payload = JSON.parse(result.stdout)
+  if (payload.errors?.length) throw new Error(`GitHub GraphQL (via kt-gh) failed: ${JSON.stringify(payload.errors)}`)
+  return payload.data
+}
+
+function commandExists(command) {
+  return spawnSync("which", [command], { statusOnly: true }).status === 0
 }
 
 async function findMergedPullRequest(sha) {
@@ -217,8 +249,7 @@ async function assignIssue(number) {
 }
 
 async function ensureProjectPlacement(issueId, issueNumber) {
-  const data = await githubGraphql(
-    projectToken,
+  const data = await ktGhGraphql(
     `query($owner:String!, $repo:String!, $number:Int!, $projectOwner:String!, $projectNumber:Int!) {
       organization(login:$projectOwner) {
         projectV2(number:$projectNumber) {
@@ -255,8 +286,7 @@ async function ensureProjectPlacement(issueId, issueNumber) {
 }
 
 async function addProjectItem(projectId, issueId) {
-  const data = await githubGraphql(
-    projectToken,
+  const data = await ktGhGraphql(
     `mutation($project:ID!, $content:ID!) {
       addProjectV2ItemById(input:{projectId:$project, contentId:$content}) { item { id } }
     }`,
@@ -266,8 +296,7 @@ async function addProjectItem(projectId, issueId) {
 }
 
 async function setProjectField(projectId, itemId, fieldId, optionId) {
-  await githubGraphql(
-    projectToken,
+  await ktGhGraphql(
     `mutation($project:ID!, $item:ID!, $field:ID!, $option:String!) {
       updateProjectV2ItemFieldValue(input:{
         projectId:$project,
