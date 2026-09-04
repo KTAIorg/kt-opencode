@@ -7,7 +7,10 @@ const ktaiVersion = requiredEnv("KTAI_VERSION")
 const upstreamVersion = requiredEnv("UPSTREAM_VERSION")
 const commitSha = requiredEnv("RELEASE_COMMIT_SHA")
 const issueToken = requiredEnv("ISSUE_TOKEN")
-const projectToken = requiredEnv("PROJECT_TOKEN")
+// KT_PROJECTS_TOKEN is a long-lived PAT in repo secrets (zero-trust debt).
+// Keep it optional: when missing/revoked the issue is still created+assigned,
+// project placement degrades to a warning and is backfilled via `kt gh`.
+const projectToken = process.env.PROJECT_TOKEN?.trim() || ""
 const testAssignee = process.env.TEST_ASSIGNEE?.trim() || ""
 
 const projectOwner = "KTAIorg"
@@ -89,7 +92,11 @@ async function main() {
   const issue = existing ? await updateIssue(existing.number, body) : await createIssue(title, body)
 
   await assignIssue(issue.number)
-  await ensureProjectPlacement(issue.id, issue.number)
+  if (projectToken) {
+    await ensureProjectPlacement(issue.id, issue.number)
+  } else {
+    console.warn("PROJECT_TOKEN not configured; skipping project placement (backfill via kt gh).")
+  }
   console.log(`${existing ? "Updated" : "Created"} test issue #${issue.number}: ${issue.url}`)
 }
 
