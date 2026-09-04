@@ -93,7 +93,13 @@ async function main() {
 
   await assignIssue(issue.number)
   if (projectToken) {
-    await ensureProjectPlacement(issue.id, issue.number)
+    // Best-effort: a revoked/expired PAT must not fail the job — the issue is
+    // already created+assigned, and placement is backfilled via `kt gh`.
+    try {
+      await ensureProjectPlacement(issue.id, issue.number)
+    } catch (error) {
+      console.warn(`Project placement failed (issue still created+assigned): ${error.message}`)
+    }
   } else {
     console.warn("PROJECT_TOKEN not configured; skipping project placement (backfill via kt gh).")
   }
