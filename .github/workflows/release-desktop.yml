@@ -662,7 +662,11 @@ jobs:
       - name: Create or update release test issue
         env:
           ISSUE_TOKEN: ${{ github.token }}
-          PROJECT_TOKEN: ${{ secrets.KT_PROJECTS_TOKEN }}
+          # Optional: org-project PAT. When revoked/absent the script skips
+          # project placement with a warning instead of failing the job;
+          # board placement is backfilled via `kt gh` (broker) until the CI
+          # broker passport lands.
+          PROJECT_TOKEN: ${{ secrets.KT_PROJECTS_TOKEN || '' }}
           RELEASE_TAG: ${{ needs.resolve-version.outputs.release-tag }}
           KTAI_VERSION: ${{ needs.resolve-version.outputs.ktai-version }}
           UPSTREAM_VERSION: ${{ needs.resolve-version.outputs.upstream-version }}
