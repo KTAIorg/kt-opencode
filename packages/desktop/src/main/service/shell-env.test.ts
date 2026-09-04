@@ -34,6 +34,58 @@ describe("shell env", () => {
     expect(env.OPENCODE_CLIENT).toBe("desktop")
   })
 
+  test("sanitizeImportedEnv drops host OpenCode, XDG roots, and AI API keys", () => {
+    const env = sanitizeImportedEnv({
+      PATH: "/usr/bin",
+      OPENCODE_CONFIG: "/Users/me/.config/opencode/config.json",
+      OPENCODE_CONFIG_DIR: "/Users/me/.config/opencode",
+      XDG_CONFIG_HOME: "/Users/me/.config",
+      XDG_DATA_HOME: "/Users/me/.local/share",
+      XDG_CACHE_HOME: "/Users/me/.cache",
+      XDG_STATE_HOME: "/Users/me/.local/state",
+      OPENAI_API_KEY: "sk-host",
+      OPENAI_BASE_URL: "https://sub2api.example/v1",
+      KTAI_API_KEY: "sk-ktai-host",
+      ANTHROPIC_API_KEY: "sk-ant-host",
+      OPENROUTER_API_KEY: "sk-or-host",
+      HOME: "/Users/me",
+    })
+
+    expect(env.PATH).toBe("/usr/bin")
+    expect(env.HOME).toBe("/Users/me")
+    expect(env.OPENCODE_CONFIG).toBeUndefined()
+    expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
+    expect(env.XDG_CONFIG_HOME).toBeUndefined()
+    expect(env.XDG_DATA_HOME).toBeUndefined()
+    expect(env.OPENAI_API_KEY).toBeUndefined()
+    expect(env.OPENAI_BASE_URL).toBeUndefined()
+    expect(env.KTAI_API_KEY).toBeUndefined()
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined()
+    expect(env.OPENROUTER_API_KEY).toBeUndefined()
+  })
+
+  test("mergeShellEnv desktop XDG wins over shell XDG", () => {
+    const env = mergeShellEnv(
+      {
+        XDG_CONFIG_HOME: "/Users/me/.config",
+        OPENCODE_CONFIG: "/Users/me/.config/opencode/config.json",
+        PATH: "/shell/path",
+      },
+      {
+        XDG_CONFIG_HOME: "/tmp/ai.opencode.desktop.dev",
+        XDG_DATA_HOME: "/tmp/ai.opencode.desktop.dev",
+        XDG_CACHE_HOME: "/tmp/ai.opencode.desktop.dev",
+        XDG_STATE_HOME: "/tmp/ai.opencode.desktop.dev",
+        OPENCODE_CLIENT: "desktop",
+      },
+    )
+
+    expect(env.XDG_CONFIG_HOME).toBe("/tmp/ai.opencode.desktop.dev")
+    expect(env.XDG_DATA_HOME).toBe("/tmp/ai.opencode.desktop.dev")
+    expect(env.OPENCODE_CONFIG).toBeUndefined()
+    expect(env.OPENCODE_CLIENT).toBe("desktop")
+  })
+
   test("resolveUserShell falls back to the login shell before /bin/sh", () => {
     expect(resolveUserShell("/custom/env-shell", "/bin/zsh")).toBe("/custom/env-shell")
     expect(resolveUserShell(undefined, "/bin/zsh")).toBe("/bin/zsh")

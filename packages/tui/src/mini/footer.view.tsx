@@ -60,6 +60,8 @@ import type { RunTheme } from "./theme"
 
 registerOpencodeSpinner()
 
+registerOpencodeSpinner()
+
 const EMPTY_BORDER = {
   topLeft: "",
   bottomLeft: "",

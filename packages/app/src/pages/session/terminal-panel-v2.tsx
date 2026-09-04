@@ -44,6 +44,8 @@ export function TerminalPanelV2(props: { stacked?: boolean } = {}) {
 
   onCleanup(() => terminal.cancelFocus())
 
+  onCleanup(() => terminal.cancelFocus())
+
   const [store, setStore] = createStore({
     autoCreated: false,
     recovered: {} as Record<string, boolean>,

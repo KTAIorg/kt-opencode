@@ -697,6 +697,26 @@ describe("HttpApiCodegen.generate", () => {
     expect(types).toContain('readonly "first": Shared, readonly "second": Shared')
   })
 
+  test("expands Promise references only at identifier boundaries", () => {
+    const Session = Schema.Struct({ name: Schema.Literal("Session"), id: Schema.String }).annotate({
+      identifier: "Session",
+    })
+    const SessionID = Schema.String.annotate({ identifier: "SessionID" })
+    const output = emitPromise(
+      compileContract(
+        api(
+          HttpApiEndpoint.get("get", "/session", {
+            success: Schema.Struct({ session: Session, sessionID: SessionID }),
+          }),
+        ),
+      ),
+    )
+
+    expect(output.files.find((file) => file.path === "types.ts")?.content).toContain(
+      'readonly "session": ({ readonly "name": "Session", readonly "id": string })',
+    )
+  })
+
   test("emits Effect Json schemas as standalone Promise types", () => {
     const output = emitPromise(
       compileContract(
@@ -747,6 +767,22 @@ describe("HttpApiCodegen.generate", () => {
     expect(() =>
       emitPromise(compileContract(api(HttpApiEndpoint.get("read", "/file/*/tail", { success: Schema.String })))),
     ).toThrow("Unsupported Promise path wildcard: /file/*/tail")
+
+    expect(() =>
+      emitPromise(
+        compileContract(
+          api(
+            HttpApiEndpoint.get("binary", "/binary", {
+              success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
+            }),
+          ),
+        ),
+      ),
+    ).toThrow("Unsupported Promise success encoding: session.binary")
+
+    expect(() =>
+      emitPromise(compileContract(api(HttpApiEndpoint.get("read", "/file/*", { success: Schema.String })))),
+    ).toThrow("Unsupported Promise path wildcard: /file/*")
 
     expect(() =>
       emitPromise(

@@ -114,7 +114,7 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Scope
       draft.method.update({ integrationID: "opencode", method: { type: "key", label: "API key (service account)" } })
     })
 
-    yield* load()
+    connected = (yield* ctx.integration.connection.active("opencode")) !== undefined
     yield* ctx.catalog.transform((catalog) => {
       for (const [providerID, item] of Object.entries(providers ?? {})) {
         catalog.provider.update(providerID, (provider) => {
@@ -198,6 +198,7 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Scope
       Stream.runForEach(refresh),
       Effect.forkScoped({ startImmediately: true }),
     )
+    yield* refresh().pipe(Effect.forkScoped)
   }),
 })
 

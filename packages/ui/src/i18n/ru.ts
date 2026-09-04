@@ -73,9 +73,8 @@ export const dict = {
   "ui.sessionTurn.error.addCredits": "Добавить кредиты",
 
   "dialog.usageExceeded.freeTier.title": "Достигнут бесплатный лимит",
-  "dialog.usageExceeded.freeTier.description":
-    "Подпишитесь на OpenCode Go для надёжного доступа к лучшим моделям с открытым исходным кодом, от $5/месяц.",
-  "dialog.usageExceeded.freeTier.actionLabel": "Подписаться",
+  "dialog.usageExceeded.freeTier.description": "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
+  "dialog.usageExceeded.freeTier.actionLabel": "Top up",
   "dialog.usageExceeded.accountRateLimit.title": "Достигнут лимит Go",
   "dialog.usageExceeded.accountRateLimit.description":
     "Достигнут лимит использования. Чтобы продолжить использовать эту модель сейчас, включите использование из доступного баланса",

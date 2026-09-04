@@ -76,8 +76,13 @@ export const dict = {
   "ui.sessionTurn.error.addCredits": "充值",
 
   "dialog.usageExceeded.freeTier.title": "免费额度已用完",
-  "dialog.usageExceeded.freeTier.description": "订阅 OpenCode Go，可靠地使用最佳开源模型，每月 $5 起。",
-  "dialog.usageExceeded.freeTier.actionLabel": "订阅",
+  "dialog.usageExceeded.freeTier.description":
+    "免费模型额度已用完。请前往 KT AI 平台充值，继续使用付费模型（KTAI / ktapi.cc）。",
+  "dialog.usageExceeded.freeTier.actionLabel": "去充值",
+  "dialog.usageExceeded.authBilling.title": "需要登录或充值",
+  "dialog.usageExceeded.authBilling.description":
+    "API 密钥无效或已过期，或账户余额不足。请前往 KT AI（ktapi.cc）注册/登录获取有效密钥，或充值后续费使用。",
+  "dialog.usageExceeded.authBilling.actionLabel": "打开 KT AI",
   "dialog.usageExceeded.accountRateLimit.title": "Go 额度已用完",
   "dialog.usageExceeded.accountRateLimit.description": "使用额度已达上限。如需立即继续使用此模型，请启用余额付费",
   "dialog.usageExceeded.accountRateLimit.actionLabel": "打开设置",

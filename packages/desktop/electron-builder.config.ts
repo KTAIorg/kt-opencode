@@ -39,13 +39,13 @@ const channel = (() => {
 const unsigned = process.env.KTAI_UNSIGNED_BUILD === "1"
 
 const APP_IDS = {
-  dev: "ai.opencode.desktop.dev",
-  beta: "ai.opencode.desktop.beta",
-  prod: "ai.opencode.desktop",
+  dev: "cc.ktapi.desktop.dev",
+  beta: "cc.ktapi.desktop.beta",
+  prod: "cc.ktapi.desktop",
 } as const
 
 const getBase = (appId: string): Configuration => ({
-  artifactName: "opencode-desktop-${os}-${arch}.${ext}",
+  artifactName: "ktai-desktop-${version}-${os}-${arch}.${ext}",
   directories: {
     output: "dist",
     buildResources: "resources",
@@ -90,8 +90,8 @@ const getBase = (appId: string): Configuration => ({
     sign: !unsigned,
   },
   protocols: {
-    name: "OpenCode",
-    schemes: ["opencode"],
+    name: "KTAI",
+    schemes: ["ktai"],
   },
   win: {
     icon: `resources/icons/icon.ico`,

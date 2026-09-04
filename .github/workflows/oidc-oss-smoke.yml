@@ -1,0 +1,112 @@
+# OIDC canary: assume gha-ktaiorg-kt-opencode-prod and PutObject a tiny marker
+# under kt-opencode-desktop/. Does not build installers or touch GitHub Releases.
+name: OIDC OSS Smoke
+run-name: OIDC OSS smoke | ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      marker_suffix:
+        description: Optional suffix for the marker object key
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - '.github/workflows/oidc-oss-smoke.yml'
+      - '.github/workflows/release-desktop.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kt-opencode-oidc-oss-smoke
+  cancel-in-progress: false
+
+jobs:
+  oidc-put-canary:
+    runs-on: ubuntu-24.04
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Assume Aliyun OIDC role
+        id: aliyun-oidc
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6
+        with:
+          role-to-assume: acs:ram::5590716371345016:role/gha-ktaiorg-kt-opencode-prod
+          oidc-provider-arn: acs:ram::5590716371345016:oidc-provider/github-actions-KT-Settlement
+          audience: sts.aliyuncs.com
+          role-session-name: kt-opencode-oidc-smoke
+
+      - name: Put canary object under kt-opencode-desktop/
+        id: put
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ steps.aliyun-oidc.outputs.aliyun-access-key-id }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ steps.aliyun-oidc.outputs.aliyun-access-key-secret }}
+          ALIYUN_SECURITY_TOKEN: ${{ steps.aliyun-oidc.outputs.aliyun-security-token }}
+          MARKER_SUFFIX: ${{ inputs.marker_suffix }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ALIYUN_ACCESS_KEY_ID:-}" ] || [ -z "${ALIYUN_ACCESS_KEY_SECRET:-}" ] || [ -z "${ALIYUN_SECURITY_TOKEN:-}" ]; then
+            echo "OIDC STS outputs missing from configure-aliyun-credentials-action" >&2
+            exit 1
+          fi
+          suffix="${MARKER_SUFFIX:-}"
+          if [ -z "$suffix" ]; then
+            suffix="${GITHUB_RUN_ID}-${GITHUB_SHA::7}"
+          fi
+          key="kt-opencode-desktop/_oidc-smoke/${suffix}.txt"
+          {
+            echo "kt-opencode oidc smoke ok"
+            echo "run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "sha=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF_NAME}"
+            echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > /tmp/oidc-smoke.txt
+          npm install --no-save ali-oss@6 >/dev/null
+          SMOKE_KEY="$key" node <<'NODE'
+          const OSS = require('ali-oss');
+          const key = process.env.SMOKE_KEY;
+          const client = new OSS({
+            region: 'oss-us-west-1',
+            bucket: 'kontian-assets',
+            accessKeyId: process.env.ALIYUN_ACCESS_KEY_ID,
+            accessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET,
+            stsToken: process.env.ALIYUN_SECURITY_TOKEN,
+            authorizationV4: true,
+          });
+          (async () => {
+            const r = await client.put(key, '/tmp/oidc-smoke.txt', {
+              headers: {
+                'x-oss-object-acl': 'private',
+                'Content-Type': 'text/plain; charset=utf-8',
+              },
+            });
+            console.log(JSON.stringify({
+              ok: true,
+              name: r.name,
+              url: r.url,
+              resStatus: r.res && r.res.status,
+            }, null, 2));
+          })().catch((err) => {
+            console.error(err);
+            process.exit(1);
+          });
+          NODE
+          echo "smoke_key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Append smoke summary
+        run: |
+          set -euo pipefail
+          {
+            echo "## OIDC OSS Smoke"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Role | \`gha-ktaiorg-kt-opencode-prod\` |"
+            echo "| Object | \`${{ steps.put.outputs.smoke_key }}\` |"
+            echo "| Ref | \`${GITHUB_REF_NAME}\` |"
+            echo "| SHA | \`${GITHUB_SHA}\` |"
+            echo "| Run | ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -182,11 +182,14 @@ describe("OpencodePlugin", () => {
     Effect.acquireUseRelease(
       Effect.sync(() => {
         const authorization: Array<string | null> = []
+        const gate = Promise.withResolvers<void>()
         return {
           authorization,
+          release: gate.resolve,
           server: Bun.serve({
             port: 0,
-            fetch: (request) => {
+            fetch: async (request) => {
+              await gate.promise
               authorization.push(request.headers.get("authorization"))
               const origin = new URL(request.url).origin
               return Response.json({
@@ -225,7 +228,7 @@ describe("OpencodePlugin", () => {
           }),
         }
       }),
-      ({ authorization, server }) =>
+      ({ authorization, release, server }) =>
         Effect.gen(function* () {
           const credentials = yield* Credential.Service
           const catalog = yield* Catalog.Service
