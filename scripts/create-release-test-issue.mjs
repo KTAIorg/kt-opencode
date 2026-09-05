@@ -142,6 +142,22 @@ async function githubGraphql(token, query, variables = {}) {
   return payload.data
 }
 
+// gh api graphql: -f is always a string; -F JSON-parses so Int! / Boolean!
+// stay typed. ktai-v1.0.93 placement failed with
+// "Variable $number/$projectNumber of type Int! was provided invalid value"
+// because every var went out as -f.
+export function graphqlVarFlags(variables = {}) {
+  const flags = []
+  for (const [name, value] of Object.entries(variables)) {
+    if (typeof value === "number" || typeof value === "boolean" || value === null) {
+      flags.push("-F", `${name}=${value === null ? "null" : String(value)}`)
+    } else {
+      flags.push("-f", `${name}=${value}`)
+    }
+  }
+  return flags
+}
+
 // Broker proxy for project placement: kt-gh exchanges the runner's aliyun STS
 // badge for broker execution (no PAT on the runner). Only the GraphQL calls
 // that need org-project scope go through here.
@@ -153,10 +169,8 @@ async function ktGhGraphql(query, variables = {}) {
     "--repo", repo,
     "api", "graphql",
     "-f", `query=${query}`,
+    ...graphqlVarFlags(variables),
   ]
-  for (const [name, value] of Object.entries(variables)) {
-    args.push("-f", `${name}=${value}`)
-  }
   const result = spawnSync(ktGhBin, args, { encoding: "utf8", timeout: 30_000 })
   if (result.error) throw new Error(`kt-gh spawn failed: ${result.error.message}`)
   if (result.status !== 0) throw new Error(`kt-gh failed (exit ${result.status}): ${result.stderr || result.stdout}`)
