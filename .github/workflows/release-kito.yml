@@ -2,12 +2,14 @@ name: Release · Kito
 run-name: Release | ${{ inputs.tag || github.event.release.tag_name || github.ref_name }}
 
 on:
-  # Registration consumes GitHub Release assets, so the release: published
-  # event is the correct trigger — it fires only after the release and its
-  # assets exist. A bare tag push fires before the release object is created,
-  # which made `gh release download` fail with "release not found" whenever
-  # the push-triggered run won the race (happened twice). workflow_dispatch
-  # stays as the manual recovery path.
+  # Registration consumes GitHub Release assets. The release: published event
+  # never fires here in practice: publish-release in release-desktop.yml uses
+  # GITHUB_TOKEN, and GitHub's anti-recursion rule prevents GITHUB_TOKEN-created
+  # releases from triggering other workflows. release-desktop.yml therefore
+  # dispatches this workflow explicitly after publishing; the release event and
+  # workflow_dispatch both remain as manual recovery paths. A bare tag push
+  # fires before the release object exists, which made `gh release download`
+  # fail with "release not found" (happened twice).
   release:
     types: [published]
   workflow_dispatch:

@@ -309,14 +309,26 @@ jobs:
               --notes-file release-notes.md \
               --prerelease=false \
               --latest
-            exit 0
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md \
+              --latest
           fi
 
-          gh release create "$RELEASE_TAG" "${assets[@]}" \
-            --target "$GITHUB_SHA" \
-            --title "$RELEASE_TITLE" \
-            --notes-file release-notes.md \
-            --latest
+      # GITHUB_TOKEN-created releases do not fire the release: published event
+      # for other workflows (GitHub anti-recursion), so registration must be
+      # dispatched explicitly. workflow_dispatch is exempt from that rule.
+      - name: Dispatch Kito release registration
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-kito.yml \
+            --ref main \
+            -f tag="${RELEASE_TAG}"
 
   publish-oss:
     name: Publish to OSS
