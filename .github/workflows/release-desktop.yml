@@ -676,8 +676,8 @@ jobs:
 
       - name: Install pinned kt-gh
         env:
-          KT_GH_VERSION: "0.4.0"
-          KT_GH_SHA256: 9fb89cf73a6915bce3221a1f4a5949849b101cb5923668f7e96ce55b32f316fe
+          KT_GH_VERSION: "0.7.0"
+          KT_GH_SHA256: 5b26a83471d4bd53c5e1d4997419df158df16121489e22e259ceca92996276eb
         run: |
           set -euo pipefail
           curl -fsSL --retry 3 --connect-timeout 10 --max-time 120 \
