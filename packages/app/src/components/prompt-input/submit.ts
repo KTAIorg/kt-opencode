@@ -259,6 +259,14 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     const currentAgent = local.agent.current()
     const variant = modelSelection.variant.current()
     if (!currentModel || !currentAgent) {
+      // 目录还没拉到时这不是用户的错：提示连接中，而不是「请先选择模型」。
+      if (!local.catalogReady()) {
+        showToast({
+          title: language.t("prompt.toast.modelCatalogLoading.title"),
+          description: language.t("prompt.toast.modelCatalogLoading.description"),
+        })
+        return
+      }
       showToast({
         title: language.t("prompt.toast.modelAgentRequired.title"),
         description: language.t("prompt.toast.modelAgentRequired.description"),

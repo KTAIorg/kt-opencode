@@ -197,13 +197,6 @@ export type WebSearchProvider = { id: string; name: string }
 
 export type WebSearchResult = { url: string; title?: string; content?: string; time: { published?: number } }
 
-export type KtaiAccount = {
-  account: { id: string; accountNo: string; displayName?: string | undefined }
-  balance?: number | undefined
-  memberSince?: string | undefined
-  joinedDays?: number | undefined
-}
-
 export type KtaiKtpayInfo = {
   enabled: boolean
   methods: Array<{ name: string; type: string }>
@@ -213,6 +206,20 @@ export type KtaiKtpayInfo = {
   appId?: string | undefined
   defaultLang?: string | undefined
   sdkUrl?: string | undefined
+}
+
+export type KtaiAccount = {
+  account: { id: string; accountNo: string; displayName?: string | undefined }
+  balance?: number | undefined
+  memberSince?: string | undefined
+  joinedDays?: number | undefined
+}
+
+export type KtaiModelProbeResult = {
+  modelID: string
+  ok: boolean
+  status?: number | undefined
+  error?: string | undefined
 }
 
 export type CommandInfo = {
@@ -1126,6 +1133,8 @@ export type ReferenceSource = ReferenceLocalSource | ReferenceGitSource
 export type WorktreeList = Array<WorktreeDirectory>
 
 export type VcsInfo = { branch: VcsBranch }
+
+export type KtaiModelProbe = { results: Array<KtaiModelProbeResult>; probedAt: number }
 
 export type PermissionRuleset = Array<PermissionRule>
 
@@ -2355,6 +2364,10 @@ export type ServerKtaiWalletKtpayPayOutput = KtaiKtpayOrder
 export type ServerKtaiWalletKtpayStatusInput = { readonly order_id: { readonly order_id: string }["order_id"] }
 
 export type ServerKtaiWalletKtpayStatusOutput = KtaiKtpayStatus
+
+export type ServerKtaiModelsProbeInput = { readonly modelIDs: { readonly modelIDs: ReadonlyArray<string> }["modelIDs"] }
+
+export type ServerKtaiModelsProbeOutput = KtaiModelProbe
 
 export type ServerGetOutput = { urls: Array<string> }
 

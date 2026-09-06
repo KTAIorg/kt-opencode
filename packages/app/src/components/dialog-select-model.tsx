@@ -2,6 +2,7 @@ import { Popover as Kobalte } from "@kobalte/core/popover"
 import { Component, ComponentProps, createEffect, createMemo, For, JSX, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
+import { useModels } from "@/context/models"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { popularProviders } from "@/hooks/use-providers"
 import { Button } from "@opencode-ai/ui/button"
@@ -259,11 +260,19 @@ function createModelSelectorController(input: {
   onSelect: () => void
 }) {
   const model = input.model ?? useLocal().model
+  const models = useModels()
   const allModels = createMemo(() =>
     model
       .list()
       .filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id }))
-      .filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
+      .filter((item) => (input.provider() ? item.provider.id === input.provider() : true))
+      // 「隐藏不可用」开启时，滤掉探测失败的 Kito 模型；没探测过的不过滤。
+      .filter((item) => {
+        if (!models.probe.state().hideUnavailable) return true
+        if (!isKtaiProviderID(item.provider.id)) return true
+        const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
+        return result?.ok !== false
+      }),
   )
 
   return {

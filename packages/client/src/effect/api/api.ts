@@ -111,6 +111,18 @@ export type ServerKtaiWalletKtpayStatusOperation<E = never> = (
   input: Endpoint1_8Input,
 ) => Effect.Effect<Endpoint1_8Output, E>
 
+export type Endpoint1_9Input = { readonly modelIDs: ReadonlyArray<string> }
+export type Endpoint1_9Output = {
+  readonly results: ReadonlyArray<{
+    readonly modelID: string
+    readonly ok: boolean
+    readonly status?: number | undefined
+    readonly error?: string | undefined
+  }>
+  readonly probedAt: number
+}
+export type ServerKtaiModelsProbeOperation<E = never> = (input: Endpoint1_9Input) => Effect.Effect<Endpoint1_9Output, E>
+
 export interface ServerKtaiApi<E = never> {
   readonly account: { readonly get: ServerKtaiAccountGetOperation<E> }
   readonly ensure: ServerKtaiEnsureOperation<E>
@@ -125,6 +137,7 @@ export interface ServerKtaiApi<E = never> {
       readonly status: ServerKtaiWalletKtpayStatusOperation<E>
     }
   }
+  readonly models: { readonly probe: ServerKtaiModelsProbeOperation<E> }
 }
 
 export type Endpoint2_0Output = { readonly urls: ReadonlyArray<string> }

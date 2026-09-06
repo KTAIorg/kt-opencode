@@ -12,6 +12,8 @@ import type {
   ServerKtaiWalletKtpayPayOutput,
   ServerKtaiWalletKtpayStatusInput,
   ServerKtaiWalletKtpayStatusOutput,
+  ServerKtaiModelsProbeInput,
+  ServerKtaiModelsProbeOutput,
   ServerGetOutput,
   LocationGetInput,
   LocationGetOutput,
@@ -475,6 +477,20 @@ export function make(options: ClientOptions) {
               requestOptions,
             ),
         },
+      },
+      models: {
+        probe: (input: ServerKtaiModelsProbeInput, requestOptions?: RequestOptions) =>
+          request<ServerKtaiModelsProbeOutput>(
+            {
+              method: "POST",
+              path: `/ktai/models/probe`,
+              body: { modelIDs: input["modelIDs"] },
+              successStatus: 200,
+              declaredStatuses: [401, 503, 502, 400],
+              empty: false,
+            },
+            requestOptions,
+          ),
       },
     },
     server: {

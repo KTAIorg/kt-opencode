@@ -1,4 +1,5 @@
 import { fetchAccountSummary, externalIdentity, fetchLedgerBalance, readPersistedIdentityToken, signOutIdentity } from "@opencode-ai/core/ktai/identity"
+import { probeKtaiModels } from "@opencode-ai/core/ktai/model-probe"
 import {
   clearManagedApiKey,
   createKtpayOrder,
@@ -149,6 +150,42 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
           try: () => fetchKtpayStatus(token, ctx.params.order_id),
           catch: (error) => upstream(error, "KTPay status failed"),
         })
+      }),
+    )
+    .handle("ktai.models.probe", (ctx) =>
+      Effect.gen(function* () {
+        const token = yield* identityToken()
+        const ids = [...new Set(ctx.payload.modelIDs.map((id) => id.trim()).filter(Boolean))]
+        if (ids.length === 0) {
+          return yield* new InvalidRequestError({
+            message: "modelIDs must not be empty",
+            kind: "ktai_models_probe",
+          })
+        }
+        if (ids.length > 100) {
+          return yield* new InvalidRequestError({
+            message: "modelIDs is limited to 100 per probe",
+            kind: "ktai_models_probe",
+          })
+        }
+        // 探测前先确保 managed key 存在（登出会清掉）；401 由 identityToken 抛出。
+        if (!(yield* Effect.promise(() => readManagedApiKey()))) {
+          yield* Effect.tryPromise({
+            try: () => syncManagedToken(token),
+            catch: (error) => upstream(error, "NewAPI ensure failed"),
+          })
+        }
+        const probed = yield* Effect.tryPromise({
+          try: async () => probeKtaiModels(ids, (await readManagedApiKey()) ?? ""),
+          catch: (error) => upstream(error, "model probe failed"),
+        })
+        if (!probed.ok) {
+          return yield* new BadGatewayError({
+            message: probed.reason,
+            service: "ktai",
+          })
+        }
+        return { results: probed.results, probedAt: Date.now() }
       }),
     ),
 )

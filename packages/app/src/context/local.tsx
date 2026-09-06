@@ -367,6 +367,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       slug: createMemo(() => base64Encode(sdk().directory)),
       model,
       agent,
+      // provider/model 目录是否已拉到（启动早期为 false）。提交前用它区分
+      // 「模型服务还没连上」和「真的没选模型」，避免把加载中误报成用户错误。
+      catalogReady: providers.ready,
       session: {
         ready: savedReady,
         reset() {
