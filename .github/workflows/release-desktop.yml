@@ -33,7 +33,10 @@ jobs:
       upstream-version: ${{ steps.version.outputs.upstream_version }}
       release-tag: ${{ steps.version.outputs.release_tag }}
     steps:
+      # Full clone: resolve-version counts existing tags on the release line.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
 
       - name: Resolve KTAI and upstream versions
         id: version
@@ -58,7 +61,11 @@ jobs:
             ktai_version="0.0.${GITHUB_RUN_NUMBER}"
             release_tag=""
           else
-            ktai_version="${ktai_base}.${GITHUB_RUN_NUMBER}"
+            # Patch counts releases already published on this major.minor line,
+            # so a fresh line starts at .0 (2.1.0) and increments per publish.
+            # Requires full clone: git tags live outside the shallow depth.
+            line_patch="$(git tag --list "ktai-v${ktai_base}.*-opencode-*" | wc -l | tr -d ' ')"
+            ktai_version="${ktai_base}.${line_patch}"
             release_tag="ktai-v${ktai_version}-opencode-v${upstream_version}"
           fi
 
