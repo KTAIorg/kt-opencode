@@ -43,14 +43,15 @@ Release Service **已经有** app `kito`。复用它，不要再造 `kt-opencode
 ## 现行流水线
 
 ```text
-打 kito-vX.Y.Z tag
-  -> release-kito-installers.yml 构建未签名安装包 + 发布 GitHub Release
-  -> release-kito.yml 下载资产
+main 合并触发 release-desktop.yml（构建 + 发布 GitHub Release + 打 kito-vX.Y.Z tag）
+  -> release: published 事件（kito-v* tag）触发 release-kito.yml
   -> bun packages/desktop/scripts/kito-release.ts register
   -> 复用 app kito
   -> create draft + register artifacts + publish rollout 0
   -> 人在 release-admin.ktyun.cc / kt release 放量
 ```
+
+release-kito-installers.yml 已改为纯手动恢复路径（workflow_dispatch），不再由 tag push 触发；main 流水线已经是 tag 的属主。
 
 客户端：Release Service 还没有公开 history 时继续 GitHub；history 已有版本后，`no_update`（含 rollout 0）必须停住，不许再回落到 GitHub 绕过灰度。
 

@@ -28,7 +28,7 @@ const projectFields = {
 }
 
 export function buildIssueTitle(tag) {
-  return `KTAI OpenCode 测试需求（${tag}）`
+  return `Kito 测试需求（${tag}）`
 }
 
 export function buildIssueBody({ release, pullRequest, linkedIssues, version, openCodeVersion, sha }) {
@@ -43,7 +43,7 @@ export function buildIssueBody({ release, pullRequest, linkedIssues, version, op
   return [
     `# ${release.tag_name}`,
     "## 概述",
-    `- KTAI 版本：\`${version}\``,
+    `- Kito 版本：\`${version}\``,
     `- OpenCode 上游版本：\`${openCodeVersion}\``,
     `- Release：[${release.name || release.tag_name}](${release.html_url})`,
     `- 发布 Commit：\`${sha}\``,
@@ -56,8 +56,8 @@ export function buildIssueBody({ release, pullRequest, linkedIssues, version, op
     "1. Windows x64：验证 EXE 可安装、启动、卸载，版本号与 Release 一致",
     "2. macOS Intel：验证未签名 PKG 可安装并启动，同时抽测 DMG、ZIP",
     "3. macOS Apple Silicon：验证未签名 PKG 可安装并启动，同时抽测 DMG、ZIP",
-    "4. 验证 KTAI 品牌名称、应用图标、协议唤起和安装包文件名正确",
-    "5. 验证 KTAI Provider 可读取模型目录、使用密钥发起请求，且仓库与安装包不包含明文密钥",
+    "4. 验证 Kito 品牌名称、应用图标、协议唤起和安装包文件名正确",
+    "5. 验证 Kito Provider 可读取模型目录、使用密钥发起请求，且仓库与安装包不包含明文密钥",
     ...linkedIssueTests,
     "",
     "## 对应的安装包",
@@ -68,7 +68,7 @@ export function buildIssueBody({ release, pullRequest, linkedIssues, version, op
     "- [ ] Windows x64 通过",
     "- [ ] macOS Intel 通过",
     "- [ ] macOS Apple Silicon 通过",
-    "- [ ] KTAI Provider 与品牌能力通过",
+    "- [ ] Kito Provider 与品牌能力通过",
     "- [ ] 关联 Issue 回归通过",
     "",
   ].join("\n")

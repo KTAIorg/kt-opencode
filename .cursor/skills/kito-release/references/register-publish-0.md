@@ -15,7 +15,7 @@
 
 ## 产物映射
 
-GitHub Release 文件名现在是 `ktai-desktop-<version>-<os>-<arch>.<ext>`，也接受旧的 `opencode-desktop-<os>-<arch>.<ext>`。
+GitHub Release 文件名现在是 `kito-desktop-<version>-<os>-<arch>.<ext>`，也接受旧的 `ktai-desktop-*` / `opencode-desktop-<os>-<arch>.<ext>`。
 
 | 文件 | platform | arch | kind |
 |---|---|---|---|
@@ -35,7 +35,7 @@ GitHub Release 文件名现在是 `ktai-desktop-<version>-<os>-<arch>.<ext>`，�
 
 仓库：`KTAIorg/kt-opencode`  
 Workflow：`.github/workflows/release-kito.yml`（`Release · Kito`）  
-触发：`kito-v*` tag、GitHub Release published（仅 `kito-v*` tag 的 release）、`workflow_dispatch`  
+触发：GitHub Release published（仅 `kito-v*` tag 的 release）、`workflow_dispatch`。`kito-v*` tag 由 main 流水线（release-desktop.yml）自动创建；release-kito-installers.yml 已改为纯手动恢复路径。
 脚本：`packages/desktop/scripts/kito-release.ts`
 
 ```bash
