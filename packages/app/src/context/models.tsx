@@ -16,7 +16,15 @@ type Store = {
   variant?: Record<string, string | undefined>
 }
 
+export type ProbeState = {
+  // modelID → 探测结果（仅 Kito provider 的模型）。ok=false 表示渠道实测不可用。
+  results: Record<string, { ok: boolean; status?: number; error?: string }>
+  probedAt?: number
+  hideUnavailable: boolean
+}
+
 const RECENT_LIMIT = 5
+const PROBE_STALE_MS = 1000 * 60 * 30
 
 function modelKey(model: ModelKey) {
   return `${model.providerID}:${model.modelID}`
@@ -29,6 +37,17 @@ const createModelsPersistedState = () => {
       user: [],
       recent: [],
       variant: {},
+    }),
+  )
+
+  return [store, setStore, ready] as const
+}
+
+const createProbePersistedState = () => {
+  const [store, setStore, _, ready] = persisted(
+    Persist.global("model-probe"),
+    createStore<{ probe: ProbeState }>({
+      probe: { results: {}, hideUnavailable: false },
     }),
   )
 
@@ -157,6 +176,9 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     (p) => p,
     { initialValue: [] },
   )
+
+  const [probeStore, setProbeStore, probeReady] = createProbePersistedState()
+
   return {
     ready,
     list,
@@ -170,6 +192,24 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     variant: {
       get: getVariant,
       set: setVariant,
+    },
+    probe: {
+      ready: probeReady,
+      state: () => {
+        void probeReady.promise
+        return probeStore.probe
+      },
+      result: (model: ModelKey) => probeStore.probe.results[model.modelID],
+      stale: () => {
+        const at = probeStore.probe.probedAt
+        return at === undefined || Date.now() - at > PROBE_STALE_MS
+      },
+      setHideUnavailable: (value: boolean) => setProbeStore("probe", "hideUnavailable", value),
+      apply(results: { results: { modelID: string; ok: boolean; status?: number; error?: string }[]; probedAt: number }) {
+        const next: Record<string, { ok: boolean; status?: number; error?: string }> = {}
+        for (const item of results.results) next[item.modelID] = { ok: item.ok, status: item.status, error: item.error }
+        setProbeStore("probe", { results: next, probedAt: results.probedAt, hideUnavailable: probeStore.probe.hideUnavailable })
+      },
     },
   }
 }

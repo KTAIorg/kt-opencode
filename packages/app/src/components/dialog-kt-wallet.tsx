@@ -6,6 +6,8 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount }
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
+import { openKtIdentityLogin } from "@/components/dialog-kt-identity-login"
+import { useKtaiSignedIn } from "@/utils/kt-signed-in"
 import { isKtpayPaid, readKtpayStatus } from "./dialog-kt-wallet-status"
 import { showToast } from "@/utils/toast"
 
@@ -73,6 +75,21 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   const [payError, setPayError] = createSignal<string>()
   const [paid, setPaid] = createSignal(false)
   const [checking, setChecking] = createSignal(false)
+  const signedIn = useKtaiSignedIn()
+  const [sawUnauthorized, setSawUnauthorized] = createSignal(false)
+  const needsLogin = () => signedIn() === false || sawUnauthorized()
+
+  const [authTick, setAuthTick] = createSignal(0)
+  createEffect(() => {
+    // 登录态翻转时重发钱包数据：未登录 401 → 登录成功 → 重新拉 ktpay info / 取址
+    if (signedIn() !== undefined) setAuthTick((n) => n + 1)
+  })
+
+  onMount(() => {
+    const bump = () => setAuthTick((n) => n + 1)
+    window.addEventListener("kito-account-refresh", bump)
+    onCleanup(() => window.removeEventListener("kito-account-refresh", bump))
+  })
 
   const request = (path: string, init?: RequestInit) => {
     const sdk = serverSDK
@@ -81,8 +98,19 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
     if (sdk.server.http.username && sdk.server.http.password) {
       headers.set("authorization", `Basic ${btoa(`${sdk.server.http.username}:${sdk.server.http.password}`)}`)
     }
-    return (platform.fetch ?? fetch)(`${sdk.url.replace(/\/+$/, "")}${path}`, { ...init, headers })
+    return (platform.fetch ?? fetch)(`${sdk.url.replace(/\/+$/, "")}${path}`, { ...init, headers }).then((response) => {
+      // KT Identity 未登录时 /ktai/* 统一 401；记下来让弹窗内直接给登录入口，
+      // 而不是让用户关掉弹窗去找被遮挡的右上角按钮。
+      if (response.status === 401) setSawUnauthorized(true)
+      return response
+    })
   }
+
+  // 登录成功后（kt-signed-in 监听 kito-account-refresh 重拉）清掉 401 痕迹，
+  // 各 tab 的请求 effect 会因 authTick 变化自动重发。
+  createEffect(() => {
+    if (signedIn() === true) setSawUnauthorized(false)
+  })
 
   const [info, setInfo] = createSignal<KtpayInfo>()
   const [infoError, setInfoError] = createSignal<Error>()
@@ -91,7 +119,15 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   const [addressError, setAddressError] = createSignal<Error>()
   const [addressLoading, setAddressLoading] = createSignal(false)
 
-  onMount(() => {
+  createEffect(() => {
+    void authTick()
+    if (needsLogin()) {
+      setInfo()
+      setInfoError()
+      return
+    }
+    setInfoLoading(true)
+    let cancelled = false
     void request("/ktai/wallet/ktpay/info")
       .then(async (response) => {
         const payload = (await response.json().catch(() => undefined)) as (KtpayInfo & { error?: string }) | undefined
@@ -99,14 +135,21 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
         setInfo(payload)
       })
       .catch((error) => {
+        if (cancelled) return
         setInfoError(error instanceof Error ? error : new Error(language.t("dialog.ktWallet.fiatError")))
       })
-      .finally(() => setInfoLoading(false))
+      .finally(() => {
+        if (!cancelled) setInfoLoading(false)
+      })
+    onCleanup(() => {
+      cancelled = true
+    })
   })
 
   createEffect(() => {
+    void authTick()
     const selected = tab() === "crypto" ? network() : undefined
-    if (!selected) {
+    if (!selected || needsLogin()) {
       setAddress()
       setAddressError()
       setAddressLoading(false)
@@ -321,7 +364,28 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
           </button>
         </div>
 
-        <Show when={tab() === "fiat"}>
+        <Show when={needsLogin()} fallback={null}>
+          <div class="flex flex-col items-center gap-3 py-8">
+            <p class="text-14-regular text-text-base">{language.t("dialog.ktWallet.loginRequired")}</p>
+            <Button
+              variant="contrast"
+              size="large"
+              type="button"
+              onClick={() =>
+                openKtIdentityLogin({
+                  dialog,
+                  onClose: () => {
+                    window.dispatchEvent(new Event("kito-account-refresh"))
+                  },
+                })
+              }
+            >
+              {language.t("dialog.ktAccess.telegram")}
+            </Button>
+          </div>
+        </Show>
+
+        <Show when={tab() === "fiat" && !needsLogin()}>
           <Show when={infoLoading()}>
             <div class="flex items-center gap-3 text-14-regular text-text-base">
               <Spinner />
@@ -401,7 +465,7 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
           </Show>
         </Show>
 
-        <Show when={tab() === "crypto"}>
+        <Show when={tab() === "crypto" && !needsLogin()}>
           <div class="flex flex-col gap-3">
             <div class="flex gap-1 rounded-lg bg-background-stronger p-1">
               <For each={CRYPTO_NETWORKS}>

@@ -18,6 +18,8 @@ import type {
   Endpoint1_7Output,
   Endpoint1_8Input,
   Endpoint1_8Output,
+  Endpoint1_9Input,
+  Endpoint1_9Output,
   Endpoint2_0Output,
   Endpoint3_0Input,
   Endpoint3_0Output,
@@ -297,6 +299,11 @@ const Endpoint1_8 = (raw: RawClient["server.ktai"]) => (input: Endpoint1_8Input)
     raw["ktai.wallet.ktpay.status"]({ params: { order_id: input["order_id"] } }).pipe(Effect.mapError(mapClientError)),
   )
 
+const Endpoint1_9 = (raw: RawClient["server.ktai"]) => (input: Endpoint1_9Input) =>
+  preserveEffect<Endpoint1_9Output>()(
+    raw["ktai.models.probe"]({ payload: { modelIDs: input["modelIDs"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const adaptGroup1 = (raw: RawClient["server.ktai"]) => ({
   account: { get: Endpoint1_0(raw) },
   ensure: Endpoint1_1(raw),
@@ -307,6 +314,7 @@ const adaptGroup1 = (raw: RawClient["server.ktai"]) => ({
     cryptoStatus: Endpoint1_5(raw),
     ktpay: { info: Endpoint1_6(raw), pay: Endpoint1_7(raw), status: Endpoint1_8(raw) },
   },
+  models: { probe: Endpoint1_9(raw) },
 })
 
 const Endpoint2_0 = (raw: RawClient["server.server"]) => () =>

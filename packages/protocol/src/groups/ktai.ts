@@ -70,6 +70,18 @@ export const KtaiKtpayStatus = Schema.Struct({
   settled: Schema.Boolean,
 }).annotate({ identifier: "KtaiKtpayStatus" })
 
+export const KtaiModelProbeResult = Schema.Struct({
+  modelID: Schema.String,
+  ok: Schema.Boolean,
+  status: Schema.optional(Schema.Number),
+  error: Schema.optional(Schema.String),
+}).annotate({ identifier: "KtaiModelProbeResult" })
+
+export const KtaiModelProbe = Schema.Struct({
+  results: Schema.Array(KtaiModelProbeResult),
+  probedAt: Schema.Number,
+}).annotate({ identifier: "KtaiModelProbe" })
+
 const identityErrors = [UnauthorizedError, ServiceUnavailableError] as const
 const walletErrors = [UnauthorizedError, ServiceUnavailableError, BadGatewayError] as const
 
@@ -186,6 +198,22 @@ export const KtaiGroup = HttpApiGroup.make("server.ktai")
         identifier: "v2.ktai.wallet.ktpay.status",
         summary: "Get KTPay status",
         description: "Return the current status of a KTPay cashier order.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("ktai.models.probe", "/ktai/models/probe", {
+      payload: Schema.Struct({
+        modelIDs: Schema.Array(Schema.String),
+      }),
+      success: KtaiModelProbe,
+      error: [...identityErrors, BadGatewayError, InvalidRequestError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.ktai.models.probe",
+        summary: "Probe Kito models",
+        description:
+          "Send a minimal chat request per requested model with the managed Kito key and report per-model availability.",
       }),
     ),
   )
