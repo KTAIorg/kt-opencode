@@ -5,8 +5,10 @@ import { chmod, copyFile, mkdir, readdir, rename, rm } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { promisify } from "node:util"
 import { app } from "electron"
+import { CHANNEL } from "../constants"
 import { parseCliVersion } from "./cli-version"
 import { developmentResourcesRoot } from "../paths"
+import { registrationFileName } from "./registration-file"
 
 const execFileAsync = promisify(execFile)
 type Logger = {
@@ -37,7 +39,7 @@ export async function startBackgroundCli(logger: Logger) {
     file:
       isolated && process.env.OPENCODE_DESKTOP_SERVER_CHANNEL === "local"
         ? join(app.getPath("userData"), "opencode", "service-local.json")
-        : undefined,
+        : packagedRegistrationFile(),
     version: cli.version,
     command: [...cli.command, "serve", "--service", ...(isolated ? ["--port", "0"] : [])],
     onStart: (reason, previousVersion) => logger.log("v2 CLI background service starting", { reason, previousVersion }),
@@ -62,6 +64,12 @@ export async function startBackgroundCli(logger: Logger) {
             output: process.env.OPENCODE_DESKTOP_WSL_CLI_OUTPUT,
           },
   }
+}
+
+// The bundled prod CLI registers itself in service-prod.json, so packaged
+// builds must poll the same file; see registration-file.ts.
+function packagedRegistrationFile() {
+  return registrationFileName(CHANNEL, app.isPackaged)
 }
 
 async function resolveBundledCli(isolated: boolean, logger: Logger) {
