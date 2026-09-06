@@ -45,7 +45,7 @@ const APP_IDS = {
 } as const
 
 const getBase = (appId: string): Configuration => ({
-  artifactName: "ktai-desktop-${version}-${os}-${arch}.${ext}",
+  artifactName: "kito-desktop-${version}-${os}-${arch}.${ext}",
   directories: {
     output: "dist",
     buildResources: "resources",
@@ -60,15 +60,11 @@ const getBase = (appId: string): Configuration => ({
   },
   files: ["out/**/*", "resources/**/*", "!resources/opencode-cli*"],
   extraResources: [
-    ...(channel !== "prod"
-      ? [
-          {
-            from: "resources/",
-            to: "",
-            filter: ["opencode-cli*"],
-          },
-        ]
-      : []),
+    {
+      from: "resources/",
+      to: "",
+      filter: ["opencode-cli*"],
+    },
     {
       from: "native/",
       to: "native/",
@@ -90,7 +86,7 @@ const getBase = (appId: string): Configuration => ({
     sign: !unsigned,
   },
   protocols: {
-    name: "KTAI",
+    name: "Kito",
     schemes: ["ktai"],
   },
   win: {

@@ -4,13 +4,13 @@ import type { Configuration } from "electron-builder"
 const legacyDesktopEntry = "resources/linux/opencode-desktop.desktop"
 
 const channels = [
-  { channel: "dev", appId: "cc.ktapi.desktop.dev", productName: "KTAI Dev" },
-  { channel: "beta", appId: "cc.ktapi.desktop.beta", productName: "KTAI Beta" },
-  { channel: "prod", appId: "cc.ktapi.desktop", productName: "KTAI" },
+  { channel: "dev", appId: "cc.ktapi.desktop.dev", productName: "Kito Dev", protocolName: "Kito", schemes: ["ktai"] },
+  { channel: "beta", appId: "cc.ktapi.desktop.beta", productName: "Kito Beta", protocolName: "Kito Beta", schemes: ["ktai", "opencode"] },
+  { channel: "prod", appId: "cc.ktapi.desktop", productName: "Kito", protocolName: "Kito", schemes: ["ktai", "opencode"] },
 ] as const
 
 for (const channel of channels) {
-  test(`uses the KTAI identity for ${channel.channel}`, async () => {
+  test(`uses the Kito identity for ${channel.channel}`, async () => {
     const previous = process.env.OPENCODE_CHANNEL
     process.env.OPENCODE_CHANNEL = channel.channel
 
@@ -22,10 +22,10 @@ for (const channel of channels) {
 
     expect(config.appId).toBe(channel.appId)
     expect(config.productName).toBe(channel.productName)
-    expect(config.artifactName).toBe("ktai-desktop-${version}-${os}-${arch}.${ext}")
+    expect(config.artifactName).toBe("kito-desktop-${version}-${os}-${arch}.${ext}")
     expect(config.protocols).toEqual({
-      name: channel.channel === "dev" ? "KTAI" : channel.productName,
-      schemes: ["ktai"],
+      name: channel.protocolName,
+      schemes: channel.schemes,
     })
     expect(config.extraMetadata?.desktopName).toBe(`${channel.appId}.desktop`)
     expect(config.linux?.executableName).toBe(channel.appId)
@@ -82,7 +82,7 @@ test("keeps a hidden prod launcher for old Linux pins", async () => {
   expect(desktop).toContain("NoDisplay=true")
 })
 
-for (const channel of ["dev", "beta"] as const) {
+for (const channel of ["dev", "beta", "prod"] as const) {
   test(`bundles the CLI outside the ${channel} app archive`, async () => {
     const previous = process.env.OPENCODE_CHANNEL
     process.env.OPENCODE_CHANNEL = channel
@@ -100,17 +100,3 @@ for (const channel of ["dev", "beta"] as const) {
   })
 }
 
-test("does not bundle the CLI in prod builds", async () => {
-  const previous = process.env.OPENCODE_CHANNEL
-  process.env.OPENCODE_CHANNEL = "prod"
-  const module = await import("./electron-builder.config.ts?no-cli-resource=prod")
-  const config = module.default as Configuration
-  if (previous === undefined) delete process.env.OPENCODE_CHANNEL
-  else process.env.OPENCODE_CHANNEL = previous
-
-  expect(config.extraResources).not.toContainEqual({
-    from: "resources/",
-    to: "",
-    filter: ["opencode-cli*"],
-  })
-})
