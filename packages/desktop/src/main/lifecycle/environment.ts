@@ -15,9 +15,9 @@ import { registerRendererProtocol, setDockIcon } from "../windows"
 import { initializeFirstLaunchOnboarding } from "./onboarding"
 
 const appNames: Record<string, string> = {
-  dev: "OpenCode Dev",
-  beta: "OpenCode Beta",
-  prod: "OpenCode",
+  dev: "Kito Dev",
+  beta: "Kito Beta",
+  prod: "Kito",
 }
 const appIDs: Record<string, string> = {
   dev: "ai.opencode.desktop.dev",
@@ -36,7 +36,7 @@ export function configureApplication() {
 
   const appID = app.isPackaged ? appIDs[CHANNEL] : "ai.opencode.desktop.dev"
   const onboardingRoot = createOnboardingTestRoot()
-  app.setName(app.isPackaged ? appNames[CHANNEL] : "OpenCode Dev")
+  app.setName(app.isPackaged ? appNames[CHANNEL] : "Kito Dev")
   app.setAppUserModelId(appID)
   app.setPath("userData", onboardingRoot ? join(onboardingRoot, "desktop") : join(app.getPath("appData"), appID))
   if (onboardingRoot) app.setPath("sessionData", join(onboardingRoot, "session"))
