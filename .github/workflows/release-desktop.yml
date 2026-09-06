@@ -219,7 +219,7 @@ jobs:
           cat > release-notes.md <<'EOF_NOTES'
           ## 构建信息
 
-          - KTAI 版本：`${{ needs.resolve-version.outputs.ktai-version }}`
+          - Kito 版本：`${{ needs.resolve-version.outputs.ktai-version }}`
           - OpenCode 上游版本：`${{ needs.resolve-version.outputs.upstream-version }}`
           - 源 Commit：`${{ github.sha }}`
           - 构建 Run：`${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
@@ -242,7 +242,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.resolve-version.outputs.release-tag }}
-          RELEASE_TITLE: KTAI OpenCode ${{ needs.resolve-version.outputs.ktai-version }} (OpenCode ${{ needs.resolve-version.outputs.upstream-version }})
+          RELEASE_TITLE: Kito ${{ needs.resolve-version.outputs.ktai-version }}
         run: |
           set -euo pipefail
           mapfile -t assets < <(find release-assets-flat -maxdepth 1 -type f | sort)
