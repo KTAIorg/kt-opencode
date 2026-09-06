@@ -18,7 +18,6 @@ const issueToken = requiredEnv("ISSUE_TOKEN")
 const ktGhBin = process.env.KT_GH_BIN?.trim() || "kt-gh"
 const testAssignee = process.env.TEST_ASSIGNEE?.trim() || ""
 
-const projectOwner = "KTAIorg"
 const projectNumber = 5
 const projectFields = {
   Status: "Todo",
@@ -101,7 +100,7 @@ async function main() {
   // so a missing passport or a broker hiccup must not fail the job.
   if (commandExists(ktGhBin)) {
     try {
-      await ensureProjectPlacement(issue.id, issue.number)
+      await ensureProjectPlacement(issue.number)
     } catch (error) {
       console.warn(`Project placement failed (issue still created+assigned): ${error.message}`)
     }
@@ -142,41 +141,21 @@ async function githubGraphql(token, query, variables = {}) {
   return payload.data
 }
 
-// gh api graphql: -f is always a string; -F JSON-parses so Int! / Boolean!
-// stay typed. ktai-v1.0.93 placement failed with
-// "Variable $number/$projectNumber of type Int! was provided invalid value"
-// because every var went out as -f.
-export function graphqlVarFlags(variables = {}) {
-  const flags = []
-  for (const [name, value] of Object.entries(variables)) {
-    if (typeof value === "number" || typeof value === "boolean" || value === null) {
-      flags.push("-F", `${name}=${value === null ? "null" : String(value)}`)
-    } else {
-      flags.push("-f", `${name}=${value}`)
-    }
-  }
-  return flags
-}
-
 // Broker proxy for project placement: kt-gh exchanges the runner's aliyun STS
-// badge for broker execution (no PAT on the runner). Only the GraphQL calls
-// that need org-project scope go through here.
-async function ktGhGraphql(query, variables = {}) {
-  const args = [
+// badge for broker execution (no PAT on the runner). The structured verbs
+// (project add/set, kt-secrets #110) replaced raw `api graphql`, which the
+// broker now denies for machine subjects (#103: exec channel is human-only).
+function ktGhProject(args) {
+  const result = spawnSync(ktGhBin, [
     "--path", "/broker/",
     "--key", "GITHUB_CLASSIC__BROKER",
     "--owner", owner,
     "--repo", repo,
-    "api", "graphql",
-    "-f", `query=${query}`,
-    ...graphqlVarFlags(variables),
-  ]
-  const result = spawnSync(ktGhBin, args, { encoding: "utf8", timeout: 30_000 })
+    ...args,
+  ], { encoding: "utf8", timeout: 30_000 })
   if (result.error) throw new Error(`kt-gh spawn failed: ${result.error.message}`)
   if (result.status !== 0) throw new Error(`kt-gh failed (exit ${result.status}): ${result.stderr || result.stdout}`)
-  const payload = JSON.parse(result.stdout)
-  if (payload.errors?.length) throw new Error(`GitHub GraphQL (via kt-gh) failed: ${JSON.stringify(payload.errors)}`)
-  return payload.data
+  return result.stdout
 }
 
 function commandExists(command) {
@@ -262,65 +241,16 @@ async function assignIssue(number) {
   console.warn(`Unable to assign ${testAssignee}: ${await response.text()}`)
 }
 
-async function ensureProjectPlacement(issueId, issueNumber) {
-  const data = await ktGhGraphql(
-    `query($owner:String!, $repo:String!, $number:Int!, $projectOwner:String!, $projectNumber:Int!) {
-      organization(login:$projectOwner) {
-        projectV2(number:$projectNumber) {
-          id
-          fields(first:100) {
-            nodes {
-              ... on ProjectV2FieldCommon { id name }
-              ... on ProjectV2SingleSelectField { options { id name } }
-            }
-          }
-        }
-      }
-      repository(owner:$owner, name:$repo) {
-        issue(number:$number) {
-          projectItems(first:20) {
-            nodes { id project { ... on ProjectV2 { id } } }
-          }
-        }
-      }
-    }`,
-    { owner, repo, number: issueNumber, projectOwner, projectNumber },
-  )
-  const project = data.organization.projectV2
-  if (!project) throw new Error(`Project ${projectOwner}#${projectNumber} not found`)
-  const existing = data.repository.issue.projectItems.nodes.find((item) => item.project?.id === project.id)
-  const itemId = existing?.id || (await addProjectItem(project.id, issueId))
-
+async function ensureProjectPlacement(issueNumber) {
+  // project add is idempotent (already-on-board reuses the item), and each
+  // field is a separate verb call — no GraphQL ID juggling on the runner.
+  ktGhProject(["project", "add", "--project", String(projectNumber), String(issueNumber)])
   for (const [fieldName, optionName] of Object.entries(projectFields)) {
-    const field = project.fields.nodes.find((candidate) => candidate.name === fieldName)
-    const option = field?.options?.find((candidate) => candidate.name === optionName)
-    if (!field || !option) throw new Error(`Project field option not found: ${fieldName}=${optionName}`)
-    await setProjectField(project.id, itemId, field.id, option.id)
+    ktGhProject([
+      "project", "set", "--project", String(projectNumber), String(issueNumber),
+      "--field", fieldName, "--option", optionName,
+    ])
   }
-}
-
-async function addProjectItem(projectId, issueId) {
-  const data = await ktGhGraphql(
-    `mutation($project:ID!, $content:ID!) {
-      addProjectV2ItemById(input:{projectId:$project, contentId:$content}) { item { id } }
-    }`,
-    { project: projectId, content: issueId },
-  )
-  return data.addProjectV2ItemById.item.id
-}
-
-async function setProjectField(projectId, itemId, fieldId, optionId) {
-  await ktGhGraphql(
-    `mutation($project:ID!, $item:ID!, $field:ID!, $option:String!) {
-      updateProjectV2ItemFieldValue(input:{
-        projectId:$project,
-        itemId:$item,
-        fieldId:$field,
-        value:{singleSelectOptionId:$option}
-      }) { projectV2Item { id } }
-    }`,
-    { project: projectId, item: itemId, field: fieldId, option: optionId },
-  )
 }
 
 if (import.meta.main) {
