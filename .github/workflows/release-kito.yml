@@ -2,11 +2,12 @@ name: Release · Kito
 run-name: Release | ${{ inputs.tag || github.event.release.tag_name || github.ref_name }}
 
 on:
-  push:
-    tags:
-      # Kito tags live in their own namespace; plain v* tags track upstream
-      # opencode releases and must never fire Kito registration.
-      - "kito-v*"
+  # Registration consumes GitHub Release assets, so the release: published
+  # event is the correct trigger — it fires only after the release and its
+  # assets exist. A bare tag push fires before the release object is created,
+  # which made `gh release download` fail with "release not found" whenever
+  # the push-triggered run won the race (happened twice). workflow_dispatch
+  # stays as the manual recovery path.
   release:
     types: [published]
   workflow_dispatch:
