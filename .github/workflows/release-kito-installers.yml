@@ -103,6 +103,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
           OPENCODE_CHANNEL: prod
           OPENCODE_VERSION: ${{ needs.resolve-version.outputs.version }}
+          OPENCODE_CLI_DIST: ${{ github.workspace }}/packages/cli/dist
 
       - name: Package unsigned Windows installer
         working-directory: packages/desktop
@@ -203,6 +204,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
           OPENCODE_CHANNEL: prod
           OPENCODE_VERSION: ${{ needs.resolve-version.outputs.version }}
+          OPENCODE_CLI_DIST: ${{ github.workspace }}/packages/cli/dist
 
       - name: Package unsigned macOS installers
         working-directory: packages/desktop
