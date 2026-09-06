@@ -46,10 +46,10 @@ Kito 产品线已切到 OpenCode V2 beta。同步时从 `upstream/beta` 拉取�
 Kito 发布 Tag 使用：
 
 ```text
-ktai-v<产品版本>-opencode-v<上游版本>
+kito-v<产品版本>
 ```
 
-禁止创建与 OpenCode 官方冲突的裸 `vX.Y.Z` Tag。`main` 只发布正式 Release；当前安装包未签名，Release Notes 必须明确标注 Windows 代码签名、Apple Developer ID 签名和 macOS 公证风险。
+上游 OpenCode 版本记录在 Release 正文（构建信息），不进 Tag。禁止创建与 OpenCode 官方冲突的裸 `vX.Y.Z` Tag。`main` 只发布正式 Release；当前安装包未签名，Release Notes 必须明确标注 Windows 代码签名、Apple Developer ID 签名和 macOS 公证风险。
 
 ## 同步频率
 

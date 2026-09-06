@@ -64,9 +64,11 @@ jobs:
             # Patch counts releases already published on this major.minor line,
             # so a fresh line starts at .0 (2.1.0) and increments per publish.
             # Requires full clone: git tags live outside the shallow depth.
-            line_patch="$(git tag --list "ktai-v${ktai_base}.*-opencode-*" | wc -l | tr -d ' ')"
+            # Old ktai-v*-opencode-v* tags belong to the same release line and
+            # keep counting; the upstream version moved into release notes.
+            line_patch="$(git tag --list "ktai-v${ktai_base}.*-opencode-*" "kito-v${ktai_base}.*" | wc -l | tr -d ' ')"
             ktai_version="${ktai_base}.${line_patch}"
-            release_tag="ktai-v${ktai_version}-opencode-v${upstream_version}"
+            release_tag="kito-v${ktai_version}"
           fi
 
           echo "ktai_version=$ktai_version" >> "$GITHUB_OUTPUT"

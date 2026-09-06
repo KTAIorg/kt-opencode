@@ -1,18 +1,17 @@
 name: Release · Kito Installers
 
-run-name: Release Installers | ${{ inputs.tag || github.ref_name }}
+run-name: Release Installers | Manual | ${{ inputs.tag }}
 
-# Builds unsigned Kito installers for a kito-v* tag and publishes them as a
-# GitHub Release. Publishing fires release-kito.yml, which registers the
-# assets into Release Service at rollout 0.
+# Rebuilds unsigned Kito installers for an existing kito-v* tag on demand.
+# The main push pipeline (release-desktop.yml) now publishes kito-v* tags
+# directly, which fires release-kito.yml to register the assets into Release
+# Service at rollout 0. Tag-push triggering here would build the same tag
+# twice, so this workflow stays manual-only recovery.
 #
 # Kito tags live in their own kito-v* namespace: plain v* tags on this repo
 # track upstream opencode releases (v1.18.x and climbing) and must never
 # fire the Kito pipeline.
 on:
-  push:
-    tags:
-      - "kito-v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -21,7 +20,7 @@ on:
         type: string
 
 concurrency:
-  group: release-kito-installers-${{ inputs.tag || github.ref_name }}
+  group: release-kito-installers-${{ inputs.tag }}
   cancel-in-progress: true
 
 permissions:
@@ -44,10 +43,7 @@ jobs:
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="$INPUT_TAG"
-          fi
+          tag="$INPUT_TAG"
           case "$tag" in
             kito-v*) ;;
             *) echo "tag must start with 'kito-v', got: $tag" >&2; exit 1 ;;
