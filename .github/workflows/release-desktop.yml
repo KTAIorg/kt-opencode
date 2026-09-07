@@ -324,6 +324,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve-version.outputs.release-tag }}
         run: |
           set -euo pipefail
           gh workflow run release-kito.yml \
