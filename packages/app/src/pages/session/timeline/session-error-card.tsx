@@ -74,7 +74,7 @@ export function SessionErrorCard(props: { text: string }) {
     <Card variant="error" class="error-card">
       <div class="flex flex-col gap-3">
         <div>{displayText()}</div>
-        <Show when={kind() === "billing" || authCta()}>
+        <Show when={authCta() || (kind() === "billing" && billingCta() !== "none")}>
           <div class="flex justify-end">
             <Button
               variant="contrast"

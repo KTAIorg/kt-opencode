@@ -35,8 +35,8 @@ export function classifySessionErrorCta(text: string): "auth" | "billing" | unde
     lower.includes("insufficient balance") ||
     lower.includes("remaining quota") ||
     lower.includes("top up on kt") ||
-    lower.includes("免费") ||
-    lower.includes("免費")
+    lower.includes("免费额度") ||
+    lower.includes("免費額度")
   ) {
     return "billing"
   }
@@ -62,7 +62,8 @@ export function isPaidBalanceError(text: string) {
 export function sessionBillingCta(text: string, signedIn: boolean | undefined, balance?: number) {
   if (classifySessionErrorCta(text) !== "billing") return
   if (signedIn === undefined) return
-  if (!signedIn || isPaidBalanceError(text) || !hasConfirmedBalance(balance)) return "wallet"
+  if (!signedIn || !hasConfirmedBalance(balance)) return "wallet"
+  if (isPaidBalanceError(text)) return "none"
   return "switch"
 }
 
@@ -70,12 +71,15 @@ export function sessionBillingLeadKey(text: string, signedIn: boolean | undefine
   if (classifySessionErrorCta(text) !== "billing") return
   if (signedIn === undefined) return
   if (!signedIn) return "dialog.ktAccess.billing.lead"
-  if (isPaidBalanceError(text) || !hasConfirmedBalance(balance)) return "dialog.ktAccess.billing.paid.lead"
+  if (!hasConfirmedBalance(balance)) return "dialog.ktAccess.billing.paid.lead"
+  if (isPaidBalanceError(text)) return "dialog.ktAccess.billing.serviceIssue.lead"
   return "dialog.ktAccess.switch.lead"
 }
 
 // undefined（尚未查到余额 / /ktai/account 失败）不能被当成"有余额"，否则会把"免费额度用尽"
 // 误判为"你已有余额、去切付费模型"。只有确认 balance > 0 才走 switch。
+// 余额已确认 > 0 时若仍报"额度不足"（isPaidBalanceError），说明服务端拒绝扣费与余额无关
+// （如网关分组/渠道路由问题），不再引导充值，返回 "none" 只换文案。
 function hasConfirmedBalance(balance?: number) {
   return typeof balance === "number" && balance > 0
 }

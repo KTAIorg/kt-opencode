@@ -1222,6 +1222,8 @@ export const dict = {
   "dialog.ktAccess.billing.signedIn.lead":
     "Zen 免费对话次数已用尽。请切换到 Kito 付费模型继续；余额不足时先去充值。",
   "dialog.ktAccess.billing.paid.lead": "Kito 对话额度不足。请先充值，到账后再发一条消息。",
+  "dialog.ktAccess.billing.serviceIssue.lead":
+    "你的 Kito 余额充足，本次失败是我方网关或渠道的问题。请稍后重试，或携带请求 ID 反馈。",
   "dialog.ktAccess.step1": "用 Telegram 登录 Kito（和 NewAPI 同一套账号）。",
   "dialog.ktAccess.step2": "打开钱包充值，到账后即可继续对话。",
   "dialog.ktAccess.step3": "选一个 Kito 付费模型，再发送一条消息。",
