@@ -206,7 +206,14 @@ export const DialogManageModelsV2: Component = () => {
     local.model.setVisibility({ modelID: item.id, providerID: item.provider.id }, checked)
   }
   const list = useFilteredList<ModelItem>({
-    items: () => local.model.list(),
+    // 「隐藏不可用」开启时，滤掉探测失败的 Kito 模型；没探测过的不过滤。
+    items: () =>
+      local.model.list().filter((item) => {
+        if (!models.probe.state().hideUnavailable) return true
+        if (!isKtaiProviderID(item.provider.id)) return true
+        const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
+        return result?.ok !== false
+      }),
     key: (x) => `${x.provider.id}:${x.id}`,
     filterKeys: ["provider.name", "name", "id"],
     sortBy: (a, b) => a.name.localeCompare(b.name),
@@ -230,17 +237,14 @@ export const DialogManageModelsV2: Component = () => {
           description={language.t("dialog.model.manage.description")}
         />
         <div class="flex items-center gap-2">
-          <label class="flex cursor-pointer items-center gap-1.5 text-13-regular text-text-weak">
-            <Switch
-              appearance="standard"
-              checked={models.probe.state().hideUnavailable}
-              onChange={(checked) => models.probe.setHideUnavailable(checked)}
-              hideLabel
-            >
-              {language.t("dialog.model.probe.hideUnavailable")}
-            </Switch>
+          <Switch
+            appearance="standard"
+            class="cursor-pointer"
+            checked={models.probe.state().hideUnavailable}
+            onChange={(checked) => models.probe.setHideUnavailable(checked)}
+          >
             {language.t("dialog.model.probe.hideUnavailable")}
-          </label>
+          </Switch>
           <Button
             variant="neutral"
             icon="play"
