@@ -1232,6 +1232,8 @@ export const dict = {
   "dialog.ktAccess.billing.signedIn.lead":
     "Zen free chats are exhausted. Switch to a Kito paid model, or top up first if your balance is empty.",
   "dialog.ktAccess.billing.paid.lead": "Your Kito chat balance is empty. Top up, then send again.",
+  "dialog.ktAccess.billing.serviceIssue.lead":
+    "Your Kito chat balance looks fine, so this rejection is on our side — likely a gateway or channel issue. Please retry in a moment, or report it with the request id.",
   "dialog.ktAccess.step1": "Sign in to Kito with Telegram (same account as NewAPI).",
   "dialog.ktAccess.step2": "Open the wallet and top up so paid models keep working.",
   "dialog.ktAccess.step3": "Pick a Kito paid model and send again.",
