@@ -462,9 +462,9 @@
 .settings-v2-models [data-slot="settings-v2-row-title"] {
   min-width: 0;
   overflow: hidden;
-  font-size: 13px;
-  font-weight: 440;
-  line-height: 16px;
+  font-size: 14px;
+  font-weight: 530;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
