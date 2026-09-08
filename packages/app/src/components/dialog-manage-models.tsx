@@ -77,7 +77,6 @@ export const DialogManageModels: Component = () => {
                   value={language.t("dialog.model.manage.provider.toggle", { provider: provider.name })}
                 >
                   <Switch
-                    appearance="standard"
                     class="-mr-1"
                     checked={providerVisible(provider.id)}
                     onChange={(checked) => setProviderVisibility(provider.id, checked)}
@@ -109,7 +108,6 @@ export const DialogManageModels: Component = () => {
               <span>{i.name}</span>
               <div onClick={(e) => e.stopPropagation()}>
                 <Switch
-                  appearance="standard"
                   checked={!!local.model.visible({ modelID: i.id, providerID: i.provider.id })}
                   onChange={(checked) => {
                     local.model.setVisibility({ modelID: i.id, providerID: i.provider.id }, checked)
@@ -153,19 +151,26 @@ export const DialogManageModelsV2: Component = () => {
       if (serverSDK.server.http.username && serverSDK.server.http.password) {
         headers.set("authorization", `Basic ${btoa(`${serverSDK.server.http.username}:${serverSDK.server.http.password}`)}`)
       }
-      const response = await (platform.fetch ?? fetch)(`${url}/ktai/models/probe`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ modelIDs: ids }),
-      })
-      const payload = (await response.json().catch(() => undefined)) as
-        | { results?: { modelID: string; ok: boolean; status?: number; error?: string }[]; probedAt?: number }
-        | undefined
-      if (!response.ok || !payload?.results) {
-        showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
-        return
+      // server 限制每次探测最多 100 个模型，超限分批请求
+      const chunks: string[][] = []
+      for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100))
+      const results: { modelID: string; ok: boolean; status?: number; error?: string }[] = []
+      for (const chunk of chunks) {
+        const response = await (platform.fetch ?? fetch)(`${url}/ktai/models/probe`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ modelIDs: chunk }),
+        })
+        const payload = (await response.json().catch(() => undefined)) as
+          | { results?: { modelID: string; ok: boolean; status?: number; error?: string }[]; probedAt?: number }
+          | undefined
+        if (!response.ok || !payload?.results) {
+          showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
+          return
+        }
+        results.push(...payload.results)
       }
-      models.probe.apply({ results: payload.results, probedAt: payload.probedAt ?? Date.now() })
+      models.probe.apply({ results, probedAt: Date.now() })
       showToast({ variant: "success", title: language.t("dialog.model.probe.done") })
     } catch {
       showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
@@ -238,7 +243,6 @@ export const DialogManageModelsV2: Component = () => {
         />
         <div class="flex items-center gap-2">
           <Switch
-            appearance="standard"
             class="cursor-pointer"
             checked={models.probe.state().hideUnavailable}
             onChange={(checked) => models.probe.setHideUnavailable(checked)}
