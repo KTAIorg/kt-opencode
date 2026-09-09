@@ -12,8 +12,10 @@ export function useKtaiSignedIn() {
   const platform = usePlatform()
   const serverSDK = useServerSDK()
   const [signedIn, setSignedIn] = createSignal<boolean | undefined>()
+  const [refresh, setRefresh] = createSignal(0)
 
   createEffect(() => {
+    refresh() // 订阅：kito-account-refresh 自增触发重拉（登录/登出后必须重查 credential）
     if (serverSDK.connection.status() !== "connected") {
       setSignedIn(undefined)
       return
@@ -35,6 +37,12 @@ export function useKtaiSignedIn() {
     onCleanup(() => {
       cancelled = true
     })
+  })
+
+  onMount(() => {
+    const bump = () => setRefresh((n) => n + 1)
+    window.addEventListener("kito-account-refresh", bump)
+    onCleanup(() => window.removeEventListener("kito-account-refresh", bump))
   })
 
   return signedIn
