@@ -78,6 +78,7 @@ export const DialogManageModels: Component = () => {
                 >
                   <Switch
                     class="-mr-1"
+                    appearance="standard"
                     checked={providerVisible(provider.id)}
                     onChange={(checked) => setProviderVisibility(provider.id, checked)}
                     hideLabel
@@ -108,6 +109,7 @@ export const DialogManageModels: Component = () => {
               <span>{i.name}</span>
               <div onClick={(e) => e.stopPropagation()}>
                 <Switch
+                  appearance="standard"
                   checked={!!local.model.visible({ modelID: i.id, providerID: i.provider.id })}
                   onChange={(checked) => {
                     local.model.setVisibility({ modelID: i.id, providerID: i.provider.id }, checked)
@@ -244,6 +246,7 @@ export const DialogManageModelsV2: Component = () => {
         <div class="flex items-center gap-2">
           <Switch
             class="cursor-pointer"
+            appearance="standard"
             checked={models.probe.state().hideUnavailable}
             onChange={(checked) => models.probe.setHideUnavailable(checked)}
           >
@@ -325,6 +328,7 @@ export const DialogManageModelsV2: Component = () => {
                         <div>
                           <Switch
                             class="mr-6"
+                            appearance="standard"
                             checked={providerVisible(group.category)}
                             onChange={(checked) => setProviderVisibility(group.category, checked)}
                             hideLabel
@@ -340,6 +344,7 @@ export const DialogManageModelsV2: Component = () => {
                               <div class="flex items-center gap-2">
                                 <Show when={probeBadge(item)}>{(badge) => badge()}</Show>
                                 <Switch
+                                  appearance="standard"
                                   checked={local.model.visible({ modelID: item.id, providerID: item.provider.id })}
                                   onChange={(checked) => setModelVisibility(item, checked)}
                                   hideLabel
