@@ -185,15 +185,20 @@ export const DialogManageModelsV2: Component = () => {
     if (!isKtaiProviderID(item.provider.id)) return
     const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
     if (!result) return
-    return result.ok ? (
-      <span class="ml-2 rounded-full bg-v2-background-background-success px-1.5 py-px text-11-medium text-v2-text-text-success">
-        {language.t("dialog.model.probe.ok")}
-      </span>
-    ) : (
-      <Tooltip appearance="standard" placement="top" value={result.error || language.t("dialog.model.probe.unavailable")}>
-        <span class="ml-2 cursor-help rounded-full bg-v2-background-background-danger px-1.5 py-px text-11-medium text-v2-text-text-danger">
-          {language.t("dialog.model.probe.unavailable")}
-        </span>
+    const label = result.ok
+      ? language.t("dialog.model.probe.ok")
+      : result.error || language.t("dialog.model.probe.unavailable")
+    return (
+      <Tooltip appearance="standard" placement="top" value={label}>
+        <span
+          role="img"
+          aria-label={label}
+          class="ml-2 h-2 w-2 shrink-0 cursor-help rounded-full"
+          classList={{
+            "bg-v2-state-fg-success": result.ok,
+            "bg-v2-state-fg-danger": !result.ok,
+          }}
+        />
       </Tooltip>
     )
   }
