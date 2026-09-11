@@ -85,6 +85,7 @@ const api: ElectronAPI = {
   isFirstLaunchOnboardingPending: () => invoke(Ipc.app.isFirstLaunchOnboardingPending),
   finishFirstLaunchOnboarding: (createDefaultProject) =>
     invoke(Ipc.app.finishFirstLaunchOnboarding, createDefaultProject),
+  ensureDefaultProject: (path) => invoke(Ipc.app.ensureDefaultProject, path),
   checkAppExists: (appName) => invoke(Ipc.app.checkAppExists, appName),
   resolveAppPath: (appName) => invoke(Ipc.app.resolveAppPath, appName),
   storeGet: (name, key) => invoke(Ipc.storage.get, name, key),

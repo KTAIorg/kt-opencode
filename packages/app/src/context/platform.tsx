@@ -98,6 +98,9 @@ type PlatformBase = {
   /** Run a desktop-only menu action from the app chrome */
   runDesktopMenuAction?(action: DesktopMenuAction): Promise<void> | void
 
+  /** Create and return the directory used when the user has no project yet (desktop only) */
+  ensureDefaultProject?(path?: string): Promise<string | null>
+
   /** Check if an editor app exists (desktop only) */
   checkAppExists?(appName: string): Promise<boolean>
 

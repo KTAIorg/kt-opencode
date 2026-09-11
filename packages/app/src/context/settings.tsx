@@ -37,6 +37,8 @@ export interface Settings {
     editToolPartsExpanded: boolean
     showCustomAgents: boolean
     mobileTitlebarPosition: "top" | "bottom"
+    /** Directory used when a session starts without a project; empty means the platform default. */
+    defaultProjectPath: string
   }
   appearance: {
     fontSize: number
@@ -123,6 +125,7 @@ const defaultSettings: Settings = {
     editToolPartsExpanded: false,
     showCustomAgents: false,
     mobileTitlebarPosition: "top",
+    defaultProjectPath: "",
   },
   appearance: {
     fontSize: 14,
@@ -253,6 +256,13 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         ),
         setMobileTitlebarPosition(value: "top" | "bottom") {
           setStore("general", "mobileTitlebarPosition", value)
+        },
+        defaultProjectPath: withFallback(
+          () => store.general?.defaultProjectPath,
+          defaultSettings.general.defaultProjectPath,
+        ),
+        setDefaultProjectPath(value: string) {
+          setStore("general", "defaultProjectPath", value.trim())
         },
       },
       visibility: {

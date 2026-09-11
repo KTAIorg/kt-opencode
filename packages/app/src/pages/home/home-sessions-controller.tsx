@@ -143,7 +143,7 @@ export function createHomeSessionsController(home: HomeController) {
     session: {
       showProjectName: () => !home.project.selected(),
       server: () => home.selection.value().server,
-      canCreate: () => !!home.project.newSession(),
+      canCreate: home.project.canCreate,
       create: home.project.openNewSession,
       open: (session: SessionInfo, options?: OpenSessionOptions) => {
         const directoryKey = pathKey(session.location.directory)

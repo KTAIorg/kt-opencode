@@ -42,6 +42,7 @@ export type HomeSessionsViewProps = {
   showProjectName: boolean
   server: ServerConnection.Key
   canCreateSession: boolean
+  onAddProject?: () => void
   searchValue: string
   searchPlaceholder: string
   searchOpen: boolean
@@ -117,6 +118,7 @@ export function HomeSessionsView(props: HomeSessionsViewProps) {
             fallback={
               <HomeSessionsEmpty
                 onNewSession={props.canCreateSession ? props.onCreateSession : undefined}
+                onAddProject={props.onAddProject}
                 language={props.language}
               />
             }
@@ -504,7 +506,11 @@ function HomeSessionProjectName(props: { name: string; search?: boolean }) {
   )
 }
 
-function HomeSessionsEmpty(props: { onNewSession?: () => void; language: ReturnType<typeof useLanguage> }) {
+function HomeSessionsEmpty(props: {
+  onNewSession?: () => void
+  onAddProject?: () => void
+  language: ReturnType<typeof useLanguage>
+}) {
   return (
     <div class="flex min-h-full flex-col items-center gap-4 px-6 pt-[52px] text-center">
       <div
@@ -523,13 +529,28 @@ function HomeSessionsEmpty(props: { onNewSession?: () => void; language: ReturnT
       >
         {props.language.t("home.sessions.empty.description")}
       </p>
-      <Show when={props.onNewSession}>
-        {(onNewSession) => (
-          <Button data-action="home-new-session" variant="neutral" size="normal" icon="edit" onClick={onNewSession()}>
-            {props.language.t("command.session.new")}
-          </Button>
-        )}
-      </Show>
+      <div class="flex items-center gap-2">
+        <Show when={props.onNewSession}>
+          {(onNewSession) => (
+            <Button
+              data-action="home-new-session"
+              variant="contrast"
+              size="large"
+              icon="edit"
+              onClick={onNewSession()}
+            >
+              {props.language.t("command.session.new")}
+            </Button>
+          )}
+        </Show>
+        <Show when={props.onAddProject}>
+          {(onAddProject) => (
+            <Button data-action="home-add-project" variant="ghost-muted" size="normal" onClick={onAddProject()}>
+              {props.language.t("home.project.add")}
+            </Button>
+          )}
+        </Show>
+      </div>
     </div>
   )
 }
