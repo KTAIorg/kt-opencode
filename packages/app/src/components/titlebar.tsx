@@ -257,15 +257,27 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                   const conn =
                     global.servers.list().find((item) => ServerConnection.key(item) === selection.server) ??
                     global.servers.list()[0]
-                  const projects = conn ? global.ensureServerCtx(conn).projects : undefined
+                  if (!conn) return
+                  const projects = global.ensureServerCtx(conn).projects
                   const project =
-                    projects?.list().find((item) => item.worktree === selection.directory) ??
-                    projects?.list().find((item) => item.worktree === projects.last()) ??
-                    projects?.list()[0]
-                  if (conn && project) {
+                    projects.list().find((item) => item.worktree === selection.directory) ??
+                    projects.list().find((item) => item.worktree === projects.last()) ??
+                    projects.list()[0]
+                  if (project) {
                     tabs.newDraft({ server: ServerConnection.key(conn), directory: project.worktree }, "")
                     return
                   }
+                  // No project yet: prepare the default one instead of silently doing nothing.
+                  if (!platform.ensureDefaultProject) return
+                  void platform
+                    .ensureDefaultProject(settings.general.defaultProjectPath())
+                    .then((directory) => {
+                      if (!directory) return
+                      const ctx = global.ensureServerCtx(conn)
+                      ctx.projects.open(directory)
+                      ctx.projects.touch(directory)
+                      void tabs.newDraft({ server: ServerConnection.key(conn), directory }, "")
+                    })
                 }
               }
             }
@@ -342,10 +354,10 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                 >
                   <IconButton
                     type="button"
-                    variant="ghost-muted"
+                    variant="neutral"
                     size="large"
                     class="!w-9 shrink-0"
-                    icon={<Icon name="grid-plus" />}
+                    icon={<Icon name="house" />}
                     state={layout.route().type === "home" ? "pressed" : undefined}
                     onClick={toggleHome}
                     aria-label={language.t("home.title")}
@@ -469,7 +481,13 @@ function ChannelIndicator(props: { debugTools?: { visible: boolean; toggle: () =
 
   return (
     <Show when={["local", "beta", "dev"].includes(channel)}>
-      <div class="bg-icon-interactive-base text-[#FFF] font-medium px-2 rounded-sm uppercase font-mono">
+      <div
+        class="font-medium px-2 rounded-sm uppercase font-mono"
+        classList={{
+          "bg-icon-interactive-base text-[#FFF]": channel === "beta",
+          "bg-v2-background-bg-button-neutral text-v2-text-text-muted": channel !== "beta",
+        }}
+      >
         {channel.toUpperCase()}
       </div>
     </Show>

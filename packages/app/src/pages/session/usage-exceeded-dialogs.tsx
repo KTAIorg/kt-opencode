@@ -75,6 +75,7 @@ export function useUsageExceededDialogs() {
   const showBillingGuide = (text?: string) => {
     if (!shouldShowBillingGuide()) return
     const cta = sessionBillingCta(text ?? "Free usage exceeded", account.signedIn() ?? true, account.balance())
+    if (cta === "none") return
     if (cta === "wallet") {
       openKtWallet({ dialog, onClose: () => markBillingSeen(false) })
       return

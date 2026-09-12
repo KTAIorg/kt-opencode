@@ -77,8 +77,8 @@ export const DialogManageModels: Component = () => {
                   value={language.t("dialog.model.manage.provider.toggle", { provider: provider.name })}
                 >
                   <Switch
-                    appearance="standard"
                     class="-mr-1"
+                    appearance="standard"
                     checked={providerVisible(provider.id)}
                     onChange={(checked) => setProviderVisibility(provider.id, checked)}
                     hideLabel
@@ -153,19 +153,26 @@ export const DialogManageModelsV2: Component = () => {
       if (serverSDK.server.http.username && serverSDK.server.http.password) {
         headers.set("authorization", `Basic ${btoa(`${serverSDK.server.http.username}:${serverSDK.server.http.password}`)}`)
       }
-      const response = await (platform.fetch ?? fetch)(`${url}/ktai/models/probe`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ modelIDs: ids }),
-      })
-      const payload = (await response.json().catch(() => undefined)) as
-        | { results?: { modelID: string; ok: boolean; status?: number; error?: string }[]; probedAt?: number }
-        | undefined
-      if (!response.ok || !payload?.results) {
-        showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
-        return
+      // server 限制每次探测最多 100 个模型，超限分批请求
+      const chunks: string[][] = []
+      for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100))
+      const results: { modelID: string; ok: boolean; status?: number; error?: string }[] = []
+      for (const chunk of chunks) {
+        const response = await (platform.fetch ?? fetch)(`${url}/ktai/models/probe`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ modelIDs: chunk }),
+        })
+        const payload = (await response.json().catch(() => undefined)) as
+          | { results?: { modelID: string; ok: boolean; status?: number; error?: string }[]; probedAt?: number }
+          | undefined
+        if (!response.ok || !payload?.results) {
+          showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
+          return
+        }
+        results.push(...payload.results)
       }
-      models.probe.apply({ results: payload.results, probedAt: payload.probedAt ?? Date.now() })
+      models.probe.apply({ results, probedAt: Date.now() })
       showToast({ variant: "success", title: language.t("dialog.model.probe.done") })
     } catch {
       showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
@@ -178,15 +185,20 @@ export const DialogManageModelsV2: Component = () => {
     if (!isKtaiProviderID(item.provider.id)) return
     const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
     if (!result) return
-    return result.ok ? (
-      <span class="ml-2 rounded-full bg-v2-background-background-success px-1.5 py-px text-11-medium text-v2-text-text-success">
-        {language.t("dialog.model.probe.ok")}
-      </span>
-    ) : (
-      <Tooltip appearance="standard" placement="top" value={result.error || language.t("dialog.model.probe.unavailable")}>
-        <span class="ml-2 cursor-help rounded-full bg-v2-background-background-danger px-1.5 py-px text-11-medium text-v2-text-text-danger">
-          {language.t("dialog.model.probe.unavailable")}
-        </span>
+    const label = result.ok
+      ? language.t("dialog.model.probe.ok")
+      : result.error || language.t("dialog.model.probe.unavailable")
+    return (
+      <Tooltip appearance="standard" placement="top" value={label}>
+        <span
+          role="img"
+          aria-label={label}
+          class="ml-2 h-2 w-2 shrink-0 cursor-help rounded-full"
+          classList={{
+            "bg-v2-state-fg-success": result.ok,
+            "bg-v2-state-fg-danger": !result.ok,
+          }}
+        />
       </Tooltip>
     )
   }
@@ -206,7 +218,14 @@ export const DialogManageModelsV2: Component = () => {
     local.model.setVisibility({ modelID: item.id, providerID: item.provider.id }, checked)
   }
   const list = useFilteredList<ModelItem>({
-    items: () => local.model.list(),
+    // 「隐藏不可用」开启时，滤掉探测失败的 Kito 模型；没探测过的不过滤。
+    items: () =>
+      local.model.list().filter((item) => {
+        if (!models.probe.state().hideUnavailable) return true
+        if (!isKtaiProviderID(item.provider.id)) return true
+        const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
+        return result?.ok !== false
+      }),
     key: (x) => `${x.provider.id}:${x.id}`,
     filterKeys: ["provider.name", "name", "id"],
     sortBy: (a, b) => a.name.localeCompare(b.name),
@@ -230,17 +249,14 @@ export const DialogManageModelsV2: Component = () => {
           description={language.t("dialog.model.manage.description")}
         />
         <div class="flex items-center gap-2">
-          <label class="flex cursor-pointer items-center gap-1.5 text-13-regular text-text-weak">
-            <Switch
-              appearance="standard"
-              checked={models.probe.state().hideUnavailable}
-              onChange={(checked) => models.probe.setHideUnavailable(checked)}
-              hideLabel
-            >
-              {language.t("dialog.model.probe.hideUnavailable")}
-            </Switch>
+          <Switch
+            class="cursor-pointer"
+            appearance="standard"
+            checked={models.probe.state().hideUnavailable}
+            onChange={(checked) => models.probe.setHideUnavailable(checked)}
+          >
             {language.t("dialog.model.probe.hideUnavailable")}
-          </label>
+          </Switch>
           <Button
             variant="neutral"
             icon="play"
@@ -317,6 +333,7 @@ export const DialogManageModelsV2: Component = () => {
                         <div>
                           <Switch
                             class="mr-6"
+                            appearance="standard"
                             checked={providerVisible(group.category)}
                             onChange={(checked) => setProviderVisibility(group.category, checked)}
                             hideLabel
@@ -332,6 +349,7 @@ export const DialogManageModelsV2: Component = () => {
                               <div class="flex items-center gap-2">
                                 <Show when={probeBadge(item)}>{(badge) => badge()}</Show>
                                 <Switch
+                                  appearance="standard"
                                   checked={local.model.visible({ modelID: item.id, providerID: item.provider.id })}
                                   onChange={(checked) => setModelVisibility(item, checked)}
                                   hideLabel
