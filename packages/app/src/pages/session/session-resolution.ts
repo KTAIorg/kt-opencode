@@ -63,7 +63,7 @@ export function createSessionResolution<T>(
     const value = cached()
     if (value) return value
     const state = status()
-    if (state?.id !== id || state.store !== sessions()) return undefined
+    if (!state || state.id !== id || state.store !== sessions()) return undefined
     if (state.state === "failed") throw state.failure
     // A session missing after settlement was deleted, possibly by another client.
     // Match the resolve error so the boundary shows the
