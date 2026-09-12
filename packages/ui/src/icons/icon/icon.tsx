@@ -28,6 +28,10 @@ const icons = {
     viewBox: "0 0 16 16",
     body: `<path d="M13.9948 11.668H9.32812M11.6641 9.33203V13.9987M6.66667 9.33203V13.9987H2V9.33203H6.66667ZM6.66667 2V6.66667H2V2H6.66667ZM13.9948 2V6.66667H9.32812V2H13.9948Z" stroke="currentColor" stroke-miterlimit="10" stroke-linecap="square"/>`,
   },
+  house: {
+    viewBox: "0 0 16 16",
+    body: `<path d="M8 2.5L13.5 7.3H2.5ZM3.6 7.3V13.5H6.5M9.5 13.5H12.4V7.3M6.5 13.5V10.2H9.5V13.5" stroke="currentColor" stroke-miterlimit="10" stroke-linecap="square"/>`,
+  },
   help: {
     viewBox: "0 0 16 16",
     body: `<path d="M6.33345 6.33349V5.00015H9.66679V7.00015L8.00015 8.00015V9.66679M8.27485 11.6819H7.71897M14.4446 8.00011C14.4446 11.5593 11.5593 14.4446 8.00011 14.4446C4.44094 14.4446 1.55566 11.5593 1.55566 8.00011C1.55566 4.44094 4.44094 1.55566 8.00011 1.55566C11.5593 1.55566 14.4446 4.44094 14.4446 8.00011Z" stroke="currentColor" stroke-linecap="square"/>`,

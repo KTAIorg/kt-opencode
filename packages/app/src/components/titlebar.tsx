@@ -342,10 +342,10 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                 >
                   <IconButton
                     type="button"
-                    variant="ghost-muted"
+                    variant="neutral"
                     size="large"
                     class="!w-9 shrink-0"
-                    icon={<Icon name="grid-plus" />}
+                    icon={<Icon name="house" />}
                     state={layout.route().type === "home" ? "pressed" : undefined}
                     onClick={toggleHome}
                     aria-label={language.t("home.title")}
@@ -469,7 +469,13 @@ function ChannelIndicator(props: { debugTools?: { visible: boolean; toggle: () =
 
   return (
     <Show when={["local", "beta", "dev"].includes(channel)}>
-      <div class="bg-icon-interactive-base text-[#FFF] font-medium px-2 rounded-sm uppercase font-mono">
+      <div
+        class="font-medium px-2 rounded-sm uppercase font-mono"
+        classList={{
+          "bg-icon-interactive-base text-[#FFF]": channel === "beta",
+          "bg-v2-background-bg-button-neutral text-v2-text-text-muted": channel !== "beta",
+        }}
+      >
         {channel.toUpperCase()}
       </div>
     </Show>
