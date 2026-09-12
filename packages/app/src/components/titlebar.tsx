@@ -257,15 +257,27 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                   const conn =
                     global.servers.list().find((item) => ServerConnection.key(item) === selection.server) ??
                     global.servers.list()[0]
-                  const projects = conn ? global.ensureServerCtx(conn).projects : undefined
+                  if (!conn) return
+                  const projects = global.ensureServerCtx(conn).projects
                   const project =
-                    projects?.list().find((item) => item.worktree === selection.directory) ??
-                    projects?.list().find((item) => item.worktree === projects.last()) ??
-                    projects?.list()[0]
-                  if (conn && project) {
+                    projects.list().find((item) => item.worktree === selection.directory) ??
+                    projects.list().find((item) => item.worktree === projects.last()) ??
+                    projects.list()[0]
+                  if (project) {
                     tabs.newDraft({ server: ServerConnection.key(conn), directory: project.worktree }, "")
                     return
                   }
+                  // No project yet: prepare the default one instead of silently doing nothing.
+                  if (!platform.ensureDefaultProject) return
+                  void platform
+                    .ensureDefaultProject(settings.general.defaultProjectPath())
+                    .then((directory) => {
+                      if (!directory) return
+                      const ctx = global.ensureServerCtx(conn)
+                      ctx.projects.open(directory)
+                      ctx.projects.touch(directory)
+                      void tabs.newDraft({ server: ServerConnection.key(conn), directory }, "")
+                    })
                 }
               }
             }

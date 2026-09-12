@@ -38,7 +38,19 @@ export function Home() {
           `}
         >
           <HomeProjects projects={projects} scroll={scroll} />
-          <HomeSessions sessions={sessions} search={search} scroll={scroll} />
+          <HomeSessions
+            sessions={sessions}
+            search={search}
+            scroll={scroll}
+            onAddProject={
+              projects.project.list().length === 0
+                ? () => {
+                    const conn = home.server.focused()
+                    if (conn) projects.project.choose(conn)
+                  }
+                : undefined
+            }
+          />
           <HomeUtilityNav
             class="flex lg:hidden"
             onOpenSettings={projects.utility.settings}
