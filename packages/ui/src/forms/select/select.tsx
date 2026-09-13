@@ -68,6 +68,8 @@ export type SelectProps<T> = Omit<
   numeric?: boolean
   children?: (item: T) => JSX.Element
   valueClass?: string
+  /** Accessible name for the trigger, for callers without a visible label. */
+  triggerLabel?: string
 }
 
 export function Select<T>(props: SelectProps<T>) {
@@ -88,6 +90,7 @@ export function Select<T>(props: SelectProps<T>) {
     "numeric",
     "disabled",
     "valueClass",
+    "triggerLabel",
     "placement",
     "gutter",
     "sameWidth",
@@ -187,6 +190,7 @@ export function Select<T>(props: SelectProps<T>) {
         data-numeric={local.numeric ? "" : undefined}
         disabled={local.disabled}
         data-disabled={local.disabled ? "" : undefined}
+        aria-label={local.triggerLabel}
         classList={{
           ...local.classList,
           [local.class ?? ""]: !!local.class,

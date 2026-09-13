@@ -1,5 +1,5 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
-import { Component, ComponentProps, createEffect, createMemo, createSignal, For, JSX, on, Show } from "solid-js"
+import { Component, ComponentProps, createEffect, createMemo, For, JSX, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
 import { useModels } from "@/context/models"
@@ -33,14 +33,6 @@ type ModelItem = ReturnType<ModelState["list"]>[number]
 
 const modelKey = (model: ModelItem) => `${model.provider.id}:${model.id}`
 const manageKey = "action:manage"
-
-// 选择器是挂在组合器按钮上的 popover，没有对外的 open 属性；免费额度用尽的 CTA
-// 需要打开同一个选择器（而不是再做一个弹窗版本），所以用自增计数当打开请求。
-const [modelSelectorOpenRequest, setModelSelectorOpenRequest] = createSignal(0)
-
-export function requestModelSelectorOpen() {
-  setModelSelectorOpenRequest((count) => count + 1)
-}
 
 const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { category: string; items: ModelItem[] }) => {
   const aIndex = popularProviders.indexOf(a.category)
@@ -251,15 +243,14 @@ export function ModelSelectorPopoverV2(props: {
     <ModelSelectorPopoverV2View
       trigger={props.trigger}
       models={controller.models}
-      hidden={controller.hidden}
+      hiddenUnavailable={controller.hiddenUnavailable}
+      hiddenByUser={controller.hiddenByUser}
       probe={controller.probe}
       groups={controller.groups}
       current={controller.current()}
       select={controller.select}
       onManage={() => {
-        void import("./dialog-manage-models").then((module) => {
-          void dialog.show(() => <module.DialogManageModelsV2 />)
-        })
+        void import("./dialog-manage-models").then((module) => module.openManageModels({ dialog }))
       }}
       onClose={() => props.onClose?.()}
     />
@@ -273,29 +264,34 @@ function createModelSelectorController(input: {
 }) {
   const model = input.model ?? useLocal().model
   const models = useModels()
-  const selectable = createMemo(() =>
-    model
-      .list()
-      .filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id }))
-      .filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
+  const scope = createMemo(() =>
+    model.list().filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
   )
+  const visible = createMemo(() =>
+    scope().filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id })),
+  )
+  const bySearch = (items: ModelItem[], search: string) =>
+    items.filter((item) => matchesModelSearch(search, [item.name, item.id, item.provider.name]))
   const unavailable = (item: ModelItem) => {
     if (!isKtaiProviderID(item.provider.id)) return false
     return models.probe.result({ modelID: item.id, providerID: item.provider.id })?.ok === false
   }
-  const searched = (search: string) => {
-    const query = search.trim()
-    if (!query) return selectable()
-    return selectable().filter((item) => matchesModelSearch(query, [item.name, item.id, item.provider.name]))
+  const shown = (search: string) => {
+    const items = bySearch(visible(), search)
+    return models.probe.state().hideUnavailable ? items.filter((item) => !unavailable(item)) : items
   }
-  const shown = (search: string) =>
-    models.probe.state().hideUnavailable ? searched(search).filter((item) => !unavailable(item)) : searched(search)
 
   return {
     models: (search: string) => [...shown(search)].sort((a, b) => a.name.localeCompare(b.name)),
     // 「隐藏不可用」实际滤掉的行数，用来在列表里提示；没开启或没滤掉时为 0。
-    hidden: (search: string) =>
-      models.probe.state().hideUnavailable ? searched(search).filter(unavailable).length : 0,
+    hiddenUnavailable: (search: string) =>
+      models.probe.state().hideUnavailable ? bySearch(visible(), search).filter(unavailable).length : 0,
+    // 用户在「管理模型」里自己关掉的模型：和上面的不可用是两码事，不能合成一句。
+    hiddenByUser: (search: string) =>
+      bySearch(
+        scope().filter((item) => models.hiddenByUser({ modelID: item.id, providerID: item.provider.id })),
+        search,
+      ).length,
     probe: {
       running: () => models.probe.running(),
       autoRun: () => models.probe.autoRun(),
@@ -321,7 +317,8 @@ function createModelSelectorController(input: {
 function ModelSelectorPopoverV2View(props: {
   trigger: ModelSelectorTrigger
   models: (search: string) => ModelItem[]
-  hidden: (search: string) => number
+  hiddenUnavailable: (search: string) => number
+  hiddenByUser: (search: string) => number
   probe: { running: () => boolean; autoRun: () => void }
   groups: (models: ModelItem[]) => { category: string; items: ModelItem[] }[]
   current: string | undefined
@@ -393,8 +390,6 @@ function ModelSelectorPopoverV2View(props: {
     const first = props.models(value)[0]
     setStore({ search: value, active: first ? modelKey(first) : manageKey })
   }
-
-  createEffect(on(modelSelectorOpenRequest, () => setOpen(true), { defer: true }))
 
   createEffect(() => {
     if (!store.open) return
@@ -476,9 +471,14 @@ function ModelSelectorPopoverV2View(props: {
               <Show when={props.probe.running()}>
                 <div class={noticeClass}>{language.t("dialog.model.probe.running")}</div>
               </Show>
-              <Show when={props.hidden(store.search) > 0}>
+              <Show when={props.hiddenUnavailable(store.search) > 0}>
                 <div class={noticeClass}>
-                  {language.plural("dialog.model.probe.hidden", props.hidden(store.search))}
+                  {language.plural("dialog.model.probe.hidden", props.hiddenUnavailable(store.search))}
+                </div>
+              </Show>
+              <Show when={props.hiddenByUser(store.search) > 0}>
+                <div class={noticeClass}>
+                  {language.plural("dialog.model.hiddenByUser", props.hiddenByUser(store.search))}
                 </div>
               </Show>
               <Show

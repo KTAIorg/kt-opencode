@@ -93,6 +93,22 @@ describe("sessionBillingCta", () => {
     expect(sessionBillingCta("用户额度不足,本次额度 $ 0.000000", true, 0)).toBe("wallet")
     expect(sessionBillingCta("用户额度不足,本次额度 $ 0.000000", true)).toBe("wallet")
   })
+
+  test("waits for the balance before showing a signed-in action", () => {
+    // /ktai/account 在途时余额是未知的：先渲染"去充值"再翻成"选择付费模型"会闪，
+    // 点快了还会把人误送到钱包。此时不返回动作。
+    const text = "Free usage exceeded. Top up on KT to continue with paid models."
+    expect(sessionBillingCta(text, true, undefined, false)).toBeUndefined()
+    expect(sessionBillingCta(text, true, 10, false)).toBeUndefined()
+    expect(sessionBillingCta(text, true, 0, false)).toBeUndefined()
+  })
+
+  test("still sends signed-out users to the wallet while the balance loads", () => {
+    // 未登录时余额不影响动作，不必等 /ktai/account。
+    expect(
+      sessionBillingCta("Free usage exceeded. Top up on KT to continue with paid models.", false, undefined, false),
+    ).toBe("wallet")
+  })
 })
 
 describe("sessionBillingLeadKey", () => {
@@ -123,5 +139,13 @@ describe("sessionBillingLeadKey", () => {
     expect(sessionBillingLeadKey("insufficient balance", true, 0.5)).toBe(
       "dialog.ktAccess.billing.serviceIssue.lead",
     )
+  })
+
+  test("waits for the balance before rewriting signed-in copy", () => {
+    const text = "Free usage exceeded. Top up on KT to continue with paid models."
+    expect(sessionBillingLeadKey(text, true, undefined, false)).toBeUndefined()
+    expect(sessionBillingLeadKey(text, true, 10, false)).toBeUndefined()
+    // 未登录的文案不依赖余额。
+    expect(sessionBillingLeadKey(text, false, undefined, false)).toBe("dialog.ktAccess.billing.lead")
   })
 })

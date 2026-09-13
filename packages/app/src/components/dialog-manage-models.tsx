@@ -154,6 +154,11 @@ export const DialogManageModelsV2: Component = () => {
   const setModelVisibility = (item: ModelItem, checked: boolean) => {
     local.model.setVisibility({ modelID: item.id, providerID: item.provider.id }, checked)
   }
+  // 「使用」= 组合器选择器的同一个动作：选中并把该模型推进最近使用，然后关掉弹窗。
+  const useModel = (item: ModelItem) => {
+    local.model.set({ modelID: item.id, providerID: item.provider.id }, { recent: true })
+    dialog.close()
+  }
   const list = useFilteredList<ModelItem>({
     // 「隐藏不可用」开启时，滤掉探测失败的 Kito 模型；没探测过的不过滤。
     items: () =>
@@ -282,10 +287,19 @@ export const DialogManageModelsV2: Component = () => {
                       <SettingsListV2>
                         <For each={group.items}>
                           {(item) => (
-                            <div class="cursor-pointer" onClick={() => setModelVisibility(item, !modelVisible(item))}>
+                            <div class="cursor-pointer" onClick={() => useModel(item)}>
                               <SettingsRowV2 title={item.name} description="">
                                 <div class="flex items-center gap-2">
                                   <ModelProbeBadge class="ml-2" providerID={item.provider.id} modelID={item.id} />
+                                  <Button
+                                    variant="neutral"
+                                    onClick={(event: MouseEvent) => {
+                                      event.stopPropagation()
+                                      useModel(item)
+                                    }}
+                                  >
+                                    {language.t("dialog.model.use")}
+                                  </Button>
                                   <div onClick={(event) => event.stopPropagation()}>
                                     <Switch
                                       appearance="standard"
@@ -312,4 +326,9 @@ export const DialogManageModelsV2: Component = () => {
       </DialogBody>
     </Dialog>
   )
+}
+
+// 需要选择模型的地方（额度用尽后的「选择付费模型」）打开这个居中的弹窗，而不是挂在组合器上的 popover。
+export function openManageModels(input: { dialog: ReturnType<typeof useDialog> }) {
+  void input.dialog.show(() => <DialogManageModelsV2 />)
 }

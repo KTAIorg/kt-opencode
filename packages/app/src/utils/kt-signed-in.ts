@@ -93,6 +93,9 @@ export function useKtaiAccount() {
 
   return {
     account,
+    // ready 在成功和失败两条路径上都会置位：true 表示 /ktai/account 已经查完，可以按
+    // balance 的实际情况做判断；false 表示还在查，此时 balance 一定是 undefined。
+    resolved: ready,
     signedIn: () => (ready() ? Boolean(account()) : undefined),
     balance: () => account()?.balance,
   }

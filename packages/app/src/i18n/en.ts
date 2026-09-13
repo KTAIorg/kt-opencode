@@ -125,6 +125,7 @@ export const dict = {
   "dialog.model.empty": "No model results",
   "dialog.model.manage": "Manage models",
   "dialog.model.manage.description": "Customize which models appear in the model selector.",
+  "dialog.model.use": "Use",
   "dialog.model.probe.action": "Check availability",
   "dialog.model.probe.running": "Checking…",
   "dialog.model.probe.done": "Availability check finished.",
@@ -134,6 +135,8 @@ export const dict = {
   "dialog.model.probe.hideUnavailable": "Hide unavailable",
   "dialog.model.probe.hidden.one": "{{count}} unavailable model hidden",
   "dialog.model.probe.hidden.other": "{{count}} unavailable models hidden",
+  "dialog.model.hiddenByUser.one": "{{count}} model turned off by you",
+  "dialog.model.hiddenByUser.other": "{{count}} models turned off by you",
   "dialog.model.manage.provider.toggle": "Toggle all {{provider}} models",
 
   "dialog.model.unpaid.freeModels.title": "Free models provided by Kito",
@@ -531,6 +534,7 @@ export const dict = {
   "language.uk": "Українська",
   "language.th": "ไทย",
   "language.tr": "Türkçe",
+  "language.select.label": "Language",
 
   "toast.language.title": "Language",
   "toast.language.description": "Switched to {{language}}",

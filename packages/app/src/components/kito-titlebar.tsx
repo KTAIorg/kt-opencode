@@ -1,5 +1,6 @@
 import { Show, createMemo } from "solid-js"
 import { Portal } from "solid-js/web"
+import { LanguageSelect } from "@/components/language-select"
 import { TitlebarAccountButton } from "@/components/titlebar-account-button"
 import { useTitlebarRightMount } from "@/components/titlebar"
 import { useGlobal } from "@/context/global"
@@ -14,13 +15,16 @@ export function KitoTitlebar() {
     <Show when={rightMount()} keyed>
       {(mount) => (
         <Portal mount={mount}>
-          <Show when={conn()} keyed>
-            {(server) => (
-              <ServerProvider conn={server}>
-                <TitlebarAccountButton />
-              </ServerProvider>
-            )}
-          </Show>
+          <div class="flex shrink-0 items-center gap-2">
+            <LanguageSelect valueClass="!text-[11px]" />
+            <Show when={conn()} keyed>
+              {(server) => (
+                <ServerProvider conn={server}>
+                  <TitlebarAccountButton />
+                </ServerProvider>
+              )}
+            </Show>
+          </div>
         </Portal>
       )}
     </Show>

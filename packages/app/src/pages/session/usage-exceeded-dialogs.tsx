@@ -7,7 +7,6 @@ import { useSessionLayout } from "./session-layout"
 import { useDialog, useI18n } from "@opencode-ai/ui/context"
 import { DialogUsageExceeded } from "@/components/dialog-usage-exceeded"
 import { openKtAccessGuide } from "@/components/dialog-kt-access-guide"
-import { requestModelSelectorOpen } from "@/components/dialog-select-model"
 import { openKtWallet } from "@/components/dialog-kt-wallet"
 import { useKtaiAccount } from "@/utils/kt-signed-in"
 import { classifySessionErrorCta, sessionBillingCta } from "./timeline/session-error-cta"
@@ -75,7 +74,14 @@ export function useUsageExceededDialogs() {
 
   const showBillingGuide = (text?: string) => {
     if (!shouldShowBillingGuide()) return
-    const cta = sessionBillingCta(text ?? "Free usage exceeded", account.signedIn() ?? true, account.balance())
+    // 余额未查回来时不猜：等 /ktai/account 落地后下一次事件（或卡片按钮）再决定。
+    if (!account.resolved()) return
+    const cta = sessionBillingCta(
+      text ?? "Free usage exceeded",
+      account.signedIn() ?? true,
+      account.balance(),
+      account.resolved(),
+    )
     if (cta === "none") return
     if (cta === "wallet") {
       openKtWallet({ dialog, onClose: () => markBillingSeen(false) })
@@ -83,7 +89,7 @@ export function useUsageExceededDialogs() {
     }
     if (cta === "switch") {
       markBillingSeen(false)
-      requestModelSelectorOpen()
+      void import("@/components/dialog-manage-models").then((module) => module.openManageModels({ dialog }))
       return
     }
     openKtAccessGuide({

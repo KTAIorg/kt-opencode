@@ -159,6 +159,9 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     update(model, state ? "show" : "hide")
   }
 
+  // 用户显式关掉的模型（visible 为 false 也可能只是"不是最新版"的默认隐藏，两者要分开）。
+  const hiddenByUser = (model: ModelKey) => visibility().get(modelKey(model)) === "hide"
+
   const push = (model: ModelKey) => {
     const uniq = uniqueBy([model, ...store.recent], (x) => `${x.providerID}:${x.modelID}`)
     if (uniq.length > RECENT_LIMIT) uniq.pop()
@@ -267,6 +270,7 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     list,
     find,
     visible,
+    hiddenByUser,
     setVisibility,
     recent: {
       list: () => recentModels()!,

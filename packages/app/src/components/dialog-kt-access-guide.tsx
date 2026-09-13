@@ -5,7 +5,6 @@ import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode-ai
 import { useLanguage } from "@/context/language"
 import { openKtWallet } from "@/components/dialog-kt-wallet"
 import { openKtIdentityLogin } from "@/components/dialog-kt-identity-login"
-import { requestModelSelectorOpen } from "@/components/dialog-select-model"
 import { useKtaiSignedIn } from "@/utils/kt-signed-in"
 
 export type DialogKtAccessGuideProps = {
@@ -35,7 +34,7 @@ export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
 
   const openAllModels = () => {
     close(false)
-    requestModelSelectorOpen()
+    void import("@/components/dialog-manage-models").then((module) => module.openManageModels({ dialog }))
   }
 
   return (
