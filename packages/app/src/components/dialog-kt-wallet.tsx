@@ -79,6 +79,26 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   const [sawUnauthorized, setSawUnauthorized] = createSignal(false)
   const needsLogin = () => signedIn() === false || sawUnauthorized()
 
+  // fiat 报价或 crypto 取址失败也可能是登录态失效（服务端对 Identity 失败统一回 502），
+  // 所以每个失败态都并排给登录入口，而不是让用户卡在只有一行错误、无法操作的弹窗里。
+  const loginAction = () => (
+    <Button
+      variant="contrast"
+      size="large"
+      type="button"
+      onClick={() =>
+        openKtIdentityLogin({
+          dialog,
+          onClose: () => {
+            window.dispatchEvent(new Event("kito-account-refresh"))
+          },
+        })
+      }
+    >
+      {language.t("dialog.ktAccess.telegram")}
+    </Button>
+  )
+
   const [authTick, setAuthTick] = createSignal(0)
   createEffect(() => {
     // 登录态翻转时重发钱包数据：未登录 401 → 登录成功 → 重新拉 ktpay info / 取址
@@ -367,21 +387,7 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
         <Show when={needsLogin()} fallback={null}>
           <div class="flex flex-col items-center gap-3 py-8">
             <p class="text-14-regular text-text-base">{language.t("dialog.ktWallet.loginRequired")}</p>
-            <Button
-              variant="contrast"
-              size="large"
-              type="button"
-              onClick={() =>
-                openKtIdentityLogin({
-                  dialog,
-                  onClose: () => {
-                    window.dispatchEvent(new Event("kito-account-refresh"))
-                  },
-                })
-              }
-            >
-              {language.t("dialog.ktAccess.telegram")}
-            </Button>
+            {loginAction()}
           </div>
         </Show>
 
@@ -393,9 +399,12 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
             </div>
           </Show>
           <Show when={infoError()}>
-            <p class="text-14-regular text-text-base">
-              {infoError()?.message || language.t("dialog.ktWallet.fiatError")}
-            </p>
+            <div class="flex flex-col items-start gap-2">
+              <p class="text-14-regular text-v2-state-fg-danger">
+                {infoError()?.message || language.t("dialog.ktWallet.fiatError")}
+              </p>
+              {loginAction()}
+            </div>
           </Show>
           <Show when={info()?.enabled === false}>
             <p class="text-14-regular text-text-base">{language.t("dialog.ktWallet.fiatDisabled")}</p>
@@ -509,9 +518,12 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
             </div>
           </Show>
           <Show when={addressError()}>
-            <p class="text-14-regular text-text-base">
-              {addressError()?.message || language.t("dialog.ktWallet.error")}
-            </p>
+            <div class="flex flex-col items-start gap-2">
+              <p class="text-14-regular text-v2-state-fg-danger">
+                {addressError()?.message || language.t("dialog.ktWallet.error")}
+              </p>
+              {loginAction()}
+            </div>
           </Show>
           <Show when={visibleAddress()}>
             {(current) => (
