@@ -1,9 +1,12 @@
+import { Icon } from "@opencode-ai/ui/icon"
 import { Select } from "@opencode-ai/ui/select"
 import { createMemo, type Component } from "solid-js"
 import { useLanguage } from "@/context/language"
 
 // 语言选择只有这一份实现：设置里的「语言」行和标题栏都用它。
+// 标题栏那处没有可见标签，只显示语言名，所以给一个地球图标让它一眼可认。
 export const LanguageSelect: Component<{
+  icon?: boolean
   valueClass?: string
   "data-action"?: string
 }> = (props) => {
@@ -21,6 +24,7 @@ export const LanguageSelect: Component<{
 
   return (
     <Select
+      leading={props.icon ? <Icon name="globe" /> : undefined}
       valueClass={props.valueClass}
       data-action={props["data-action"]}
       options={options()}

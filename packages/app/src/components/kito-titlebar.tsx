@@ -16,7 +16,7 @@ export function KitoTitlebar() {
       {(mount) => (
         <Portal mount={mount}>
           <div class="flex shrink-0 items-center gap-2">
-            <LanguageSelect valueClass="!text-[11px]" />
+            <LanguageSelect icon valueClass="!text-[11px]" />
             <Show when={conn()} keyed>
               {(server) => (
                 <ServerProvider conn={server}>
