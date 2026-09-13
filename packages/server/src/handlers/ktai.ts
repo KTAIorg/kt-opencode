@@ -1,6 +1,7 @@
 import { fetchAccountSummary, externalIdentity, fetchLedgerBalance, readPersistedIdentityToken, signOutIdentity } from "@opencode-ai/core/ktai/identity"
 import { probeKtaiModels } from "@opencode-ai/core/ktai/model-probe"
 import {
+  allowNewapiSpendableRefresh,
   clearManagedApiKey,
   createKtpayOrder,
   fetchDepositAddress,
@@ -11,6 +12,7 @@ import {
   readManagedApiKey,
   syncManagedToken,
 } from "@opencode-ai/core/ktai/newapi"
+import type { KtpayStatus } from "@opencode-ai/core/ktai/newapi"
 import {
   BadGatewayError,
   InvalidRequestError,
@@ -32,6 +34,26 @@ function upstream(error: unknown, fallback: string) {
     message: error instanceof Error && error.message ? error.message : fallback,
     service: "ktai",
   })
+}
+
+const KTPAY_SETTLED_STATUS = new Set([
+  "success",
+  "paid",
+  "completed",
+  "complete",
+  "finished",
+  "settled",
+  "ok",
+  "trade_success",
+  "pay_success",
+])
+
+function isKtpaySettled(status: KtpayStatus) {
+  if (status.settled) return true
+  return (
+    KTPAY_SETTLED_STATUS.has(status.status.toLowerCase()) ||
+    KTPAY_SETTLED_STATUS.has(status.localStatus.toLowerCase())
+  )
 }
 
 export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =>
@@ -146,10 +168,13 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
             kind: "ktai_ktpay_status",
           })
         }
-        return yield* Effect.tryPromise({
+        const status = yield* Effect.tryPromise({
           try: () => fetchKtpayStatus(token, ctx.params.order_id),
           catch: (error) => upstream(error, "KTPay status failed"),
         })
+        // 到账是一次明确事件：放开自动路径的 Ensure 冷却，让下一次账号读取拿到新余额。
+        if (isKtpaySettled(status)) allowNewapiSpendableRefresh()
+        return status
       }),
     )
     .handle("ktai.models.probe", (ctx) =>

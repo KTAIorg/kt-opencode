@@ -210,7 +210,8 @@ async function tryDedicatedTokenEnsure(
 function userIdFrom(payload: unknown): string | undefined {
   const record = asRecord(payload)
   const data = asRecord(record?.data) ?? record
-  const id = data?.id
+  // Login/ensure bundles nest the profile at data.user, same as userSnapshotFrom.
+  const id = data?.id ?? asRecord(data?.user)?.id
   if (typeof id === "number" && Number.isFinite(id)) return String(id)
   if (typeof id === "string" && id.trim()) return id.trim()
   return
@@ -360,10 +361,32 @@ let spendableUsd: number | undefined
 // otherwise trip "deposit address is rate limited" for minutes.
 let depositAddressCache: Map<string, DepositAddress> | undefined
 
+// 每次成功的 Ensure 都会在 NewAPI 新开一个控制台 session，而签发数（24h）和 active 数都有
+// 上限，撞上就是 409/429。所以自动读取路径必须限速：拿到 session 后至少隔 ENSURE_REFRESH_MS
+// 才允许再 Ensure，失败则按状态码退避——否则每一次账号读取都会打一次 Ensure，几十分钟就能把
+// 上限打满，然后 409 自激成 429。
+const ENSURE_REFRESH_MS = 15 * 60_000
+let ensuredAt = 0
+let ensureRetryAt = 0
+
+function ensureDelayMs(status: number) {
+  if (status === 401 || status === 403) return 30 * 60_000
+  if (status === 429) return 10 * 60_000
+  if (status === 409) return 2 * 60_000
+  return 60_000
+}
+
+// 登录、到账这类明确事件可以立刻重取一次余额，不必等自动路径的冷却。
+export function allowNewapiSpendableRefresh() {
+  ensuredAt = 0
+  ensureRetryAt = 0
+}
+
 export function clearNewapiSpendableCache() {
   spendableSession = undefined
   spendableUsd = undefined
   depositAddressCache = undefined
+  allowNewapiSpendableRefresh()
 }
 
 function spendableCachePath() {
@@ -427,7 +450,13 @@ async function iamEnsureUser(
     },
     body: "{}",
   })
-  if (ensured.status < 400) rememberSession(ensured.cookie, userSnapshotFrom(ensured.payload).id)
+  if (ensured.status < 400) {
+    rememberSession(ensured.cookie, userSnapshotFrom(ensured.payload).id)
+    ensuredAt = Date.now()
+    ensureRetryAt = 0
+    return ensured
+  }
+  ensureRetryAt = Date.now() + ensureDelayMs(ensured.status)
   return ensured
 }
 
@@ -440,8 +469,13 @@ export async function fetchNewapiSpendable(
   if (spendableSession) {
     const cached = await readSelfSpendable(spendableSession, { baseUrl, fetchImpl })
     if (cached !== undefined) return rememberSpendable(cached)
-    spendableSession = undefined
   }
+  // 读 /api/user/self 失败不代表 session 作废：一旦这里把 session 丢掉，下一次账号读取就会
+  // 再 Ensure 一次，读一次打一次，几十次就把 NewAPI 的签发上限打满。保留 session，只靠冷却
+  // 与退避控制重新 Ensure 的节奏。
+  const now = Date.now()
+  if (now < ensureRetryAt) return readCachedSpendable()
+  if (now - ensuredAt < ENSURE_REFRESH_MS) return readCachedSpendable()
   const ensured = await iamEnsureUser(identityToken, { baseUrl, fetchImpl })
   if (ensured.status >= 400) return readCachedSpendable()
   const fromEnsure = userSnapshotFrom(ensured.payload)
