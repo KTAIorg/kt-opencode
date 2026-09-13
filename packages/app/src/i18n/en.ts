@@ -132,6 +132,8 @@ export const dict = {
   "dialog.model.probe.ok": "Available",
   "dialog.model.probe.unavailable": "Unavailable",
   "dialog.model.probe.hideUnavailable": "Hide unavailable",
+  "dialog.model.probe.hidden.one": "{{count}} unavailable model hidden",
+  "dialog.model.probe.hidden.other": "{{count}} unavailable models hidden",
   "dialog.model.manage.provider.toggle": "Toggle all {{provider}} models",
 
   "dialog.model.unpaid.freeModels.title": "Free models provided by Kito",

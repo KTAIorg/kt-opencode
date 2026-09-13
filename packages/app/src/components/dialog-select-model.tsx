@@ -1,5 +1,5 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
-import { Component, ComponentProps, createEffect, createMemo, For, JSX, Show } from "solid-js"
+import { Component, ComponentProps, createEffect, createMemo, createSignal, For, JSX, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
 import { useModels } from "@/context/models"
@@ -20,7 +20,9 @@ import { decode64 } from "@/utils/base64"
 import { handleDocumentSearchKeydown } from "@/utils/search-keydown"
 import { createMenuDismissController } from "@/utils/menu-dismiss-controller"
 import { createEventListener } from "@solid-primitives/event-listener"
+import { customerFacingProviderName } from "@/utils/kt-settlement"
 import { matchesModelSearch } from "./dialog-select-model-search"
+import { ModelProbeBadge } from "./model-probe-badge"
 import { compareKtaiModelOrder, isKtaiProviderID } from "@/utils/ktai-model-order"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
@@ -31,6 +33,14 @@ type ModelItem = ReturnType<ModelState["list"]>[number]
 
 const modelKey = (model: ModelItem) => `${model.provider.id}:${model.id}`
 const manageKey = "action:manage"
+
+// 选择器是挂在组合器按钮上的 popover，没有对外的 open 属性；免费额度用尽的 CTA
+// 需要打开同一个选择器（而不是再做一个弹窗版本），所以用自增计数当打开请求。
+const [modelSelectorOpenRequest, setModelSelectorOpenRequest] = createSignal(0)
+
+export function requestModelSelectorOpen() {
+  setModelSelectorOpenRequest((count) => count + 1)
+}
 
 const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { category: string; items: ModelItem[] }) => {
   const aIndex = popularProviders.indexOf(a.category)
@@ -241,6 +251,8 @@ export function ModelSelectorPopoverV2(props: {
     <ModelSelectorPopoverV2View
       trigger={props.trigger}
       models={controller.models}
+      hidden={controller.hidden}
+      probe={controller.probe}
       groups={controller.groups}
       current={controller.current()}
       select={controller.select}
@@ -261,27 +273,32 @@ function createModelSelectorController(input: {
 }) {
   const model = input.model ?? useLocal().model
   const models = useModels()
-  const allModels = createMemo(() =>
+  const selectable = createMemo(() =>
     model
       .list()
       .filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id }))
-      .filter((item) => (input.provider() ? item.provider.id === input.provider() : true))
-      // 「隐藏不可用」开启时，滤掉探测失败的 Kito 模型；没探测过的不过滤。
-      .filter((item) => {
-        if (!models.probe.state().hideUnavailable) return true
-        if (!isKtaiProviderID(item.provider.id)) return true
-        const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
-        return result?.ok !== false
-      }),
+      .filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
   )
+  const unavailable = (item: ModelItem) => {
+    if (!isKtaiProviderID(item.provider.id)) return false
+    return models.probe.result({ modelID: item.id, providerID: item.provider.id })?.ok === false
+  }
+  const searched = (search: string) => {
+    const query = search.trim()
+    if (!query) return selectable()
+    return selectable().filter((item) => matchesModelSearch(query, [item.name, item.id, item.provider.name]))
+  }
+  const shown = (search: string) =>
+    models.probe.state().hideUnavailable ? searched(search).filter((item) => !unavailable(item)) : searched(search)
 
   return {
-    models: (search: string) => {
-      const query = search.trim()
-      const filtered = query
-        ? allModels().filter((item) => matchesModelSearch(query, [item.name, item.id, item.provider.name]))
-        : allModels()
-      return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+    models: (search: string) => [...shown(search)].sort((a, b) => a.name.localeCompare(b.name)),
+    // 「隐藏不可用」实际滤掉的行数，用来在列表里提示；没开启或没滤掉时为 0。
+    hidden: (search: string) =>
+      models.probe.state().hideUnavailable ? searched(search).filter(unavailable).length : 0,
+    probe: {
+      running: () => models.probe.running(),
+      autoRun: () => models.probe.autoRun(),
     },
     groups: (models: ModelItem[]) => {
       const byProvider = new Map<string, ModelItem[]>()
@@ -304,6 +321,8 @@ function createModelSelectorController(input: {
 function ModelSelectorPopoverV2View(props: {
   trigger: ModelSelectorTrigger
   models: (search: string) => ModelItem[]
+  hidden: (search: string) => number
+  probe: { running: () => boolean; autoRun: () => void }
   groups: (models: ModelItem[]) => { category: string; items: ModelItem[] }[]
   current: string | undefined
   select: (item: ModelItem) => void
@@ -315,6 +334,7 @@ function ModelSelectorPopoverV2View(props: {
   let searchRef: HTMLInputElement | undefined
   let contentRef: HTMLDivElement | undefined
   const dismiss = createMenuDismissController(() => contentRef)
+  const noticeClass = "px-3 py-1.5 text-[11px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-faint"
 
   const models = createMemo(() => props.models(store.search))
   const groups = createMemo(() => props.groups(models()))
@@ -331,6 +351,8 @@ function ModelSelectorPopoverV2View(props: {
     if (open) {
       dismiss.allowTriggerRestore()
       setStore({ open: true, active: initialActive() })
+      // 列表打开就顺带刷新过期的可用性探测，不阻塞渲染。
+      props.probe.autoRun()
       setTimeout(() =>
         requestAnimationFrame(() => {
           searchRef?.focus()
@@ -371,6 +393,8 @@ function ModelSelectorPopoverV2View(props: {
     const first = props.models(value)[0]
     setStore({ search: value, active: first ? modelKey(first) : manageKey })
   }
+
+  createEffect(on(modelSelectorOpenRequest, () => setOpen(true), { defer: true }))
 
   createEffect(() => {
     if (!store.open) return
@@ -449,6 +473,14 @@ function ModelSelectorPopoverV2View(props: {
           <div class="h-px bg-v2-border-border-muted" />
           <ScrollView data-slot="model-selector-scroll" class="max-h-[220px] min-h-0">
             <div class="flex flex-col p-0.5 pt-0">
+              <Show when={props.probe.running()}>
+                <div class={noticeClass}>{language.t("dialog.model.probe.running")}</div>
+              </Show>
+              <Show when={props.hidden(store.search) > 0}>
+                <div class={noticeClass}>
+                  {language.plural("dialog.model.probe.hidden", props.hidden(store.search))}
+                </div>
+              </Show>
               <Show
                 when={models().length > 0}
                 fallback={
@@ -461,7 +493,9 @@ function ModelSelectorPopoverV2View(props: {
                   {(group) => (
                     <Menu.Group>
                       <Menu.GroupLabel class="gap-2 px-3">
-                        <span class="min-w-0 truncate">{group.items[0].provider.name}</span>
+                        <span class="min-w-0 truncate">
+                          {customerFacingProviderName(group.items[0].provider.id, group.items[0].provider.name)}
+                        </span>
                       </Menu.GroupLabel>
                       <Menu.RadioGroup value={props.current}>
                         <For each={group.items}>
@@ -493,6 +527,7 @@ function ModelSelectorPopoverV2View(props: {
                                 onSelect={() => selectModel(item)}
                               >
                                 <span class="min-w-0 truncate leading-5">{item.name}</span>
+                                <ModelProbeBadge providerID={item.provider.id} modelID={item.id} />
                                 <Show when={isFree(item.provider.id, item.cost)}>
                                   <Badge class="shrink-0">{language.t("model.tag.free")}</Badge>
                                 </Show>

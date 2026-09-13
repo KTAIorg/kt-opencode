@@ -7,6 +7,7 @@ import { useSessionLayout } from "./session-layout"
 import { useDialog, useI18n } from "@opencode-ai/ui/context"
 import { DialogUsageExceeded } from "@/components/dialog-usage-exceeded"
 import { openKtAccessGuide } from "@/components/dialog-kt-access-guide"
+import { requestModelSelectorOpen } from "@/components/dialog-select-model"
 import { openKtWallet } from "@/components/dialog-kt-wallet"
 import { useKtaiAccount } from "@/utils/kt-signed-in"
 import { classifySessionErrorCta, sessionBillingCta } from "./timeline/session-error-cta"
@@ -78,6 +79,11 @@ export function useUsageExceededDialogs() {
     if (cta === "none") return
     if (cta === "wallet") {
       openKtWallet({ dialog, onClose: () => markBillingSeen(false) })
+      return
+    }
+    if (cta === "switch") {
+      markBillingSeen(false)
+      requestModelSelectorOpen()
       return
     }
     openKtAccessGuide({

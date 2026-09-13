@@ -3,6 +3,7 @@ import { Card } from "@opencode-ai/ui/card"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Show } from "solid-js"
 import { openKtAccessGuide } from "@/components/dialog-kt-access-guide"
+import { requestModelSelectorOpen } from "@/components/dialog-select-model"
 import { openKtWallet } from "@/components/dialog-kt-wallet"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
@@ -82,7 +83,7 @@ export function SessionErrorCard(props: { text: string }) {
               onClick={() => {
                 if (kind() !== "auth") {
                   if (billingCta() === "switch") {
-                    openKtAccessGuide({ dialog, kind: "billing" })
+                    requestModelSelectorOpen()
                     return
                   }
                   openKtWallet({ dialog })

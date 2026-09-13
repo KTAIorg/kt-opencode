@@ -8,18 +8,16 @@ import { Switch } from "@opencode-ai/ui/switch"
 import { TextInput } from "@opencode-ai/ui/text-input"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { useFilteredList } from "@opencode-ai/ui/hooks"
-import { For, Show, type Component, createMemo, createSignal } from "solid-js"
+import { For, Show, type Component, createMemo, onMount } from "solid-js"
 import { useLocal } from "@/context/local"
 import { useModels } from "@/context/models"
-import { usePlatform } from "@/context/platform"
-import { useServerSDK } from "@/context/server-sdk"
 import { popularProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogConnectProvider } from "./dialog-connect-provider"
+import { ModelProbeBadge } from "./model-probe-badge"
 import { decode64 } from "@/utils/base64"
 import { isKtaiProviderID } from "@/utils/ktai-model-order"
-import { showToast } from "@/utils/toast"
 import { SettingsListV2 } from "./settings-v2/parts/list"
 import { SettingsRowV2 } from "./settings-v2/parts/row"
 import "./settings-v2/settings-v2.css"
@@ -129,9 +127,6 @@ export const DialogManageModelsV2: Component = () => {
   const language = useLanguage()
   const dialog = useDialog()
   const models = useModels()
-  const serverSDK = useServerSDK()
-  const platform = usePlatform()
-  const [probing, setProbing] = createSignal(false)
   const directory = () => decode64(local.slug())
 
   const ktaiModelIDs = createMemo(() => {
@@ -142,66 +137,7 @@ export const DialogManageModelsV2: Component = () => {
       .map((x) => x.id)
   })
 
-  const runProbe = async () => {
-    if (probing()) return
-    const ids = ktaiModelIDs()
-    if (ids.length === 0) return
-    setProbing(true)
-    try {
-      const url = serverSDK.url.replace(/\/+$/, "")
-      const headers = new Headers({ "content-type": "application/json", accept: "application/json" })
-      if (serverSDK.server.http.username && serverSDK.server.http.password) {
-        headers.set("authorization", `Basic ${btoa(`${serverSDK.server.http.username}:${serverSDK.server.http.password}`)}`)
-      }
-      // server 限制每次探测最多 100 个模型，超限分批请求
-      const chunks: string[][] = []
-      for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100))
-      const results: { modelID: string; ok: boolean; status?: number; error?: string }[] = []
-      for (const chunk of chunks) {
-        const response = await (platform.fetch ?? fetch)(`${url}/ktai/models/probe`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ modelIDs: chunk }),
-        })
-        const payload = (await response.json().catch(() => undefined)) as
-          | { results?: { modelID: string; ok: boolean; status?: number; error?: string }[]; probedAt?: number }
-          | undefined
-        if (!response.ok || !payload?.results) {
-          showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
-          return
-        }
-        results.push(...payload.results)
-      }
-      models.probe.apply({ results, probedAt: Date.now() })
-      showToast({ variant: "success", title: language.t("dialog.model.probe.done") })
-    } catch {
-      showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
-    } finally {
-      setProbing(false)
-    }
-  }
-
-  const probeBadge = (item: ModelItem) => {
-    if (!isKtaiProviderID(item.provider.id)) return
-    const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
-    if (!result) return
-    const label = result.ok
-      ? language.t("dialog.model.probe.ok")
-      : result.error || language.t("dialog.model.probe.unavailable")
-    return (
-      <Tooltip appearance="standard" placement="top" value={label}>
-        <span
-          role="img"
-          aria-label={label}
-          class="ml-2 h-2 w-2 shrink-0 cursor-help rounded-full"
-          classList={{
-            "bg-v2-state-fg-success": result.ok,
-            "bg-v2-state-fg-danger": !result.ok,
-          }}
-        />
-      </Tooltip>
-    )
-  }
+  onMount(() => models.probe.autoRun())
 
   const handleConnectProvider = () => {
     void dialog.show(() => <DialogConnectProvider directory={directory()} />)
@@ -214,6 +150,7 @@ export const DialogManageModelsV2: Component = () => {
       local.model.setVisibility({ modelID: x.id, providerID: x.provider.id }, checked)
     })
   }
+  const modelVisible = (item: ModelItem) => local.model.visible({ modelID: item.id, providerID: item.provider.id })
   const setModelVisibility = (item: ModelItem, checked: boolean) => {
     local.model.setVisibility({ modelID: item.id, providerID: item.provider.id }, checked)
   }
@@ -260,10 +197,10 @@ export const DialogManageModelsV2: Component = () => {
           <Button
             variant="neutral"
             icon="play"
-            disabled={probing() || ktaiModelIDs().length === 0}
-            onClick={() => void runProbe()}
+            disabled={models.probe.running() || ktaiModelIDs().length === 0}
+            onClick={() => void models.probe.run()}
           >
-            {probing() ? language.t("dialog.model.probe.running") : language.t("dialog.model.probe.action")}
+            {models.probe.running() ? language.t("dialog.model.probe.running") : language.t("dialog.model.probe.action")}
           </Button>
           <Button variant="neutral" icon="plus" onClick={handleConnectProvider}>
             {language.t("command.provider.connect")}
@@ -345,19 +282,23 @@ export const DialogManageModelsV2: Component = () => {
                       <SettingsListV2>
                         <For each={group.items}>
                           {(item) => (
-                            <SettingsRowV2 title={item.name} description="">
-                              <div class="flex items-center gap-2">
-                                <Show when={probeBadge(item)}>{(badge) => badge()}</Show>
-                                <Switch
-                                  appearance="standard"
-                                  checked={local.model.visible({ modelID: item.id, providerID: item.provider.id })}
-                                  onChange={(checked) => setModelVisibility(item, checked)}
-                                  hideLabel
-                                >
-                                  {item.name}
-                                </Switch>
-                              </div>
-                            </SettingsRowV2>
+                            <div class="cursor-pointer" onClick={() => setModelVisibility(item, !modelVisible(item))}>
+                              <SettingsRowV2 title={item.name} description="">
+                                <div class="flex items-center gap-2">
+                                  <ModelProbeBadge class="ml-2" providerID={item.provider.id} modelID={item.id} />
+                                  <div onClick={(event) => event.stopPropagation()}>
+                                    <Switch
+                                      appearance="standard"
+                                      checked={modelVisible(item)}
+                                      onChange={(checked) => setModelVisibility(item, checked)}
+                                      hideLabel
+                                    >
+                                      {item.name}
+                                    </Switch>
+                                  </div>
+                                </div>
+                              </SettingsRowV2>
+                            </div>
                           )}
                         </For>
                       </SettingsListV2>
