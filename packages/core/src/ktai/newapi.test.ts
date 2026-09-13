@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import os from "os"
 import path from "path"
-import { clearNewapiSpendableCache, fetchNewapiSpendable } from "./newapi"
+import { clearNewapiSpendableCache, fetchNewapiSpendable, pinEnsuredUserToDefault } from "./newapi"
 import type { FetchLike } from "./newapi"
 
 const BASE = "https://newapi.test"
@@ -69,6 +69,26 @@ describe("fetchNewapiSpendable", () => {
     expect(await fetchNewapiSpendable("token", { baseUrl: BASE, fetchImpl: impl })).toBe(9817.04)
     quota += 2_500_000
     expect(await fetchNewapiSpendable("token", { baseUrl: BASE, fetchImpl: impl })).toBe(9822.04)
+    expect(ensureCalls(calls)).toBe(1)
+  })
+
+  test("keeps the balance from an ensure that already ran, so it is there right after login", async () => {
+    const { calls, impl } = countingFetch((url) => {
+      if (url.endsWith("/api/iam/ensure")) {
+        return jsonResponse(
+          { data: { user: { id: 370, username: "KT260520XS3ADS", group: "default", quota: 4_908_519_373 } } },
+          200,
+          { "set-cookie": "session=abc; Path=/" },
+        )
+      }
+      if (url.endsWith("/api/user/")) return jsonResponse({ success: true })
+      return jsonResponse({ message: "unauthorized" }, 401)
+    })
+
+    // 登录路径就是这样：一条 Ensure 既写 key 又用于 pin 分组。
+    await pinEnsuredUserToDefault("token", { baseUrl: BASE, fetchImpl: impl })
+    // 随之而来的账号读取不能再 Ensure 一次，但余额必须已经在。
+    expect(await fetchNewapiSpendable("token", { baseUrl: BASE, fetchImpl: impl })).toBe(9817.04)
     expect(ensureCalls(calls)).toBe(1)
   })
 })

@@ -451,7 +451,11 @@ async function iamEnsureUser(
     body: "{}",
   })
   if (ensured.status < 400) {
-    rememberSession(ensured.cookie, userSnapshotFrom(ensured.payload).id)
+    const snapshot = userSnapshotFrom(ensured.payload)
+    rememberSession(ensured.cookie, snapshot.id)
+    // Ensure 的返回里就带着可花额度：直接落缓存，否则顶栏要等下一次自动 Ensure
+    // （最长 ENSURE_REFRESH_MS）才显示余额——登录后立刻“没有余额”就是这么来的。
+    rememberSpendable(snapshot.remainingUsd)
     ensuredAt = Date.now()
     ensureRetryAt = 0
     return ensured
