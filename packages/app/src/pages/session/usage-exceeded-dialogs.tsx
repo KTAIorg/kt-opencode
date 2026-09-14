@@ -74,9 +74,22 @@ export function useUsageExceededDialogs() {
 
   const showBillingGuide = (text?: string) => {
     if (!shouldShowBillingGuide()) return
-    const cta = sessionBillingCta(text ?? "Free usage exceeded", account.signedIn() ?? true, account.balance())
+    // 余额未查回来时不猜：等 /ktai/account 落地后下一次事件（或卡片按钮）再决定。
+    if (!account.resolved()) return
+    const cta = sessionBillingCta(
+      text ?? "Free usage exceeded",
+      account.signedIn() ?? true,
+      account.balance(),
+      account.resolved(),
+    )
+    if (cta === "none") return
     if (cta === "wallet") {
       openKtWallet({ dialog, onClose: () => markBillingSeen(false) })
+      return
+    }
+    if (cta === "switch") {
+      markBillingSeen(false)
+      void import("@/components/dialog-manage-models").then((module) => module.openManageModels({ dialog }))
       return
     }
     openKtAccessGuide({

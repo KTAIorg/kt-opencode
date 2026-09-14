@@ -217,7 +217,7 @@
 
   &:hover:not([data-disabled], [data-readonly]) [data-slot="switch-control"] {
     border-color: var(--border-hover);
-    background: var(--surface-hover);
+    background: var(--surface-base-hover);
   }
 
   &:hover:not([data-disabled], [data-readonly]) [data-slot="switch-thumb"] {
@@ -253,12 +253,12 @@
 
   &[data-checked]:hover:not([data-disabled], [data-readonly]) [data-slot="switch-control"] {
     border-color: var(--border-hover);
-    background: var(--surface-hover);
+    background: var(--icon-strong-base);
   }
 
   &[data-disabled] [data-slot="switch-control"] {
     border-color: var(--border-disabled);
-    background: var(--surface-disabled);
+    background: var(--surface-base);
     opacity: 1;
   }
 

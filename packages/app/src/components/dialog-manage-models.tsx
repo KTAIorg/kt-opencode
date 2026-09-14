@@ -2,136 +2,31 @@ import { Button } from "@opencode-ai/ui/button"
 import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
-import { List } from "@opencode-ai/ui/list"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Switch } from "@opencode-ai/ui/switch"
 import { TextInput } from "@opencode-ai/ui/text-input"
-import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { useFilteredList } from "@opencode-ai/ui/hooks"
-import { For, Show, type Component, createMemo, createSignal } from "solid-js"
+import { For, Show, type Component, createMemo, onMount } from "solid-js"
 import { useLocal } from "@/context/local"
 import { useModels } from "@/context/models"
-import { usePlatform } from "@/context/platform"
-import { useServerSDK } from "@/context/server-sdk"
 import { popularProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogConnectProvider } from "./dialog-connect-provider"
+import { ModelProbeBadge } from "./model-probe-badge"
 import { decode64 } from "@/utils/base64"
 import { isKtaiProviderID } from "@/utils/ktai-model-order"
-import { showToast } from "@/utils/toast"
 import { SettingsListV2 } from "./settings-v2/parts/list"
 import { SettingsRowV2 } from "./settings-v2/parts/row"
 import "./settings-v2/settings-v2.css"
 
 type ModelItem = ReturnType<ReturnType<typeof useLocal>["model"]["list"]>[number]
 
-export const DialogManageModels: Component = () => {
-  const local = useLocal()
-  const language = useLanguage()
-  const dialog = useDialog()
-  const directory = () => decode64(local.slug())
-
-  const handleConnectProvider = () => {
-    void dialog.show(() => <DialogConnectProvider directory={directory()} />)
-  }
-  const providerRank = (id: string) => popularProviders.indexOf(id)
-  const providerList = (providerID: string) => local.model.list().filter((x) => x.provider.id === providerID)
-  const providerVisible = (providerID: string) =>
-    providerList(providerID).every((x) => local.model.visible({ modelID: x.id, providerID: x.provider.id }))
-  const setProviderVisibility = (providerID: string, checked: boolean) => {
-    providerList(providerID).forEach((x) => {
-      local.model.setVisibility({ modelID: x.id, providerID: x.provider.id }, checked)
-    })
-  }
-
-  return (
-    <Dialog>
-      <DialogHeader hideClose>
-        <DialogTitleGroup
-          title={language.t("dialog.model.manage")}
-          description={language.t("dialog.model.manage.description")}
-        />
-        <Button class="h-7 -my-1 text-14-medium" icon="plus-small" tabIndex={-1} onClick={handleConnectProvider}>
-          {language.t("command.provider.connect")}
-        </Button>
-      </DialogHeader>
-      <DialogBody>
-        <List
-          class="px-3"
-          search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true }}
-          emptyMessage={language.t("dialog.model.empty")}
-          key={(x) => `${x?.provider?.id}:${x?.id}`}
-          items={local.model.list()}
-          filterKeys={["provider.name", "name", "id"]}
-          sortBy={(a, b) => a.name.localeCompare(b.name)}
-          groupBy={(x) => x.provider.id}
-          groupHeader={(group) => {
-            const provider = group.items[0].provider
-            return (
-              <>
-                <span>{provider.name}</span>
-                <Tooltip
-                  appearance="standard"
-                  placement="top"
-                  value={language.t("dialog.model.manage.provider.toggle", { provider: provider.name })}
-                >
-                  <Switch
-                    appearance="standard"
-                    class="-mr-1"
-                    checked={providerVisible(provider.id)}
-                    onChange={(checked) => setProviderVisibility(provider.id, checked)}
-                    hideLabel
-                  >
-                    {provider.name}
-                  </Switch>
-                </Tooltip>
-              </>
-            )
-          }}
-          sortGroupsBy={(a, b) => {
-            const aRank = providerRank(a.items[0].provider.id)
-            const bRank = providerRank(b.items[0].provider.id)
-            const aPopular = aRank >= 0
-            const bPopular = bRank >= 0
-            if (aPopular && !bPopular) return -1
-            if (!aPopular && bPopular) return 1
-            return aRank - bRank
-          }}
-          onSelect={(x) => {
-            if (!x) return
-            const key = { modelID: x.id, providerID: x.provider.id }
-            local.model.setVisibility(key, !local.model.visible(key))
-          }}
-        >
-          {(i) => (
-            <div class="w-full flex items-center justify-between gap-x-3">
-              <span>{i.name}</span>
-              <div onClick={(e) => e.stopPropagation()}>
-                <Switch
-                  appearance="standard"
-                  checked={!!local.model.visible({ modelID: i.id, providerID: i.provider.id })}
-                  onChange={(checked) => {
-                    local.model.setVisibility({ modelID: i.id, providerID: i.provider.id }, checked)
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </List>
-      </DialogBody>
-    </Dialog>
-  )
-}
-
 export const DialogManageModelsV2: Component = () => {
   const local = useLocal()
   const language = useLanguage()
   const dialog = useDialog()
   const models = useModels()
-  const serverSDK = useServerSDK()
-  const platform = usePlatform()
-  const [probing, setProbing] = createSignal(false)
   const directory = () => decode64(local.slug())
 
   const ktaiModelIDs = createMemo(() => {
@@ -142,54 +37,7 @@ export const DialogManageModelsV2: Component = () => {
       .map((x) => x.id)
   })
 
-  const runProbe = async () => {
-    if (probing()) return
-    const ids = ktaiModelIDs()
-    if (ids.length === 0) return
-    setProbing(true)
-    try {
-      const url = serverSDK.url.replace(/\/+$/, "")
-      const headers = new Headers({ "content-type": "application/json", accept: "application/json" })
-      if (serverSDK.server.http.username && serverSDK.server.http.password) {
-        headers.set("authorization", `Basic ${btoa(`${serverSDK.server.http.username}:${serverSDK.server.http.password}`)}`)
-      }
-      const response = await (platform.fetch ?? fetch)(`${url}/ktai/models/probe`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ modelIDs: ids }),
-      })
-      const payload = (await response.json().catch(() => undefined)) as
-        | { results?: { modelID: string; ok: boolean; status?: number; error?: string }[]; probedAt?: number }
-        | undefined
-      if (!response.ok || !payload?.results) {
-        showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
-        return
-      }
-      models.probe.apply({ results: payload.results, probedAt: payload.probedAt ?? Date.now() })
-      showToast({ variant: "success", title: language.t("dialog.model.probe.done") })
-    } catch {
-      showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
-    } finally {
-      setProbing(false)
-    }
-  }
-
-  const probeBadge = (item: ModelItem) => {
-    if (!isKtaiProviderID(item.provider.id)) return
-    const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
-    if (!result) return
-    return result.ok ? (
-      <span class="ml-2 rounded-full bg-v2-background-background-success px-1.5 py-px text-11-medium text-v2-text-text-success">
-        {language.t("dialog.model.probe.ok")}
-      </span>
-    ) : (
-      <Tooltip appearance="standard" placement="top" value={result.error || language.t("dialog.model.probe.unavailable")}>
-        <span class="ml-2 cursor-help rounded-full bg-v2-background-background-danger px-1.5 py-px text-11-medium text-v2-text-text-danger">
-          {language.t("dialog.model.probe.unavailable")}
-        </span>
-      </Tooltip>
-    )
-  }
+  onMount(() => models.probe.autoRun())
 
   const handleConnectProvider = () => {
     void dialog.show(() => <DialogConnectProvider directory={directory()} />)
@@ -202,11 +50,24 @@ export const DialogManageModelsV2: Component = () => {
       local.model.setVisibility({ modelID: x.id, providerID: x.provider.id }, checked)
     })
   }
+  const modelVisible = (item: ModelItem) => local.model.visible({ modelID: item.id, providerID: item.provider.id })
   const setModelVisibility = (item: ModelItem, checked: boolean) => {
     local.model.setVisibility({ modelID: item.id, providerID: item.provider.id }, checked)
   }
+  // 「使用」= 组合器选择器的同一个动作：选中并把该模型推进最近使用，然后关掉弹窗。
+  const useModel = (item: ModelItem) => {
+    local.model.set({ modelID: item.id, providerID: item.provider.id }, { recent: true })
+    dialog.close()
+  }
   const list = useFilteredList<ModelItem>({
-    items: () => local.model.list(),
+    // 「隐藏不可用」开启时，滤掉探测失败的 Kito 模型；没探测过的不过滤。
+    items: () =>
+      local.model.list().filter((item) => {
+        if (!models.probe.state().hideUnavailable) return true
+        if (!isKtaiProviderID(item.provider.id)) return true
+        const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
+        return result?.ok !== false
+      }),
     key: (x) => `${x.provider.id}:${x.id}`,
     filterKeys: ["provider.name", "name", "id"],
     sortBy: (a, b) => a.name.localeCompare(b.name),
@@ -230,24 +91,21 @@ export const DialogManageModelsV2: Component = () => {
           description={language.t("dialog.model.manage.description")}
         />
         <div class="flex items-center gap-2">
-          <label class="flex cursor-pointer items-center gap-1.5 text-13-regular text-text-weak">
-            <Switch
-              appearance="standard"
-              checked={models.probe.state().hideUnavailable}
-              onChange={(checked) => models.probe.setHideUnavailable(checked)}
-              hideLabel
-            >
-              {language.t("dialog.model.probe.hideUnavailable")}
-            </Switch>
+          <Switch
+            class="cursor-pointer"
+            appearance="standard"
+            checked={models.probe.state().hideUnavailable}
+            onChange={(checked) => models.probe.setHideUnavailable(checked)}
+          >
             {language.t("dialog.model.probe.hideUnavailable")}
-          </label>
+          </Switch>
           <Button
             variant="neutral"
             icon="play"
-            disabled={probing() || ktaiModelIDs().length === 0}
-            onClick={() => void runProbe()}
+            disabled={models.probe.running() || ktaiModelIDs().length === 0}
+            onClick={() => void models.probe.run()}
           >
-            {probing() ? language.t("dialog.model.probe.running") : language.t("dialog.model.probe.action")}
+            {models.probe.running() ? language.t("dialog.model.probe.running") : language.t("dialog.model.probe.action")}
           </Button>
           <Button variant="neutral" icon="plus" onClick={handleConnectProvider}>
             {language.t("command.provider.connect")}
@@ -317,6 +175,7 @@ export const DialogManageModelsV2: Component = () => {
                         <div>
                           <Switch
                             class="mr-6"
+                            appearance="standard"
                             checked={providerVisible(group.category)}
                             onChange={(checked) => setProviderVisibility(group.category, checked)}
                             hideLabel
@@ -328,18 +187,32 @@ export const DialogManageModelsV2: Component = () => {
                       <SettingsListV2>
                         <For each={group.items}>
                           {(item) => (
-                            <SettingsRowV2 title={item.name} description="">
-                              <div class="flex items-center gap-2">
-                                <Show when={probeBadge(item)}>{(badge) => badge()}</Show>
-                                <Switch
-                                  checked={local.model.visible({ modelID: item.id, providerID: item.provider.id })}
-                                  onChange={(checked) => setModelVisibility(item, checked)}
-                                  hideLabel
-                                >
-                                  {item.name}
-                                </Switch>
-                              </div>
-                            </SettingsRowV2>
+                            <div class="cursor-pointer" onClick={() => useModel(item)}>
+                              <SettingsRowV2 title={item.name} description="">
+                                <div class="flex items-center gap-2">
+                                  <ModelProbeBadge class="ml-2" providerID={item.provider.id} modelID={item.id} />
+                                  <Button
+                                    variant="neutral"
+                                    onClick={(event: MouseEvent) => {
+                                      event.stopPropagation()
+                                      useModel(item)
+                                    }}
+                                  >
+                                    {language.t("dialog.model.use")}
+                                  </Button>
+                                  <div onClick={(event) => event.stopPropagation()}>
+                                    <Switch
+                                      appearance="standard"
+                                      checked={modelVisible(item)}
+                                      onChange={(checked) => setModelVisibility(item, checked)}
+                                      hideLabel
+                                    >
+                                      {item.name}
+                                    </Switch>
+                                  </div>
+                                </div>
+                              </SettingsRowV2>
+                            </div>
                           )}
                         </For>
                       </SettingsListV2>
@@ -352,5 +225,13 @@ export const DialogManageModelsV2: Component = () => {
         </div>
       </DialogBody>
     </Dialog>
+  )
+}
+
+// 需要选择模型的地方（额度用尽后的「选择付费模型」）打开这个居中的弹窗，而不是挂在组合器上的 popover。
+export function openManageModels(input: { dialog: ReturnType<typeof useDialog>; onClose?: () => void }) {
+  void input.dialog.show(
+    () => <DialogManageModelsV2 />,
+    () => input.onClose?.(),
   )
 }

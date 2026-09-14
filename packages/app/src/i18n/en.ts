@@ -125,6 +125,7 @@ export const dict = {
   "dialog.model.empty": "No model results",
   "dialog.model.manage": "Manage models",
   "dialog.model.manage.description": "Customize which models appear in the model selector.",
+  "dialog.model.use": "Use",
   "dialog.model.probe.action": "Check availability",
   "dialog.model.probe.running": "Checking…",
   "dialog.model.probe.done": "Availability check finished.",
@@ -132,6 +133,10 @@ export const dict = {
   "dialog.model.probe.ok": "Available",
   "dialog.model.probe.unavailable": "Unavailable",
   "dialog.model.probe.hideUnavailable": "Hide unavailable",
+  "dialog.model.probe.hidden.one": "{{count}} unavailable model hidden",
+  "dialog.model.probe.hidden.other": "{{count}} unavailable models hidden",
+  "dialog.model.hiddenByUser.one": "{{count}} model turned off by you",
+  "dialog.model.hiddenByUser.other": "{{count}} models turned off by you",
   "dialog.model.manage.provider.toggle": "Toggle all {{provider}} models",
 
   "dialog.model.unpaid.freeModels.title": "Free models provided by Kito",
@@ -529,6 +534,7 @@ export const dict = {
   "language.uk": "Українська",
   "language.th": "ไทย",
   "language.tr": "Türkçe",
+  "language.select.label": "Language",
 
   "toast.language.title": "Language",
   "toast.language.description": "Switched to {{language}}",
@@ -1232,6 +1238,8 @@ export const dict = {
   "dialog.ktAccess.billing.signedIn.lead":
     "Zen free chats are exhausted. Switch to a Kito paid model, or top up first if your balance is empty.",
   "dialog.ktAccess.billing.paid.lead": "Your Kito chat balance is empty. Top up, then send again.",
+  "dialog.ktAccess.billing.serviceIssue.lead":
+    "Your Kito chat balance looks fine, so this rejection is on our side — likely a gateway or channel issue. Please retry in a moment, or report it with the request id.",
   "dialog.ktAccess.step1": "Sign in to Kito with Telegram (same account as NewAPI).",
   "dialog.ktAccess.step2": "Open the wallet and top up so paid models keep working.",
   "dialog.ktAccess.step3": "Pick a Kito paid model and send again.",
@@ -1245,6 +1253,8 @@ export const dict = {
   "dialog.ktAccess.switch.title": "Free quota used up — switch to Kito",
   "dialog.ktAccess.switch.lead":
     "Zen free chats are exhausted. You already have Kito balance — pick a paid model below to continue. No extra top-up needed.",
+  "dialog.ktAccess.switch.unknownBalance.lead":
+    "Zen free chats are exhausted. Pick a paid Kito model below to continue.",
   "dialog.ktAccess.switch.pickHint": "Click a model to switch immediately, then send again (billed to your Kito balance).",
   "dialog.ktAccess.switch.empty": "No visible Kito models yet. Open the full model list to choose or manage visibility.",
   "dialog.ktAccess.switch.browseAll": "Open full model list",
@@ -1270,7 +1280,7 @@ export const dict = {
   "dialog.ktWallet.fiatHint": "Choose an amount, then pay in the cashier. Balance updates after KTPay confirms.",
   "dialog.ktWallet.fiatDisabled":
     "WeChat and Alipay are not available on this environment yet. Use USDT / USDC instead.",
-  "dialog.ktWallet.fiatError": "Could not start KTPay. Sign in with Telegram and try again.",
+  "dialog.ktWallet.fiatError": "Could not start KTPay. Try again in a moment.",
   "dialog.ktWallet.custom": "Custom USD amount",
   "dialog.ktWallet.alipay": "Alipay",
   "dialog.ktWallet.wechat": "WeChat Pay",

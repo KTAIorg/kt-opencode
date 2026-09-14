@@ -40,9 +40,9 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
         if (cursor !== null) setCursorPosition(editor, cursor)
       })
     }
-    const { DialogSelectModel } = await import("@/components/dialog-select-model")
+    const { openManageModels } = await import("@/components/dialog-manage-models")
     owner.run(() => {
-      void dialog.show(() => <DialogSelectModel model={model} />, restoreComposer)
+      openManageModels({ dialog, onClose: restoreComposer })
     })
   }
 

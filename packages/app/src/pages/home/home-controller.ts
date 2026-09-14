@@ -1,5 +1,7 @@
 import { useGlobal, useServerCtx } from "@/context/global"
 import { type HomeProjectSelection, useLayout } from "@/context/layout"
+import { usePlatform } from "@/context/platform"
+import { useSettings } from "@/context/settings"
 import { ServerConnection } from "@/context/servers"
 import { useTabs } from "@/context/tabs"
 import { toggleHomeProjectSelection } from "@/pages/layout/helpers"
@@ -9,6 +11,8 @@ export function createHomeController() {
   const layout = useLayout()
   const global = useGlobal()
   const tabs = useTabs()
+  const platform = usePlatform()
+  const settings = useSettings()
   const selection = layout.home.selection
   const focusedServer = createMemo<ServerConnection.Any | undefined>(
     () =>
@@ -27,6 +31,17 @@ export function createHomeController() {
       projects().find((project) => project.worktree === focusedServerCtx()?.projects.last()) ??
       projects()[0],
   )
+
+  // A session needs a directory. When the user has no project yet the desktop app can
+  // prepare a default one, so the empty state keeps a working action instead of a dead end.
+  const canUseDefaultProject = () => platform.platform === "desktop" && !!platform.ensureDefaultProject
+  const canCreateSession = createMemo(() => !!focusedServer() && (!!newSessionProject() || canUseDefaultProject()))
+
+  async function openDefaultProjectSession(conn: ServerConnection.Any) {
+    const directory = await platform.ensureDefaultProject?.(settings.general.defaultProjectPath())
+    if (!directory) return
+    openProjectNewSession(conn, directory)
+  }
 
   createEffect(() => {
     const list = global.servers.list()
@@ -99,11 +114,16 @@ export function createHomeController() {
         ctx.projects.touch(directory)
         setSelection({ server: ServerConnection.key(conn), directory })
       },
+      canCreate: canCreateSession,
       openNewSession: () => {
         const conn = focusedServer()
+        if (!conn) return
         const project = newSessionProject()
-        if (!conn || !project) return
-        openProjectNewSession(conn, project.worktree)
+        if (project) {
+          openProjectNewSession(conn, project.worktree)
+          return
+        }
+        void openDefaultProjectSession(conn)
       },
       openProjectNewSession,
     },

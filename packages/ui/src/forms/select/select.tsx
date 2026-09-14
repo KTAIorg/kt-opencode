@@ -68,6 +68,10 @@ export type SelectProps<T> = Omit<
   numeric?: boolean
   children?: (item: T) => JSX.Element
   valueClass?: string
+  /** Element rendered before the value inside the trigger, e.g. a leading icon. */
+  leading?: JSX.Element
+  /** Accessible name for the trigger, for callers without a visible label. */
+  triggerLabel?: string
 }
 
 export function Select<T>(props: SelectProps<T>) {
@@ -88,6 +92,8 @@ export function Select<T>(props: SelectProps<T>) {
     "numeric",
     "disabled",
     "valueClass",
+    "leading",
+    "triggerLabel",
     "placement",
     "gutter",
     "sameWidth",
@@ -187,11 +193,17 @@ export function Select<T>(props: SelectProps<T>) {
         data-numeric={local.numeric ? "" : undefined}
         disabled={local.disabled}
         data-disabled={local.disabled ? "" : undefined}
+        aria-label={local.triggerLabel}
         classList={{
           ...local.classList,
           [local.class ?? ""]: !!local.class,
         }}
       >
+        {local.leading && (
+          <span data-slot="select-v2-leading" aria-hidden="true">
+            {local.leading}
+          </span>
+        )}
         <div data-slot="select-v2-value">
           <Value<T> data-slot="select-v2-value-text" class={local.valueClass}>
             {(st) => {

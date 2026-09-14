@@ -43,6 +43,7 @@ type Deps = {
   setDefaultServerUrl: (url: string | null) => Promise<void> | void
   isFirstLaunchOnboardingPending: () => Promise<boolean> | boolean
   finishFirstLaunchOnboarding: (createDefaultProject: boolean) => Promise<string | null> | string | null
+  ensureDefaultProject: (path?: string) => Promise<string | null> | string | null
   checkAppExists: (appName: string) => Promise<boolean> | boolean
   resolveAppPath: (appName: string) => Promise<string | null>
   showUpdater: () => Promise<void> | void
@@ -64,6 +65,7 @@ export function registerIpcHandlers(deps: Deps) {
   handle(Ipc.app.finishFirstLaunchOnboarding, (_event, createDefaultProject) =>
     deps.finishFirstLaunchOnboarding(createDefaultProject),
   )
+  handle(Ipc.app.ensureDefaultProject, (_event, path) => deps.ensureDefaultProject(path))
   handle(Ipc.app.checkAppExists, (_event, appName) => deps.checkAppExists(appName))
   handle(Ipc.app.resolveAppPath, (_event, appName) => deps.resolveAppPath(appName))
   handle(Ipc.app.setBackgroundColor, (_event, color) => deps.setBackgroundColor(color))

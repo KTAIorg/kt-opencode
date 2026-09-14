@@ -110,7 +110,6 @@ export function StatusPopoverBody(props: { shown: boolean }) {
                         </span>
                         <div onClick={(event) => event.stopPropagation()}>
                           <Switch
-                            appearance="standard"
                             checked={enabled()}
                             disabled={toggleMcp.isPending && toggleMcp.variables === name}
                             onChange={() => {

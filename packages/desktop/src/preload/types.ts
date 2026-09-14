@@ -23,6 +23,7 @@ export type ElectronAPI = {
   setDefaultServerUrl: IpcInvokeMethod<typeof Ipc.app.setDefaultServerUrl>
   isFirstLaunchOnboardingPending: IpcInvokeMethod<typeof Ipc.app.isFirstLaunchOnboardingPending>
   finishFirstLaunchOnboarding: IpcInvokeMethod<typeof Ipc.app.finishFirstLaunchOnboarding>
+  ensureDefaultProject: IpcInvokeMethod<typeof Ipc.app.ensureDefaultProject>
   checkAppExists: IpcInvokeMethod<typeof Ipc.app.checkAppExists>
   resolveAppPath: IpcInvokeMethod<typeof Ipc.app.resolveAppPath>
   storeGet: IpcInvokeMethod<typeof Ipc.storage.get>

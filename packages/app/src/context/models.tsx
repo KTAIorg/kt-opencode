@@ -1,12 +1,19 @@
-import { type Accessor, createMemo, createResource } from "solid-js"
+import { type Accessor, createMemo, createResource, createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
 import { DateTime } from "luxon"
 import { filter, firstBy, flat, groupBy, mapValues, pipe, uniqueBy, values } from "remeda"
 import { createSimpleContext } from "@opencode-ai/ui/context"
+import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
+import { useServerSDK } from "@/context/server-sdk"
 import { useProviders } from "@/hooks/use-providers"
 import { Persist, persisted } from "@/utils/persist"
+import { isKtaiProviderID } from "@/utils/ktai-model-order"
+import { showToast } from "@/utils/toast"
 
 export type ModelKey = { providerID: string; modelID: string }
+
+type ProbeResult = { modelID: string; ok: boolean; status?: number; error?: string }
 
 type Visibility = "show" | "hide"
 type User = ModelKey & { visibility: Visibility; favorite?: boolean }
@@ -18,7 +25,7 @@ type Store = {
 
 export type ProbeState = {
   // modelID → 探测结果（仅 Kito provider 的模型）。ok=false 表示渠道实测不可用。
-  results: Record<string, { ok: boolean; status?: number; error?: string }>
+  results: Record<string, Omit<ProbeResult, "modelID">>
   probedAt?: number
   hideUnavailable: boolean
 }
@@ -56,6 +63,9 @@ const createProbePersistedState = () => {
 
 const createModelsController = (directory: Accessor<string | undefined>) => {
   const providers = useProviders(() => directory())
+  const language = useLanguage()
+  const platform = usePlatform()
+  const serverSDK = useServerSDK()
 
   const [store, setStore, ready] = createModelsPersistedState()
 
@@ -149,6 +159,9 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     update(model, state ? "show" : "hide")
   }
 
+  // 用户显式关掉的模型（visible 为 false 也可能只是"不是最新版"的默认隐藏，两者要分开）。
+  const hiddenByUser = (model: ModelKey) => visibility().get(modelKey(model)) === "hide"
+
   const push = (model: ModelKey) => {
     const uniq = uniqueBy([model, ...store.recent], (x) => `${x.providerID}:${x.modelID}`)
     if (uniq.length > RECENT_LIMIT) uniq.pop()
@@ -178,12 +191,86 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
   )
 
   const [probeStore, setProbeStore, probeReady] = createProbePersistedState()
+  const [probeRunning, setProbeRunning] = createSignal(false)
+  let probeRun: Promise<void> | undefined
+
+  const probeStale = () => {
+    const at = probeStore.probe.probedAt
+    return at === undefined || Date.now() - at > PROBE_STALE_MS
+  }
+
+  const applyProbe = (results: { results: ProbeResult[]; probedAt: number }) => {
+    const next: Record<string, Omit<ProbeResult, "modelID">> = {}
+    for (const item of results.results) next[item.modelID] = { ok: item.ok, status: item.status, error: item.error }
+    setProbeStore("probe", {
+      results: next,
+      probedAt: results.probedAt,
+      hideUnavailable: probeStore.probe.hideUnavailable,
+    })
+  }
+
+  const probeIDs = () =>
+    [...new Set(list().filter((model) => isKtaiProviderID(model.provider.id)).map((model) => model.id))]
+
+  // 探测只有这一份实现：管理弹窗的「一键检测」和打开模型列表时的自动检测都走 run()。
+  // 并发去重（探测中重复调用复用同一个 promise），silent 时不弹 toast（自动检测不能打扰用户）。
+  const runProbe = (options?: { silent?: boolean }) => {
+    if (probeRun) return probeRun
+    const ids = probeIDs()
+    if (ids.length === 0) return Promise.resolve()
+    setProbeRunning(true)
+    probeRun = executeProbe(ids, options?.silent === true).finally(() => {
+      setProbeRunning(false)
+      probeRun = undefined
+    })
+    return probeRun
+  }
+
+  // 列表被打开时调用：结果过期才跑，新鲜时不重复请求。
+  const autoRunProbe = () => {
+    if (!probeStale()) return
+    void runProbe({ silent: true })
+  }
+
+  const executeProbe = async (ids: string[], silent: boolean) => {
+    const url = serverSDK.url.replace(/\/+$/, "")
+    const headers = new Headers({ "content-type": "application/json", accept: "application/json" })
+    if (serverSDK.server.http.username && serverSDK.server.http.password) {
+      headers.set("authorization", `Basic ${btoa(`${serverSDK.server.http.username}:${serverSDK.server.http.password}`)}`)
+    }
+    // server 限制每次探测最多 100 个模型，超限分批请求
+    const chunks: string[][] = []
+    for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100))
+    const results: ProbeResult[] = []
+    try {
+      for (const chunk of chunks) {
+        const response = await (platform.fetch ?? fetch)(`${url}/ktai/models/probe`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ modelIDs: chunk }),
+        })
+        const payload = (await response.json().catch(() => undefined)) as
+          | { results?: ProbeResult[]; probedAt?: number }
+          | undefined
+        if (!response.ok || !payload?.results) {
+          if (!silent) showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
+          return
+        }
+        results.push(...payload.results)
+      }
+      applyProbe({ results, probedAt: Date.now() })
+      if (!silent) showToast({ variant: "success", title: language.t("dialog.model.probe.done") })
+    } catch {
+      if (!silent) showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
+    }
+  }
 
   return {
     ready,
     list,
     find,
     visible,
+    hiddenByUser,
     setVisibility,
     recent: {
       list: () => recentModels()!,
@@ -200,16 +287,12 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
         return probeStore.probe
       },
       result: (model: ModelKey) => probeStore.probe.results[model.modelID],
-      stale: () => {
-        const at = probeStore.probe.probedAt
-        return at === undefined || Date.now() - at > PROBE_STALE_MS
-      },
+      stale: probeStale,
+      running: probeRunning,
+      run: runProbe,
+      autoRun: autoRunProbe,
       setHideUnavailable: (value: boolean) => setProbeStore("probe", "hideUnavailable", value),
-      apply(results: { results: { modelID: string; ok: boolean; status?: number; error?: string }[]; probedAt: number }) {
-        const next: Record<string, { ok: boolean; status?: number; error?: string }> = {}
-        for (const item of results.results) next[item.modelID] = { ok: item.ok, status: item.status, error: item.error }
-        setProbeStore("probe", { results: next, probedAt: results.probedAt, hideUnavailable: probeStore.probe.hideUnavailable })
-      },
+      apply: applyProbe,
     },
   }
 }

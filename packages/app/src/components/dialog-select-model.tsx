@@ -1,27 +1,24 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
-import { Component, ComponentProps, createEffect, createMemo, For, JSX, Show } from "solid-js"
+import { ComponentProps, createEffect, createMemo, For, JSX, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
 import { useModels } from "@/context/models"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { popularProviders } from "@/hooks/use-providers"
-import { Button } from "@opencode-ai/ui/button"
 import { Badge } from "@opencode-ai/ui/badge"
-import { Dialog, DialogBody, DialogHeader, DialogTitle } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
-import { IconButton } from "@opencode-ai/ui/icon-button"
 import { ScrollView } from "@opencode-ai/ui/scroll-view"
-import { List } from "@opencode-ai/ui/list"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { Menu } from "@opencode-ai/ui/menu"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
-import { decode64 } from "@/utils/base64"
 import { handleDocumentSearchKeydown } from "@/utils/search-keydown"
 import { createMenuDismissController } from "@/utils/menu-dismiss-controller"
 import { createEventListener } from "@solid-primitives/event-listener"
+import { customerFacingProviderName } from "@/utils/kt-settlement"
 import { matchesModelSearch } from "./dialog-select-model-search"
-import { compareKtaiModelOrder, isKtaiProviderID } from "@/utils/ktai-model-order"
+import { ModelProbeBadge } from "./model-probe-badge"
+import { isKtaiProviderID } from "@/utils/ktai-model-order"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
@@ -44,185 +41,8 @@ const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { categ
   return a.items[0].provider.name.localeCompare(b.items[0].provider.name)
 }
 
-const ModelList: Component<{
-  provider?: string
-  class?: string
-  onSelect: () => void
-  action?: JSX.Element
-  model?: ModelState
-}> = (props) => {
-  const model = props.model ?? useLocal().model
-  const language = useLanguage()
-
-  const models = createMemo(() =>
-    model
-      .list()
-      .filter((m) => (props.provider ? m.provider.id === props.provider : true))
-      .filter((m) => props.provider || model.visible({ modelID: m.id, providerID: m.provider.id })),
-  )
-
-  return (
-    <List
-      class={`flex-1 px-3 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
-      search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true, action: props.action }}
-      emptyMessage={language.t("dialog.model.empty")}
-      key={(x) => `${x.provider.id}:${x.id}`}
-      items={models}
-      current={model.current()}
-      filterKeys={["provider.name", "name", "id"]}
-      sortBy={(a, b) => {
-        if (isKtaiProviderID(a.provider.id) && isKtaiProviderID(b.provider.id)) return compareKtaiModelOrder(a, b)
-        return a.name.localeCompare(b.name)
-      }}
-      groupBy={(x) => x.provider.name}
-      sortGroupsBy={(a, b) => {
-        const aProvider = a.items[0].provider.id
-        const bProvider = b.items[0].provider.id
-        if (popularProviders.includes(aProvider) && !popularProviders.includes(bProvider)) return -1
-        if (!popularProviders.includes(aProvider) && popularProviders.includes(bProvider)) return 1
-        return popularProviders.indexOf(aProvider) - popularProviders.indexOf(bProvider)
-      }}
-      itemWrapper={(item, node) => (
-        <Tooltip
-          appearance="standard"
-          class="w-full"
-          placement="right-start"
-          gutter={12}
-          openDelay={0}
-          value={<ModelTooltip model={item} latest={item.latest} free={isFree(item.provider.id, item.cost)} />}
-        >
-          {node}
-        </Tooltip>
-      )}
-      onSelect={(x) => {
-        model.set(x ? { modelID: x.id, providerID: x.provider.id } : undefined, {
-          recent: true,
-        })
-        props.onSelect()
-      }}
-    >
-      {(i) => (
-        <div class="w-full flex items-center gap-x-2 text-13-regular">
-          <span class="truncate">{i.name}</span>
-          <Show when={isFree(i.provider.id, i.cost)}>
-            <Badge appearance="standard">{language.t("model.tag.free")}</Badge>
-          </Show>
-          <Show when={i.latest}>
-            <Badge appearance="standard">{language.t("model.tag.latest")}</Badge>
-          </Show>
-        </div>
-      )}
-    </List>
-  )
-}
-
 type ModelSelectorTriggerProps = Omit<ComponentProps<typeof Kobalte.Trigger>, "as" | "ref">
 type ModelSelectorTrigger = (props: ModelSelectorTriggerProps) => JSX.Element
-type Dismiss = "escape" | "outside" | "select" | "manage" | "provider"
-
-export function ModelSelectorPopover(props: {
-  provider?: string
-  model?: ModelState
-  trigger: ModelSelectorTrigger
-  onClose?: (cause: "escape" | "select") => void
-}) {
-  const [store, setStore] = createStore<{
-    open: boolean
-    dismiss: Dismiss | null
-  }>({
-    open: false,
-    dismiss: null,
-  })
-  const dialog = useDialog()
-  const local = useLocal()
-  const directory = () => decode64(local.slug())
-
-  const close = (dismiss: Dismiss) => {
-    setStore("dismiss", dismiss)
-    setStore("open", false)
-  }
-
-  const handleManage = () => {
-    close("manage")
-    void import("./dialog-manage-models").then((x) => {
-      dialog.show(() => <x.DialogManageModels />)
-    })
-  }
-
-  const handleConnectProvider = () => {
-    close("provider")
-    void import("./dialog-connect-provider").then((x) => {
-      void dialog.show(() => <x.DialogConnectProvider directory={directory()} />)
-    })
-  }
-  const language = useLanguage()
-
-  return (
-    <Kobalte
-      open={store.open}
-      onOpenChange={(next) => {
-        if (next) setStore("dismiss", null)
-        setStore("open", next)
-      }}
-      modal={false}
-      placement="top-start"
-      gutter={4}
-    >
-      <Kobalte.Trigger as={props.trigger} />
-      <Kobalte.Portal>
-        <Kobalte.Content
-          class="w-72 h-80 flex flex-col p-2 rounded-md border border-border-base bg-surface-raised-stronger-non-alpha shadow-md z-50 outline-none overflow-hidden"
-          onEscapeKeyDown={(event) => {
-            close("escape")
-            event.preventDefault()
-            event.stopPropagation()
-          }}
-          onPointerDownOutside={() => close("outside")}
-          onFocusOutside={() => close("outside")}
-          onCloseAutoFocus={(event) => {
-            const dismiss = store.dismiss
-            if (dismiss === "outside") event.preventDefault()
-            if (dismiss === "escape" || dismiss === "select") {
-              event.preventDefault()
-              props.onClose?.(dismiss)
-            }
-            setStore("dismiss", null)
-          }}
-        >
-          <Kobalte.Title class="sr-only">{language.t("dialog.model.select.title")}</Kobalte.Title>
-          <ModelList
-            provider={props.provider}
-            model={props.model}
-            onSelect={() => close("select")}
-            class="p-1"
-            action={
-              <div class="flex items-center gap-1">
-                <Tooltip appearance="standard" placement="top" value={language.t("command.provider.connect")}>
-                  <IconButton
-                    icon={<Icon name="plus-small" />}
-                    variant="ghost"
-                    class="size-6"
-                    aria-label={language.t("command.provider.connect")}
-                    onClick={handleConnectProvider}
-                  />
-                </Tooltip>
-                <Tooltip appearance="standard" placement="top" value={language.t("dialog.model.manage")}>
-                  <IconButton
-                    icon={<Icon name="sliders" />}
-                    variant="ghost"
-                    class="size-6"
-                    aria-label={language.t("dialog.model.manage")}
-                    onClick={handleManage}
-                  />
-                </Tooltip>
-              </div>
-            }
-          />
-        </Kobalte.Content>
-      </Kobalte.Portal>
-    </Kobalte>
-  )
-}
 
 export function ModelSelectorPopoverV2(props: {
   provider?: string
@@ -241,13 +61,14 @@ export function ModelSelectorPopoverV2(props: {
     <ModelSelectorPopoverV2View
       trigger={props.trigger}
       models={controller.models}
+      hiddenUnavailable={controller.hiddenUnavailable}
+      hiddenByUser={controller.hiddenByUser}
+      probe={controller.probe}
       groups={controller.groups}
       current={controller.current()}
       select={controller.select}
       onManage={() => {
-        void import("./dialog-manage-models").then((module) => {
-          void dialog.show(() => <module.DialogManageModelsV2 />)
-        })
+        void import("./dialog-manage-models").then((module) => module.openManageModels({ dialog }))
       }}
       onClose={() => props.onClose?.()}
     />
@@ -261,27 +82,37 @@ function createModelSelectorController(input: {
 }) {
   const model = input.model ?? useLocal().model
   const models = useModels()
-  const allModels = createMemo(() =>
-    model
-      .list()
-      .filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id }))
-      .filter((item) => (input.provider() ? item.provider.id === input.provider() : true))
-      // 「隐藏不可用」开启时，滤掉探测失败的 Kito 模型；没探测过的不过滤。
-      .filter((item) => {
-        if (!models.probe.state().hideUnavailable) return true
-        if (!isKtaiProviderID(item.provider.id)) return true
-        const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
-        return result?.ok !== false
-      }),
+  const scope = createMemo(() =>
+    model.list().filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
   )
+  const visible = createMemo(() =>
+    scope().filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id })),
+  )
+  const bySearch = (items: ModelItem[], search: string) =>
+    items.filter((item) => matchesModelSearch(search, [item.name, item.id, item.provider.name]))
+  const unavailable = (item: ModelItem) => {
+    if (!isKtaiProviderID(item.provider.id)) return false
+    return models.probe.result({ modelID: item.id, providerID: item.provider.id })?.ok === false
+  }
+  const shown = (search: string) => {
+    const items = bySearch(visible(), search)
+    return models.probe.state().hideUnavailable ? items.filter((item) => !unavailable(item)) : items
+  }
 
   return {
-    models: (search: string) => {
-      const query = search.trim()
-      const filtered = query
-        ? allModels().filter((item) => matchesModelSearch(query, [item.name, item.id, item.provider.name]))
-        : allModels()
-      return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+    models: (search: string) => [...shown(search)].sort((a, b) => a.name.localeCompare(b.name)),
+    // 「隐藏不可用」实际滤掉的行数，用来在列表里提示；没开启或没滤掉时为 0。
+    hiddenUnavailable: (search: string) =>
+      models.probe.state().hideUnavailable ? bySearch(visible(), search).filter(unavailable).length : 0,
+    // 用户在「管理模型」里自己关掉的模型：和上面的不可用是两码事，不能合成一句。
+    hiddenByUser: (search: string) =>
+      bySearch(
+        scope().filter((item) => models.hiddenByUser({ modelID: item.id, providerID: item.provider.id })),
+        search,
+      ).length,
+    probe: {
+      running: () => models.probe.running(),
+      autoRun: () => models.probe.autoRun(),
     },
     groups: (models: ModelItem[]) => {
       const byProvider = new Map<string, ModelItem[]>()
@@ -304,6 +135,9 @@ function createModelSelectorController(input: {
 function ModelSelectorPopoverV2View(props: {
   trigger: ModelSelectorTrigger
   models: (search: string) => ModelItem[]
+  hiddenUnavailable: (search: string) => number
+  hiddenByUser: (search: string) => number
+  probe: { running: () => boolean; autoRun: () => void }
   groups: (models: ModelItem[]) => { category: string; items: ModelItem[] }[]
   current: string | undefined
   select: (item: ModelItem) => void
@@ -315,6 +149,7 @@ function ModelSelectorPopoverV2View(props: {
   let searchRef: HTMLInputElement | undefined
   let contentRef: HTMLDivElement | undefined
   const dismiss = createMenuDismissController(() => contentRef)
+  const noticeClass = "px-3 py-1.5 text-[11px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-faint"
 
   const models = createMemo(() => props.models(store.search))
   const groups = createMemo(() => props.groups(models()))
@@ -331,6 +166,8 @@ function ModelSelectorPopoverV2View(props: {
     if (open) {
       dismiss.allowTriggerRestore()
       setStore({ open: true, active: initialActive() })
+      // 列表打开就顺带刷新过期的可用性探测，不阻塞渲染。
+      props.probe.autoRun()
       setTimeout(() =>
         requestAnimationFrame(() => {
           searchRef?.focus()
@@ -449,6 +286,19 @@ function ModelSelectorPopoverV2View(props: {
           <div class="h-px bg-v2-border-border-muted" />
           <ScrollView data-slot="model-selector-scroll" class="max-h-[220px] min-h-0">
             <div class="flex flex-col p-0.5 pt-0">
+              <Show when={props.probe.running()}>
+                <div class={noticeClass}>{language.t("dialog.model.probe.running")}</div>
+              </Show>
+              <Show when={props.hiddenUnavailable(store.search) > 0}>
+                <div class={noticeClass}>
+                  {language.plural("dialog.model.probe.hidden", props.hiddenUnavailable(store.search))}
+                </div>
+              </Show>
+              <Show when={props.hiddenByUser(store.search) > 0}>
+                <div class={noticeClass}>
+                  {language.plural("dialog.model.hiddenByUser", props.hiddenByUser(store.search))}
+                </div>
+              </Show>
               <Show
                 when={models().length > 0}
                 fallback={
@@ -461,7 +311,9 @@ function ModelSelectorPopoverV2View(props: {
                   {(group) => (
                     <Menu.Group>
                       <Menu.GroupLabel class="gap-2 px-3">
-                        <span class="min-w-0 truncate">{group.items[0].provider.name}</span>
+                        <span class="min-w-0 truncate">
+                          {customerFacingProviderName(group.items[0].provider.id, group.items[0].provider.name)}
+                        </span>
                       </Menu.GroupLabel>
                       <Menu.RadioGroup value={props.current}>
                         <For each={group.items}>
@@ -493,6 +345,7 @@ function ModelSelectorPopoverV2View(props: {
                                 onSelect={() => selectModel(item)}
                               >
                                 <span class="min-w-0 truncate leading-5">{item.name}</span>
+                                <ModelProbeBadge providerID={item.provider.id} modelID={item.id} />
                                 <Show when={isFree(item.provider.id, item.cost)}>
                                   <Badge class="shrink-0">{language.t("model.tag.free")}</Badge>
                                 </Show>
@@ -528,41 +381,5 @@ function ModelSelectorPopoverV2View(props: {
         </Menu.Content>
       </Menu.Portal>
     </Menu>
-  )
-}
-
-export const DialogSelectModel: Component<{ provider?: string; model?: ModelState }> = (props) => {
-  const dialog = useDialog()
-  const language = useLanguage()
-  const local = useLocal()
-  const directory = () => decode64(local.slug())
-
-  const provider = () => {
-    void import("./dialog-connect-provider").then((x) => {
-      void dialog.show(() => <x.DialogConnectProvider directory={directory()} />)
-    })
-  }
-
-  const manage = () => {
-    void import("./dialog-manage-models").then((x) => {
-      dialog.show(() => <x.DialogManageModels />)
-    })
-  }
-
-  return (
-    <Dialog>
-      <DialogHeader hideClose>
-        <DialogTitle>{language.t("dialog.model.select.title")}</DialogTitle>
-        <Button class="h-7 -my-1 text-14-medium" icon="plus-small" tabIndex={-1} onClick={provider}>
-          {language.t("command.provider.connect")}
-        </Button>
-      </DialogHeader>
-      <DialogBody>
-        <ModelList provider={props.provider} model={props.model} onSelect={() => dialog.close()} />
-        <Button variant="ghost" class="ml-3 mt-5 mb-6 text-text-base self-start" onClick={manage}>
-          {language.t("dialog.model.manage")}
-        </Button>
-      </DialogBody>
-    </Dialog>
   )
 }

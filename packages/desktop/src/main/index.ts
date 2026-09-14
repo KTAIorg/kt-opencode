@@ -11,6 +11,7 @@ import {
   prepareDesktop,
 } from "./lifecycle/environment"
 import { createApplicationLifecycle } from "./lifecycle"
+import { ensureDefaultProject } from "./lifecycle/default-project"
 import { finishFirstLaunchOnboarding, isFirstLaunchOnboardingPending } from "./lifecycle/onboarding"
 import { exportDebugLogs, startNetworkLogging, writeLog } from "./native/logging"
 import { createMenu, sendMenuCommand } from "./native/menu"
@@ -57,6 +58,7 @@ const main = Effect.gen(function* () {
     setDefaultServerUrl,
     isFirstLaunchOnboardingPending,
     finishFirstLaunchOnboarding,
+    ensureDefaultProject,
     checkAppExists,
     resolveAppPath: async (appName) => resolveAppPath(appName),
     showUpdater: () => showUpdaterDialog(updater),

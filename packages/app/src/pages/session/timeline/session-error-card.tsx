@@ -27,12 +27,22 @@ export function SessionErrorCard(props: { text: string }) {
   const account = useKtaiAccount()
   const kind = () => classifySessionErrorCta(props.text)
   const authCta = () => sessionAuthCta(props.text, signedIn())
-  const billingCta = () => sessionBillingCta(props.text, signedIn(), account.balance())
+  const billingCta = () => sessionBillingCta(props.text, signedIn(), account.balance(), account.resolved())
+  // 余额还在查时 billingCta() 是 undefined：不要先渲染一个（可能错的）充值/切模型按钮。
+  const billingAction = () => {
+    const cta = billingCta()
+    return cta === "none" ? undefined : cta
+  }
   const displayText = () => {
     const lead =
       sessionAuthLeadKey(props.text, signedIn()) ??
-      sessionBillingLeadKey(props.text, signedIn(), account.balance())
+      sessionBillingLeadKey(props.text, signedIn(), account.balance(), account.resolved())
     return lead ? language.t(lead) : props.text
+  }
+
+  // 「选择付费模型」不再弹挂空锚点的选择器，改为打开居中的管理模型弹窗（那里也能直接使用模型）。
+  const openManageModels = () => {
+    void import("@/components/dialog-manage-models").then((module) => module.openManageModels({ dialog }))
   }
 
   const refreshKey = () =>
@@ -74,7 +84,7 @@ export function SessionErrorCard(props: { text: string }) {
     <Card variant="error" class="error-card">
       <div class="flex flex-col gap-3">
         <div>{displayText()}</div>
-        <Show when={kind() === "billing" || authCta()}>
+        <Show when={authCta() || (kind() === "billing" && billingAction())}>
           <div class="flex justify-end">
             <Button
               variant="contrast"
@@ -82,7 +92,7 @@ export function SessionErrorCard(props: { text: string }) {
               onClick={() => {
                 if (kind() !== "auth") {
                   if (billingCta() === "switch") {
-                    openKtAccessGuide({ dialog, kind: "billing" })
+                    openManageModels()
                     return
                   }
                   openKtWallet({ dialog })

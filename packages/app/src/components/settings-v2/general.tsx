@@ -9,6 +9,7 @@ import { usePlatform } from "@/context/platform"
 import { useUpdaterAction } from "../updater-action"
 import { type WorkspaceDefaultDestination, useSettings } from "@/context/settings"
 import { ExternalLink } from "../external-link"
+import { LanguageSelect } from "../language-select"
 import { SettingsListV2 } from "./parts/list"
 import { SettingsRowV2 } from "./parts/row"
 import {
@@ -267,27 +268,12 @@ const SoundSetting: Component<{
 
 const LanguageSetting = () => {
   const language = useLanguage()
-  const options = createMemo(() =>
-    language.locales.map((locale) => ({
-      value: locale,
-      label: language.label(locale),
-    })),
-  )
   return (
     <SettingsRowV2
       title={language.t("settings.general.row.language.title")}
       description={language.t("settings.general.row.language.description")}
     >
-      <Select
-        data-action="settings-language"
-        options={options()}
-        placement="bottom-end"
-        gutter={6}
-        current={options().find((option) => option.value === language.locale())}
-        value={(option) => option.value}
-        label={(option) => option.label}
-        onSelect={(option) => option && language.setLocale(option.value)}
-      />
+      <LanguageSelect data-action="settings-language" />
     </SettingsRowV2>
   )
 }

@@ -12,6 +12,7 @@ export const Ipc = {
     setDefaultServerUrl: "set-default-server-url",
     isFirstLaunchOnboardingPending: "is-first-launch-onboarding-pending",
     finishFirstLaunchOnboarding: "finish-first-launch-onboarding",
+    ensureDefaultProject: "ensure-default-project",
     checkAppExists: "check-app-exists",
     resolveAppPath: "resolve-app-path",
     relaunch: "relaunch",
@@ -144,6 +145,7 @@ export type IpcInvoke = {
   [Ipc.app.setDefaultServerUrl]: { args: [url: string | null]; result: void }
   [Ipc.app.isFirstLaunchOnboardingPending]: { args: []; result: boolean }
   [Ipc.app.finishFirstLaunchOnboarding]: { args: [createDefaultProject: boolean]; result: string | null }
+  [Ipc.app.ensureDefaultProject]: { args: [path?: string]; result: string | null }
   [Ipc.app.checkAppExists]: { args: [appName: string]; result: boolean }
   [Ipc.app.resolveAppPath]: { args: [appName: string]; result: string | null }
   [Ipc.app.setBackgroundColor]: { args: [color: string]; result: void }

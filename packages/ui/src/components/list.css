@@ -4,12 +4,14 @@
   initial-value: 0px;
 }
 
+/* A row's bottom padding is 6px, so the fade stays inside row padding: at 20px it
+   dimmed the last visible row's text and read as a disabled row. */
 @keyframes scroll {
   0% {
-    --bottom-fade: 20px;
+    --bottom-fade: 6px;
   }
   90% {
-    --bottom-fade: 20px;
+    --bottom-fade: 6px;
   }
   100% {
     --bottom-fade: 0;
