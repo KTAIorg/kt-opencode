@@ -1236,6 +1236,7 @@ export const dict = {
   "dialog.ktAccess.snooze": "稍後提醒",
   "dialog.ktAccess.switch.title": "免費額度已用完 — 請切換到 Kito",
   "dialog.ktAccess.switch.lead": "Zen 免費對話次數已用盡。你已有 Kito 餘額，點選下方付費模型即可繼續，不必再儲值。",
+  "dialog.ktAccess.switch.unknownBalance.lead": "Zen 免費對話次數已用盡。點選下方 Kito 的付費模型即可繼續。",
   "dialog.ktAccess.switch.pickHint": "點選下方模型後會立即切換；然後重新發送訊息（從 Kito 餘額扣費）。",
   "dialog.ktAccess.switch.empty": "目前沒有可見的 Kito 模型，請打開完整模型列表選擇或管理可見模型。",
   "dialog.ktAccess.switch.browseAll": "打開完整模型列表",

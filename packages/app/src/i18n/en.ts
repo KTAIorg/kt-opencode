@@ -1253,6 +1253,8 @@ export const dict = {
   "dialog.ktAccess.switch.title": "Free quota used up — switch to Kito",
   "dialog.ktAccess.switch.lead":
     "Zen free chats are exhausted. You already have Kito balance — pick a paid model below to continue. No extra top-up needed.",
+  "dialog.ktAccess.switch.unknownBalance.lead":
+    "Zen free chats are exhausted. Pick a paid Kito model below to continue.",
   "dialog.ktAccess.switch.pickHint": "Click a model to switch immediately, then send again (billed to your Kito balance).",
   "dialog.ktAccess.switch.empty": "No visible Kito models yet. Open the full model list to choose or manage visibility.",
   "dialog.ktAccess.switch.browseAll": "Open full model list",

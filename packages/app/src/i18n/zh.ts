@@ -1244,6 +1244,7 @@ export const dict = {
   "dialog.ktAccess.switch.title": "免费额度已用完 — 请切换到 Kito",
   "dialog.ktAccess.switch.lead":
     "Zen 免费对话次数已用尽。你已有 Kito 余额，点选下方付费模型即可继续，不必再充值。",
+  "dialog.ktAccess.switch.unknownBalance.lead": "Zen 免费对话次数已用尽。点选下方 Kito 的付费模型即可继续。",
   "dialog.ktAccess.switch.pickHint": "点选下方模型后会立即切换；然后重新发送消息（从 Kito 余额扣费）。",
   "dialog.ktAccess.switch.empty": "当前没有可见的 Kito 模型，请打开完整模型列表选择或管理可见模型。",
   "dialog.ktAccess.switch.browseAll": "打开完整模型列表",

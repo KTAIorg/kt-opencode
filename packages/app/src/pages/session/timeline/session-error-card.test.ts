@@ -75,10 +75,10 @@ describe("sessionBillingCta", () => {
     )
   })
 
-  test("opens the wallet when balance is empty or unknown", () => {
-    // balance undefined（未查到 / /ktai/account 读取失败）不能被当成"有余额"，
-    // 否则会把"免费额度用尽"误引导去"切付费模型"。
-    expect(sessionBillingCta("Free usage exceeded. Top up on KT to continue with paid models.", true)).toBe("wallet")
+  test("switches to a paid model for used-up free quota unless the balance is confirmed empty", () => {
+    // 免费额度用尽不是"钱"的问题：余额查不到（/ktai/account 失败、Ensure 冷却中、刚登录）
+    // 也引导切付费模型，否则账上有钱的用户会被推去充值；只有确认余额为 0 才引导充值。
+    expect(sessionBillingCta("Free usage exceeded. Top up on KT to continue with paid models.", true)).toBe("switch")
     expect(sessionBillingCta("Free usage exceeded. Top up on KT to continue with paid models.", true, 0)).toBe(
       "wallet",
     )
@@ -121,6 +121,10 @@ describe("sessionBillingLeadKey", () => {
     )
     expect(sessionBillingLeadKey("Free usage exceeded. Top up on KT to continue with paid models.", true, 0)).toBe(
       "dialog.ktAccess.billing.paid.lead",
+    )
+    // 余额没查到时不能替用户断言"你已有余额"：换用不涉及余额的切换文案。
+    expect(sessionBillingLeadKey("Free usage exceeded. Top up on KT to continue with paid models.", true)).toBe(
+      "dialog.ktAccess.switch.unknownBalance.lead",
     )
     expect(
       sessionBillingLeadKey("Free usage exceeded. Top up on KT to continue with paid models.", undefined),
