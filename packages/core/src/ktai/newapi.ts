@@ -739,7 +739,9 @@ async function fetchIamJson(
         continue
       }
       if (!response.ok || asRecord(payload)?.success === false) {
-        throw new Error(stringField(payload, "message", "error", "data") ?? `KTPay request failed (${response.status})`)
+        // NewAPI 的失败体是 {success:false, message:"error", data:"<真实原因>"}：先取 data，
+        // 否则会把字面量 "error" 当消息抛出去，用户只能看到一句没用的 "error"。
+        throw new Error(stringField(payload, "data", "message", "error") ?? `KTPay request failed (${response.status})`)
       }
       return payload
     }

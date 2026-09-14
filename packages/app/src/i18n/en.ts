@@ -1280,7 +1280,7 @@ export const dict = {
   "dialog.ktWallet.fiatHint": "Choose an amount, then pay in the cashier. Balance updates after KTPay confirms.",
   "dialog.ktWallet.fiatDisabled":
     "WeChat and Alipay are not available on this environment yet. Use USDT / USDC instead.",
-  "dialog.ktWallet.fiatError": "Could not start KTPay. Sign in with Telegram and try again.",
+  "dialog.ktWallet.fiatError": "Could not start KTPay. Try again in a moment.",
   "dialog.ktWallet.custom": "Custom USD amount",
   "dialog.ktWallet.alipay": "Alipay",
   "dialog.ktWallet.wechat": "WeChat Pay",

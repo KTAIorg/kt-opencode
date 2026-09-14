@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import os from "os"
 import path from "path"
-import { clearNewapiSpendableCache, fetchNewapiSpendable, pinEnsuredUserToDefault } from "./newapi"
+import {
+  clearNewapiSpendableCache,
+  createKtpayOrder,
+  fetchNewapiSpendable,
+  pinEnsuredUserToDefault,
+} from "./newapi"
 import type { FetchLike } from "./newapi"
 
 const BASE = "https://newapi.test"
@@ -90,5 +95,25 @@ describe("fetchNewapiSpendable", () => {
     // 随之而来的账号读取不能再 Ensure 一次，但余额必须已经在。
     expect(await fetchNewapiSpendable("token", { baseUrl: BASE, fetchImpl: impl })).toBe(9817.04)
     expect(ensureCalls(calls)).toBe(1)
+  })
+})
+
+describe("createKtpayOrder", () => {
+  test("surfaces the upstream reason instead of the literal \"error\"", async () => {
+    const { impl } = countingFetch(() => jsonResponse({ success: false, message: "error", data: "创建支付订单失败" }))
+
+    await expect(
+      createKtpayOrder("token", { amount: 10, method: "alipay", baseUrl: BASE, fetchImpl: impl }),
+    ).rejects.toThrow("创建支付订单失败")
+  })
+
+  test("keeps the order id and cashier url when the cashier is created", async () => {
+    const { impl } = countingFetch(() =>
+      jsonResponse({ order_id: "abc123", cashier_url: "https://ktpay.test/cashier/abc123", amount: 10 }),
+    )
+
+    const order = await createKtpayOrder("token", { amount: 10, method: "alipay", baseUrl: BASE, fetchImpl: impl })
+    expect(order.orderId).toBe("abc123")
+    expect(order.cashierUrl).toBe("https://ktpay.test/cashier/abc123")
   })
 })
