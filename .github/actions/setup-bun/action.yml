@@ -66,7 +66,13 @@ runs:
         # e.g. ./patches/ for standard-openapi
         # https://github.com/oven-sh/bun/issues/28147
         if [ "$RUNNER_OS" = "Windows" ]; then
-          bun install --linker hoisted ${{ inputs.install-flags }}
+          # Self-heal poisoned bun cache on persistent runners:
+          # leftover half-written package dirs (e.g. patched drizzle-orm) make
+          # copyfile/rename fail with ENOENT/ENOTEMPTY until the cache is cleared.
+          bun install --linker hoisted ${{ inputs.install-flags }} || {
+            bun pm cache rm
+            bun install --linker hoisted ${{ inputs.install-flags }}
+          }
         else
           bun install ${{ inputs.install-flags }}
         fi
