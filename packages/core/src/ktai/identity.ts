@@ -344,8 +344,11 @@ export async function pollTelegramLogin(
   const opaqueCode = input.opaqueCode.trim()
   if (!opaqueCode) throw new Error("KT Identity Telegram poll requires opaqueCode")
 
+  // 网络抖动、网关 5xx、限流 429 是瞬态错误：连续偶发不判死，最多容忍
+  // 5 次连续失败，4xx 仍旧立即失败。总时长仍由 timeoutMs 兜底。
+  let transientFailures = 0
   while (Date.now() - started < timeoutMs) {
-    const response = await fetchImpl(
+    const polled = await fetchImpl(
       `${base}/identity/v1/auth/telegram/poll/${encodeURIComponent(input.challengeId)}?opaqueCode=${encodeURIComponent(opaqueCode)}`,
       {
         method: "GET",
@@ -353,10 +356,34 @@ export async function pollTelegramLogin(
         signal: AbortSignal.timeout(15_000),
       },
     )
-    const payload = await readJson(response)
-    if (!response.ok) {
-      throw new Error(errorMessage(payload, `KT Identity Telegram poll failed (${response.status})`))
+      .then(async (response): Promise<{ ok: true; response: Response; payload: unknown }> => ({
+        ok: true,
+        response,
+        payload: await readJson(response),
+      }))
+      .catch((error: unknown): { ok: false; error: unknown } => ({ ok: false, error }))
+    if (!polled.ok) {
+      transientFailures += 1
+      if (transientFailures >= 5) {
+        throw polled.error instanceof Error ? polled.error : new Error("KT Identity Telegram poll failed")
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
+      continue
     }
+    const payload = polled.payload
+    if (!polled.response.ok) {
+      const transient = polled.response.status === 429 || polled.response.status >= 500
+      if (transient) {
+        transientFailures += 1
+        if (transientFailures >= 5) {
+          throw new Error(errorMessage(payload, `KT Identity Telegram poll failed (${polled.response.status})`))
+        }
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+        continue
+      }
+      throw new Error(errorMessage(payload, `KT Identity Telegram poll failed (${polled.response.status})`))
+    }
+    transientFailures = 0
 
     const session = asSession(payload)
     if (session) return session

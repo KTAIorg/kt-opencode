@@ -74,15 +74,18 @@ function createAccountReader() {
       inflight = true
       void input
         .fetchImpl(`${input.url}/ktai/account`, { headers: input.headers })
-        .then((response) => (response.ok ? (response.json() as Promise<KtaiAccountSummary>) : undefined))
+        .then((response) => {
+          // 4xx 视为真的未登录；5xx（上游 Identity 故障）与网络瞬态失败保留上次
+          // 成功结果，不把已登录用户闪成离线。
+          if (response.ok) return response.json() as Promise<KtaiAccountSummary>
+          if (response.status >= 500) return account()
+          return undefined
+        })
         .then((payload) => {
           setAccount(payload)
           setReady(true)
         })
-        .catch(() => {
-          setAccount(undefined)
-          setReady(true)
-        })
+        .catch(() => setReady(true))
         .finally(() => {
           inflight = false
         })

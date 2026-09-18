@@ -34,7 +34,13 @@ export async function spawnWslSidecar(
     "export OPENCODE_CLIENT=desktop",
     `export OPENCODE_SERVER_USERNAME=${shellEscape(username)}`,
     `export OPENCODE_SERVER_PASSWORD=${shellEscape(password)}`,
-    'export XDG_STATE_HOME="$HOME/.local/state"',
+    // Isolate the sidecar's XDG roots from any OpenCode install inside the
+    // distro: the resolved binary may be an upstream build, so the "kito" data
+    // leaf alone cannot guarantee separation here.
+    'export XDG_DATA_HOME="$HOME/.kito/share"',
+    'export XDG_CONFIG_HOME="$HOME/.kito/config"',
+    'export XDG_CACHE_HOME="$HOME/.kito/cache"',
+    'export XDG_STATE_HOME="$HOME/.kito/state"',
     `exec ${shellEscape(opencode)} --log-level ${app.isPackaged ? "warn" : "info"} serve --hostname 0.0.0.0 --port ${port}`,
   ].join("\n")
   const child = spawn("wsl", wslArgs(["bash", "-se"], distro), {

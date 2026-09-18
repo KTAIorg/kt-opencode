@@ -1328,6 +1328,13 @@ export type SessionInboxSynthetic = {
   delivery: SessionInboxDelivery
 }
 
+export type ProviderModelProbeResult = {
+  modelID: string
+  ok: boolean
+  status?: (number | ("Infinity" | "-Infinity" | "NaN")) | null
+  error?: string | null
+}
+
 export type FormWhen = {
   key: string
   op: "eq" | "neq"
@@ -1745,6 +1752,11 @@ export type SessionInboxUserPayload1 = {
   agents?: Array<PromptAgentAttachment>
   skills?: Array<PromptSkillAttachment>
   metadata?: { [x: string]: any }
+}
+
+export type ProviderModelProbe = {
+  results: Array<ProviderModelProbeResult>
+  probedAt: number | ("Infinity" | "-Infinity" | "NaN")
 }
 
 export type IntegrationAttemptStatus =
@@ -4135,6 +4147,19 @@ export type ProviderGetInput = {
 export type ProviderGetOutput = {
   location: { directory: string; workspaceID?: string; project: { id: string; directory: string; canonical: string } }
   data: ProviderInfo
+}
+
+export type ProviderModelsProbeInput = {
+  readonly providerID: { readonly providerID: string }["providerID"]
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  }["location"]
+  readonly modelIDs: { readonly modelIDs: ReadonlyArray<string> }["modelIDs"]
+}
+
+export type ProviderModelsProbeOutput = {
+  location: { directory: string; workspaceID?: string; project: { id: string; directory: string; canonical: string } }
+  data: ProviderModelProbe
 }
 
 export type IntegrationListInput = {

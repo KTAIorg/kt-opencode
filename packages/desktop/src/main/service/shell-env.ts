@@ -141,7 +141,9 @@ export function applyShellEnvironment(
     const value = current[key]
     if (value) kept[key] = value
   }
-  const next = { ...current, ...(shell ?? {}), ...kept }
+  // Imported login-shell values must not repoint the sidecar at host OpenCode
+  // roots (XDG_*_HOME, OPENCODE_CONFIG*, OPENCODE_DB) or re-inject host AI keys.
+  const next = { ...current, ...sanitizeImportedEnv(shell), ...kept }
   for (const key of HOST_PROVIDER_ENV_KEYS) {
     if (!kept[key]) delete next[key]
   }

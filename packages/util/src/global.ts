@@ -9,7 +9,11 @@ import { roots } from "#global-roots"
 import { Flock } from "./flock.js"
 import { makeGlobalNode } from "./effect/app-node.js"
 
-const app = "opencode"
+// Kito isolates its data, config, state, and cache directories from a co-installed
+// OpenCode by rooting them under a "kito" leaf instead of sharing "opencode"
+// (for example ~/.local/share/kito next to ~/.local/share/opencode). The XDG base
+// directories still apply, so user-level XDG_*_HOME overrides move both trees.
+const app = "kito"
 const { data, cache, config, state, tmp } = roots(app)
 
 const paths = {

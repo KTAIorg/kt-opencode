@@ -32,6 +32,9 @@ export function host(overrides: Overrides = {}): Plugin.Context {
       provider: {
         list: () => Effect.die("unused catalog.provider.list"),
         get: () => Effect.die("unused catalog.provider.get"),
+        models: {
+          probe: () => Effect.die("unused catalog.provider.models.probe"),
+        },
       },
       model: {
         list: () => Effect.die("unused catalog.model.list"),
@@ -170,6 +173,9 @@ export function catalogHost(catalog: Catalog.Interface): Plugin.Context["catalog
     provider: {
       list: () => Effect.die("unused catalog.provider.list"),
       get: () => Effect.die("unused catalog.provider.get"),
+      models: {
+        probe: () => Effect.die("unused catalog.provider.models.probe"),
+      },
     },
     model: {
       list: () =>

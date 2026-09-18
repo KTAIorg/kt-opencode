@@ -17,6 +17,7 @@ import { Integration } from "../integration.js"
 import { Location } from "../location.js"
 import { Model } from "../model.js"
 import { MCP } from "../mcp/index.js"
+import { ModelProbe } from "../model-probe.js"
 import { PluginRuntime } from "./runtime.js"
 import { Provider } from "../provider.js"
 import { Reference } from "../reference.js"
@@ -146,6 +147,16 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: import("../p
                   : response(Effect.succeed(provider)),
               ),
             ),
+        models: {
+          probe: (input) =>
+            catalog.provider.get(Provider.ID.make(input.providerID)).pipe(
+              Effect.flatMap((provider) =>
+                provider === undefined
+                  ? Effect.fail(new Error(`Provider not found: ${input.providerID}`))
+                  : response(ModelProbe.probeProvider(catalog, integration, provider, input.modelIDs)),
+              ),
+            ),
+        },
       },
       model: {
         list: () => response(catalog.model.available()),

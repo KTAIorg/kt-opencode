@@ -15,7 +15,6 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogConnectProvider } from "./dialog-connect-provider"
 import { ModelProbeBadge } from "./model-probe-badge"
 import { decode64 } from "@/utils/base64"
-import { isKtaiProviderID } from "@/utils/ktai-model-order"
 import { SettingsListV2 } from "./settings-v2/parts/list"
 import { SettingsRowV2 } from "./settings-v2/parts/row"
 import "./settings-v2/settings-v2.css"
@@ -28,14 +27,6 @@ export const DialogManageModelsV2: Component = () => {
   const dialog = useDialog()
   const models = useModels()
   const directory = () => decode64(local.slug())
-
-  const ktaiModelIDs = createMemo(() => {
-    void models.ready.promise
-    return local
-      .model.list()
-      .filter((x) => isKtaiProviderID(x.provider.id))
-      .map((x) => x.id)
-  })
 
   onMount(() => models.probe.autoRun())
 
@@ -60,11 +51,10 @@ export const DialogManageModelsV2: Component = () => {
     dialog.close()
   }
   const list = useFilteredList<ModelItem>({
-    // 「隐藏不可用」开启时，滤掉探测失败的 Kito 模型；没探测过的不过滤。
+    // 「隐藏不可用」开启时，滤掉探测失败的模型（Kito 与其它已探测渠道）；没探测过的不过滤。
     items: () =>
       local.model.list().filter((item) => {
         if (!models.probe.state().hideUnavailable) return true
-        if (!isKtaiProviderID(item.provider.id)) return true
         const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
         return result?.ok !== false
       }),
@@ -102,7 +92,7 @@ export const DialogManageModelsV2: Component = () => {
           <Button
             variant="neutral"
             icon="play"
-            disabled={models.probe.running() || ktaiModelIDs().length === 0}
+            disabled={models.probe.running() || models.probe.probeable() === 0}
             onClick={() => void models.probe.run()}
           >
             {models.probe.running() ? language.t("dialog.model.probe.running") : language.t("dialog.model.probe.action")}

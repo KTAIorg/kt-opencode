@@ -8,6 +8,7 @@ import { usePlatform } from "@/context/platform"
 import { useServerSDK } from "@/context/server-sdk"
 import { openKtIdentityLogin } from "@/components/dialog-kt-identity-login"
 import { useKtaiSignedIn } from "@/utils/kt-signed-in"
+import { qrUrl } from "@/utils/qr"
 import { isKtpayPaid, readKtpayStatus } from "./dialog-kt-wallet-status"
 import { showToast } from "@/utils/toast"
 
@@ -40,10 +41,6 @@ type KtpayOrder = {
 
 const DEFAULT_AMOUNTS = [10, 30, 50, 100]
 const TERMINAL_FAILURE = new Set(["failed", "expired", "cancelled", "canceled"])
-
-function qrUrl(address: string) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(address)}`
-}
 
 function acceptedAssets(network: CryptoNetwork) {
   return network === "ethereum" ? ["USDT", "USDC"] : ["USDT"]
@@ -89,6 +86,7 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
       onClick={() =>
         openKtIdentityLogin({
           dialog,
+          push: true,
           onClose: () => {
             window.dispatchEvent(new Event("kito-account-refresh"))
           },
@@ -259,8 +257,12 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
         markPaid()
         return true
       }
-      const remote = readKtpayStatus(payload)?.status.toLowerCase()
-      if (response.ok && remote && TERMINAL_FAILURE.has(remote)) {
+      const row = readKtpayStatus(payload)
+      // 上游契约：失败终态以 localStatus 为准，但兼容只回 status 的网关，任一命中即终态。
+      const remote = [row?.localStatus.toLowerCase(), row?.status.toLowerCase()].find(
+        (value) => value && TERMINAL_FAILURE.has(value),
+      )
+      if (response.ok && remote) {
         setPayError(language.t(remote === "expired" ? "dialog.ktWallet.expired" : "dialog.ktWallet.failed"))
         setOrder(undefined)
         return false
@@ -338,10 +340,12 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ amount: selectedAmount(), method }),
     })
-    const payload = (await response.json().catch(() => undefined)) as (KtpayOrder & { error?: string }) | undefined
+    const payload = (await response.json().catch(() => undefined)) as
+      | (KtpayOrder & { error?: string; message?: string })
+      | undefined
     setPaying()
     if (!response.ok || !payload?.orderId || !payload.cashierUrl) {
-      setPayError(payload?.error || language.t("dialog.ktWallet.fiatError"))
+      setPayError(payload?.error || payload?.message || language.t("dialog.ktWallet.fiatError"))
       return
     }
     setOrder({ orderId: payload.orderId, cashierUrl: payload.cashierUrl })

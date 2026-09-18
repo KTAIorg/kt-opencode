@@ -12,7 +12,7 @@ import {
   KTAI_MANAGED_TOKEN_NAME,
   newapiQuotaToUsd,
   normalizeDepositChain,
-  pinEnsuredUserToDefault,
+  pinEnsuredUserToCustomerGroup,
 } from "@opencode-ai/core/ktai/newapi"
 
 test("uses dedicated token ensure when NewAPI has the route", async () => {
@@ -469,9 +469,9 @@ test("keeps the last spendable balance when Ensure is rate limited", async () =>
   expect(again).toBe(10141.71)
 })
 
-test("pins an Ensure user that still has ox-free back to default", async () => {
+test("pins an Ensure user that still has ox-free back to the customer group", async () => {
   const calls: string[] = []
-  const result = await pinEnsuredUserToDefault("identity-bearer", {
+  const result = await pinEnsuredUserToCustomerGroup("identity-bearer", {
     baseUrl: "https://newapi.test",
     fetchImpl: async (input, init) => {
       const url = String(input)
@@ -487,11 +487,11 @@ test("pins an Ensure user that still has ox-free back to default", async () => {
       }
       expect(url).toBe("https://newapi.test/api/user/")
       expect(init?.method).toBe("PUT")
-      expect(JSON.parse(String(init?.body))).toMatchObject({ id: 370, group: "default" })
+      expect(JSON.parse(String(init?.body))).toMatchObject({ id: 370, group: "ktai" })
       return new Response(JSON.stringify({ success: true }), { status: 200 })
     },
   })
-  expect(result).toEqual({ pinned: true, group: "default" })
+  expect(result).toEqual({ pinned: true, group: "ktai" })
   expect(calls).toEqual(["POST https://newapi.test/api/iam/ensure", "PUT https://newapi.test/api/user/"])
 })
 

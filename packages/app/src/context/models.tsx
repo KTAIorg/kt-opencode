@@ -24,7 +24,7 @@ type Store = {
 }
 
 export type ProbeState = {
-  // modelID → 探测结果（仅 Kito provider 的模型）。ok=false 表示渠道实测不可用。
+  // `${providerID}:${modelID}` → 探测结果。ok=false 表示渠道实测不可用（含 missing-credential 等）。
   results: Record<string, Omit<ProbeResult, "modelID">>
   probedAt?: number
   hideUnavailable: boolean
@@ -199,27 +199,75 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     return at === undefined || Date.now() - at > PROBE_STALE_MS
   }
 
-  const applyProbe = (results: { results: ProbeResult[]; probedAt: number }) => {
+  const applyProbe = (results: { providerID: string; results: ProbeResult[] }[], probedAt: number) => {
     const next: Record<string, Omit<ProbeResult, "modelID">> = {}
-    for (const item of results.results) next[item.modelID] = { ok: item.ok, status: item.status, error: item.error }
+    for (const group of results) {
+      for (const item of group.results) {
+        next[`${group.providerID}:${item.modelID}`] = { ok: item.ok, status: item.status, error: item.error }
+      }
+    }
     setProbeStore("probe", {
       results: next,
-      probedAt: results.probedAt,
+      probedAt,
       hideUnavailable: probeStore.probe.hideUnavailable,
     })
   }
 
-  const probeIDs = () =>
-    [...new Set(list().filter((model) => isKtaiProviderID(model.provider.id)).map((model) => model.id))]
+  // 协议族可探测的 aisdk 包名（去掉 "aisdk:" 前缀后与 server 端 ModelProbe 的映射保持一致）。
+  // Kito provider 不算在内——它走 /ktai/models/probe（KT Identity 门控）。
+  const PROBEABLE_PACKAGES = new Set([
+    "@ai-sdk/openai-compatible",
+    "@opencode-ai/ai/providers/openai-compatible",
+    "@ai-sdk/xai",
+    "@opencode-ai/ai/providers/xai",
+    "@ai-sdk/mistral",
+    "@ai-sdk/groq",
+    "@ai-sdk/cerebras",
+    "@ai-sdk/deepinfra",
+    "@ai-sdk/togetherai",
+    "@ai-sdk/perplexity",
+    "@ai-sdk/alibaba",
+    "venice-ai-sdk-provider",
+    "@openrouter/ai-sdk-provider",
+    "@opencode-ai/ai/providers/openrouter",
+    "@ai-sdk/gateway",
+    "ai-gateway-provider",
+    "@ai-sdk/openai",
+    "@opencode-ai/ai/providers/openai",
+    "@opencode-ai/ai/providers/openai/responses",
+    "@ai-sdk/anthropic",
+    "@opencode-ai/ai/providers/anthropic",
+    "@opencode-ai/ai/providers/anthropic-compatible",
+    "@ai-sdk/google",
+    "@opencode-ai/ai/providers/google",
+  ])
+
+  const probeable = (model: { provider: { id: string }; api?: { npm?: string } }) => {
+    if (isKtaiProviderID(model.provider.id)) return true
+    const npm = typeof model.api?.npm === "string" ? model.api.npm.replace(/^aisdk:/, "") : undefined
+    return npm !== undefined && PROBEABLE_PACKAGES.has(npm)
+  }
+
+  // 可探测模型按 provider 分组：ktai 组走 /ktai/models/probe，其余走通用 provider 探测端点。
+  const probeTargets = () => {
+    const groups = new Map<string, string[]>()
+    for (const model of list()) {
+      if (!probeable(model)) continue
+      const group = groups.get(model.provider.id) ?? []
+      if (!group.includes(model.id)) group.push(model.id)
+      groups.set(model.provider.id, group)
+    }
+    return groups
+  }
 
   // 探测只有这一份实现：管理弹窗的「一键检测」和打开模型列表时的自动检测都走 run()。
   // 并发去重（探测中重复调用复用同一个 promise），silent 时不弹 toast（自动检测不能打扰用户）。
   const runProbe = (options?: { silent?: boolean }) => {
     if (probeRun) return probeRun
-    const ids = probeIDs()
-    if (ids.length === 0) return Promise.resolve()
+    const targets = probeTargets()
+    if (targets.size === 0) return Promise.resolve()
     setProbeRunning(true)
-    probeRun = executeProbe(ids, options?.silent === true).finally(() => {
+    probeRun = executeProbe(targets, options?.silent === true).finally(() => {
       setProbeRunning(false)
       probeRun = undefined
     })
@@ -232,37 +280,67 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     void runProbe({ silent: true })
   }
 
-  const executeProbe = async (ids: string[], silent: boolean) => {
+  const executeProbe = async (targets: Map<string, string[]>, silent: boolean) => {
     const url = serverSDK.url.replace(/\/+$/, "")
     const headers = new Headers({ "content-type": "application/json", accept: "application/json" })
     if (serverSDK.server.http.username && serverSDK.server.http.password) {
       headers.set("authorization", `Basic ${btoa(`${serverSDK.server.http.username}:${serverSDK.server.http.password}`)}`)
     }
-    // server 限制每次探测最多 100 个模型，超限分批请求
-    const chunks: string[][] = []
-    for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100))
-    const results: ProbeResult[] = []
-    try {
-      for (const chunk of chunks) {
-        const response = await (platform.fetch ?? fetch)(`${url}/ktai/models/probe`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ modelIDs: chunk }),
-        })
-        const payload = (await response.json().catch(() => undefined)) as
-          | { results?: ProbeResult[]; probedAt?: number }
-          | undefined
-        if (!response.ok || !payload?.results) {
-          if (!silent) showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
-          return
+    const dir = directory()
+    const location = dir ? `?location[directory]=${encodeURIComponent(dir)}` : ""
+    const grouped: { providerID: string; results: ProbeResult[] }[] = []
+    let failed = false
+    for (const [providerID, ids] of targets) {
+      const ktai = isKtaiProviderID(providerID)
+      // server 限制每次探测最多 100 个模型，超限分批请求
+      const chunks: string[][] = []
+      for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100))
+      const results: ProbeResult[] = []
+      try {
+        for (const chunk of chunks) {
+          const endpoint = ktai
+            ? `${url}/ktai/models/probe`
+            : `${url}/api/provider/${encodeURIComponent(providerID)}/models/probe${location}`
+          const response = await (platform.fetch ?? fetch)(endpoint, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ modelIDs: chunk }),
+          })
+          const payload = (await response.json().catch(() => undefined)) as
+            | {
+                results?: ProbeResult[]
+                data?: { results?: ProbeResult[] }
+                probedAt?: number
+                message?: string
+                error?: string
+              }
+            | undefined
+          const probed = payload?.results ?? payload?.data?.results
+          if (!response.ok || !probed) {
+            // 未登录时手动检测要引导登录：派发事件由全局监听打开登录弹窗。
+            // 静默自动检测不打扰（顶栏已有登录入口），避免每次打开模型列表都弹窗。
+            if (response.status === 401 && ktai && !silent) {
+              window.dispatchEvent(new Event("kito-login-required"))
+            }
+            throw new Error(payload?.message ?? payload?.error ?? `HTTP ${response.status}`)
+          }
+          results.push(...probed)
         }
-        results.push(...payload.results)
+      } catch (error) {
+        failed = true
+        if (!silent) {
+          showToast({
+            variant: "error",
+            title: language.t("dialog.model.probe.failed"),
+            description: error instanceof Error ? error.message : undefined,
+          })
+        }
+        continue
       }
-      applyProbe({ results, probedAt: Date.now() })
-      if (!silent) showToast({ variant: "success", title: language.t("dialog.model.probe.done") })
-    } catch {
-      if (!silent) showToast({ variant: "error", title: language.t("dialog.model.probe.failed") })
+      grouped.push({ providerID, results })
     }
+    if (grouped.length > 0) applyProbe(grouped, Date.now())
+    if (!silent && !failed) showToast({ variant: "success", title: language.t("dialog.model.probe.done") })
   }
 
   return {
@@ -286,9 +364,11 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
         void probeReady.promise
         return probeStore.probe
       },
-      result: (model: ModelKey) => probeStore.probe.results[model.modelID],
+      result: (model: ModelKey) => probeStore.probe.results[modelKey(model)],
       stale: probeStale,
       running: probeRunning,
+      // 可探测模型数（含 Kito 与已配置的其它协议渠道），「一键检测」按钮据此置灰。
+      probeable: () => [...probeTargets().values()].reduce((count, ids) => count + ids.length, 0),
       run: runProbe,
       autoRun: autoRunProbe,
       setHideUnavailable: (value: boolean) => setProbeStore("probe", "hideUnavailable", value),

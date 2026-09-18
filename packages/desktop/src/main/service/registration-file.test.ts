@@ -10,7 +10,7 @@ import { registrationFileName } from "./registration-file"
 describe("registration file name", () => {
   test("prod build reads service-prod.json in the XDG state dir", () => {
     expect(registrationFileName("prod", true)).toBe(
-      join(process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "opencode", "service-prod.json"),
+      join(process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "kito", "service-prod.json"),
     )
   })
 
