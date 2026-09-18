@@ -55,12 +55,11 @@ export const DialogManageModelsV2: Component = () => {
     return current?.provider.id === item.provider.id && current?.id === item.id
   }
   const list = useFilteredList<ModelItem>({
-    // 「隐藏不可用」开启时，滤掉探测失败的模型（Kito 与其它已探测渠道）；没探测过的不过滤。
+    // 「隐藏不可用」开启时只滤硬失败（403/缺凭据等，Kito 与其它已探测渠道）；限流（429）是暂时状态，保留可见。
     items: () =>
       local.model.list().filter((item) => {
         if (!models.probe.state().hideUnavailable) return true
-        const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
-        return result?.ok !== false
+        return !models.probe.unavailable({ modelID: item.id, providerID: item.provider.id })
       }),
     key: (x) => `${x.provider.id}:${x.id}`,
     filterKeys: ["provider.name", "name", "id"],

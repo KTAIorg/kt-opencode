@@ -24,7 +24,8 @@ type Store = {
 }
 
 export type ProbeState = {
-  // `${providerID}:${modelID}` → 探测结果。ok=false 表示渠道实测不可用（含 missing-credential 等）。
+  // `${providerID}:${modelID}` → 探测结果。ok=false 表示渠道实测失败（含 missing-credential、限流）；
+  // 展示层用 rateLimited()/unavailable() 把暂时限流和硬失败分开。
   results: Record<string, Omit<ProbeResult, "modelID">>
   probedAt?: number
   hideUnavailable: boolean
@@ -213,6 +214,16 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     })
   }
 
+  // 限流（429/免费额度窗口）是暂时状态，不算「不可用」：徽标橙显，「隐藏不可用」也不滤掉。
+  const rateLimited = (model: ModelKey) => {
+    const result = probeStore.probe.results[modelKey(model)]
+    return result?.ok === false && (result.status === 429 || /rate limit/i.test(result.error ?? ""))
+  }
+
+  // 硬失败（403/401/缺凭据/网络错误）：只有这类参与「隐藏不可用」的过滤与计数。
+  const unavailable = (model: ModelKey) =>
+    probeStore.probe.results[modelKey(model)]?.ok === false && !rateLimited(model)
+
   // 协议族可探测的 aisdk 包名（去掉 "aisdk:" 前缀后与 server 端 ModelProbe 的映射保持一致）。
   // Kito provider 不算在内——它走 /ktai/models/probe（KT Identity 门控）。
   const PROBEABLE_PACKAGES = new Set([
@@ -249,10 +260,13 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
   }
 
   // 可探测模型按 provider 分组：ktai 组走 /ktai/models/probe，其余走通用 provider 探测端点。
-  const probeTargets = () => {
+  // auto 时排除 opencode（zen 匿名免费池）：探测是真实对话请求，自动跑会消耗免费额度、
+  // 自我制造 429；手动「一键检测」仍然覆盖它。
+  const probeTargets = (options?: { auto?: boolean }) => {
     const groups = new Map<string, string[]>()
     for (const model of list()) {
       if (!probeable(model)) continue
+      if (options?.auto && model.provider.id === "opencode") continue
       const group = groups.get(model.provider.id) ?? []
       if (!group.includes(model.id)) group.push(model.id)
       groups.set(model.provider.id, group)
@@ -262,9 +276,9 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
 
   // 探测只有这一份实现：管理弹窗的「一键检测」和打开模型列表时的自动检测都走 run()。
   // 并发去重（探测中重复调用复用同一个 promise），silent 时不弹 toast（自动检测不能打扰用户）。
-  const runProbe = (options?: { silent?: boolean }) => {
+  const runProbe = (options?: { silent?: boolean; auto?: boolean }) => {
     if (probeRun) return probeRun
-    const targets = probeTargets()
+    const targets = probeTargets({ auto: options?.auto })
     if (targets.size === 0) return Promise.resolve()
     setProbeRunning(true)
     probeRun = executeProbe(targets, options?.silent === true).finally(() => {
@@ -277,7 +291,7 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
   // 列表被打开时调用：结果过期才跑，新鲜时不重复请求。
   const autoRunProbe = () => {
     if (!probeStale()) return
-    void runProbe({ silent: true })
+    void runProbe({ silent: true, auto: true })
   }
 
   const executeProbe = async (targets: Map<string, string[]>, silent: boolean) => {
@@ -365,6 +379,8 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
         return probeStore.probe
       },
       result: (model: ModelKey) => probeStore.probe.results[modelKey(model)],
+      rateLimited,
+      unavailable,
       stale: probeStale,
       running: probeRunning,
       // 可探测模型数（含 Kito 与已配置的其它协议渠道），「一键检测」按钮据此置灰。

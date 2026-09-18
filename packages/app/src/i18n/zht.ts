@@ -235,6 +235,7 @@ export const dict = {
   "dialog.model.probe.failed": "檢查失敗，請登入後再試一次。",
   "dialog.model.probe.ok": "可用",
   "dialog.model.probe.unavailable": "無法使用",
+  "dialog.model.probe.rateLimited": "限流中，稍後可用",
   "dialog.model.probe.hideUnavailable": "隱藏無法使用的模型",
   "dialog.model.probe.hidden.one": "已隱藏 {{count}} 個無法使用的模型",
   "dialog.model.probe.hidden.other": "已隱藏 {{count}} 個無法使用的模型",

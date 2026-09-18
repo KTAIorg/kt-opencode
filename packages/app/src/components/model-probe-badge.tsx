@@ -3,17 +3,24 @@ import { Show, type Component } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useModels } from "@/context/models"
 
-/** 渠道可用性探测结果圆点；未探测过的模型不渲染。 */
+/** 渠道可用性探测结果圆点：绿=可用、橙=限流（暂时）、红=不可用；未探测过的模型不渲染。 */
 export const ModelProbeBadge: Component<{ providerID: string; modelID: string; class?: string }> = (props) => {
   const models = useModels()
   const language = useLanguage()
 
   const result = () => models.probe.result({ providerID: props.providerID, modelID: props.modelID })
+  const limited = () => models.probe.rateLimited({ providerID: props.providerID, modelID: props.modelID })
   const label = () => {
     const value = result()
-    return value?.ok
-      ? language.t("dialog.model.probe.ok")
-      : value?.error || language.t("dialog.model.probe.unavailable")
+    if (value?.ok) return language.t("dialog.model.probe.ok")
+    if (limited()) return language.t("dialog.model.probe.rateLimited")
+    return value?.error || language.t("dialog.model.probe.unavailable")
+  }
+  const dotClass = () => {
+    const value = result()
+    if (!value) return ""
+    if (value.ok) return "bg-v2-state-fg-success"
+    return limited() ? "bg-v2-state-fg-warning" : "bg-v2-state-fg-danger"
   }
 
   return (
@@ -22,7 +29,7 @@ export const ModelProbeBadge: Component<{ providerID: string; modelID: string; c
         <span
           role="img"
           aria-label={label()}
-          class={`h-2 w-2 shrink-0 cursor-help rounded-full ${props.class ?? ""} ${result()?.ok ? "bg-v2-state-fg-success" : "bg-v2-state-fg-danger"}`}
+          class={`h-2 w-2 shrink-0 cursor-help rounded-full ${props.class ?? ""} ${dotClass()}`}
         />
       </Tooltip>
     </Show>

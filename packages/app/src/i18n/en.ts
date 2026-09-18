@@ -135,6 +135,7 @@ export const dict = {
   "dialog.model.probe.failed": "Availability check failed. Sign in and try again.",
   "dialog.model.probe.ok": "Available",
   "dialog.model.probe.unavailable": "Unavailable",
+  "dialog.model.probe.rateLimited": "Rate limited. Try again later.",
   "dialog.model.probe.hideUnavailable": "Hide unavailable",
   "dialog.model.probe.hidden.one": "{{count}} unavailable model hidden",
   "dialog.model.probe.hidden.other": "{{count}} unavailable models hidden",

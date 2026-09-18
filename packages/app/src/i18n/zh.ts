@@ -258,6 +258,7 @@ export const dict = {
   "dialog.model.probe.failed": "检测失败，请登录后重试。",
   "dialog.model.probe.ok": "可用",
   "dialog.model.probe.unavailable": "不可用",
+  "dialog.model.probe.rateLimited": "限流中，稍后可用",
   "dialog.model.probe.hideUnavailable": "隐藏不可用模型",
   "dialog.model.probe.hidden.one": "已隐藏 {{count}} 个不可用模型",
   "dialog.model.probe.hidden.other": "已隐藏 {{count}} 个不可用模型",
