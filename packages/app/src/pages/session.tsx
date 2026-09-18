@@ -164,6 +164,7 @@ function SessionErrorFallback(props: { error: unknown; sessionID?: string; serve
   const language = useLanguage()
   const server = useServers()
   const tabs = useTabs()
+  const navigate = useNavigate()
 
   const displayServer = createMemo(() => {
     const key = props.serverKey
@@ -172,7 +173,11 @@ function SessionErrorFallback(props: { error: unknown; sessionID?: string; serve
   })
   const closeTab = () => {
     if (!props.sessionID || !props.serverKey) return
-    tabs.removeSessionTab({ server: props.serverKey, sessionId: props.sessionID })
+    // A restored route URL can point at a session with no backing tab (for
+    // example after a data-root switch wiped tab persistence), so closing the
+    // dead route needs an explicit navigation home.
+    const removed = tabs.removeSessionTab({ server: props.serverKey, sessionId: props.sessionID })
+    if (!removed) navigate("/")
   }
   if (isCurrentSessionNotFoundError(props.error, props.sessionID)) {
     return (

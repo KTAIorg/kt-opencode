@@ -283,7 +283,9 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
         const index = store.findIndex(
           (tab) => tab.type === "session" && tab.server === input.server && tab.sessionId === input.sessionId,
         )
-        if (index !== -1) removeTab(index)
+        if (index === -1) return false
+        removeTab(index)
+        return true
       },
       removeServer(key: ServerConnection.Key) {
         updateClosed((stack) => stack.filter((entry) => entry.tab.server !== key))

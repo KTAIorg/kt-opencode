@@ -36,9 +36,14 @@ export function formatServerError(error: unknown, translate?: Translator, fallba
 }
 
 function unwrapNamedError(error: unknown): unknown {
-  if (error instanceof Error && error.cause && typeof error.cause === "object" && "body" in error.cause) {
-    return (error.cause as Record<string, unknown>).body
-  }
+  if (!(error instanceof Error) || !error.cause || typeof error.cause !== "object") return error
+  const cause = error.cause as Record<string, unknown>
+  // SDK client errors keep the server error document on cause.body.
+  if ("body" in cause) return cause.body
+  // Solid wraps non-Error values thrown by computations as Error("...", { cause })
+  // before an error boundary observes them, so raw server error documents also
+  // arrive directly on cause.
+  if ("_tag" in cause) return cause
   return error
 }
 

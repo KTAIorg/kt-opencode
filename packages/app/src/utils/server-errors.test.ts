@@ -172,4 +172,23 @@ describe("isSessionNotFoundError", () => {
       ),
     ).toBe(false)
   })
+
+  test("matches Solid-wrapped server error documents on cause", () => {
+    // Solid's castError wraps non-Error values thrown from computations as
+    // Error("Unknown error", { cause }) before an error boundary observes them.
+    const document = {
+      _tag: "SessionNotFoundError",
+      sessionID: "ses_restored",
+      message: "Session not found: ses_restored",
+    } satisfies SessionNotFoundError
+
+    expect(isSessionNotFoundError(new Error("Unknown error", { cause: document }), "ses_restored")).toBe(true)
+    expect(isSessionNotFoundError(new Error("Unknown error", { cause: document }), "ses_other")).toBe(false)
+    expect(
+      isSessionNotFoundError(
+        new Error("Unknown error", { cause: { _tag: "ProjectNotFoundError", projectID: "prj" } }),
+        "ses_restored",
+      ),
+    ).toBe(false)
+  })
 })
