@@ -85,7 +85,14 @@ const telegram = (): IntegrationOAuthMethodRegistration => ({
         url: challenge.telegram.qrUrl,
         instructions: `Confirm Kito login in Telegram @${challenge.telegram.botUsername}. Code: ${challenge.displayCode}`,
         callback: Effect.tryPromise({
-          try: () => pollTelegramLogin({ challengeId: challenge.challengeId, opaqueCode: challenge.opaqueCode }),
+          try: () => {
+            // 轮询窗口对齐 challenge 服务端过期时间（+30s 宽限），解析失败回落默认 180s。
+            const deadline = Date.parse(challenge.expiresAt)
+            const timeoutMs = Number.isFinite(deadline)
+              ? Math.max(deadline + 30_000 - Date.now(), 60_000)
+              : 180_000
+            return pollTelegramLogin({ challengeId: challenge.challengeId, opaqueCode: challenge.opaqueCode, timeoutMs })
+          },
           catch: (cause) => (cause instanceof Error ? cause : new Error("KT Identity Telegram login failed")),
         }).pipe(
           Effect.tap((session) =>
@@ -124,7 +131,11 @@ export const KtaiPlugin = define({
       const credential = connection
         ? yield* ctx.integration.connection.resolve(connection).pipe(Effect.catch(() => Effect.succeed(undefined)))
         : undefined
-      if (credential?.type === "oauth" && credential.access) persistIdentityToken(credential.access)
+      if (credential?.type === "oauth" && credential.access)
+        persistIdentityToken(credential.access, {
+          accountId: typeof credential.metadata?.accountId === "string" ? credential.metadata.accountId : undefined,
+          expiresAt: new Date(credential.expires).toISOString(),
+        })
       const managed = yield* Effect.promise(() => readManagedApiKey())
       const apiKey =
         managed ??

@@ -5,7 +5,7 @@ import {
   clearNewapiSpendableCache,
   createKtpayOrder,
   fetchNewapiSpendable,
-  pinEnsuredUserToDefault,
+  pinEnsuredUserToCustomerGroup,
 } from "./newapi"
 import type { FetchLike } from "./newapi"
 
@@ -91,7 +91,7 @@ describe("fetchNewapiSpendable", () => {
     })
 
     // 登录路径就是这样：一条 Ensure 既写 key 又用于 pin 分组。
-    await pinEnsuredUserToDefault("token", { baseUrl: BASE, fetchImpl: impl })
+    await pinEnsuredUserToCustomerGroup("token", { baseUrl: BASE, fetchImpl: impl })
     // 随之而来的账号读取不能再 Ensure 一次，但余额必须已经在。
     expect(await fetchNewapiSpendable("token", { baseUrl: BASE, fetchImpl: impl })).toBe(9817.04)
     expect(ensureCalls(calls)).toBe(1)

@@ -1118,9 +1118,29 @@ export type Endpoint10_1Input = {
 export type Endpoint10_1Output = { readonly location: Location.Info; readonly data: Provider.Info }
 export type ProviderGetOperation<E = never> = (input: Endpoint10_1Input) => Effect.Effect<Endpoint10_1Output, E>
 
+export type Endpoint10_2Input = {
+  readonly providerID: Provider.ID
+  readonly location?: { readonly directory?: string | undefined; readonly workspace?: string | undefined } | undefined
+  readonly modelIDs: ReadonlyArray<string>
+}
+export type Endpoint10_2Output = {
+  readonly location: Location.Info
+  readonly data: {
+    readonly results: ReadonlyArray<{
+      readonly modelID: string
+      readonly ok: boolean
+      readonly status?: number | undefined
+      readonly error?: string | undefined
+    }>
+    readonly probedAt: number
+  }
+}
+export type ProviderModelsProbeOperation<E = never> = (input: Endpoint10_2Input) => Effect.Effect<Endpoint10_2Output, E>
+
 export interface ProviderApi<E = never> {
   readonly list: ProviderListOperation<E>
   readonly get: ProviderGetOperation<E>
+  readonly models: { readonly probe: ProviderModelsProbeOperation<E> }
 }
 
 export type Endpoint11_0Input = {

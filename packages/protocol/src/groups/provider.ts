@@ -2,8 +2,20 @@ import { Provider } from "@opencode-ai/schema/provider"
 import { Location } from "@opencode-ai/schema/location"
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
-import { ProviderNotFoundError, ServiceUnavailableError } from "../errors.js"
+import { InvalidRequestError, ProviderNotFoundError, ServiceUnavailableError } from "../errors.js"
 import { LocationQuery, locationQueryOpenApi } from "./location.js"
+
+export const ProviderModelProbeResult = Schema.Struct({
+  modelID: Schema.String,
+  ok: Schema.Boolean,
+  status: Schema.optional(Schema.Number),
+  error: Schema.optional(Schema.String),
+}).annotate({ identifier: "ProviderModelProbeResult" })
+
+export const ProviderModelProbe = Schema.Struct({
+  results: Schema.Array(ProviderModelProbeResult),
+  probedAt: Schema.Number,
+}).annotate({ identifier: "ProviderModelProbe" })
 
 export const ProviderGroup = HttpApiGroup.make("server.provider")
   .add(
@@ -34,6 +46,26 @@ export const ProviderGroup = HttpApiGroup.make("server.provider")
           identifier: "v2.provider.get",
           summary: "Get provider",
           description: "Retrieve a single AI provider so clients can inspect its availability and endpoint settings.",
+        }),
+      ),
+  )
+  .add(
+    HttpApiEndpoint.post("provider.models.probe", "/api/provider/:providerID/models/probe", {
+      params: { providerID: Provider.ID },
+      query: LocationQuery,
+      payload: Schema.Struct({
+        modelIDs: Schema.Array(Schema.String),
+      }),
+      success: Location.response(ProviderModelProbe),
+      error: [ProviderNotFoundError, InvalidRequestError, ServiceUnavailableError],
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "v2.provider.models.probe",
+          summary: "Probe provider models",
+          description:
+            "Send a minimal request per requested model through the provider's resolved endpoint and credentials, and report per-model availability. Kito models use /ktai/models/probe instead.",
         }),
       ),
   )

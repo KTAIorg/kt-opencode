@@ -106,6 +106,8 @@ import type {
   ProviderListOutput,
   ProviderGetInput,
   ProviderGetOutput,
+  ProviderModelsProbeInput,
+  ProviderModelsProbeOutput,
   IntegrationListInput,
   IntegrationListOutput,
   IntegrationGetInput,
@@ -1104,6 +1106,21 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
+      models: {
+        probe: (input: ProviderModelsProbeInput, requestOptions?: RequestOptions) =>
+          request<ProviderModelsProbeOutput>(
+            {
+              method: "POST",
+              path: `/api/provider/${encodeURIComponent(input.providerID)}/models/probe`,
+              query: { location: input["location"] },
+              body: { modelIDs: input["modelIDs"] },
+              successStatus: 200,
+              declaredStatuses: [404, 400, 503, 401],
+              empty: false,
+            },
+            requestOptions,
+          ),
+      },
     },
     integration: {
       list: (input?: IntegrationListInput, requestOptions?: RequestOptions) =>

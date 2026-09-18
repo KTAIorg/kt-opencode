@@ -12,5 +12,7 @@ export function registrationFileName(channel: string, packaged: boolean) {
   if (channel === "dev" || channel === "beta") return undefined
   const name = channel === "prod" ? "service-prod.json" : `service-${channel.replace(/[^a-zA-Z0-9._-]/g, "-")}.json`
   const state = process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state")
-  return join(state, "opencode", name)
+  // The bundled CLI resolves its state root to <XDG_STATE_HOME>/kito; see
+  // packages/util/src/global.ts.
+  return join(state, "kito", name)
 }

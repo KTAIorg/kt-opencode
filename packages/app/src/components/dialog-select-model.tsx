@@ -18,7 +18,6 @@ import { createEventListener } from "@solid-primitives/event-listener"
 import { customerFacingProviderName } from "@/utils/kt-settlement"
 import { matchesModelSearch } from "./dialog-select-model-search"
 import { ModelProbeBadge } from "./model-probe-badge"
-import { isKtaiProviderID } from "@/utils/ktai-model-order"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
@@ -90,10 +89,8 @@ function createModelSelectorController(input: {
   )
   const bySearch = (items: ModelItem[], search: string) =>
     items.filter((item) => matchesModelSearch(search, [item.name, item.id, item.provider.name]))
-  const unavailable = (item: ModelItem) => {
-    if (!isKtaiProviderID(item.provider.id)) return false
-    return models.probe.result({ modelID: item.id, providerID: item.provider.id })?.ok === false
-  }
+  const unavailable = (item: ModelItem) =>
+    models.probe.result({ modelID: item.id, providerID: item.provider.id })?.ok === false
   const shown = (search: string) => {
     const items = bySearch(visible(), search)
     return models.probe.state().hideUnavailable ? items.filter((item) => !unavailable(item)) : items

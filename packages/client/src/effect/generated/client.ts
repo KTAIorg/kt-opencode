@@ -112,6 +112,8 @@ import type {
   Endpoint10_0Output,
   Endpoint10_1Input,
   Endpoint10_1Output,
+  Endpoint10_2Input,
+  Endpoint10_2Output,
   Endpoint11_0Input,
   Endpoint11_0Output,
   Endpoint11_1Input,
@@ -761,7 +763,20 @@ const Endpoint10_1 = (raw: RawClient["server.provider"]) => (input: Endpoint10_1
     ),
   )
 
-const adaptGroup10 = (raw: RawClient["server.provider"]) => ({ list: Endpoint10_0(raw), get: Endpoint10_1(raw) })
+const Endpoint10_2 = (raw: RawClient["server.provider"]) => (input: Endpoint10_2Input) =>
+  preserveEffect<Endpoint10_2Output>()(
+    raw["provider.models.probe"]({
+      params: { providerID: input["providerID"] },
+      query: { location: input["location"] },
+      payload: { modelIDs: input["modelIDs"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const adaptGroup10 = (raw: RawClient["server.provider"]) => ({
+  list: Endpoint10_0(raw),
+  get: Endpoint10_1(raw),
+  models: { probe: Endpoint10_2(raw) },
+})
 
 const Endpoint11_0 = (raw: RawClient["server.integration"]) => (input?: Endpoint11_0Input) =>
   preserveEffect<Endpoint11_0Output>()(

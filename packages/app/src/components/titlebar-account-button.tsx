@@ -26,15 +26,21 @@ export function TitlebarAccountButton() {
         password: serverSDK.server.http.password,
       }
     },
-    (input) =>
+    (input): Promise<KtaiAccountSummary | undefined> =>
       (platform.fetch ?? fetch)(`${input.url}/ktai/account`, {
         headers:
           input.username && input.password
             ? { authorization: `Basic ${btoa(`${input.username}:${input.password}`)}` }
             : undefined,
       })
-        .then((response) => (response.ok ? (response.json() as Promise<KtaiAccountSummary>) : undefined))
-        .catch(() => undefined),
+        // 4xx 视为真的未登录；5xx（上游 Identity 故障）与网络瞬态失败保留上次
+        // 成功结果，避免服务抖一下顶栏就闪成"离线"。
+        .then((response) => {
+          if (response.ok) return response.json() as Promise<KtaiAccountSummary>
+          if (response.status >= 500) return account.latest
+          return undefined
+        })
+        .catch(() => account.latest),
   )
   const signedIn = createMemo(() => Boolean(account()))
   const signedInLabel = createMemo(() => {
@@ -58,12 +64,20 @@ export function TitlebarAccountButton() {
       lastRefresh = 0
       refresh()
     }
+    // 模型检测等 401 路径派发的登录引导事件：未登录才弹登录框（叠在现有弹窗上）。
+    // account 首次拉取进行中时 signedIn 也是 false，跳过避免误弹。
+    const loginRequired = () => {
+      if (signedIn() || account.state === "pending") return
+      openKtIdentityLogin({ dialog, push: true })
+    }
     window.addEventListener("focus", refresh)
     window.addEventListener("kito-account-refresh", forceRefresh)
+    window.addEventListener("kito-login-required", loginRequired)
     document.addEventListener("visibilitychange", refresh)
     onCleanup(() => {
       window.removeEventListener("focus", refresh)
       window.removeEventListener("kito-account-refresh", forceRefresh)
+      window.removeEventListener("kito-login-required", loginRequired)
       document.removeEventListener("visibilitychange", refresh)
     })
   })

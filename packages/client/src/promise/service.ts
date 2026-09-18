@@ -115,7 +115,9 @@ export async function stop(options: StopOptions = {}) {
 }
 
 function fallback() {
-  return join(process.env["XDG_STATE_HOME"] ?? join(homedir(), ".local", "state"), "opencode", "service.json")
+  // Matches the "kito" leaf the CLI's global state root resolves to; see
+  // packages/util/src/global.ts.
+  return join(process.env["XDG_STATE_HOME"] ?? join(homedir(), ".local", "state"), "kito", "service.json")
 }
 
 /** Create HTTP authentication headers for a service endpoint. */

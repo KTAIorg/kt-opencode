@@ -2,10 +2,22 @@ import { describe, expect, test } from "bun:test"
 import os from "os"
 import path from "path"
 import { pathToFileURL } from "url"
+import { roots } from "../src/global-roots.js"
 
 const module = pathToFileURL(path.join(import.meta.dir, "../src/global-roots.ts")).href
 
 describe("global roots", () => {
+  test("app leaf isolates Kito directories from OpenCode", () => {
+    const kito = roots("kito")
+    const opencode = roots("opencode")
+    for (const key of ["data", "cache", "config", "state"] as const) {
+      expect(path.basename(kito[key])).toBe("kito")
+      expect(path.dirname(kito[key])).toBe(path.dirname(opencode[key]))
+    }
+    expect(kito.tmp).toBe(path.join(os.tmpdir(), "kito"))
+    expect(opencode.tmp).toBe(path.join(os.tmpdir(), "opencode"))
+  })
+
   test("uses XDG overrides", () => {
     const root = path.join(os.tmpdir(), "opencode-xdg-overrides")
     const env = {

@@ -2,14 +2,19 @@ import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode-ai/ui/dialog"
 import { Spinner } from "@opencode-ai/ui/spinner"
-import { Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { Show, createMemo, onCleanup, onMount } from "solid-js"
+import { createStore } from "solid-js/store"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useData } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { requestKtaiEnsure } from "@/utils/kt-ensure"
 import { parseTelegramAuthorization } from "@/utils/kt-identity-login"
+import { qrUrl } from "@/utils/qr"
 import { showToast } from "@/utils/toast"
+
+// 登录弹窗全局去重：401 引导、顶栏点击、钱包引导可能同时触发，只允许开一个。
+let loginOpen = false
 
 export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
   const dialog = useDialog()
@@ -17,28 +22,46 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
   const platform = usePlatform()
   const serverSDK = useServerSDK()
   const data = useData()
-  const [authorization, setAuthorization] = createSignal<{ url: string; instructions: string; attemptID?: string }>()
-  const [error, setError] = createSignal<string>()
-  const [creating, setCreating] = createSignal(true)
+  const [state, setState] = createStore({
+    authorization: undefined as { url: string; instructions: string; attemptID?: string } | undefined,
+    error: undefined as string | undefined,
+    creating: true,
+    copied: false,
+  })
   const parsed = createMemo(() => {
-    const current = authorization()
+    const current = state.authorization
     return current ? parseTelegramAuthorization(current) : undefined
   })
   const alive = { value: true }
   const run = { current: 0 }
+  const attempt = { id: undefined as string | undefined }
+
+  // 弹窗关闭/重试时取消服务端仍在轮询的旧 attempt，避免旧挑战继续占额度
+  // 或用户点了旧链接后 token 落到无人等待的 attempt 上。
+  const cancelAttempt = () => {
+    const id = attempt.id
+    attempt.id = undefined
+    if (!id) return
+    void serverSDK.api.integration.oauth
+      .cancel({ integrationID: "ktai", attemptID: id })
+      .catch(() => undefined)
+  }
 
   const close = () => {
+    cancelAttempt()
     props.onClose?.()
     dialog.close()
   }
 
   const finish = async () => {
-    await requestKtaiEnsure({
+    const ensured = await requestKtaiEnsure({
       url: serverSDK.url,
       username: serverSDK.server.http.username,
       password: serverSDK.server.http.password,
       fetchImpl: platform.fetch ?? fetch,
-    }).catch(() => undefined)
+    })
+      .then(() => true)
+      .catch(() => false)
     data.location.integration.invalidate()
     data.location.provider.invalidate()
     data.location.model.invalidate()
@@ -46,19 +69,26 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
       () => undefined,
     )
     window.dispatchEvent(new Event("kito-account-refresh"))
+    attempt.id = undefined
     close()
     showToast({
       variant: "success",
       title: language.t("provider.connect.toast.connected.title", { provider: "Kito" }),
       description: language.t("provider.connect.toast.connected.description", { provider: "Kito" }),
     })
+    // 登录已成功，但 managed key 下发失败（Ensure 限流/网关故障）：如实提示，不再静默。
+    if (!ensured) {
+      showToast({
+        variant: "error",
+        title: language.t("dialog.ktIdentity.ensureFailed"),
+      })
+    }
   }
 
   const start = async () => {
     const current = ++run.current
-    setCreating(true)
-    setError(undefined)
-    setAuthorization(undefined)
+    cancelAttempt()
+    setState({ creating: true, error: undefined, authorization: undefined, copied: false })
     const integration = await serverSDK.api.integration
       .get({ integrationID: "ktai" })
       .then((result) => result.data)
@@ -66,8 +96,7 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
     const method = integration?.methods.find((item) => item.type === "oauth")
     if (!method || method.type !== "oauth") {
       if (!alive.value || current !== run.current) return
-      setCreating(false)
-      setError(language.t("common.requestFailed"))
+      setState({ creating: false, error: language.t("common.requestFailed") })
       return
     }
     const result = await serverSDK.api.integration.oauth
@@ -82,16 +111,18 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
       }))
     if (!alive.value || current !== run.current) return
     if (!result.ok) {
-      setCreating(false)
-      setError(result.error)
+      setState({ creating: false, error: result.error })
       return
     }
-    setAuthorization({
-      url: result.authorization.url,
-      instructions: result.authorization.instructions,
-      attemptID: result.authorization.attemptID,
+    attempt.id = result.authorization.attemptID
+    setState({
+      authorization: {
+        url: result.authorization.url,
+        instructions: result.authorization.instructions,
+        attemptID: result.authorization.attemptID,
+      },
+      creating: false,
     })
-    setCreating(false)
     while (alive.value && current === run.current) {
       const status = await serverSDK.api.integration.oauth
         .status({
@@ -105,7 +136,7 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
         }))
       if (!alive.value || current !== run.current) return
       if (!status.ok) {
-        setError(status.error)
+        setState("error", status.error)
         return
       }
       if (status.status.status === "complete") {
@@ -113,11 +144,13 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
         return
       }
       if (status.status.status === "failed") {
-        setError(status.status.message)
+        attempt.id = undefined
+        setState("error", status.status.message)
         return
       }
       if (status.status.status === "expired") {
-        setError(language.t("common.requestFailed"))
+        attempt.id = undefined
+        setState("error", language.t("common.requestFailed"))
         return
       }
       await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -125,9 +158,12 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
   }
 
   onMount(() => {
+    loginOpen = true
     void start()
     onCleanup(() => {
+      loginOpen = false
       alive.value = false
+      cancelAttempt()
     })
   })
 
@@ -137,6 +173,17 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
     platform.openExternal(url)
   }
 
+  const copyLink = async () => {
+    const url = parsed()?.url
+    if (!url) return
+    const ok = await navigator.clipboard.writeText(url).then(
+      () => true,
+      () => false,
+    )
+    if (!ok) return
+    setState("copied", true)
+  }
+
   return (
     <Dialog fit>
       <DialogHeader>
@@ -144,7 +191,7 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
       </DialogHeader>
       <DialogBody>
         <div class="flex flex-col gap-5 px-6 pb-4">
-          <Show when={creating()}>
+          <Show when={state.creating}>
             <div class="flex items-center gap-3 text-14-regular text-text-base">
               <Spinner />
               <span>{language.t("dialog.ktIdentity.creating")}</span>
@@ -158,24 +205,41 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
             </div>
           </Show>
           <Show when={parsed()?.url}>
-            <div class="flex flex-col gap-2">
-              <Button variant="contrast" size="large" type="button" onClick={openTelegram}>
-                {parsed()?.bot
-                  ? language.t("dialog.ktIdentity.openTelegram", { bot: parsed()!.bot! })
-                  : language.t("dialog.ktIdentity.openTelegramFallback")}
-              </Button>
-              <p class="text-12-regular text-text-weak">{language.t("dialog.ktIdentity.noTelegram")}</p>
-            </div>
+            {(url) => (
+              <div class="flex flex-col gap-3">
+                <div class="flex flex-col items-center gap-2">
+                  <img
+                    src={qrUrl(url())}
+                    alt={language.t("dialog.ktIdentity.scanQr")}
+                    width={160}
+                    height={160}
+                    class="rounded-md bg-white p-1.5"
+                  />
+                  <p class="text-center text-12-regular text-text-weak">{language.t("dialog.ktIdentity.scanQr")}</p>
+                </div>
+                <div class="flex gap-2">
+                  <Button variant="contrast" size="large" type="button" class="flex-1" onClick={openTelegram}>
+                    {parsed()?.bot
+                      ? language.t("dialog.ktIdentity.openTelegram", { bot: parsed()!.bot! })
+                      : language.t("dialog.ktIdentity.openTelegramFallback")}
+                  </Button>
+                  <Button variant="outline" size="large" type="button" onClick={() => void copyLink()}>
+                    {state.copied ? language.t("dialog.ktIdentity.copied") : language.t("dialog.ktIdentity.copyLink")}
+                  </Button>
+                </div>
+                <p class="text-12-regular text-text-weak">{language.t("dialog.ktIdentity.noTelegram")}</p>
+              </div>
+            )}
           </Show>
-          <Show when={!creating() && !error() && parsed()?.url}>
+          <Show when={!state.creating && !state.error && parsed()?.url}>
             <div class="flex items-center gap-3 text-14-regular text-text-base">
               <Spinner />
               <span>{language.t("dialog.ktIdentity.waiting")}</span>
             </div>
           </Show>
-          <Show when={error()}>
+          <Show when={state.error}>
             <div class="flex flex-col gap-3">
-              <p class="text-14-regular text-text-base">{error()}</p>
+              <p class="text-14-regular text-text-base">{state.error}</p>
               <div class="flex justify-end">
                 <Button variant="contrast" size="large" type="button" onClick={() => void start()}>
                   {language.t("dialog.ktIdentity.retry")}
@@ -189,8 +253,15 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
   )
 }
 
-export function openKtIdentityLogin(input: { dialog: ReturnType<typeof useDialog>; onClose?: () => void }) {
-  void input.dialog.show(
+export function openKtIdentityLogin(input: {
+  dialog: ReturnType<typeof useDialog>
+  onClose?: () => void
+  /** push 把登录框叠在当前弹窗（如模型管理）之上，关闭后回到原弹窗；默认 show 替换整个弹窗栈。 */
+  push?: boolean
+}) {
+  if (loginOpen) return
+  const open = input.push ? input.dialog.push.bind(input.dialog) : input.dialog.show.bind(input.dialog)
+  void open(
     () => <DialogKtIdentityLogin onClose={input.onClose} />,
     () => input.onClose?.(),
   )

@@ -157,7 +157,17 @@ function manifest() {
 
 function serverLogRoots() {
   const xdgData = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share")
-  return [...new Set([join(xdgData, "opencode", "log"), join(app.getPath("userData"), "opencode", "log")])]
+  const userData = app.getPath("userData")
+  // Sidecar logs live under the "kito" data leaf; keep the legacy "opencode"
+  // roots so pre-migration log files still make it into the debug bundle.
+  return [
+    ...new Set([
+      join(xdgData, "kito", "log"),
+      join(userData, "kito", "log"),
+      join(xdgData, "opencode", "log"),
+      join(userData, "opencode", "log"),
+    ]),
+  ]
 }
 
 type Entry = { name: string; path?: string; data?: Buffer }

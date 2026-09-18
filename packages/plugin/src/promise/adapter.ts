@@ -139,6 +139,12 @@ export function fromPromise(plugin: Plugin) {
             provider: {
               list: adaptApiMethod(ProviderEndpoints["provider.list"], host.catalog.provider.list),
               get: adaptApiMethod(ProviderEndpoints["provider.get"], host.catalog.provider.get),
+              models: {
+                probe: adaptApiMethod(
+                  ProviderEndpoints["provider.models.probe"],
+                  host.catalog.provider.models.probe,
+                ),
+              },
             },
             model: {
               list: adaptApiMethod(ModelEndpoints["model.list"], host.catalog.model.list),

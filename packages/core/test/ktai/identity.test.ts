@@ -222,3 +222,54 @@ test("treats an already-invalid Identity session as a successful revoke", async 
     return new Response(JSON.stringify({ message: "invalid or inactive Identity token" }), { status: 401 })
   })
 })
+
+test("pollTelegramLogin tolerates transient failures then completes", async () => {
+  let polls = 0
+  const session = await pollTelegramLogin(
+    { challengeId: "chal-3", opaqueCode: "opaque-3", baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 1_000 },
+    async () => {
+      polls += 1
+      if (polls === 1) throw new Error("socket hang up")
+      if (polls === 2) return new Response("bad gateway", { status: 502 })
+      if (polls === 3) return new Response(JSON.stringify({ status: "pending" }), { status: 429 })
+      return new Response(
+        JSON.stringify({
+          account: { id: "acc-4", accountNo: "KT260004" },
+          token: "tg-token-flaky",
+          session: { id: "sess-4", tokenType: "Bearer", expiresAt: "2026-08-01T00:00:00.000Z" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    },
+  )
+  expect(session.token).toBe("tg-token-flaky")
+  expect(polls).toBe(4)
+})
+
+test("pollTelegramLogin fails fast on non-transient errors", async () => {
+  let polls = 0
+  await expect(
+    pollTelegramLogin(
+      { challengeId: "chal-4", opaqueCode: "opaque-4", baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 1_000 },
+      async () => {
+        polls += 1
+        return new Response(JSON.stringify({ message: "challenge not found" }), { status: 404 })
+      },
+    ),
+  ).rejects.toThrow("challenge not found")
+  expect(polls).toBe(1)
+})
+
+test("pollTelegramLogin gives up after repeated transient failures", async () => {
+  let polls = 0
+  await expect(
+    pollTelegramLogin(
+      { challengeId: "chal-5", opaqueCode: "opaque-5", baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 10_000 },
+      async () => {
+        polls += 1
+        return new Response("bad gateway", { status: 502 })
+      },
+    ),
+  ).rejects.toThrow("KT Identity Telegram poll failed (502)")
+  expect(polls).toBe(5)
+})

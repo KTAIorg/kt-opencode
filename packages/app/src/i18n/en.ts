@@ -1323,4 +1323,8 @@ export const dict = {
   "dialog.ktIdentity.creating": "Creating login request…",
   "dialog.ktIdentity.retry": "Try again",
   "dialog.ktIdentity.noTelegram": "Nothing happened? Confirm Telegram is installed, or open the link on your phone.",
+  "dialog.ktIdentity.scanQr": "Scan with your phone to confirm in Telegram.",
+  "dialog.ktIdentity.copyLink": "Copy link",
+  "dialog.ktIdentity.copied": "Link copied",
+  "dialog.ktIdentity.ensureFailed": "Signed in, but Kito model access could not be provisioned. Top up or retry later.",
 }

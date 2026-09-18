@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test"
 
-import { applyShellEnvironment, isNushell, mergeShellEnv, parseShellEnv, resolveUserShell } from "./shell-env"
+import {
+  applyShellEnvironment,
+  isNushell,
+  mergeShellEnv,
+  parseShellEnv,
+  resolveUserShell,
+  sanitizeImportedEnv,
+} from "./shell-env"
 
 describe("shell env", () => {
   test("parseShellEnv supports null-delimited pairs", () => {
@@ -107,6 +114,27 @@ describe("shell env", () => {
     expect(env.HOME).toBe("/tmp/home")
     expect(env.OPENAI_API_KEY).toBeUndefined()
     expect(env.OPENAI_BASE_URL).toBeUndefined()
+  })
+
+  test("applyShellEnvironment drops host OpenCode and XDG roots from the login shell", () => {
+    const env = applyShellEnvironment(
+      { PATH: "/desktop/path", HOME: "/tmp/home" },
+      {
+        PATH: "/shell/path",
+        XDG_DATA_HOME: "/Users/me/.local/share",
+        XDG_STATE_HOME: "/Users/me/.local/state",
+        OPENCODE_CONFIG: "/Users/me/.config/opencode/config.json",
+        OPENCODE_CONFIG_DIR: "/Users/me/.config/opencode",
+        OPENCODE_DB: "/Users/me/.local/share/opencode/opencode.db",
+      },
+    )
+
+    expect(env.PATH).toBe("/shell/path")
+    expect(env.XDG_DATA_HOME).toBeUndefined()
+    expect(env.XDG_STATE_HOME).toBeUndefined()
+    expect(env.OPENCODE_CONFIG).toBeUndefined()
+    expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
+    expect(env.OPENCODE_DB).toBeUndefined()
   })
 
   test("applyShellEnvironment keeps keys already set on the process", () => {

@@ -11,6 +11,7 @@ import path from "node:path"
 import { Effect, FileSystem, Option, Redacted, Schedule, Schema } from "effect"
 import { HttpServer } from "effect/unstable/http"
 import { Env } from "./env"
+import { LegacyData } from "./services/legacy-data"
 import { ServiceConfig } from "./services/service-config"
 import { Updater } from "./services/updater"
 import { WebUi } from "./services/web-ui"
@@ -41,6 +42,19 @@ export const run = Effect.fnUntraced(function* (options: Options) {
 
 const processEffect = Effect.fnUntraced(function* (options: Options) {
   const global = yield* Global.Service
+  // Carry Kito-owned files forward from the legacy opencode data directory the
+  // first time this server boots against the isolated kito root.
+  yield* Effect.sync(() => LegacyData.migrate({ data: global.data, home: global.home })).pipe(
+    Effect.tap((result) =>
+      result.migrated
+        ? Effect.logInfo("migrated Kito files from legacy opencode data root", {
+            source: result.source,
+            files: result.files,
+          })
+        : Effect.void,
+    ),
+    Effect.catch((cause) => Effect.logWarning("failed to migrate legacy Kito data", { cause })),
+  )
   if (options.mode === "service") yield* Effect.sync(() => process.chdir(global.home))
   return yield* Effect.scoped(
     Effect.gen(function* () {
@@ -70,75 +84,81 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       if (!password) return yield* Effect.fail(new Error("Missing server password"))
       const instanceID = randomUUID()
       const transform = yield* WebUi.handler()
-      const server = yield* start(
-        {
-          app: {
-            name: process.env.OPENCODE_CLIENT ?? "cli",
-            version: OPENCODE_VERSION,
-            channel: OPENCODE_CHANNEL,
-          },
-          hostname,
-          port,
-          password,
-          simulation: truthy(process.env.OPENCODE_SIMULATE),
-          database: {
-            path:
-              process.env.OPENCODE_DB ??
-              (["latest", "dev", "beta", "next", "prod"].includes(OPENCODE_CHANNEL) ||
-              process.env.OPENCODE_DISABLE_CHANNEL_DB === "1" ||
-              process.env.OPENCODE_DISABLE_CHANNEL_DB === "true"
-                ? "opencode.db"
-                : `opencode-${OPENCODE_CHANNEL.replace(/[^a-zA-Z0-9._-]/g, "-")}.db`),
-          },
-          models: {
-            url: process.env.OPENCODE_MODELS_URL,
-            file: process.env.OPENCODE_MODELS_PATH,
-            fetch: !truthy(process.env.OPENCODE_DISABLE_MODELS_FETCH),
-          },
-          config: {
-            directory: process.env.OPENCODE_CONFIG_DIR,
-            project: !truthy(
-              process.env.OPENCODE_CONFIG_PROJECT_DISABLE ?? process.env.OPENCODE_DISABLE_PROJECT_CONFIG,
-            ),
-            file: process.env.OPENCODE_CONFIG,
-            content: process.env.OPENCODE_CONFIG_CONTENT,
-          },
-          windows: {
-            gitbash: process.env.OPENCODE_GIT_BASH_PATH,
-          },
-          fs: {
-            filewatcher: !truthy(process.env.OPENCODE_FILEWATCHER_DISABLE ?? process.env.OPENCODE_DISABLE_FILEWATCHER),
-            fff:
-              process.env.OPENCODE_DISABLE_FFF === undefined
-                ? process.platform !== "win32"
-                : !truthy(process.env.OPENCODE_DISABLE_FFF),
-          },
-        },
-        serviceOptions === undefined
-          ? undefined
-          : {
-              onListen: (address, shutdown) =>
-                Effect.gen(function* () {
-                  if (!config.password) yield* ServiceConfig.password(password)
-                  return yield* register(address, password, instanceID, serviceOptions.file, shutdown)
-                }),
+      const launch = (port: number | undefined) =>
+        start(
+          {
+            app: {
+              name: process.env.OPENCODE_CLIENT ?? "cli",
+              version: OPENCODE_VERSION,
+              channel: OPENCODE_CHANNEL,
             },
-        transform,
-      ).pipe(
+            hostname,
+            port,
+            password,
+            simulation: truthy(process.env.OPENCODE_SIMULATE),
+            database: {
+              path:
+                process.env.OPENCODE_DB ??
+                (["latest", "dev", "beta", "next", "prod"].includes(OPENCODE_CHANNEL) ||
+                process.env.OPENCODE_DISABLE_CHANNEL_DB === "1" ||
+                process.env.OPENCODE_DISABLE_CHANNEL_DB === "true"
+                  ? "opencode.db"
+                  : `opencode-${OPENCODE_CHANNEL.replace(/[^a-zA-Z0-9._-]/g, "-")}.db`),
+            },
+            models: {
+              url: process.env.OPENCODE_MODELS_URL,
+              file: process.env.OPENCODE_MODELS_PATH,
+              fetch: !truthy(process.env.OPENCODE_DISABLE_MODELS_FETCH),
+            },
+            config: {
+              directory: process.env.OPENCODE_CONFIG_DIR,
+              project: !truthy(
+                process.env.OPENCODE_CONFIG_PROJECT_DISABLE ?? process.env.OPENCODE_DISABLE_PROJECT_CONFIG,
+              ),
+              file: process.env.OPENCODE_CONFIG,
+              content: process.env.OPENCODE_CONFIG_CONTENT,
+            },
+            windows: {
+              gitbash: process.env.OPENCODE_GIT_BASH_PATH,
+            },
+            fs: {
+              filewatcher: !truthy(process.env.OPENCODE_FILEWATCHER_DISABLE ?? process.env.OPENCODE_DISABLE_FILEWATCHER),
+              fff:
+                process.env.OPENCODE_DISABLE_FFF === undefined
+                  ? process.platform !== "win32"
+                  : !truthy(process.env.OPENCODE_DISABLE_FFF),
+            },
+          },
+          serviceOptions === undefined
+            ? undefined
+            : {
+                onListen: (address, shutdown) =>
+                  Effect.gen(function* () {
+                    if (!config.password) yield* ServiceConfig.password(password)
+                    return yield* register(address, password, instanceID, serviceOptions.file, shutdown)
+                  }),
+              },
+          transform,
+        )
+      const server = yield* launch(port).pipe(
         Effect.catch((error) => {
           if (serviceOptions === undefined || port === undefined || !addressInUse(error)) return Effect.fail(error)
           return recognizeIncumbent(serviceOptions, hostname, port).pipe(
-            Effect.flatMap((found) =>
-              found
-                ? Effect.void
-                : Effect.fail(
-                    new Error(
-                      `Managed service port ${port} on ${hostname} is already in use by another process. ` +
-                        "Configure another port with `opencode service set port <port>` and start the service again.",
-                      { cause: error },
-                    ),
-                  ),
-            ),
+            Effect.flatMap((found) => {
+              if (found) return Effect.void
+              // The channel-derived default port is best-effort: a stale or
+              // foreign service occupying it must not brick this boot. Falling
+              // back to an ephemeral port keeps co-installed services alive;
+              // an explicitly configured port stays a hard, actionable error.
+              if (options.port === undefined && config.port === undefined) return launch(0)
+              return Effect.fail(
+                new Error(
+                  `Managed service port ${port} on ${hostname} is already in use by another process. ` +
+                    "Configure another port with `opencode service set port <port>` and start the service again.",
+                  { cause: error },
+                ),
+              )
+            }),
           )
         }),
       )
