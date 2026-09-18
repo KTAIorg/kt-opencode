@@ -250,3 +250,21 @@ git push / 缺 `@ai-sdk/xai` / provider-opencode 测试自身 gate 逻辑缺陷�
 **风险/取舍**：升级用户不掉登录（ktai 凭据文件已复制），但会话历史留在旧
 opencode.db 不可见（新库全新）；运行中的旧版守护进程保留在 opencode 注册名下
 直到重启/注销，期间占默认端口——新 sidecar 走临时端口不受影响。
+
+---
+
+## K. PR 合规坑（2026-09-18 实踩，记给后续）
+
+- 本仓 issue-compliance bot 校验 PR body 必须匹配 `dev` 分支
+  `.github/pull_request_template.md` 的 6 段式（Issue for this PR /
+  Type of change / What does this PR do / How did you verify your code
+  works / Screenshots / Checklist）。不匹配 → `needs:compliance` 标签
+  + 2 小时窗口 → **自动关单**（PR #105 因此被关过一次）。
+- gh-guard 的 7 段模板与该仓模板冲突：先用 gh-guard 模板过创建闸，
+  再 `gh pr edit` 换成仓库模板，pr-standards 检查即认账。
+- 模板警告"大段明显 AI 生成描述会被 IGNORED/CLOSED"——body 写紧凑。
+- 手动挂 Development 侧栏（齿轮 → Link an issue）= Closes 等价，
+  合并自动关单，不是"仅展示"。
+- CI runner：`blacksmith-4vcpu-ubuntu-2404` 池 2026-09-18 长时间无
+  可接任务（main 的 triage/duplicate-issues 同样排队），GitHub 托管
+  runner 正常；queued ≠ 代码失败。
