@@ -45,18 +45,21 @@ export const DialogManageModelsV2: Component = () => {
   const setModelVisibility = (item: ModelItem, checked: boolean) => {
     local.model.setVisibility({ modelID: item.id, providerID: item.provider.id }, checked)
   }
-  // 「使用」= 组合器选择器的同一个动作：选中并把该模型推进最近使用，然后关掉弹窗。
+  // 「设为当前」= 组合器选择器的同一个动作：选中并把该模型推进最近使用，然后关掉弹窗。
   const useModel = (item: ModelItem) => {
     local.model.set({ modelID: item.id, providerID: item.provider.id }, { recent: true })
     dialog.close()
   }
+  const isCurrentModel = (item: ModelItem) => {
+    const current = local.model.current()
+    return current?.provider.id === item.provider.id && current?.id === item.id
+  }
   const list = useFilteredList<ModelItem>({
-    // 「隐藏不可用」开启时，滤掉探测失败的模型（Kito 与其它已探测渠道）；没探测过的不过滤。
+    // 「隐藏不可用」开启时只滤硬失败（403/缺凭据等，Kito 与其它已探测渠道）；限流（429）是暂时状态，保留可见。
     items: () =>
       local.model.list().filter((item) => {
         if (!models.probe.state().hideUnavailable) return true
-        const result = models.probe.result({ modelID: item.id, providerID: item.provider.id })
-        return result?.ok !== false
+        return !models.probe.unavailable({ modelID: item.id, providerID: item.provider.id })
       }),
     key: (x) => `${x.provider.id}:${x.id}`,
     filterKeys: ["provider.name", "name", "id"],
@@ -168,9 +171,8 @@ export const DialogManageModelsV2: Component = () => {
                             appearance="standard"
                             checked={providerVisible(group.category)}
                             onChange={(checked) => setProviderVisibility(group.category, checked)}
-                            hideLabel
                           >
-                            {group.items[0].provider.name}
+                            {language.t("dialog.model.manage.showAll")}
                           </Switch>
                         </div>
                       </div>
@@ -183,12 +185,15 @@ export const DialogManageModelsV2: Component = () => {
                                   <ModelProbeBadge class="ml-2" providerID={item.provider.id} modelID={item.id} />
                                   <Button
                                     variant="neutral"
+                                    disabled={isCurrentModel(item)}
                                     onClick={(event: MouseEvent) => {
                                       event.stopPropagation()
                                       useModel(item)
                                     }}
                                   >
-                                    {language.t("dialog.model.use")}
+                                    {isCurrentModel(item)
+                                      ? language.t("dialog.model.use.current")
+                                      : language.t("dialog.model.use")}
                                   </Button>
                                   <div onClick={(event) => event.stopPropagation()}>
                                     <Switch
@@ -197,7 +202,7 @@ export const DialogManageModelsV2: Component = () => {
                                       onChange={(checked) => setModelVisibility(item, checked)}
                                       hideLabel
                                     >
-                                      {item.name}
+                                      {language.t("dialog.model.manage.model.toggle", { model: item.name })}
                                     </Switch>
                                   </div>
                                 </div>

@@ -89,8 +89,8 @@ function createModelSelectorController(input: {
   )
   const bySearch = (items: ModelItem[], search: string) =>
     items.filter((item) => matchesModelSearch(search, [item.name, item.id, item.provider.name]))
-  const unavailable = (item: ModelItem) =>
-    models.probe.result({ modelID: item.id, providerID: item.provider.id })?.ok === false
+  // 硬失败才算不可用；限流（429）是暂时状态，保留可见。
+  const unavailable = (item: ModelItem) => models.probe.unavailable({ modelID: item.id, providerID: item.provider.id })
   const shown = (search: string) => {
     const items = bySearch(visible(), search)
     return models.probe.state().hideUnavailable ? items.filter((item) => !unavailable(item)) : items
