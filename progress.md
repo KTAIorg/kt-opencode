@@ -676,3 +676,29 @@ app 0 错；en/zh/zht 三边 `session.error.model.*` 各 9 key 对齐。
 session.timeline.notice / dialog.ktWallet.crypto* 等——按 AGENTS「翻译随语言
 评审单独落地」惯例属既有积压）；zh 缺 4 个 `dialog.ktIdentity.*`（L 节已注明
 刻意仅 en）。
+
+## fix-109-wallet-polish：充值下限放开 $1 + ktpay info 重试（2026-09-19）
+
+源码：worktree /Users/fuwuqi/kito-wt-wallet @ fix-109-wallet-polish（基 origin/fix-114-wallet）。
+
+### 改动
+1. `packages/app/src/components/dialog-kt-wallet.tsx`：
+   - 自定义金额输入 `min`：`info()?.minTopup ?? 1` → `Math.min(info()?.minTopup ?? 1, 1)`。
+     上游 info 的 min_topup 可能滞后（实测上报 5 时 $1 已可下单），客户端下限封顶 $1，
+     不再拿上报值卡自定义金额。快捷金额（DEFAULT_AMOUNTS=[10,30,50,100] 与
+     amountOptions 过滤 `>0`）与 $1 下限无矛盾；maxTopup 仍按上报值走。
+   - info 拉取 effect 重发前先 `setInfoError()` 清上轮失败态，避免重试期间错误文案
+     与 spinner 同屏。
+   - info 拉取失败块（原仅错误文案+登录按钮）新增「重试」按钮
+     （variant=outline），onClick `setAuthTick(n+1)`——与 kito-account-refresh
+     同一机制触发 info/取址 effect 重发。登录按钮保留并排。
+2. i18n：新增 `dialog.ktWallet.retry`（en "Try again" / zh "重试" / zht "重試"）。
+   现有 `dialog.ktIdentity.retry` 语义是"重新开始"登录流程，不复用。
+
+### 核对
+- 全仓搜 `不能小于`/`at least $`/`minTopup: 5`：无残留（仅 core 测试 fixture
+  `min_topup: 5`，属上游报文解析用例，非客户端下限）。
+- 注：老板实测的"充值金额不能小于 5"文案在本仓源码中不存在，最可能来自上游
+  min_topup=5 经由 input min 属性/上游 pay 报错透出；本次把客户端下限钉在 $1。
+- 无 node_modules，esbuild 语法校验 dialog-kt-wallet.tsx 与三个 i18n 文件通过；
+  未跑 bun test/typecheck。
