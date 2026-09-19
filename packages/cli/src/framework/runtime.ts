@@ -93,15 +93,15 @@ function provide(node: Spec.Any, handlers: ReadonlyArray<LazyHandler>): Provided
             const cpuProfile = Option.getOrUndefined(yield* GlobalFlags.CpuProfile)
             if (!cpuProfile) return yield* module.default(input)
             const target = path.resolve(cpuProfile)
-            const previous = process.env.OPENCODE_CPU_PROFILE
-            process.env.OPENCODE_CPU_PROFILE = target
+            const previous = process.env.KITO_CPU_PROFILE
+            process.env.KITO_CPU_PROFILE = target
             return yield* (
               node.name === "serve" ? CpuProfile.run(target, module.default(input)) : module.default(input)
             ).pipe(
               Effect.ensuring(
                 Effect.sync(() => {
-                  if (previous === undefined) delete process.env.OPENCODE_CPU_PROFILE
-                  else process.env.OPENCODE_CPU_PROFILE = previous
+                  if (previous === undefined) delete process.env.KITO_CPU_PROFILE
+                  else process.env.KITO_CPU_PROFILE = previous
                 }),
               ),
             )

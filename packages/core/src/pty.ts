@@ -175,6 +175,9 @@ export const layer = (options?: ShellSelect.Options) =>
           ...process.env,
           ...input.env,
           TERM: "xterm-256color",
+          // Both names: Kito tooling keys off KITO_TERMINAL while integrations
+          // written for OpenCode still see the upstream marker.
+          KITO_TERMINAL: "1",
           OPENCODE_TERMINAL: "1",
         } as Record<string, string>
         if (process.platform === "win32") {

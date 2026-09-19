@@ -253,8 +253,8 @@ test("concurrent service processes elect one server", async () => {
   const env = {
     ...process.env,
     HOME: root,
-    OPENCODE_DB: database,
-    OPENCODE_TEST_HOME: root,
+    KITO_DB: database,
+    KITO_TEST_HOME: root,
     XDG_CACHE_HOME: path.join(root, "cache"),
     XDG_CONFIG_HOME: path.join(root, "config"),
     XDG_DATA_HOME: path.join(root, "data"),
@@ -365,7 +365,8 @@ test("unrelated managed port occupancy reports an actionable conflict", async ()
     expect(await contender.exited).not.toBe(0)
     const output = (await new Response(contender.stdout).text()) + (await new Response(contender.stderr).text())
     expect(output).toContain(`Managed service port ${port} on 127.0.0.1 is already in use by another process`)
-    expect(output).toContain("opencode service set port <port>")
+    // The hint names the running command (opencode2 in packaged builds).
+    expect(output).toContain("service set port <port>")
     expect(await Bun.file(registration).exists()).toBe(false)
   } finally {
     listener.stop(true)
@@ -541,8 +542,8 @@ test("a failed service stays registered and owns the selected port until stopped
   const env = {
     ...process.env,
     HOME: root,
-    OPENCODE_DB: database,
-    OPENCODE_TEST_HOME: root,
+    KITO_DB: database,
+    KITO_TEST_HOME: root,
     XDG_CACHE_HOME: path.join(root, "cache"),
     XDG_CONFIG_HOME: path.join(root, "config"),
     XDG_DATA_HOME: path.join(root, "data"),
@@ -612,8 +613,8 @@ function serviceEnv(root: string) {
   return {
     ...process.env,
     HOME: root,
-    OPENCODE_DB: path.join(root, "opencode.db"),
-    OPENCODE_TEST_HOME: root,
+    KITO_DB: path.join(root, "opencode.db"),
+    KITO_TEST_HOME: root,
     XDG_CACHE_HOME: path.join(root, "cache"),
     XDG_CONFIG_HOME: path.join(root, "config"),
     XDG_DATA_HOME: path.join(root, "data"),
@@ -629,7 +630,7 @@ async function startManagedService(prefix: string, failBoot = false) {
   if (failBoot) await fs.mkdir(path.join(root, "database"))
   await fs.writeFile(path.join(root, "config", "kito", "service-local.json"), JSON.stringify({ port }))
   const owner = Bun.spawn([process.execPath, path.join(import.meta.dir, "../src/index.ts"), "serve", "--service"], {
-    env: failBoot ? { ...serviceEnv(root), OPENCODE_DB: path.join(root, "database") } : serviceEnv(root),
+    env: failBoot ? { ...serviceEnv(root), KITO_DB: path.join(root, "database") } : serviceEnv(root),
     stderr: "pipe",
     stdout: "ignore",
   })
