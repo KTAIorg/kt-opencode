@@ -4240,6 +4240,32 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
+  it.effect("records an interruption instead of an empty response when a silent stream is cancelled", () =>
+    Effect.gen(function* () {
+      const session = yield* setup
+      const prompt = "Cancel a silent stream"
+      const streamed = yield* Deferred.make<void>()
+      yield* admit(session, prompt)
+      yield* TestLLM.push(
+        Stream.fromEffect(Deferred.succeed(streamed, undefined)).pipe(Stream.flatMap(() => Stream.never)),
+      )
+
+      const runner = yield* SessionRunner.Service
+      const fiber = yield* runner.drain({ sessionID, force: true }).pipe(Effect.forkChild)
+      yield* Deferred.await(streamed)
+      yield* Fiber.interrupt(fiber)
+
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: prompt },
+        {
+          type: "assistant",
+          finish: "error",
+          error: { type: "aborted", message: "Step interrupted" },
+        },
+      ])
+    }),
+  )
+
   it.effect("fails durably when preparation fails before the provider stream", () =>
     Effect.gen(function* () {
       const session = yield* setup
