@@ -31,7 +31,7 @@ function countingFetch(handler: (url: string) => Response) {
 const ensureCalls = (calls: string[]) => calls.filter((url) => url.endsWith("/api/iam/ensure")).length
 
 beforeEach(() => {
-  process.env.OPENCODE_KTAI_SPENDABLE_PATH = path.join(os.tmpdir(), `ktai-spendable-${crypto.randomUUID()}.json`)
+  process.env.KITO_KTAI_SPENDABLE_PATH = path.join(os.tmpdir(), `ktai-spendable-${crypto.randomUUID()}.json`)
   clearNewapiSpendableCache()
 })
 

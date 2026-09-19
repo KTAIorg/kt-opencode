@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
+import fs from "fs"
 import {
   externalIdentity,
   fetchAccountSummary,
@@ -8,12 +9,19 @@ import {
   KT_IDENTITY_REFRESH_MARKER,
   parseTelegramAuthorization,
   passwordLogin,
+  persistIdentitySession,
   pollTelegramLogin,
+  readPersistedIdentityToken,
   revokeCurrentIdentitySession,
   sessionExpiresAt,
   startTelegramLogin,
   telegramAuthorizeView,
 } from "@opencode-ai/core/ktai/identity"
+
+afterEach(() => {
+  if (process.env.KITO_KTAI_IDENTITY_PATH) fs.rmSync(process.env.KITO_KTAI_IDENTITY_PATH, { force: true })
+  delete process.env.KITO_KTAI_IDENTITY_PATH
+})
 
 test("identityBaseUrl defaults and trims trailing slash", () => {
   expect(identityBaseUrl({})).toBe("https://login.ktyun.cc")
@@ -244,6 +252,58 @@ test("pollTelegramLogin tolerates transient failures then completes", async () =
   )
   expect(session.token).toBe("tg-token-flaky")
   expect(polls).toBe(4)
+})
+
+test("sessions without a server expiry stay valid and persist no expiry", async () => {
+  const session = await passwordLogin(
+    { loginName: "arise", password: "secret-password", baseUrl: "https://login.example" },
+    async () =>
+      new Response(
+        JSON.stringify({
+          account: { id: "acc-9", accountNo: "KT260009" },
+          token: "no-expiry-token",
+          session: { id: "sess-9", tokenType: "Bearer" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+  )
+
+  expect(session.session.expiresAt).toBeUndefined()
+  // Credential.OAuth.expires is required, so the runtime still yields an estimate.
+  expect(sessionExpiresAt(session)).toBeGreaterThan(Date.now())
+
+  process.env.KITO_KTAI_IDENTITY_PATH = `/tmp/ktai-identity-${crypto.randomUUID()}.json`
+  persistIdentitySession(session)
+  const persisted = JSON.parse(fs.readFileSync(process.env.KITO_KTAI_IDENTITY_PATH, "utf8"))
+  expect(persisted.expiresAt).toBeUndefined()
+  expect(readPersistedIdentityToken()).toBe("no-expiry-token")
+  expect(fs.statSync(process.env.KITO_KTAI_IDENTITY_PATH).mode & 0o777).toBe(0o600)
+})
+
+test("readPersistedIdentityToken rejects only a valid expired timestamp", () => {
+  process.env.KITO_KTAI_IDENTITY_PATH = `/tmp/ktai-identity-${crypto.randomUUID()}.json`
+
+  persistIdentitySession({
+    account: { id: "acc-10", accountNo: "KT260010" },
+    token: "expired-token",
+    session: { id: "sess-10", tokenType: "Bearer", expiresAt: "2000-01-01T00:00:00.000Z" },
+  })
+  expect(readPersistedIdentityToken()).toBeUndefined()
+
+  persistIdentitySession({
+    account: { id: "acc-10", accountNo: "KT260010" },
+    token: "future-token",
+    session: { id: "sess-10", tokenType: "Bearer", expiresAt: "2999-01-01T00:00:00.000Z" },
+  })
+  expect(readPersistedIdentityToken()).toBe("future-token")
+
+  // A malformed expiry is not a valid timestamp, so the token still reads.
+  persistIdentitySession({
+    account: { id: "acc-10", accountNo: "KT260010" },
+    token: "malformed-token",
+    session: { id: "sess-10", tokenType: "Bearer", expiresAt: "not-a-date" },
+  })
+  expect(readPersistedIdentityToken()).toBe("malformed-token")
 })
 
 test("pollTelegramLogin fails fast on non-transient errors", async () => {
