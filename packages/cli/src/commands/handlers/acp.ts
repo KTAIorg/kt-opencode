@@ -10,6 +10,7 @@ import { Standalone } from "../../services/standalone"
 export default Runtime.handler(
   Commands.commands.acp,
   Effect.fn("cli.acp")(function* () {
+    process.env.KITO_CLIENT = "acp"
     process.env.OPENCODE_CLIENT = "acp"
     const endpoint = yield* Standalone.start()
     const client = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })

@@ -27,13 +27,17 @@ const PermissionParams = {
   ),
 }
 
-const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME : "opencode", {
-  description: "OpenCode 2.0 preview command line interface",
+// The node bundle's OPENCODE_CLI_NAME is "opencode2-node"; users invoke the
+// installed binary as `opencode2`, so the "-node" flavor suffix is dropped
+// from the displayed program name.
+const cliName = (typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME : "opencode2").replace(/-node$/, "")
+const Root = Spec.make(cliName, {
+  description: "Kito command line interface",
   params: {
     ...ServerParams,
     ...PermissionParams,
     directory: Argument.string("directory").pipe(
-      Argument.withDescription("Directory to start OpenCode in"),
+      Argument.withDescription("Directory to start Kito in"),
       Argument.optional,
     ),
     continue: Flag.boolean("continue").pipe(
@@ -225,7 +229,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       },
     }),
     Spec.make("run", {
-      description: "Run OpenCode with a message",
+      description: "Run Kito with a message",
       params: {
         ...ServerParams,
         message: Argument.string("message").pipe(
