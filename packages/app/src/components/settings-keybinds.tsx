@@ -9,6 +9,7 @@ import fuzzysort from "fuzzysort"
 import { DEFAULT_PALETTE_KEYBIND, formatKeybind, parseKeybind, useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
+import { dict as en } from "@/i18n/en"
 import { SettingsListV2 } from "./settings-v2/parts/list"
 
 const Icon = lazy(() => import("@opencode-ai/ui/icon").then((module) => ({ default: module.Icon })))
@@ -119,20 +120,43 @@ function keybinds(value: unknown): KeybindMap {
   return value as KeybindMap
 }
 
-function listFor(command: Pick<CommandContext, "catalog" | "options">, map: KeybindMap, palette: string) {
+// command.catalog 是持久化快照：条目只在所属页面挂载时刷新，跨 locale 切换后
+// 未挂载的命令会残留旧语言标题。展示时优先按命名惯例/例外表重新解析 i18n key，
+// 解析不到才回退快照标题。permissions.autoaccept 标题随状态变化，无静态 key 可用。
+const COMMAND_TITLE_KEY_OVERRIDES: Record<string, string> = {
+  "home.toggle": "home.title",
+  "tab.new": "command.session.new",
+  "terminal.close": "terminal.close",
+  "file.attach": "prompt.action.attachFile",
+  "project.select": "session.new.project.search",
+}
+
+type I18nKey = Parameters<LanguageContext["t"]>[0]
+
+function commandTitle(id: string, fallback: string, t: (key: I18nKey) => string) {
+  const key = (COMMAND_TITLE_KEY_OVERRIDES[id] ?? `command.${id}`) as I18nKey
+  return key in en ? t(key) : fallback
+}
+
+function listFor(
+  command: Pick<CommandContext, "catalog" | "options">,
+  map: KeybindMap,
+  palette: string,
+  t: (key: I18nKey) => string,
+) {
   const out = new Map<string, KeybindMeta>()
   out.set(PALETTE_ID, { title: palette, group: "General" })
 
   for (const opt of command.catalog) {
     if (opt.id.startsWith("suggested.")) continue
     if (opt.hidden) continue
-    out.set(opt.id, { title: opt.title, group: groupFor(opt.id) })
+    out.set(opt.id, { title: commandTitle(opt.id, opt.title, t), group: groupFor(opt.id) })
   }
 
   for (const opt of command.options) {
     if (opt.id.startsWith("suggested.")) continue
     if (opt.hidden) continue
-    out.set(opt.id, { title: opt.title, group: groupFor(opt.id) })
+    out.set(opt.id, { title: commandTitle(opt.id, opt.title, t), group: groupFor(opt.id) })
   }
 
   for (const [id, value] of Object.entries(map)) {
@@ -212,7 +236,7 @@ export function createKeybindSettingsController(
   const overrides = createMemo(() => keybinds(input.settings.current.keybinds))
   const list = createMemo(() => {
     language.locale()
-    return listFor(input.command, overrides(), language.t("command.palette"))
+    return listFor(input.command, overrides(), language.t("command.palette"), language.t)
   })
   const grouped = createMemo(() => groupedFor(list()))
   const title = (id: string) => list().get(id)?.title ?? ""

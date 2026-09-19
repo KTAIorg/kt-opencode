@@ -144,7 +144,7 @@ export const DialogSettings: Component<{
         </Tabs.List>
 
         <Tabs.Content value="general" class="settings-v2-panel">
-          <SettingsGeneral server={server()} sessionID={props.sessionID} />
+          <SettingsGeneral server={server()} sessionID={props.sessionID} directory={directory()} />
         </Tabs.Content>
         <Tabs.Content value="appearance" class="settings-v2-panel">
           <SettingsAppearanceV2 />
