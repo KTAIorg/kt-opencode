@@ -202,10 +202,27 @@ async function send(
       headers: target.headers,
       body: JSON.stringify(target.body),
     })
-    if (response.ok) return { modelID, ok: true, status: response.status }
+    // 网关常把上游错误装进 200 响应体（NewAPI relay / 聚合中转），只看状态码会误报绿灯。
     const payload = (await response.json().catch(() => undefined)) as
-      | { error?: { message?: string } | string }
+      | { error?: { message?: string } | string | null; success?: boolean; message?: string }
       | undefined
+    if (response.ok) {
+      const errorField = payload?.error
+      if (errorField) {
+        const message =
+          typeof errorField === "string" ? errorField : errorField.message || `HTTP ${response.status}`
+        return { modelID, ok: false, status: response.status, error: message.slice(0, 200) }
+      }
+      if (payload?.success === false) {
+        return {
+          modelID,
+          ok: false,
+          status: response.status,
+          error: (payload.message || `HTTP ${response.status}`).slice(0, 200),
+        }
+      }
+      return { modelID, ok: true, status: response.status }
+    }
     const message =
       typeof payload?.error === "string" ? payload.error : payload?.error?.message || `HTTP ${response.status}`
     return { modelID, ok: false, status: response.status, error: message.slice(0, 200) }

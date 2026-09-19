@@ -300,6 +300,33 @@ describe("ModelProbe.probe", () => {
     expect(calls.length).toBe(2)
   })
 
+  test("flags 200 responses carrying an upstream error envelope", async () => {
+    const fakeFetch = (async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.includes("envelope-error")) {
+        return jsonResponse({ error: { message: "Service temporarily unavailable", type: "upstream" } })
+      }
+      if (url.includes("wrapped-fail")) {
+        return jsonResponse({ success: false, message: "no available channel" })
+      }
+      return jsonResponse({ choices: [{ message: { role: "assistant", content: "hi" } }] })
+    }) as FetchLike
+
+    const results = await ModelProbe.probe(
+      ["ok", "envelope-error", "wrapped-fail"].map((name) => ({
+        modelID: name,
+        target: { url: `https://relay.example.com/${name}`, headers: {}, body: {} },
+      })),
+      { fetchImpl: fakeFetch },
+    )
+    const byId = new Map(results.map((r) => [r.modelID, r]))
+    expect(byId.get("ok")?.ok).toBe(true)
+    expect(byId.get("envelope-error")?.ok).toBe(false)
+    expect(byId.get("envelope-error")?.error).toContain("Service temporarily unavailable")
+    expect(byId.get("wrapped-fail")?.ok).toBe(false)
+    expect(byId.get("wrapped-fail")?.error).toContain("no available channel")
+  })
+
   test("reports network failure as not ok without throwing", async () => {
     const failing = (async () => {
       throw new Error("connection refused")
