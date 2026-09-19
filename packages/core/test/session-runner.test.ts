@@ -40,6 +40,7 @@ import { SessionModelTransport } from "@opencode-ai/core/session/model-transport
 import { Money } from "@opencode-ai/schema/money"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { SessionExecution } from "@opencode-ai/core/session/execution"
+import { UserInterruptedError } from "@opencode-ai/core/session/error"
 import { SessionRunCoordinator } from "@opencode-ai/core/session/run-coordinator"
 import { SessionRunner } from "@opencode-ai/core/session/runner/index"
 import * as SessionRunnerLLM from "@opencode-ai/core/session/runner/llm"
@@ -299,7 +300,7 @@ const echo = Layer.effectDiscard(
   ),
 )
 const echoNode = makeLocationNode({ name: "test/session-runner-tools", layer: echo, deps: [Tool.node] })
-let modelResolveHook = Effect.void
+let modelResolveHook: Effect.Effect<void, SessionRunnerModel.Error> = Effect.void
 let currentModel = model
 const models = Layer.mock(SessionRunnerModel.Service)({
   resolve: (session) =>
@@ -3774,7 +3775,7 @@ describe("SessionRunnerLLM", () => {
       const exit = yield* session.resume(sessionID).pipe(Effect.exit)
 
       expect(exit._tag).toBe("Failure")
-      if (exit._tag === "Failure") expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
+      if (exit._tag === "Failure") expect(Cause.squash(exit.cause)).toBeInstanceOf(UserInterruptedError)
       expect(requests).toHaveLength(1)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Call declined" },
@@ -3896,7 +3897,7 @@ describe("SessionRunnerLLM", () => {
       const exit = yield* Fiber.join(run)
 
       expect(exit._tag).toBe("Failure")
-      if (exit._tag === "Failure") expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
+      if (exit._tag === "Failure") expect(Cause.squash(exit.cause)).toBeInstanceOf(UserInterruptedError)
       expect(requests).toHaveLength(1)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Ask then stop" },
@@ -4235,6 +4236,33 @@ describe("SessionRunnerLLM", () => {
           error: { type: "provider.empty-response", message: "The model returned no content." },
           content: [{ type: "text", text: "Partial" }],
         },
+      ])
+    }),
+  )
+
+  it.effect("fails durably when preparation fails before the provider stream", () =>
+    Effect.gen(function* () {
+      const session = yield* setup
+      modelResolveHook = Effect.fail(new SessionRunnerModel.ModelNotSelectedError({ sessionID }))
+
+      expect((yield* runPrompt(session, "Prepare failure").pipe(Effect.flip)).message).toBe(
+        `No model is available for session ${sessionID}`,
+      )
+
+      expect(requests).toHaveLength(0)
+      const messages = yield* session.context(sessionID)
+      expect(messages).toMatchObject([
+        { type: "user", text: "Prepare failure" },
+        {
+          type: "assistant",
+          finish: "error",
+          error: { type: "provider.no-route", message: `No model is available for session ${sessionID}` },
+        },
+      ])
+      const assistant = requireAssistant(messages)
+      expect(yield* recordedStepSettlementTypes(sessionID, assistant.id)).toEqual([
+        "session.step.started.1",
+        "session.step.failed.1",
       ])
     }),
   )

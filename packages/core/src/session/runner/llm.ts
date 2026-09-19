@@ -3,7 +3,9 @@ export * as SessionRunnerLLM from "./llm.js"
 import {
   LLMClient,
   AIError,
+  InvalidRequestReason,
   LLMEvent,
+  classifyProviderFailure,
   isContextOverflowFailure,
   type ProviderErrorEvent,
   type ToolCall,
@@ -14,6 +16,7 @@ import { Bus } from "../../bus.js"
 import { Permission } from "../../permission.js"
 import { QuestionTool } from "../../tool/plugin/question.js"
 import { InstructionState } from "../instruction-state.js"
+import { Instructions } from "../../instructions/index.js"
 import { SessionCompaction } from "../compaction.js"
 import { SessionContext } from "../context.js"
 import { SessionEvent } from "../event.js"
@@ -30,8 +33,11 @@ import { Snapshot } from "../../snapshot.js"
 import { makeLocationNode } from "@opencode-ai/util/effect/app-node"
 import { llmClient } from "../../effect/app-node-platform.js"
 import { SoftQuota } from "../../ktai/soft-quota.js"
-import { StepFailedError } from "../error.js"
+import { StepFailedError, UserInterruptedError } from "../error.js"
 import { toSessionError } from "../to-session-error.js"
+import { ID, Ref } from "../../model.js"
+import { Provider } from "../../provider.js"
+import { SessionError } from "@opencode-ai/schema/session-error"
 import { SessionRunnerRetry } from "./retry.js"
 import { SessionUsage } from "../usage.js"
 import { ToolOutput } from "../../tool-output.js"
@@ -264,57 +270,92 @@ const layer = Layer.effect(
       assistantMessageID: SessionMessage.ID,
     ) {
       const selected = yield* context.select(sessionID)
-      // Establish what the model knows before admitting what the user said, so
-      // a blocked first step leaves pending inputs untouched.
-      yield* InstructionState.prepare(db, bus, selected.instructions, selected.session.id)
-      const promoted = promotable ? yield* SessionInbox.promote(db, bus, selected.session.id, promotable) : 0
-      if (promoted > 0) yield* startTitle(sessionID)
-      // Promoted input opens a fresh step allowance.
-      const currentStep = promoted > 0 ? 1 : step
-      const loaded = yield* context.load(selected)
-      const { session, agent } = loaded
-      const resolved = loaded.model
+      // Everything before the provider stream is prepare work: a failure there used to
+      // reach only session.execution.failed with nothing on the timeline. Publish the
+      // step pair explicitly so the error lands on an assistant row like other failures.
+      const failPrepare = (error: SessionError.Error) =>
+        Effect.gen(function* () {
+          yield* bus.publish(SessionEvent.Step.Started, {
+            sessionID,
+            agent: selected.agent.id,
+            model:
+              selected.session.model ??
+              Ref.make({ id: ID.make("unselected"), providerID: Provider.ID.make("unknown") }),
+            assistantMessageID,
+          })
+          yield* bus.publish(SessionEvent.Step.Failed, { sessionID, assistantMessageID, error })
+          return yield* new StepFailedError({ error })
+        })
+      const preparedStep = yield* Effect.gen(function* () {
+        // Establish what the model knows before admitting what the user said, so
+        // a blocked first step leaves pending inputs untouched.
+        yield* InstructionState.prepare(db, bus, selected.instructions, selected.session.id)
+        const promoted = promotable ? yield* SessionInbox.promote(db, bus, selected.session.id, promotable) : 0
+        if (promoted > 0) yield* startTitle(sessionID)
+        // Promoted input opens a fresh step allowance.
+        const currentStep = promoted > 0 ? 1 : step
+        const loaded = yield* context.load(selected)
+        const { session, agent } = loaded
+        const resolved = loaded.model
+        const zenFree = SoftQuota.isZenFreeModel({
+          providerID: resolved.ref.providerID,
+          cost: resolved.cost,
+        })
+        if (zenFree && SoftQuota.exhausted())
+          return yield* new StepFailedError({
+            error: { type: "provider.quota", message: SoftQuota.KT_TOPUP_MESSAGE },
+          })
+        // Make room: history must fit the context window before the call. A pending manual
+        // compaction owns this instead; the runner executes it between steps.
+        const compactionInput = {
+          session,
+          messages: loaded.messages,
+          model: resolved.model,
+          ref: resolved.ref,
+          cost: resolved.cost,
+        }
+        if (compaction.required(compactionInput)) {
+          const compacted = yield* compaction.compact(compactionInput)
+          if (compacted.status === "completed")
+            return CallOutcome.Restart({ step: currentStep, recoveredOverflow: false })
+          return yield* new StepFailedError({ error: compacted.error })
+        }
+        const prepared = yield* modelRequests.prepare({
+          context: loaded,
+          step: currentStep,
+        })
+        const startSnapshot = yield* snapshots.capture()
+        return { promoted, currentStep, session, agent, resolved, zenFree, compactionInput, prepared, startSnapshot }
+      }).pipe(
+        Effect.catchCause((cause) => {
+          // Interrupts cancel the prepare; defects crash the drain so wake can retry it.
+          // Only typed failures belong on the step timeline.
+          if (Cause.hasInterrupts(cause) || Cause.hasDies(cause)) return Effect.failCause(cause)
+          const failure = Cause.squash(cause)
+          // InitializationBlocked is the instruction pipeline's retry signal, not a step failure.
+          if (failure instanceof Instructions.InitializationBlocked) return Effect.failCause(cause)
+          return failPrepare(failure instanceof StepFailedError ? failure.error : toSessionError(failure))
+        }),
+      )
+      if ("_tag" in preparedStep) return preparedStep
+      const {
+        promoted,
+        currentStep,
+        session,
+        agent,
+        resolved,
+        zenFree,
+        compactionInput,
+        prepared,
+        startSnapshot,
+      } = preparedStep
       const model = resolved.model
-      const zenFree = SoftQuota.isZenFreeModel({
-        providerID: resolved.ref.providerID,
-        cost: resolved.cost,
-      })
-      if (zenFree && SoftQuota.exhausted()) {
-        const error = { type: "provider.quota", message: SoftQuota.KT_TOPUP_MESSAGE }
-        // Timeline error cards fold onto the assistant row, so Step.Started must land first.
-        yield* bus.publish(SessionEvent.Step.Started, {
-          sessionID,
-          agent: agent.id,
-          model: resolved.ref,
-          assistantMessageID,
-        })
-        yield* bus.publish(SessionEvent.Step.Failed, {
-          sessionID,
-          assistantMessageID,
-          error,
-        })
-        return yield* new StepFailedError({ error })
-      }
-      // Make room: history must fit the context window before the call. A pending manual
-      // compaction owns this instead; the runner executes it between steps.
-      const compactionInput = { session, messages: loaded.messages, model, ref: resolved.ref, cost: resolved.cost }
-      if (compaction.required(compactionInput)) {
-        const compacted = yield* compaction.compact(compactionInput)
-        if (compacted.status === "completed")
-          return CallOutcome.Restart({ step: currentStep, recoveredOverflow: false })
-        return yield* new StepFailedError({ error: compacted.error })
-      }
-      const prepared = yield* modelRequests.prepare({
-        context: loaded,
-        step: currentStep,
-      })
       // Every local tool call forked here is owned until it reaches one durable settlement.
       const toolRuns: Array<{
         readonly call: ToolCall
         readonly fiber: Fiber.Fiber<void, SessionModelRequest.ExecuteError>
       }> = []
       const interruptTools = Effect.suspend(() => Fiber.interruptAll(toolRuns.map((run) => run.fiber)))
-      const startSnapshot = yield* snapshots.capture()
       const publisher = createLLMEventPublisher(bus, {
         sessionID: session.id,
         agent: agent.id,
@@ -353,7 +394,11 @@ const layer = Layer.effect(
             ...stepUsage(finish),
             ...end,
           })
-          if (zenFree && promoted > 0) SoftQuota.increment()
+          if (zenFree && promoted > 0)
+            yield* Effect.try(() => SoftQuota.increment()).pipe(
+              Effect.tapError((error) => Effect.logWarning("Failed to record Zen free quota", error)),
+              Effect.ignore,
+            )
         })
 
       // Concurrent writers, no lock: the provider loop and each tool fiber publish
@@ -446,9 +491,27 @@ const layer = Layer.effect(
           // An unrecovered held-back overflow becomes the step's durable provider error.
           if (overflowFailure) yield* publisher.publish(overflowFailure)
           // A thrown LLM failure not already recorded as the provider error either
-          // escapes as a scheduled retry or fails the assistant durably.
-          const llmFailure = streamFailure instanceof AIError ? streamFailure : undefined
-          const llmError = llmFailure && !publisher.record().providerFailed ? toSessionError(llmFailure) : undefined
+          // escapes as a scheduled retry or fails the assistant durably. A provider-error
+          // event carries the same classified failure, so it shares this retry policy.
+          const providerError = publisher.record().providerError
+          const llmFailure =
+            streamFailure instanceof AIError
+              ? streamFailure
+              : providerError
+                ? new AIError({
+                    module: "LLM",
+                    method: "stream",
+                    reason: providerError.classification
+                      ? new InvalidRequestReason({
+                          message: providerError.message,
+                          classification: providerError.classification,
+                          providerMetadata: providerError.providerMetadata,
+                        })
+                      : classifyProviderFailure(providerError),
+                  })
+                : undefined
+          const failureError = llmFailure ? toSessionError(llmFailure) : undefined
+          const llmError = llmFailure && !publisher.record().providerFailed ? failureError : undefined
           if (
             recoverContinuation &&
             llmFailure?.reason._tag === "Transport" &&
@@ -458,7 +521,7 @@ const layer = Layer.effect(
             return CallOutcome.RecoverFull({ step: currentStep })
           if (
             llmFailure &&
-            llmError &&
+            failureError &&
             SessionRunnerRetry.isRetryable(llmFailure) &&
             !publisher.record().outputStarted
           ) {
@@ -467,11 +530,24 @@ const layer = Layer.effect(
             yield* publisher.startAssistant()
             return yield* new SessionRunnerRetry.RetryableFailure({
               cause: llmFailure,
-              error: llmError,
+              error: failureError,
               step: currentStep,
             })
           }
           if (llmError) yield* publisher.failAssistant(llmError)
+
+          // Stream failures that aren't AIErrors (publisher sequence defects, crashes)
+          // never reached failAssistant: land them so the step can't finish silently.
+          if (
+            stream._tag === "Failure" &&
+            !streamInterrupted &&
+            llmFailure === undefined &&
+            !publisher.record().providerFailed
+          ) {
+            const error = toSessionError(Cause.squash(stream.cause))
+            yield* publisher.failAssistant(error).pipe(Effect.catchCause(() => Effect.void))
+            yield* publisher.failUnsettledTools(error).pipe(Effect.catchCause(() => Effect.void))
+          }
 
           // Close every unsettled call with the reason it could not settle truthfully,
           // and fail the assistant when the step itself cannot complete. A declined call
@@ -539,7 +615,9 @@ const layer = Layer.effect(
             })
 
           if (stream._tag === "Failure") return yield* Effect.failCause(stream.cause)
-          if (tools.declines.length > 0) return yield* Effect.interrupt
+          // A decline is a user choice, not a shutdown: a typed failure releases the
+          // claim instead of letting restart resume the turn and re-prompt the same ask.
+          if (tools.declines.length > 0) return yield* new UserInterruptedError({})
           if (tools.interrupted && tools.failure) return yield* Effect.failCause(tools.failure)
           if (tools.interrupted && joined._tag === "Failure") return yield* Effect.failCause(joined.cause)
           if (record.failure) return yield* new StepFailedError({ error: record.failure })

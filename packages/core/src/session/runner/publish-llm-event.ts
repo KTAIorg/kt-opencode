@@ -32,6 +32,8 @@ export interface StepRecord {
   /** The model produced visible output this attempt, which bars transparent retries and overflow recovery. */
   readonly outputStarted: boolean
   readonly providerFailed: boolean
+  /** The raw provider-error event, when the stream failed through one instead of throwing. */
+  readonly providerError?: Extract<LLMEvent, { type: "provider-error" }>
   /** The step's recorded assistant failure, if any. */
   readonly failure?: SessionError.Error
   /** Present once the provider finished the step normally. */
@@ -106,6 +108,7 @@ export const createLLMEventPublisher = (bus: Pick<Bus.Interface, "publish">, inp
   let stepStarted = false
   let stepFailed = false
   let providerFailed = false
+  let providerError: StepRecord["providerError"]
   let outputStarted = false
   let stepFailure: SessionError.Error | undefined
   let stepSettlement: StepRecord["finish"]
@@ -540,6 +543,7 @@ export const createLLMEventPublisher = (bus: Pick<Bus.Interface, "publish">, inp
         return
       case "provider-error":
         providerFailed = true
+        providerError = event
         yield* failAssistant({ type: "provider.unknown", message: event.message })
         return
     }
@@ -597,6 +601,7 @@ export const createLLMEventPublisher = (bus: Pick<Bus.Interface, "publish">, inp
       stepStarted,
       outputStarted,
       providerFailed,
+      providerError,
       failure: stepFailure,
       finish: stepSettlement,
       calls: Array.from(tools, ([id, tool]) => ({
