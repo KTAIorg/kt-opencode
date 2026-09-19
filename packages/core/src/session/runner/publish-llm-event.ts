@@ -27,6 +27,8 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 
 /** Immutable fold of the durable facts a step's writer has recorded so far. */
 export interface StepRecord {
+  /** The provider transaction began: at least one event started the assistant step. */
+  readonly stepStarted: boolean
   /** The model produced visible output this attempt, which bars transparent retries and overflow recovery. */
   readonly outputStarted: boolean
   readonly providerFailed: boolean
@@ -592,6 +594,7 @@ export const createLLMEventPublisher = (bus: Pick<Bus.Interface, "publish">, inp
     hasProviderError: () => providerFailed,
     /** Immutable snapshot of everything recorded for this step so far. */
     record: (): StepRecord => ({
+      stepStarted,
       outputStarted,
       providerFailed,
       failure: stepFailure,

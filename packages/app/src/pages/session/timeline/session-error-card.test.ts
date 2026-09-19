@@ -6,6 +6,7 @@ import {
   sessionBillingCta,
   sessionBillingLeadKey,
   sessionErrorText,
+  sessionModelLeadKey,
 } from "./session-error-cta"
 
 describe("sessionErrorText", () => {
@@ -151,5 +152,32 @@ describe("sessionBillingLeadKey", () => {
     expect(sessionBillingLeadKey(text, true, 10, false)).toBeUndefined()
     // 未登录的文案不依赖余额。
     expect(sessionBillingLeadKey(text, false, undefined, false)).toBe("dialog.ktAccess.billing.lead")
+  })
+})
+
+describe("sessionModelLeadKey", () => {
+  test("maps malformed tool-call and invalid-output errors to friendly copy", () => {
+    expect(sessionModelLeadKey("provider.invalid-output")).toBe("session.error.model.invalidOutput")
+    expect(sessionModelLeadKey("tool.input-json")).toBe("session.error.model.invalidOutput")
+  })
+
+  test("maps the empty provider response to friendly copy", () => {
+    expect(sessionModelLeadKey("provider.empty-response")).toBe("session.error.model.empty")
+  })
+
+  test("maps transport/internal/rate-limit/no-route to their friendly copy", () => {
+    expect(sessionModelLeadKey("provider.transport")).toBe("session.error.model.transport")
+    expect(sessionModelLeadKey("provider.internal")).toBe("session.error.model.internal")
+    expect(sessionModelLeadKey("provider.unknown")).toBe("session.error.model.internal")
+    expect(sessionModelLeadKey("provider.rate-limit")).toBe("session.error.model.rateLimit")
+    expect(sessionModelLeadKey("provider.no-route")).toBe("session.error.model.noRoute")
+  })
+
+  test("leaves auth/quota/unknown types unmapped so text classifiers keep precedence", () => {
+    expect(sessionModelLeadKey("provider.auth")).toBeUndefined()
+    expect(sessionModelLeadKey("provider.quota")).toBeUndefined()
+    expect(sessionModelLeadKey("aborted")).toBeUndefined()
+    expect(sessionModelLeadKey("permission.rejected")).toBeUndefined()
+    expect(sessionModelLeadKey(undefined)).toBeUndefined()
   })
 })

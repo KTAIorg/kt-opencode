@@ -212,6 +212,7 @@ export namespace Timeline {
         new TimelineRow.Error({
           userMessageID: turnID,
           text: unwrapErrorMessage(error.message),
+          type: error.type,
         }),
       )
     }
