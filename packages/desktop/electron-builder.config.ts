@@ -11,7 +11,7 @@ const rootDir = path.resolve(packageDir, "../..")
 const signScript = path.join(rootDir, "script", "sign-windows.ps1")
 // The Electron 42 packaging update briefly installed Linux launchers/icons under
 // "opencode-desktop". Keep that hidden desktop entry around so existing GNOME/KDE
-// pins still resolve after the canonical app id changes back to ai.opencode.desktop.
+// pins still resolve now that the canonical app id is cc.ktapi.desktop.
 const legacyDesktopEntry = path.join(packageDir, "resources", "linux", "opencode-desktop.desktop")
 const legacyDesktopEntryFpm = `${legacyDesktopEntry}=/usr/share/applications/opencode-desktop.desktop`
 
@@ -51,8 +51,8 @@ const getBase = (appId: string): Configuration => ({
     buildResources: "resources",
   },
   // Linux launchers are .desktop files, so this is the desktop file name,
-  // not just the app id. For prod, app id "ai.opencode.desktop" becomes
-  // "ai.opencode.desktop.desktop".
+  // not just the app id. For prod, app id "cc.ktapi.desktop" becomes
+  // "cc.ktapi.desktop.desktop".
   // https://developer.gnome.org/documentation/guidelines/maintainer/integrating.html
   // https://www.electron.build/docs/linux/
   extraMetadata: {
@@ -87,7 +87,9 @@ const getBase = (appId: string): Configuration => ({
   },
   protocols: {
     name: "Kito",
-    schemes: ["ktai"],
+    // ktai:// is Kito's scheme; opencode:// stays registered so legacy links
+    // keep landing in Kito instead of a co-installed OpenCode.
+    schemes: ["ktai", "opencode"],
   },
   win: {
     icon: `resources/icons/icon.ico`,
