@@ -325,3 +325,27 @@ app 相关 26/26；core/app/desktop `tsgo -b` 全 0。
 **预存在失败（main worktree 已证非本次引入）**：RepositoryCache/Git×7（本机
 git 网络）、OpencodePlugin×1（连真实服务）、app×8（solid-js 1.9.10 与本机
 bun 1.3.11 导出解析不兼容）。
+
+---
+
+## M. Issue #109 第 5 项收尾：错误文案 i18n 补全（2026-09-19，worktree kito-wt-i18n）
+
+分支 `fix-109-error-i18n`（基于 origin/fix-109-functional）。
+
+- `session-error-cta.ts` `MODEL_ERROR_LEAD_KEYS` 补 `"provider.invalid-request"` →
+  `session.error.model.invalidRequest`（to-session-error.ts:27 产生，此前未映射
+  显示技术原文）。
+- `en.ts` 新增 `session.error.model.invalidRequest` 英文源文案；`zh.ts`/`zht.ts`
+  补齐全部 9 个 `session.error.model.*` key（此前 8 个 key 仅 en 有，中文用户看
+  英文兜底）。zh 用"模型/连接/重试"，zht 沿用文件内既有"模型/伺服器/連線"术语。
+- `session-error-card.test.ts` 新增 `maps invalid-request to friendly copy` 断言。
+
+**验证**：`bun test session-error-card.test.ts` 24/24 pass（临时 symlink
+kito-src 的 packages/app/node_modules 供 happydom preload，已删）；`tsgo -b`
+app 0 错；en/zh/zht 三边 `session.error.model.*` 各 9 key 对齐。
+
+**遗留（非本任务范围，如实记录）**：zht 相对 en+zh 仍缺 ~84 个 feature key
+（settings.* / workspace.* / session.background / session.new / session.summary /
+session.timeline.notice / dialog.ktWallet.crypto* 等——按 AGENTS「翻译随语言
+评审单独落地」惯例属既有积压）；zh 缺 4 个 `dialog.ktIdentity.*`（L 节已注明
+刻意仅 en）。

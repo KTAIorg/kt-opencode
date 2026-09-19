@@ -161,6 +161,10 @@ describe("sessionModelLeadKey", () => {
     expect(sessionModelLeadKey("tool.input-json")).toBe("session.error.model.invalidOutput")
   })
 
+  test("maps invalid-request to friendly copy", () => {
+    expect(sessionModelLeadKey("provider.invalid-request")).toBe("session.error.model.invalidRequest")
+  })
+
   test("maps the empty provider response to friendly copy", () => {
     expect(sessionModelLeadKey("provider.empty-response")).toBe("session.error.model.empty")
   })
