@@ -578,17 +578,19 @@ const layer = Layer.effect(
             if (hostedResultMissing && !publisher.record().finish) yield* publisher.failAssistant(RESULT_MISSING)
           }
           // The provider transaction began but left nothing renderable. A stream that
-          // ended before its finish event is always an anomaly. A step that finished
+          // ended before its finish event is always an anomaly — including a clean
+          // zero-event stream: a chat completion owes a terminal record on every step,
+          // and cancellation only reaches this point as a stream Failure or a recorded
+          // STEP_INTERRUPTED, never as a clean empty Success. A step that finished
           // with zero content is only an anomaly on the first step, where the user
           // prompt is still owed a visible answer; later steps may end quietly after
-          // tool output. A zero-event stream is indistinguishable from an intentional
-          // no-op, so only flag once the provider actually started the step.
+          // tool output.
           if (
             stream._tag === "Success" &&
-            publisher.record().stepStarted &&
             !publisher.record().failure &&
             !publisher.record().calls.some((call) => call.called || call.settled) &&
-            (!publisher.record().finish || (currentStep === 1 && !publisher.record().outputStarted))
+            (!publisher.record().finish ||
+              (publisher.record().stepStarted && currentStep === 1 && !publisher.record().outputStarted))
           )
             yield* publisher.failAssistant(EMPTY_RESPONSE)
 
