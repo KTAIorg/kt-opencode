@@ -106,6 +106,7 @@ export function sessionBillingLeadKey(
 // 分类的 lead key，优先级在本映射之上。
 const MODEL_ERROR_LEAD_KEYS: Record<string, string> = {
   "provider.invalid-output": "session.error.model.invalidOutput",
+  "provider.invalid-request": "session.error.model.invalidRequest",
   "provider.empty-response": "session.error.model.empty",
   "provider.transport": "session.error.model.transport",
   "provider.internal": "session.error.model.internal",

@@ -692,6 +692,8 @@ export const dict = {
   "session.error.serverConnection": "Can't connect to this server",
   "session.error.model.invalidOutput":
     "The model returned an invalid response (for example, malformed tool call data). Try again, or switch to a different model.",
+  "session.error.model.invalidRequest":
+    "The request to the model was invalid. Try again, or switch to a different model.",
   "session.error.model.empty": "The model returned no content. Try again, or switch to a different model.",
   "session.error.model.transport": "Couldn't reach the model service. Check your connection and try again.",
   "session.error.model.internal": "The model service hit a temporary problem. Try again, or switch to a different model.",
