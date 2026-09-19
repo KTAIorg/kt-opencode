@@ -6,7 +6,9 @@ export const KT_WALLET_URL = "https://www.ktapi.cc/wallet"
 
 export function isCustomerFacingProvider(id: string) {
   if (id === "ktai" || id === "ktapi" || id === "opencode") return true
-  return id.startsWith("ktai") || id.startsWith("ktapi")
+  // 与 customerFacingProviderName 同口径：只认 "ktai-"/"ktapi-" 前缀，
+  // 裸 startsWith 会把 ktai 开头的无关 provider 误当 Kito。
+  return id.startsWith("ktai-") || id.startsWith("ktapi-")
 }
 
 export function customerFacingProviderName(id: string, name: string) {

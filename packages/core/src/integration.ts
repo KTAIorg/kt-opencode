@@ -735,8 +735,13 @@ const layer = Layer.effect(
         connect: connectOAuth,
         status: Effect.fn("Integration.oauth.status")(function* (input) {
           const attempt = (yield* SynchronizedRef.get(attempts)).get(input.attemptID)
-          if (!attempt || attempt.integrationID !== input.integrationID)
-            return yield* Effect.die(new Error(`OAuth attempt not found: ${input.attemptID}`))
+          if (!attempt || attempt.integrationID !== input.integrationID) {
+            // 客户端可能在服务端重启（或 attempt 已被清理/取消）后继续轮询；
+            // die 会把生错误原文直出到登录弹窗，按终态 expired 返回让前端走
+            // "已过期请重试"文案。
+            const now = yield* Clock.currentTimeMillis
+            return { status: "expired" as const, time: { created: now, expires: now } }
+          }
           if (attempt.status === "failed") {
             return { status: attempt.status, message: attempt.message ?? "Authorization failed", time: attempt.time }
           }

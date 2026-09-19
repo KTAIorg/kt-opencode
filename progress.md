@@ -268,3 +268,74 @@ opencode.db 不可见（新库全新）；运行中的旧版守护进程保留�
 - CI runner：`blacksmith-4vcpu-ubuntu-2404` 池 2026-09-18 长时间无
   可接任务（main 的 triage/duplicate-issues 同样排队），GitHub 托管
   runner 正常；queued ≠ 代码失败。
+
+---
+
+## Issue #114 钱包与登录 UX 修复（2026-09，worktree kito-pr-wallet @ fix-114-wallet）
+
+审计确证的 P1/P2 缺陷，逐项修复：
+
+### A【P1】充值 pay() 网络异常永久卡死按钮
+- `dialog-kt-wallet.tsx` `pay()`：fetch reject 走不到 `setPaying()`/`setPayError`
+  → 两按钮永久 disabled。改 try/catch/finally：catch 置
+  `dialog.ktWallet.fiatError`，finally 复位 `paying`。
+- `checkOrder` 补 `.catch`（setInterval 每 2s 漏 unhandled rejection；
+  "I've paid" 按钮的 `.finally` 也因此不再卡死）。
+
+### B【P1】订单轮询无总期限 + 慢上游重叠
+- 轮询加绝对期限：订单本地建单起 15 分钟（`ORDER_POLL_LIMIT_MS`，
+  `KtpayOrder.createdAt`），超时显示 `dialog.ktWallet.expired` 并清订单回表单。
+- `inflight` 门闩：上一 tick 未完成的请求跳过本轮，慢上游不再堆积并发。
+- 终态判定去掉 `response.ok` 前提：响应体明确写出
+  failed/expired/cancelled/canceled（localStatus 优先）即终止轮询；
+  无终态字段的 502 仍按瞬态处理、由期限兜底。
+
+### C【P1】余额 inflight 吞强制刷新 + 无超时
+- `kt-signed-in.ts` `createAccountReader`：`/ktai/account` fetch 加
+  `AbortSignal.timeout(30s)`（上游 Ensure 串行最坏 60s+，socket 挂起曾使
+  inflight 永真）；inflight 期间的 force 刷新（入金 markPaid、登录成功）
+  排队最新一次，当前请求落地后立即追跑。
+
+### D【P1】`useKtaiSignedIn` 非 2xx 一律判未登录
+- `/ktai/credential` 非 2xx 不再置 `signedIn=false`：仅 401/403 判 false，
+  其余（5xx/404 等）保留上次判定——与 account 读取器 4xx/5xx 口径一致，
+  本地服务故障不再把钱包闪成"需登录"。
+
+### E【P1】加密入金 baseline 漏检已到账
+- ledger 基线改为与 deposit-address 请求并发发出（"地址获取时点"的已知
+  余额），存 `ledgerBaseline` signal；到账检测轮询只比较 `ledger > baseline`，
+  基线未回前用首次成功读数兜底。原首次 tick 读数即基线，提前到账永不成立。
+
+### F【P1】OAuth attempt 消失生错误直出
+- `core/integration.ts` `oauth.status`：attempt 不明（服务端重启/已清理/
+  已取消后继续轮询）由 `Effect.die` 改为返回 `{status:"expired"}`——
+  `Integration.AttemptStatus` 既有合法值，协议契约不变、无需重新生成 client。
+- `dialog-kt-identity-login.tsx`：expired 分支从笼统 `common.requestFailed`
+  改走新键 `dialog.ktIdentity.expired`（"This sign-in request expired.
+  Try again."，仅 en，其它语言走兜底）。
+
+### G【P2】登录成功 + ensure 失败双 toast
+- `finish()` 合并为单条 success toast：ensure 成功用原 connected 描述，
+  失败把 `dialog.ktIdentity.ensureFailed` 警示放进同一条描述。
+
+### H【P1】会话 not-found 只报错不兜底
+- `session.tsx` `SessionErrorFallback`：not-found 时若持久化 `tabs.info`
+  存有原目录，自动关死标签 + 在同目录 `newDraft` 草稿会话标签并导航过去；
+  目录未知时保留原"cannot be found"+Close Tab UI。
+
+### I【P2】`isKtaiProviderID`/`isCustomerFacingProvider` startsWith 过匹配
+- 收窄为 `"ktai"`/`"ktapi"` 全等 + `"ktai-"`/`"ktapi-"` 前缀
+  （与 `customerFacingProviderName` 既有口径对齐），裸 startsWith("ktai")
+  不再把 ktai 开头的无关 provider 误吸。
+
+## 验证（Issue #114）
+- `cd packages/app && bun test`：559 pass / 6 fail——fail 均为
+  `solid-js/web/dist/server.js` "Export named 'use' not found" SSR 环境
+  SyntaxError（terminal/comments/prompt-state/submit 等），已在未改动
+  基线 stash 复现，为 bun 1.4.2 预存在环境问题，与本次无关。
+- `cd packages/core && bun test test/integration.test.ts`：12/12 pass。
+  core 全量 1906 pass / 10 fail（RepositoryCache/Git 网络克隆 +
+  OpencodePlugin 外部服务，均为预存在环境问题）。
+- `bun typecheck`：app 干净；core tsconfig.json 干净，
+  tsconfig.tests.json 仅 `@ai-sdk/xai` 预存在缺依赖报错。
+- bun.lock 因本机 npmmirror registry 产生的 URL 噪声未提交（已 checkout 还原）。
