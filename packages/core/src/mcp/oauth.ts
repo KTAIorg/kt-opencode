@@ -46,8 +46,8 @@ export const provider = (options: Options): OAuthClientProvider => {
     redirectUrl: options.redirectUrl,
     clientMetadata: {
       redirect_uris: [options.redirectUrl],
-      client_name: "opencode",
-      client_uri: "https://opencode.ai",
+      client_name: "Kito",
+      client_uri: "https://kito.ktai.im",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: client?.secret ? "client_secret_post" : "none",
