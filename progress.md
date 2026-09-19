@@ -772,3 +772,17 @@ stream is cancelled`（Stream.never 零事件+Fiber.interrupt→aborted 不误�
 `enabledCommandIds` 单测（待依赖就位后跑）。
 遗留：devtools/非主窗口获焦时菜单会按未上报集合全灰（重建即恢复）；
 draft 页 Cmd+O 仍灰（该页语义是选择已有项目 `project.select`，非打开新目录）。
+
+## 2026-05-23 kito-preview 集成收尾（本地验收用）
+
+1. **五修复分支合入**：fix-109-oauth-brand / error-i18n / wallet-polish /
+   menu-cmds / fix-114-zero-event 全部合入本分支，供 dev 实例统一预览。
+2. **零事件判定回退**：runner 层 "零帧即空响应" 判定会破坏 TestLLM.push([])
+   的合法契约（38 用例失败）；生产路径 `packages/ai/src/route/client.ts`
+   `requireTerminalEvent` 已把零帧/无终态流转为 incomplete-stream 走重试，
+   洞已在协议层关闭。保留 abort 静默流不误报回归测试。
+3. **验证**：typecheck 33/33；session-runner 159/159；error-card+command 31/31；
+   wallet+probe 20/20。app 包另有 6 fail+3 errors 为 solid-js@1.9.10
+   server.js `use` 导出的预存在环境问题（main 上同样失败，与本次改动无关）。
+4. **PR**：#127(oauth品牌)/#128(错误文案i18n)/#129(钱包$1+重试)/
+   #130(菜单命令+IPC防护)/#131(stream调查+回归) —— 均未合并，待验收。
