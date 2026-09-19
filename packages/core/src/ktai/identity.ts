@@ -1,4 +1,5 @@
 import { Global } from "@opencode-ai/util/global"
+import { kitoDataEnv } from "@opencode-ai/util/kito-env"
 import fs from "fs"
 import path from "path"
 
@@ -31,7 +32,10 @@ export type IdentityBearerSession = {
   session: {
     id: string
     tokenType: string
-    expiresAt: string
+    // Omitted when the Identity response carries no expiry. A missing value is
+    // treated as still-valid rather than invented, so restarts cannot turn a
+    // fabricated expiry into a spurious logout.
+    expiresAt?: string
   }
   loginHint?: string
 }
@@ -55,7 +59,7 @@ export function identityBaseUrl(env: NodeJS.ProcessEnv = process.env) {
 }
 
 export function isEmbeddedMode(env: NodeJS.ProcessEnv = process.env) {
-  const value = env.OPENCODE_EMBEDDED?.trim().toLowerCase()
+  const value = (env.KITO_EMBEDDED ?? env.OPENCODE_EMBEDDED)?.trim().toLowerCase()
   return value === "1" || value === "true"
 }
 
@@ -126,7 +130,7 @@ function asSession(payload: unknown): IdentityBearerSession | undefined {
     session: {
       id: typeof record.session?.id === "string" ? record.session.id : "identity",
       tokenType: typeof record.session?.tokenType === "string" ? record.session.tokenType : "Bearer",
-      expiresAt: expiresAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      ...(expiresAt ? { expiresAt } : {}),
     },
     ...(typeof record.loginHint === "string" ? { loginHint: record.loginHint } : {}),
   }
@@ -404,7 +408,11 @@ export async function pollTelegramLogin(
 }
 
 export function sessionExpiresAt(session: IdentityBearerSession) {
-  const parsed = Date.parse(session.session.expiresAt)
+  const parsed = session.session.expiresAt ? Date.parse(session.session.expiresAt) : Number.NaN
+  // Credential.OAuth.expires is a required timestamp, so an absent/invalid
+  // server expiry still yields a short-lived estimate. The estimate stays
+  // runtime-only: ktai registers no credential refresh handler, and persisted
+  // identity files only ever store the server-provided expiresAt.
   return Number.isFinite(parsed) ? parsed : Date.now() + 60 * 60 * 1000
 }
 
@@ -432,7 +440,7 @@ export function identityLoginInstructions(session: IdentityBearerSession) {
 }
 
 export function identitySessionPath() {
-  return path.join(Global.Path.data, IDENTITY_SESSION_FILE)
+  return kitoDataEnv("KTAI_IDENTITY_PATH")?.trim() || path.join(Global.Path.data, IDENTITY_SESSION_FILE)
 }
 
 export function persistIdentityToken(token: string, extra?: { accountId?: string; expiresAt?: string }) {
@@ -444,6 +452,9 @@ export function persistIdentityToken(token: string, extra?: { accountId?: string
     JSON.stringify({ token: current, accountId: extra?.accountId, expiresAt: extra?.expiresAt }, null, 2) + "\n",
     { mode: 0o600 },
   )
+  // The mode option only applies to newly created files; keep an existing
+  // identity file user-only as well.
+  fs.chmodSync(identitySessionPath(), 0o600)
 }
 
 export function persistIdentitySession(session: IdentityBearerSession) {
