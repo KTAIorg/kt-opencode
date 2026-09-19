@@ -33,7 +33,7 @@ export default Runtime.handler(
 
 const login = Effect.fn("cli.console.login.run")(function* (timeline: TimelineHost, server?: string) {
   yield* request(() => timeline.intro("Log in"))
-  yield* request(() => timeline.pending("Connecting to OpenCode..."))
+  yield* request(() => timeline.pending("Connecting to Kito..."))
 
   const endpoint = yield* Service.ensure(yield* ServiceConfig.options())
   const client = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })

@@ -1,5 +1,6 @@
 import { Global } from "@opencode-ai/util/global"
 import { AppProcess } from "@opencode-ai/util/process"
+import { kitoEnv } from "@opencode-ai/util/kito-env"
 import { OPENCODE_CHANNEL, OPENCODE_LOCAL, OPENCODE_VERSION } from "../version"
 import { Context, Duration, Effect, FileSystem, Layer } from "effect"
 import { ChildProcess } from "effect/unstable/process"
@@ -10,6 +11,14 @@ import { action, type Policy } from "./updater-action"
 declare const OPENCODE_CLI_NAME: string | undefined
 
 type Method = "npm" | "pnpm" | "bun" | "yarn" | "curl"
+
+// This fork ships as Kito (the `opencode2`/`opencode2-node` binaries; dev runs
+// leave the define unset). The update feed, npm package, and install script
+// below all belong to upstream OpenCode and would silently replace Kito with
+// the official product, so the updater stays disabled for Kito builds.
+// TODO(#114): wire a Kito update feed (the desktop app uses updates.ktyun.cc)
+// before re-enabling any of this.
+const kito = typeof OPENCODE_CLI_NAME !== "string" || OPENCODE_CLI_NAME.startsWith("opencode2")
 
 const packageName =
   typeof OPENCODE_CLI_NAME === "string" && OPENCODE_CLI_NAME === "opencode2-node"
@@ -145,7 +154,13 @@ export const layer = Layer.effect(
 
     const check = Effect.fn("cli.updater.check")(
       function* () {
-        if (OPENCODE_LOCAL || ["1", "true"].includes(process.env.OPENCODE_DISABLE_AUTOUPDATE?.toLowerCase() ?? ""))
+        if (kito)
+          return yield* Effect.logInfo("update check skipped", {
+            reason: "kito-build",
+            version: OPENCODE_VERSION,
+            channel: OPENCODE_CHANNEL,
+          })
+        if (OPENCODE_LOCAL || ["1", "true"].includes(kitoEnv("DISABLE_AUTOUPDATE")?.toLowerCase() ?? ""))
           return yield* Effect.logInfo("update check skipped", {
             reason: OPENCODE_LOCAL ? "local-install" : "disabled",
             version: OPENCODE_VERSION,
