@@ -268,3 +268,12 @@ opencode.db 不可见（新库全新）；运行中的旧版守护进程保留�
 - CI runner：`blacksmith-4vcpu-ubuntu-2404` 池 2026-09-18 长时间无
   可接任务（main 的 triage/duplicate-issues 同样排队），GitHub 托管
   runner 正常；queued ≠ 代码失败。
+
+## N. 窗口离屏恢复修复（2026-09-19，fix-window-restore）
+
+- 现象：窗口最后停在已拔掉的外接屏（如 x:-1930,y:-1050），下次启动
+  electron-window-state 原样恢复 → 窗口开在不可见区域，看似自动收起。
+- 根因：恢复路径无显示器存在性校验（getDisplayMatching 永远返回最近屏）。
+- 修复：createMainWindow 在传入 x/y 前用 screen.getAllDisplays() 做真实
+  重叠校验（两轴各 >40px），无交集则弃坐标由 Electron 居中。
+- 验证：单屏机持久化幽灵坐标复现 → 修复后居中打开；typecheck 通过。
