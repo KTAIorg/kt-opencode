@@ -325,3 +325,46 @@ app 相关 26/26；core/app/desktop `tsgo -b` 全 0。
 **预存在失败（main worktree 已证非本次引入）**：RepositoryCache/Git×7（本机
 git 网络）、OpencodePlugin×1（连真实服务）、app×8（solid-js 1.9.10 与本机
 bun 1.3.11 导出解析不兼容）。
+
+---
+
+## 2025-XX · #114 Runner 错误路径加固（fix-114-runner / PR #115）
+
+叠在 fix-109-functional 上（llm.ts/publish-llm-event/error 语义都依赖 #113）。
+
+- **准备阶段静默失败**：`context.select` 到 publisher 创建之间的整段
+  （InstructionState.prepare / inbox promote / context.load / compaction /
+  modelRequests.prepare / snapshots.capture）此前失败只到
+  session.execution.failed，时间线无落点。现在统一进 `Effect.catchCause`：
+  中断与 defect 原样放行（中断=取消语义；defect=崩溃→wake→重跑，3496 测试
+  已证此恢复路径），`Instructions.InitializationBlocked` 放行（指令管线
+  重试协议），其余类型化失败经 `failPrepare` 直发 `session.step.started`
+  +`session.step.failed` 落 assistant 行，再抛 `StepFailedError`。
+  model 缺失时用 `session.model ?? Ref(unselected/unknown)` 兜底，
+  不伪造 agent/model。
+- **provider-error 事件纳入重试**：publisher 存原始事件
+  （StepRecord.providerError）；结算段用 `classifyProviderFailure` 重建
+  AIError（classification hint 优先转 InvalidRequestReason），与抛出的
+  AIError 走同一 isRetryable 判定——流中的 rate-limit/transport 事件不再
+  绕过重试。
+- **非 AIError 流失败落盘**：publisher 序列缺陷/崩溃此前能静默完成；
+  现在 failAssistant + failUnsettledTools 兜底（catchCause 护住，不二次炸）。
+- **decline→UserInterruptedError**：权限/问题拒绝此前 `Effect.interrupt`——
+  terminal() 映射 `interrupted/shutdown`、claim 保留、重启后回合恢复重发
+  同一询问。改 typed failure→`interrupted/user`、claim 释放、回合终结。
+  两个测试断言更新为新契约。
+- **SoftQuota.increment 防抛**：quota 记账失败不再能炸掉已成功步骤
+  （Effect.try+tapError+ignore）。
+
+**验证**：session-runner.test.ts 158/158（新增 `fails durably when
+preparation fails before the provider stream`：ModelNotSelectedError→
+provider.no-route 落 assistant 行 + started/failed 配对 + 零 provider
+请求）；`tsgo -b` 0。测试基建注记：`bus.project` 的 Effect.fail 走 queue
+fiber 异步通道接不住，类型化失败注入要用 `modelResolveHook`
+（声明已放宽为 `Effect<void, SessionRunnerModel.Error>`）。
+
+**工作树清理**：fix-114-runner 曾混入 a424632（第一版钱包提交）+ ~30 个
+外来未提交文件——已 reset 到 578c8ce 干净重建；外来 WIP 全量存于
+`stash@{0}`（runner-workspace-snapshot-foreign-wip），a424632 的 3 个测试
+文件（kt-settlement/ktai-model-order/integration.test.ts）efc3735 未含，
+待钱包线 owner 决定是否移植。
