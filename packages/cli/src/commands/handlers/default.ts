@@ -1,5 +1,6 @@
 import { LayerNode } from "@opencode-ai/util/effect/layer-node"
 import { Global } from "@opencode-ai/util/global"
+import { kitoEnv } from "@opencode-ai/util/kito-env"
 import { run } from "@opencode-ai/tui"
 import { Commands } from "../commands"
 import { Runtime } from "../../framework/runtime"
@@ -43,7 +44,7 @@ export default Runtime.handler(Commands, (input) =>
       },
     }).pipe(
       Effect.tapError(() =>
-        Effect.promise(() => preflight.fail("OpenCode update could not start the new background service")),
+        Effect.promise(() => preflight.fail("Kito update could not start the new background service")),
       ),
     )
     const updater = yield* Updater.Service
@@ -59,9 +60,9 @@ export default Runtime.handler(Commands, (input) =>
     const service = server.service
     yield* run({
       app: {
-        name: process.env.OPENCODE_CLIENT ?? "cli",
+        name: kitoEnv("CLIENT") ?? "cli",
         version: OPENCODE_VERSION,
-        channel: process.env.OPENCODE_TUI_CHANNEL ?? OPENCODE_CHANNEL,
+        channel: kitoEnv("TUI_CHANNEL") ?? OPENCODE_CHANNEL,
       },
       server: {
         endpoint: server.endpoint,

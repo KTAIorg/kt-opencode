@@ -23,7 +23,7 @@ export function createApplicationLifecycle(logger: DesktopLogger) {
   }
 
   app.on("second-instance", (_event: Event, argv: string[]) => {
-    const urls = argv.filter((arg) => arg.startsWith("opencode://"))
+    const urls = argv.filter((arg) => arg.startsWith("ktai://") || arg.startsWith("opencode://"))
     if (urls.length) {
       logger.log("deep link received via second-instance", { urls })
       emitDeepLinks(urls)

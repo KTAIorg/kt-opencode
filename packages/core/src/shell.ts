@@ -200,6 +200,7 @@ export const layer = (options?: ShellSelect.Options) =>
           env: {
             ...(sessionEnvironment ?? process.env),
             TERM: "xterm-256color",
+            KITO_TERMINAL: "1",
             OPENCODE_TERMINAL: "1",
           },
         }

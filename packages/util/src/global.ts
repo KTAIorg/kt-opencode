@@ -7,6 +7,7 @@ import { Context, Effect, Layer } from "effect"
 // native-module stubs, so no runtime sniffing happens here.
 import { roots } from "#global-roots"
 import { Flock } from "./flock.js"
+import { kitoDataEnv } from "./kito-env.js"
 import { makeGlobalNode } from "./effect/app-node.js"
 
 // Kito isolates its data, config, state, and cache directories from a co-installed
@@ -18,7 +19,7 @@ const { data, cache, config, state, tmp } = roots(app)
 
 const paths = {
   get home() {
-    return process.env.OPENCODE_TEST_HOME ?? os.homedir()
+    return kitoDataEnv("TEST_HOME") ?? os.homedir()
   },
   data,
   bin: path.join(cache, "bin"),
@@ -80,7 +81,7 @@ const acquire = (input: Partial<Interface>) =>
 
 const layer = Layer.effect(
   Service,
-  Effect.suspend(() => acquire({ config: process.env.OPENCODE_CONFIG_DIR ?? Path.config })),
+  Effect.suspend(() => acquire({ config: kitoDataEnv("CONFIG_DIR") ?? Path.config })),
 )
 
 export const node = makeGlobalNode({ service: Service, layer: layer, deps: [] })

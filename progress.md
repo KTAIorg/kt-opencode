@@ -268,3 +268,196 @@ opencode.db 不可见（新库全新）；运行中的旧版守护进程保留�
 - CI runner：`blacksmith-4vcpu-ubuntu-2404` 池 2026-09-18 长时间无
   可接任务（main 的 triage/duplicate-issues 同样排队），GitHub 托管
   runner 正常；queued ≠ 代码失败。
+
+---
+
+## L. Issue #114 隔离与安全加固（2026-09-19，fix-114-isolation）
+
+目标：Kito 不再与上游 OpenCode 共享身份、配置、数据库、Chromium userData、
+协议处理、凭据、日志与更新行为；不可被上游静默替换或跨产品泄漏秘密。
+
+### A. CLI 上游更新器停用
+- `cli/src/services/updater.ts`：Kito 构建（`OPENCODE_CLI_NAME` 未设/以
+  `opencode2` 开头）跳过 update.opencode.ai 检查与 `opencode.ai/v2/install`
+  安装路径，日志标记 `kito-build`；留 TODO 待接 Kito 更新 feed。
+
+### B. 桌面身份与 userData 隔离
+- `desktop/lifecycle/environment.ts`：appId 改为 `cc.ktapi.desktop{,.dev,.beta}`；
+  `app.setPath("userData")` 随之隔离；`setAsDefaultProtocolClient("ktai")` +
+  保留 `opencode` 兼容注册。
+- `electron-builder.config.ts` / `copy-metainfo.ts` / 旧版
+  `opencode-desktop.desktop` 启动器全部改 Kito 目标
+  （`/opt/Kito/cc.ktapi.desktop`）；打包测试同步更新。
+- 旧共享 userData 刻意不迁移（只有窗口状态与权限，本不该共享）。
+
+### C. OPENCODE_* 环境变量隔离
+- 新增 `util/src/kito-env.ts`：`kitoEnv()` = KITO_ 优先 + OPENCODE_ 兼容
+  回退（安全开关）；`kitoDataEnv()` = 仅 KITO_（一切路径/文件选择器，
+  上游 OPENCODE_* 不得重指 Kito 的库与二进制）。
+- 全仓数据路径变量走 kitoDataEnv（CONFIG_DIR/DB/CONFIG/CONFIG_CONTENT/
+  MODELS_PATH/TEST_HOME/资产与 wasm 覆盖/KTAI_SPENDABLE_PATH 等）；
+  安全开关走 kitoEnv 双名（CLIENT/DISABLE_*/LOG_LEVEL/CPU_PROFILE 等）。
+- `desktop/service/shell-env.ts` 过滤导入的 KITO_*/OPENCODE_* 与宿主凭据。
+- `cli/services/standalone.ts`：子进程 env 同时写 KITO_PASSWORD +
+  OPENCODE_PASSWORD——修复 extendEnv 下宿主 KITO_PASSWORD 抢先于
+  OPENCODE_PASSWORD 遮蔽租约凭据的问题。
+- Effect Config 读（model-request 等）用 `Config.orElse` 双名等价。
+
+### D. 凭据文件 0600
+- `core/ktai/newapi.ts`：`ktai-api-key.json`/`ktai-spendable.json` 写后
+  `chmod 0600`（含修复已存在的宽松文件）；`auth.json` 同样修补。
+- `core/ktai/identity.ts`：`ktai-identity.json` 写后 chmod 0600。
+
+### E. 日志脱敏
+- `server/src/process.ts`：自研 request logger 替代默认 logger——查询串
+  中 token|secret|password|key 类参数值置 `REDACTED`，其余参数保留；
+  只记录 4xx/5xx，保持原有错误语义。
+- `cli/src/util/process.ts` 新增 `redactArgs()`（-H/--header/--prompt/
+  --token/--password/--api-key/--auth-token/--data/--param 值置
+  `<redacted>`），index.ts 启动与失败日志、mini-host trace 统一使用。
+
+### F. ktai:// 深链
+- desktop 注册 `ktai` + 保留 `opencode`；second-instance argv 双协议过滤；
+  app `parseUrl` 双协议解析；打包三通道 protocols 均为 `[ktai, opencode]`。
+
+### G. 身份过期时间不再杜撰
+- `identity.ts` `asSession`：服务端未给 expiresAt 时不再编造 +1h；
+  `sessionExpiresAt` 缺省仅在运行时返回估算（Credential.expires 必填），
+  不落盘；`persistIdentityToken/Session` 只写实有值；
+  `readPersistedIdentityToken` 无 expiresAt 视为有效、仅拒绝真实过期；
+  新增 `KITO_KTAI_IDENTITY_PATH` 覆盖供测试/部署。
+- `provider/ktai.ts`：真实 expiresAt 经 credential.metadata 传递，
+  持久化只写服务端实值。
+
+### H. 面向用户文案去 OpenCode 化
+- CLI：`commands.ts` 程序名 opencode2 / "Kito command line interface"，
+  描述文案改 Kito；`default.ts`/`service-config.ts`/`pair.ts` 错误与
+  用法提示改 Kito 或 `selfCommand()`；`update-preflight.tsx` 阶段文案改
+  Kito；console/login.ts "Connecting to OpenCode..." → Kito。
+- TUI：error-component 崩溃页与 issue 链接指向 ktaiorg/kt-opencode；
+  dialog-pair/mini/splash/footer/util-error 文案改 opencode2/Kito；
+  app.tsx "Open docs" 指向 fork 仓库。
+- app：四处 `opencode.ai/docs/*` "learn more" 链接与
+  dialog-custom-provider 文档链接指向 fork 仓库；
+  `context/highlights.tsx` CHANGELOG_URL 置空（Kito 无公开 changelog
+  feed，防止拉取展示上游 release notes，留注释待接 Kito feed）。
+- desktop i18n：`desktop.updater.none.message` 与
+  `desktop.updater.downloaded.prompt` 英文源改 Kito；62 个非英语 locale
+  中陈旧 OpenCode 译文删除走英文兜底（符合本仓本地化约定）。
+- WSL 安装器：`wslCliInstallCommand` 改指 fork 仓库
+  `ktaiorg/kt-opencode/main/install`；无 bundled binary 时显式抛错，
+  不再从上游 npm 拉 `@opencode-ai/cli`（修自我替换风险；代价是打包版
+  桌面在 WSL 安装按钮会失败，待 Kito 自带 CLI feed 或随包 Linux 二进制）。
+
+**不改（有意保留）**：`opencode.db` 文件名、`auth.json`、`opencode.json`
+配置名、basic-auth 用户名 `opencode`、`x-opencode-*` 协议头、
+`opencode` 集成/provider id、OpenCode Console/Zen 产品名引用、
+storage key 命名空间（`opencode.*`，改名会丢存量数据）、legacy 日志只读
+回收路径、compile-time 常量（OPENCODE_VERSION/CHANNEL/CLI_NAME）、
+OPENCODE_DRIVE/STORY 等 dev 工具 env、simulation `opencode-drive` state 目录。
+
+### 测试
+- desktop：electron-builder 8 + wsl servers 7（含新「拒绝上游安装」用例）
+  + shell-env 10 = 25 pass；`bun typecheck` 0。
+- app：helpers 43 pass（ktai:// 覆盖）；typecheck 0。
+- core：ktai 5 文件 + config = 84 pass（新增 expiresAt 缺失/畸形/过期、
+  0600 修补用例）；`bun typecheck` 仅预存在 `@ai-sdk/xai` 声明缺失
+  （test/provider-xai-responses.test.ts，未触碰，core package.json 未声明）。
+- server：process/auth/request-tracing/log-leak = 5 pass；typecheck 0。
+- cli：argv-redact 新 2 + service 21 + env + standalone = 25 pass；
+  typecheck 0。util/tui typecheck 0。
+
+### 未完成/后续
+- Kito 无自有 CLI/desktop 更新 feed：CLI 更新器整段跳过、app release
+  highlights 停用、打包版 WSL 安装会显式失败——待 feed 落地后逐项恢复。
+- `install` 脚本本体仍是上游内容（下载 `@opencode-ai/cli` npm 包），
+  仅 `--binary` 路径安全；接入 Kito 分发渠道前勿用于版本安装。
+- OPENCODE_DRIVE/STORY dev env 保留原名（文档既有接口），未加 KITO_ 别名。
+
+---
+
+## 追加实施：Issue #114 Kito/OpenCode 隔离与凭据安全（分支 fix-114-isolation）
+
+工作树 `/Users/fuwuqi/kito-pr-iso`，基于 origin/main 的 `fix-114-isolation` 分支。
+
+### A/P0 CLI updater 禁用
+- `packages/cli/src/services/updater.ts`：Kito 构建（`OPENCODE_CLI_NAME` 未定义或
+  `opencode2*`）在 `check()` 入口直接返回，不再触达
+  `update.opencode.ai`、`@opencode-ai/cli` 或 `opencode.ai/v2/install`。
+  TODO 注明重开前需接 Kito 自有 feed。
+- `packages/desktop/src/main/wsl/runtime.ts`：无内置二进制时拒绝版本安装
+  （原会从 anomalyco/opencode 拉上游包）；安装脚本指向 ktaiorg/kt-opencode。
+
+### B/P0 桌面运行时 ID / userData
+- `electron-builder.config.ts`、`lifecycle/environment.ts`、`copy-metainfo.ts`、
+  `resources/linux/opencode-desktop.desktop`：appId/userData 根改为
+  `cc.ktapi.desktop[.dev|.beta]`；旧的共享 `ai.opencode.desktop` userData
+  不迁移（只含窗口状态与权限）。
+
+### C/P0 环境变量集中化
+- 新增 `packages/util/src/kito-env.ts`：`kitoEnv`（KITO_* 优先、OPENCODE_* 兼容）
+  与 `kitoDataEnv`（仅 KITO_*，用于一切数据/路径变量）。
+- 数据根 leaf 由 `opencode` 改为 `kito`（`util/global.ts`），`OPENCODE_TEST_HOME`
+  → `KITO_TEST_HOME`。
+- DB/CONFIG*/MODELS_PATH/KTAI_*_PATH/SOFT_QUOTA_PATH/PARCEL_WATCHER_PATH/
+  PHOTON_WASM_PATH/NODE_PTY_PATH/TREE_SITTER_*/NODE_ASSETS_DIR/FFF_FFI_PATH/
+  GIT_BASH_PATH/ZED_DB/KTAI_SPENDABLE_PATH/SIMULATE 等全部走 `kitoDataEnv`。
+- `vite.node.config.ts` bundle prelude 改为写 `KITO_*` 资产变量。
+- desktop `shell-env.ts`：登录 shell 导入同时屏蔽 `KITO_*` 与 `OPENCODE_*`；
+  desktop 写双命名空间仅为兼容（CLIENT/EXPERIMENTAL_*）。
+- `cli/env.ts`：`KITO_PASSWORD`/`KITO_SERVER_PASSWORD` 优先并同样从 session env 剔除。
+- `script/src/index.ts`：发布脚本 KITO_* 优先（BUMP/VERSION/CHANNEL/RELEASE）。
+
+### D/P1 凭据文件 0600
+- `newapi.ts` persistManagedApiKey、`identity.ts` persistIdentityToken、
+  `clearManagedApiKey` 的 auth.json 重写、spendable cache 写入后均 `chmodSync 0600`，
+  修复已存在宽松权限文件；含修复性测试。
+
+### E/P1 日志脱敏
+- `server/src/process.ts`：`redactUrl` 将 token/secret/password/key 类查询参数值
+  替换为 REDACTED（保留安全参数），替换原 HttpMiddleware.logger 仅 4xx/5xx 输出。
+- `cli/util/process.ts` 新增 `redactArgs`：`--prompt/--token/--password/--api-key/
+  --auth-token/--header/--data/--param`（含 `=` 形式）写日志/诊断前打码；
+  `index.ts`、`mini-host.ts` argv 记录全部接入。
+
+### F/P1 双 scheme 深链
+- electron-builder protocols、`lifecycle/index.ts` second-instance argv、
+  `app/.../deep-links.ts` 解析同时接受 `ktai://` 与 `opencode://`；
+  helpers.test 增补 ktai 用例 + 畸形链接安全用例。
+
+### G/P0 不再虚构 expiresAt
+- `IdentityBearerSession.session.expiresAt` 改可选；`asSession` 不再编造 +1h。
+- `sessionExpiresAt` 仅在内存为必填的 Credential.OAuth.expires 给估算值；
+  `plugin/provider/ktai.ts` 仅持久化服务端真实 expiresAt（经 metadata 传递）。
+- `readPersistedIdentityToken` 仅拒绝"有效且已过期"的时间戳；无 expiresAt 的
+  token 重启后仍有效。
+
+### H/P2 用户面命名
+- CLI usage/描述/用法错误经 `selfCommand()` 输出 `opencode2`；ACP agentInfo.name、
+  terminal-auth、登录提示改 `Kito`/`opencode2`；TUI `/exit`、crash 屏、mini
+  splash、pair 提示等文案改 Kito/opencode2。
+- app：`opencode.ai` 文档/更新日志链接替换为 ktaiorg/kt-opencode；changelog
+  feed 置空（Kito 无自有 feed 前不再拉取上游 release notes）。
+- desktop i18n：en 两条 updater 文案改 Kito；其余 60+ 语言删除同名过期译文，
+  走英文兜底（符合 i18n 规范：不留指向旧产品名的译文）。
+
+### 验证结果
+- typecheck：util / cli / server / desktop / tui / app / enterprise 全部 0 错误。
+  core `tsgo -b` 仅余 `test/provider-xai-responses.test.ts` 缺 `@ai-sdk/xai`
+  声明——该测试文件在 HEAD 未改动且包未声明于 core/package.json，属预存在问题。
+- 测试：cli service 21/21（含 1 处期望文案改 `service set port`）；
+  acp 全套 48 pass；auth+mini 20 pass；argv-redact/env/updater/legacy-data/
+  mini-host/node-assets 29 pass；debug-config 2 pass；core ktai 48 pass +
+  config 35 pass；app helpers+build-prompt 43 pass；desktop 18 pass；
+  server log-leak/process/request-tracing 4 pass；tui 抽样 32 pass。
+- 新修测试：electron-builder 各 channel 期望 `["ktai","opencode"]`；
+  identity 新增"无 expiresAt 仍有效 + 0600"两例；newapi 新增 0600 修复例；
+  shell-env 增补 KITO_* 屏蔽断言；servers.test 新增拒绝上游版本安装例；
+  acp command/initialize-auth 期望改 Kito；service.test 端口冲突提示断言放宽到
+  `service set port <port>`（selfCommand 前缀）。
+
+### 未解决/说明
+- core typecheck 的 `@ai-sdk/xai` 缺失为预存在环境/依赖声明问题，非本次引入。
+- `packages/web` 文档站仍为上游 OpenCode 文档内容，不在本 issue 范围。
+- 内部 wire/协议标识（`x-opencode-*` 头、basic-auth 用户名 `opencode`、
+  `opencode.*` 命令 ID、主题名、provider id、`ai.opencode` 兼容常量）按规范保留。

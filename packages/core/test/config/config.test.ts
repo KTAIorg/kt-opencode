@@ -529,7 +529,7 @@ describe("Config", () => {
               `${path.join(project, "opencode.json")}:$:invalid`,
               `${malformed}:$:invalid`,
               "https://invalid.example.com:$:invalid",
-              "OPENCODE_CONFIG_CONTENT:$:invalid",
+              "KITO_CONFIG_CONTENT:$:invalid",
             ].toSorted(),
           )
           expect(JSON.stringify(output)).not.toContain("secret")
