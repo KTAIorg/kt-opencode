@@ -339,3 +339,8 @@ opencode.db 不可见（新库全新）；运行中的旧版守护进程保留�
 - `bun typecheck`：app 干净；core tsconfig.json 干净，
   tsconfig.tests.json 仅 `@ai-sdk/xai` 预存在缺依赖报错。
 - bun.lock 因本机 npmmirror registry 产生的 URL 噪声未提交（已 checkout 还原）。
+- 后续补充：`test(app)` 增加 `isKtaiProviderID`/`isCustomerFacingProvider`
+  边界用例与 `oauth.status` 未知 attempt → expired 回归（`ca6905d`）；
+  `fix(core)` 将 `provider-xai-responses.test.ts` 引用的 `@ai-sdk/xai`
+  声明为直接依赖（`9881387`），修复上文记录的预存在缺依赖 typecheck
+  报错（pre-push turbo 缓存未命中时必现）。
