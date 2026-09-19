@@ -268,3 +268,14 @@ opencode.db 不可见（新库全新）；运行中的旧版守护进程保留�
 - CI runner：`blacksmith-4vcpu-ubuntu-2404` 池 2026-09-18 长时间无
   可接任务（main 的 triage/duplicate-issues 同样排队），GitHub 托管
   runner 正常；queued ≠ 代码失败。
+
+## M. Kito 幽灵 logo 集成（2026-09-19，kito-logo）
+
+- `packages/ui/src/components/logo.tsx`：Mark/Splash/Logo 三组件改渲染
+  kt-design-assets 的幽灵图标与 lockup（SVG 内联，Solid JSX kebab 属性）。
+- 桌面图标全量重生成：dev/beta/prod 三通道 + resources/icons，
+  PNG 各尺寸、icon.icns（iconutil）、icon.ico（magick multi-res）、
+  Android mipmap、iOS AppIcon，全部出自 icon-kito-ghost.svg。
+- app favicon 全套（svg/96px/apple-touch/manifest 192+512/ico）换幽灵标。
+- 验证：desktop dev 构建 dock 图标、启动 splash、会话空状态 Mark 均正常；
+  `bun typecheck`（packages/ui）通过。
