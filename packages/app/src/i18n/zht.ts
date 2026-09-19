@@ -1263,6 +1263,7 @@ export const dict = {
   "dialog.ktWallet.fiatHint": "先選金額，再打開收銀台付款。KTPay 確認後餘額會更新。",
   "dialog.ktWallet.fiatDisabled": "目前環境還不能用微信 / 支付寶，請改用 USDT / USDC。",
   "dialog.ktWallet.fiatError": "無法發起 KTPay，請稍後再試。",
+  "dialog.ktWallet.retry": "重試",
   "dialog.ktWallet.custom": "自訂美元金額",
   "dialog.ktWallet.alipay": "支付寶",
   "dialog.ktWallet.wechat": "微信支付",
