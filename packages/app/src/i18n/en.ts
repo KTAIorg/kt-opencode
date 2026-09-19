@@ -690,6 +690,16 @@ export const dict = {
   "session.timeline.notice.failed": "{{actor}} failed",
   "session.timeline.notice.cancelled": "{{actor}} cancelled",
   "session.error.serverConnection": "Can't connect to this server",
+  "session.error.model.invalidOutput":
+    "The model returned an invalid response (for example, malformed tool call data). Try again, or switch to a different model.",
+  "session.error.model.empty": "The model returned no content. Try again, or switch to a different model.",
+  "session.error.model.transport": "Couldn't reach the model service. Check your connection and try again.",
+  "session.error.model.internal": "The model service hit a temporary problem. Try again, or switch to a different model.",
+  "session.error.model.rateLimit":
+    "The model service is rate-limited right now. Wait a moment and try again, or switch to a different model.",
+  "session.error.model.noRoute": "This model is currently unavailable. Switch to a different model.",
+  "session.error.model.contentFilter": "The model declined to respond to this request. Try rephrasing your message.",
+  "session.error.model.toolResult": "The model service didn't return a tool result. Try again.",
   "session.review.filesChanged": "Files Changed {{count}}",
   "session.review.change.one": "Change",
   "session.review.change.other": "Changes",

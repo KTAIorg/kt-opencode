@@ -281,6 +281,7 @@ const LanguageSetting = () => {
 export const SettingsGeneral: Component<{
   sessionID?: string
   server?: ServerConnection.Any
+  directory?: string
 }> = (props) => {
   const language = useLanguage()
   const platform = usePlatform()
@@ -290,6 +291,7 @@ export const SettingsGeneral: Component<{
   const permissionScope = createPermissionScopeController(
     () => props.server,
     () => props.sessionID,
+    () => props.directory,
   )
   const shell = createShellSettingsController(() => props.server)
   const desktop = createMemo(() => platform.platform === "desktop")

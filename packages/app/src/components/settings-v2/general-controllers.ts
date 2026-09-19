@@ -15,7 +15,11 @@ import {
   useSettings,
 } from "@/context/settings"
 import { playSoundById, SOUND_OPTIONS } from "@/utils/sound"
-import { createSoundPreviewController, type ShellOption } from "./general-controller-behavior"
+import {
+  createSoundPreviewController,
+  resolvePermissionScope,
+  type ShellOption,
+} from "./general-controller-behavior"
 import { ServerConnection } from "@/context/servers"
 import { useGlobal, useServerCtx } from "@/context/global"
 
@@ -25,31 +29,44 @@ export type { ShellOption, ShellSelectOption } from "./general-controller-behavi
 export function createPermissionScopeController(
   server: Accessor<ServerConnection.Any | undefined>,
   sessionID: Accessor<string | undefined>,
+  directory: Accessor<string | undefined>,
 ) {
   const serverCtx = useServerCtx(server)
   const permission = () => serverCtx()?.permission
 
-  const directory = createMemo(() => {
+  const sessionDirectory = createMemo(() => {
     const s = server()
     const id = sessionID()
     if (!s || !id) return undefined
     return serverCtx()?.data.session.get(id)?.location.directory
   })
 
+  const scope = createMemo(() =>
+    resolvePermissionScope({
+      sessionID: sessionID(),
+      sessionDirectory: sessionDirectory(),
+      directory: directory(),
+    }),
+  )
+
   return {
     accepting: createMemo(() => {
-      const id = sessionID()
-      const dir = directory()
-      if (!id || !dir) return false
-      return permission()?.isAutoAccepting(id, dir)
+      const target = scope()
+      if (!target) return false
+      if (target.kind === "session") return permission()?.isAutoAccepting(target.sessionID, target.directory) ?? false
+      return permission()?.isAutoAcceptingDirectory(target.directory) ?? false
     }),
-    enabled: createMemo(() => !!directory()),
+    enabled: createMemo(() => !!scope()),
     set: (checked: boolean) => {
-      const id = sessionID()
-      const dir = directory()
-      if (!id || !dir) return
-      if (checked) return permission()?.enableAutoAccept(id, dir)
-      permission()?.disableAutoAccept(id, dir)
+      const target = scope()
+      const api = permission()
+      if (!target || !api) return
+      if (target.kind === "session") {
+        if (checked) return api.enableAutoAccept(target.sessionID, target.directory)
+        return api.disableAutoAccept(target.sessionID, target.directory)
+      }
+      if (checked) return api.enableAutoAcceptDirectory(target.directory)
+      return api.disableAutoAcceptDirectory(target.directory)
     },
   }
 }

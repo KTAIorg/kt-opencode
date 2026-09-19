@@ -772,7 +772,12 @@ const fragmentFixture = (kind: FragmentKind, id: string, chunks: readonly string
       const expectedContent = { type: "tool", id, state: { status: "streaming", input: text } }
       return {
         partialEvents,
-        completeEvents: [...partialEvents, LLMEvent.toolInputEnd({ id, name: "echo" })],
+        completeEvents: [
+          ...partialEvents,
+          LLMEvent.toolInputEnd({ id, name: "echo" }),
+          LLMEvent.stepFinish({ index: 0, reason: { normalized: "stop" } }),
+          LLMEvent.finish({ reason: { normalized: "stop" } }),
+        ],
         expectedAssistant: { type: "assistant", content: [expectedContent] },
         expectedContent,
       }
@@ -1263,7 +1268,7 @@ describe("SessionRunnerLLM", () => {
         Stream.unwrap(
           Deferred.succeed(secondStarted, undefined).pipe(
             Effect.andThen(Deferred.await(releaseSecond)),
-            Effect.as(Stream.fromIterable(TestLLM.stop())),
+            Effect.as(Stream.fromIterable(TestLLM.text("Done", "text-done"))),
           ),
         ),
         Stream.fromIterable(TestLLM.text("Handled completion", "text-completion")),
@@ -2752,7 +2757,7 @@ describe("SessionRunnerLLM", () => {
       const bus = yield* Bus.Service
       yield* admit(session, "Echo this")
 
-      yield* TestLLM.push(TestLLM.tool("call-echo", "echo", { text: "hello" }), TestLLM.stop())
+      yield* TestLLM.push(TestLLM.tool("call-echo", "echo", { text: "hello" }), TestLLM.text("Done", "text-done"))
       const tools = yield* blockTools()
       const run = yield* Effect.forkChild(session.resume(sessionID))
       yield* tools.started
@@ -3065,7 +3070,7 @@ describe("SessionRunnerLLM", () => {
       const session = yield* setup
       yield* admit(session, "Start working")
 
-      yield* TestLLM.push(TestLLM.stop(), TestLLM.stop())
+      yield* TestLLM.push(TestLLM.text("Done", "text-done"), TestLLM.text("Done", "text-done"))
       const stream = yield* TestLLM.gate
 
       const first = yield* session.resume(sessionID).pipe(Effect.forkChild)
@@ -3092,7 +3097,7 @@ describe("SessionRunnerLLM", () => {
       const session = yield* setup
       yield* admit(session, "Start working")
 
-      yield* TestLLM.push(TestLLM.tool("call-echo", "echo", { text: "hello" }), TestLLM.stop(), TestLLM.stop())
+      yield* TestLLM.push(TestLLM.tool("call-echo", "echo", { text: "hello" }), TestLLM.text("Done", "text-done"), TestLLM.text("Done", "text-done"))
       const stream = yield* TestLLM.gate
 
       const first = yield* session.resume(sessionID).pipe(Effect.forkChild)
@@ -3118,7 +3123,7 @@ describe("SessionRunnerLLM", () => {
       const { db } = yield* Database.Service
       yield* admit(session, "Interrupt current work")
 
-      yield* TestLLM.push([], TestLLM.stop())
+      yield* TestLLM.push([], TestLLM.text("Done", "text-done"))
       const stream = yield* TestLLM.gate
 
       const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
@@ -3149,7 +3154,7 @@ describe("SessionRunnerLLM", () => {
       const { db } = yield* Database.Service
       yield* admit(session, "Interrupt current work")
 
-      yield* TestLLM.push([], TestLLM.stop())
+      yield* TestLLM.push([], TestLLM.text("Done", "text-done"))
       const stream = yield* TestLLM.gate
 
       const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
@@ -3179,7 +3184,7 @@ describe("SessionRunnerLLM", () => {
       const session = yield* setup
       yield* admit(session, "Start working")
 
-      yield* TestLLM.push(TestLLM.stop(), TestLLM.stop(), TestLLM.stop())
+      yield* TestLLM.push(TestLLM.text("Done", "text-done"), TestLLM.text("Done", "text-done"), TestLLM.text("Done", "text-done"))
       const stream = yield* TestLLM.gate
 
       const first = yield* session.resume(sessionID).pipe(Effect.forkChild)
@@ -3202,7 +3207,7 @@ describe("SessionRunnerLLM", () => {
       const { db } = yield* Database.Service
       yield* session.prompt({ sessionID, text: "Queue for later", delivery: "queue", resume: false })
       yield* session.prompt({ sessionID, text: "Steer now", resume: false })
-      yield* TestLLM.push(TestLLM.stop())
+      yield* TestLLM.push(TestLLM.text("Done", "text-done"))
 
       const runner = yield* SessionRunner.Service
       yield* runner.drain({ sessionID, force: false, promotable: "steer" })
@@ -3225,7 +3230,7 @@ describe("SessionRunnerLLM", () => {
         resume: false,
       })
 
-      yield* TestLLM.push(TestLLM.stop(), TestLLM.stop())
+      yield* TestLLM.push(TestLLM.text("Done", "text-done"), TestLLM.text("Done", "text-done"))
 
       yield* session.resume(sessionID)
 
@@ -3240,7 +3245,7 @@ describe("SessionRunnerLLM", () => {
       const session = yield* setup
       yield* admit(session, "Start working")
 
-      yield* TestLLM.push(TestLLM.stop(), TestLLM.stop(), TestLLM.stop(), TestLLM.stop())
+      yield* TestLLM.push(TestLLM.text("Done", "text-done"), TestLLM.text("Done", "text-done"), TestLLM.text("Done", "text-done"), TestLLM.text("Done", "text-done"))
       const firstStream = yield* TestLLM.gate
 
       const first = yield* session.resume(sessionID).pipe(Effect.forkChild)
@@ -3285,7 +3290,7 @@ describe("SessionRunnerLLM", () => {
       const session = yield* setup
       yield* admit(session, "Start working")
 
-      yield* TestLLM.push(TestLLM.stop(), TestLLM.stop())
+      yield* TestLLM.push(TestLLM.text("Done", "text-done"), TestLLM.text("Done", "text-done"))
       const stream = yield* TestLLM.gate
 
       const first = yield* session.resume(sessionID).pipe(Effect.forkChild)
@@ -3499,7 +3504,7 @@ describe("SessionRunnerLLM", () => {
       expect(yield* session.resume(sessionID).pipe(Effect.catchDefect(Effect.succeed))).toBe(defect)
       fail = false
       requests.length = 0
-      yield* TestLLM.push(TestLLM.stop())
+      yield* TestLLM.push(TestLLM.text("Done", "text-done"))
 
       const stream = yield* TestLLM.gate
       yield* (yield* SessionExecution.Service).wake(sessionID)
@@ -3727,7 +3732,7 @@ describe("SessionRunnerLLM", () => {
       )
       yield* admit(session, "Call blocked")
 
-      yield* TestLLM.push(TestLLM.tool("call-blocked", "blocked", {}), TestLLM.stop())
+      yield* TestLLM.push(TestLLM.tool("call-blocked", "blocked", {}), TestLLM.text("Done", "text-done"))
 
       yield* session.resume(sessionID)
 
@@ -3809,7 +3814,7 @@ describe("SessionRunnerLLM", () => {
       )
       yield* admit(session, "Call corrected")
 
-      yield* TestLLM.push(TestLLM.tool("call-corrected", "corrected", {}), TestLLM.stop())
+      yield* TestLLM.push(TestLLM.tool("call-corrected", "corrected", {}), TestLLM.text("Done", "text-done"))
 
       yield* session.resume(sessionID)
 
@@ -3836,6 +3841,7 @@ describe("SessionRunnerLLM", () => {
       yield* TestLLM.push(TestLLM.tool("call-permission", "permissionfail", {}), [
         LLMEvent.stepStart({ index: 0 }),
         LLMEvent.stepFinish({ index: 0, reason: { normalized: "stop" } }),
+        LLMEvent.finish({ reason: { normalized: "stop" } }),
       ])
 
       yield* session.resume(sessionID)
@@ -4110,7 +4116,7 @@ describe("SessionRunnerLLM", () => {
       yield* TestLLM.push(
         TestLLM.tool("call-before-steer", "echo", { text: "before" }),
         TestLLM.tool("call-after-steer", "echo", { text: "after" }),
-        TestLLM.stop(),
+        TestLLM.text("Done", "text-done"),
       )
       const stream = yield* TestLLM.gate
 
@@ -4157,6 +4163,78 @@ describe("SessionRunnerLLM", () => {
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Fail before step" },
         { type: "assistant", finish: "error", error: { type: "provider.unknown", message: "Provider unavailable" } },
+      ])
+    }),
+  )
+
+  it.effect("fails durably when the provider stream ends without a terminal event", () =>
+    Effect.gen(function* () {
+      const session = yield* setup
+      yield* TestLLM.push([LLMEvent.stepStart({ index: 0 })])
+
+      expect((yield* runPrompt(session, "Silent stream").pipe(Effect.flip)).message).toBe(
+        "The model returned no content.",
+      )
+
+      expect(requests).toHaveLength(1)
+      const messages = yield* session.context(sessionID)
+      expect(messages).toMatchObject([
+        { type: "user", text: "Silent stream" },
+        {
+          type: "assistant",
+          finish: "error",
+          error: { type: "provider.empty-response", message: "The model returned no content." },
+        },
+      ])
+      const assistant = requireAssistant(messages)
+      expect(yield* recordedStepSettlementTypes(sessionID, assistant.id)).toEqual([
+        "session.step.started.1",
+        "session.step.failed.1",
+      ])
+    }),
+  )
+
+  it.effect("fails durably when the provider finishes with no content", () =>
+    Effect.gen(function* () {
+      const session = yield* setup
+      yield* TestLLM.push(TestLLM.stop())
+
+      expect((yield* runPrompt(session, "Empty answer").pipe(Effect.flip)).message).toBe(
+        "The model returned no content.",
+      )
+
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Empty answer" },
+        {
+          type: "assistant",
+          finish: "error",
+          error: { type: "provider.empty-response", message: "The model returned no content." },
+        },
+      ])
+    }),
+  )
+
+  it.effect("fails durably while keeping partial text when the provider stream truncates", () =>
+    Effect.gen(function* () {
+      const session = yield* setup
+      yield* TestLLM.push([
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.textStart({ id: "truncated" }),
+        LLMEvent.textDelta({ id: "truncated", text: "Partial" }),
+      ])
+
+      expect((yield* runPrompt(session, "Truncated stream").pipe(Effect.flip)).message).toBe(
+        "The model returned no content.",
+      )
+
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "user", text: "Truncated stream" },
+        {
+          type: "assistant",
+          finish: "error",
+          error: { type: "provider.empty-response", message: "The model returned no content." },
+          content: [{ type: "text", text: "Partial" }],
+        },
       ])
     }),
   )
@@ -4665,7 +4743,7 @@ describe("SessionRunnerLLM", () => {
       yield* admit(session, "Retry without consuming a step")
       const failure = providerUnavailable()
       yield* TestLLM.push(Stream.fail(failure))
-      yield* TestLLM.push(TestLLM.tool("call-after-retry", "echo", { text: "recovered" }), TestLLM.stop())
+      yield* TestLLM.push(TestLLM.tool("call-after-retry", "echo", { text: "recovered" }), TestLLM.text("Done", "text-done"))
 
       const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
       yield* TestLLM.wait(1)
@@ -4728,7 +4806,7 @@ describe("SessionRunnerLLM", () => {
       expect(yield* runPrompt(session, "Call a malformed tool").pipe(Effect.flip)).toBe(failure)
       const assistant = requireAssistant(yield* session.context(sessionID))
 
-      yield* TestLLM.push(TestLLM.stop())
+      yield* TestLLM.push(TestLLM.text("Done", "text-done"))
       yield* runPrompt(session, "Continue")
 
       expect(yield* recordedStepSettlementEvents(sessionID, assistant.id)).toMatchObject([
@@ -4764,7 +4842,7 @@ describe("SessionRunnerLLM", () => {
             raw,
           }),
         ),
-        TestLLM.stop(),
+        TestLLM.text("Done", "text-done"),
       )
 
       yield* runPrompt(session, "Recover malformed tool input")
@@ -4856,7 +4934,7 @@ describe("SessionRunnerLLM", () => {
             raw: '{"text":"partial',
           }),
         ),
-        TestLLM.stop(),
+        TestLLM.text("Done", "text-done"),
       )
 
       const run = yield* session.resume(sessionID).pipe(Effect.forkChild)
@@ -5005,7 +5083,7 @@ describe("SessionRunnerLLM", () => {
         malformed("call-first"),
         TestLLM.tool("call-valid-between", "echo", { text: "valid" }),
         malformed("call-second"),
-        TestLLM.stop(),
+        TestLLM.text("Done", "text-done"),
       )
 
       yield* runPrompt(session, "Keep producing malformed tools")
