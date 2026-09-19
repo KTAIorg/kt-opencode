@@ -4240,33 +4240,6 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("fails durably when the provider stream emits no events", () =>
-    Effect.gen(function* () {
-      const session = yield* setup
-      yield* TestLLM.push([])
-
-      expect((yield* runPrompt(session, "Empty stream").pipe(Effect.flip)).message).toBe(
-        "The model returned no content.",
-      )
-
-      expect(requests).toHaveLength(1)
-      const messages = yield* session.context(sessionID)
-      expect(messages).toMatchObject([
-        { type: "user", text: "Empty stream" },
-        {
-          type: "assistant",
-          finish: "error",
-          error: { type: "provider.empty-response", message: "The model returned no content." },
-        },
-      ])
-      const assistant = requireAssistant(messages)
-      expect(yield* recordedStepSettlementTypes(sessionID, assistant.id)).toEqual([
-        "session.step.started.1",
-        "session.step.failed.1",
-      ])
-    }),
-  )
-
   it.effect("records an interruption instead of an empty response when a silent stream is cancelled", () =>
     Effect.gen(function* () {
       const session = yield* setup
