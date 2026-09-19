@@ -30,9 +30,13 @@ export async function spawnWslSidecar(
     'PATH=$(awk -v RS=: -v ORS=: \'$0 !~ /^\\/mnt\\//\' <<<"$PATH" | sed "s/:$//")',
     "export PATH",
     "export WSLENV=",
+    "export KITO_EXPERIMENTAL_DISABLE_FILEWATCHER=true",
     "export OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER=true",
+    "export KITO_CLIENT=desktop",
     "export OPENCODE_CLIENT=desktop",
+    `export KITO_SERVER_USERNAME=${shellEscape(username)}`,
     `export OPENCODE_SERVER_USERNAME=${shellEscape(username)}`,
+    `export KITO_SERVER_PASSWORD=${shellEscape(password)}`,
     `export OPENCODE_SERVER_PASSWORD=${shellEscape(password)}`,
     // Isolate the sidecar's XDG roots from any OpenCode install inside the
     // distro: the resolved binary may be an upstream build, so the "kito" data
