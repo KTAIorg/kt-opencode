@@ -1011,6 +1011,7 @@ export const dict = {
     "Show edit, write, and patch tool parts expanded by default in the timeline",
   "settings.general.row.pinchZoom.title": "Pinch to zoom",
   "settings.general.row.pinchZoom.description": "Allow trackpad pinch and Ctrl-scroll gestures to zoom",
+  "settings.general.autoAccept.scopeHint": "Available within a session or project",
 
   "settings.general.row.wayland.title": "Use native Wayland",
   "settings.general.row.wayland.description": "Disable X11 fallback on Wayland. Requires restart.",

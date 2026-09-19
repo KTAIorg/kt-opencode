@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain } from "electron"
-import type { IpcMainEvent, IpcMainInvokeEvent } from "electron"
+import type { IpcMainEvent, IpcMainInvokeEvent, WebContents } from "electron"
 import { parseDesktopNativeBundle, type DesktopNativeBundle } from "@opencode-ai/app/i18n/desktop-native"
 
 import {
@@ -51,6 +51,7 @@ type Deps = {
   exportDebugLogs: () => Promise<string>
   recordFatalRendererError: (error: FatalRendererError) => Promise<void> | void
   setNativeTranslations: (bundle: DesktopNativeBundle) => void
+  setMenuCommands: (sender: WebContents, ids: string[]) => void
 }
 
 export function registerIpcHandlers(deps: Deps) {
@@ -154,6 +155,7 @@ export function registerIpcHandlers(deps: Deps) {
     if (!win) return
     setTitlebar(win, theme)
   })
+  on(Ipc.menu.setCommands, (event, ids) => deps.setMenuCommands(event.sender, ids))
   handle(Ipc.menu.runAction, (event, action) => {
     runDesktopMenuAction(BrowserWindow.fromWebContents(event.sender), action, {
       checkForUpdates: () => void deps.showUpdater(),

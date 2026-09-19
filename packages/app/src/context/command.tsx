@@ -94,6 +94,18 @@ export function commandPaletteOptions(options: CommandOption[]) {
   )
 }
 
+// Mirrors the native/windows menu rule: a command item is enabled only when a
+// registered option with that id exists and is not disabled.
+export function enabledCommandIds(options: CommandOption[]) {
+  const ids = new Set<string>()
+  for (const option of options) {
+    if (option.disabled) continue
+    ids.add(option.id)
+    ids.add(actionId(option.id))
+  }
+  return ids
+}
+
 export function resolveKeybindOption(candidates: CommandOption[] | undefined, event: KeyboardEvent) {
   return candidates?.find((option) => option.when?.(event)) ?? candidates?.find((option) => !option.when)
 }
