@@ -34,19 +34,19 @@ describe("SkillPlugin.Plugin", () => {
       expect(skills).toContainEqual(
         expect.objectContaining({
           id: "opencode",
-          name: "OpenCode",
-          description: expect.stringContaining("any question about OpenCode itself"),
+          name: "Kito",
+          description: expect.stringContaining("any question about Kito itself"),
         }),
       )
       expect(skills).toContainEqual(
         expect.objectContaining({
           id: "report",
           name: "Report",
-          description: expect.stringContaining("opencode issue"),
+          description: expect.stringContaining("Kito issue"),
         }),
       )
       expect(report?.slash).toBe(true)
-      expect(report?.content).toContain("- opencode version: 1.2.3")
+      expect(report?.content).toContain("- kito version: 1.2.3")
       expect(report?.content).toContain("- install/channel: beta")
     }),
   )
