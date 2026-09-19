@@ -149,6 +149,8 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
       return
     }
     setInfoLoading(true)
+    // 重发前清掉上一轮的失败态，否则重试期间错误文案和 spinner 同时挂着。
+    setInfoError()
     let cancelled = false
     void request("/ktai/wallet/ktpay/info")
       .then(async (response) => {
@@ -453,7 +455,18 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
               <p class="text-14-regular text-v2-state-fg-danger">
                 {infoError()?.message || language.t("dialog.ktWallet.fiatError")}
               </p>
-              {loginAction()}
+              <div class="flex gap-2">
+                {/* 与 kito-account-refresh 同一机制：authTick 变化触发 info 拉取 effect 重发。 */}
+                <Button
+                  variant="outline"
+                  size="large"
+                  type="button"
+                  onClick={() => setAuthTick((n) => n + 1)}
+                >
+                  {language.t("dialog.ktWallet.retry")}
+                </Button>
+                {loginAction()}
+              </div>
             </div>
           </Show>
           <Show when={info()?.enabled === false}>
@@ -479,9 +492,10 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
                   )}
                 </For>
               </div>
+              {/* 上游 info 的 min_topup 可能滞后（实测上报 5 时 $1 已可下单）；客户端下限封顶 $1，不再拿上报值卡自定义金额。 */}
               <input
                 type="number"
-                min={info()?.minTopup ?? 1}
+                min={Math.min(info()?.minTopup ?? 1, 1)}
                 max={info()?.maxTopup ?? 500}
                 value={custom()}
                 placeholder={language.t("dialog.ktWallet.custom")}
