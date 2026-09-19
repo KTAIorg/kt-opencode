@@ -1,11 +1,13 @@
 import type { MiniFrontendInput } from "@opencode-ai/tui/mini"
 import { createModelPreferenceRepository } from "@opencode-ai/tui/model-preference"
+import { kitoEnv } from "@opencode-ai/util/kito-env"
+import { redactArgs } from "./util/process"
 import fs from "node:fs"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { ReadStream } from "node:tty"
 
-export const INTERACTIVE_INPUT_ERROR = "opencode mini requires a controlling terminal for input"
+export const INTERACTIVE_INPUT_ERROR = "opencode2 mini requires a controlling terminal for input"
 
 export type InteractiveStdin = {
   stdin: NodeJS.ReadStream
@@ -46,7 +48,7 @@ function createTrace(
   logPath: string,
   diagnostics: { pid: number; cwd: string; argv: string[] },
 ): MiniHost["diagnostics"]["trace"] {
-  if (!process.env.OPENCODE_DIRECT_TRACE) return
+  if (!kitoEnv("DIRECT_TRACE")) return
   const stamp = new Date()
     .toISOString()
     .replace(/[-:]/g, "")
@@ -134,7 +136,7 @@ export function createMiniHost(input: {
   const diagnostics = {
     pid: process.pid,
     cwd: input.directory,
-    argv: process.argv.slice(2),
+    argv: redactArgs(process.argv.slice(2)),
   }
   return {
     terminal: { stdin: input.terminal.stdin },
@@ -159,7 +161,7 @@ export function createMiniHost(input: {
       sigusr2: signal("SIGUSR2"),
     },
     startup: {
-      showTiming: ["1", "true"].includes(process.env.OPENCODE_SHOW_TTFD?.toLowerCase() ?? ""),
+      showTiming: ["1", "true"].includes(kitoEnv("SHOW_TTFD")?.toLowerCase() ?? ""),
       now: () => performance.now(),
     },
     diagnostics: {

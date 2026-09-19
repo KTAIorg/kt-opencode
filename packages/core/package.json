@@ -74,6 +74,7 @@
     }
   },
   "devDependencies": {
+    "@ai-sdk/xai": "3.0.130",
     "@effect/platform-node": "catalog:",
     "@effect/sql-sqlite-bun": "catalog:",
     "@tsconfig/bun": "catalog:",

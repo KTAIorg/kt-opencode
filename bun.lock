@@ -392,6 +392,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@ai-sdk/xai": "3.0.130",
         "@effect/platform-node": "catalog:",
         "@effect/sql-sqlite-bun": "catalog:",
         "@opencode-ai/http-recorder": "workspace:*",

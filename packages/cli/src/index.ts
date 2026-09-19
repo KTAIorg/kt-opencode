@@ -9,10 +9,12 @@ import { Updater } from "./services/updater"
 import { OPENCODE_CHANNEL, OPENCODE_LOCAL, OPENCODE_VERSION } from "./version"
 import { LayerNode } from "@opencode-ai/util/effect/layer-node"
 import { Global } from "@opencode-ai/util/global"
+import { kitoDataEnv, kitoEnv } from "@opencode-ai/util/kito-env"
 import { AppProcess } from "@opencode-ai/util/process"
 import { Config } from "./config"
 import { Npm } from "@opencode-ai/util/npm"
 import { Heap } from "./heap"
+import { redactArgs } from "./util/process"
 
 const Handlers = Runtime.handlers(Commands, {
   $: () => import("./commands/handlers/default"),
@@ -78,14 +80,14 @@ Effect.gen(function* () {
     version: OPENCODE_VERSION,
     channel: OPENCODE_CHANNEL,
     local: OPENCODE_LOCAL,
-    args: process.argv.slice(2),
+    args: redactArgs(process.argv.slice(2)),
   })
   return yield* Runtime.run(Commands, Handlers, { version: OPENCODE_VERSION })
 }).pipe(
   Effect.catchCause((cause) =>
     Effect.logError("cli process failed", {
       cause,
-      args: process.argv.slice(2),
+      args: redactArgs(process.argv.slice(2)),
     }).pipe(Effect.andThen(Effect.failCause(cause))),
   ),
   Effect.annotateLogs({ role: "cli" }),
@@ -95,7 +97,7 @@ Effect.gen(function* () {
     LayerNode.compile(LayerNode.group([Global.node, AppProcess.node, Npm.node]), [
       [
         Global.node,
-        Global.layerWith(process.env.OPENCODE_CONFIG_DIR ? { config: process.env.OPENCODE_CONFIG_DIR } : {}),
+        Global.layerWith(kitoDataEnv("CONFIG_DIR") ? { config: kitoDataEnv("CONFIG_DIR") } : {}),
       ],
     ]),
   ),
@@ -103,7 +105,7 @@ Effect.gen(function* () {
     Observability.layer({
       endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
       headers: process.env.OTEL_EXPORTER_OTLP_HEADERS,
-      client: process.env.OPENCODE_CLIENT ?? "cli",
+      client: kitoEnv("CLIENT") ?? "cli",
       version: OPENCODE_VERSION,
       channel: OPENCODE_CHANNEL,
     }),
