@@ -147,9 +147,13 @@ function listFor(
   const out = new Map<string, KeybindMeta>()
   out.set(PALETTE_ID, { title: palette, group: "General" })
 
+  // The catalog is a persisted merge: removed or unmounted commands linger forever.
+  // Only surface entries whose id is still registered, so stale commands cannot be bound.
+  const live = new Set(command.options.map((opt) => opt.id))
   for (const opt of command.catalog) {
     if (opt.id.startsWith("suggested.")) continue
     if (opt.hidden) continue
+    if (!live.has(opt.id)) continue
     out.set(opt.id, { title: commandTitle(opt.id, opt.title, t), group: groupFor(opt.id) })
   }
 

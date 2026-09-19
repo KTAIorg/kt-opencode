@@ -34,14 +34,22 @@ const main = Effect.gen(function* () {
   yield* prepareDesktop(logger)
 
   const updater = setupAutoUpdater(lifecycle.prepareToRestart)
+  // Enabled command ids reported by each window's renderer, keyed by webContents id.
+  // The native menu mirrors the focused window's registration state.
+  const menuCommands = new Map<number, ReadonlySet<string>>()
   const menu = {
     trigger: (id: string) => {
       const win = getLastFocusedWindow()
       if (win) sendMenuCommand(win, id)
     },
+    commands: () => {
+      const win = getLastFocusedWindow()
+      return win ? menuCommands.get(win.webContents.id) : undefined
+    },
     checkForUpdates: () => void showUpdaterDialog(updater),
     relaunch: lifecycle.relaunch,
   }
+  app.on("browser-window-focus", () => createMenu(menu))
   registerIpcHandlers({
     relaunch: lifecycle.relaunch,
     awaitInitialization: Effect.fnUntraced(
@@ -67,6 +75,18 @@ const main = Effect.gen(function* () {
     recordFatalRendererError: (error) => writeLog("renderer", "fatal renderer error", { ...error }, "error"),
     setNativeTranslations: (bundle) => {
       if (setNativeTranslations(bundle)) createMenu(menu)
+    },
+    setMenuCommands: (sender, ids) => {
+      const previous = menuCommands.get(sender.id)
+      if (previous && previous.size === ids.length && ids.every((id) => previous.has(id))) return
+      menuCommands.set(sender.id, new Set(ids))
+      if (!previous) {
+        sender.once("destroyed", () => {
+          menuCommands.delete(sender.id)
+          createMenu(menu)
+        })
+      }
+      createMenu(menu)
     },
   })
   registerUpdaterIpcHandlers(createUpdaterIpc(updater))

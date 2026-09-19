@@ -67,6 +67,7 @@ export type ElectronAPI = {
   onZoomFactorChanged: IpcEventSubscription<typeof Ipc.window.zoomFactorChanged>
   setTitlebar: IpcInvokeMethod<typeof Ipc.window.setTitlebar>
   runDesktopMenuAction: IpcInvokeMethod<typeof Ipc.menu.runAction>
+  setMenuCommands: IpcSendMethod<typeof Ipc.menu.setCommands>
   setBackgroundColor: IpcInvokeMethod<typeof Ipc.app.setBackgroundColor>
   exportDebugLogs: IpcInvokeMethod<typeof Ipc.app.exportDebugLogs>
   setForceFocus: IpcInvokeMethod<typeof Ipc.app.setForceFocus>

@@ -2,6 +2,7 @@ import { useDirectoryPicker } from "@/components/directory-picker"
 import { useServerActionsController } from "@/components/server/server-management-controller"
 import { useSettingsCommand } from "@/components/settings-dialog"
 import { DialogServerV2 } from "@/components/settings-v2/dialog-server-v2"
+import { useCommand } from "@/context/command"
 import { type LocalProject } from "@/context/layout"
 import { useLanguage } from "@/context/language"
 import { useNotification } from "@/context/notification"
@@ -21,6 +22,7 @@ export function createHomeProjectsController(home: HomeController) {
   const pickDirectory = useDirectoryPicker()
   const dialog = useDialog()
   const language = useLanguage()
+  const command = useCommand()
   const openSettings = useSettingsCommand()
   const serverManagement = useServerActionsController()
   const global = useGlobal()
@@ -40,6 +42,30 @@ export function createHomeProjectsController(home: HomeController) {
   function canRevealProject(conn: ServerConnection.Any) {
     return platform.platform === "desktop" && !!platform.openPath && ServerConnection.local(conn)
   }
+
+  function choose(conn: ServerConnection.Any) {
+    if (home.server.health(conn)?.healthy === false) return
+    pickDirectory({
+      server: conn,
+      title: language.t("command.project.open"),
+      multiple: true,
+      onSelect: (result) => home.project.add(conn, homeProjectDirectories(result)),
+    })
+  }
+
+  command.register("home.project", () => [
+    {
+      id: "project.open",
+      title: language.t("command.project.open"),
+      category: language.t("command.category.project"),
+      keybind: "mod+o",
+      disabled: !home.server.focused(),
+      onSelect: () => {
+        const conn = home.server.focused()
+        if (conn) choose(conn)
+      },
+    },
+  ])
 
   return {
     copy: {
@@ -88,15 +114,7 @@ export function createHomeProjectsController(home: HomeController) {
           .filter((directory) => notification.project.unseenCount(directory) > 0)
           .forEach((directory) => notification.project.markViewed(directory))
       },
-      choose: (conn: ServerConnection.Any) => {
-        if (home.server.health(conn)?.healthy === false) return
-        pickDirectory({
-          server: conn,
-          title: language.t("command.project.open"),
-          multiple: true,
-          onSelect: (result) => home.project.add(conn, homeProjectDirectories(result)),
-        })
-      },
+      choose,
       close: (conn: ServerConnection.Any, directory: string) => {
         const next = closeHomeProject(
           home.selection.value(),
