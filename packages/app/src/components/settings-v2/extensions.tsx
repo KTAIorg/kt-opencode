@@ -132,7 +132,7 @@ export const SettingsExtensionsV2: Component = () => {
                 </span>
                 <ExternalLink
                   class="text-13-regular text-v2-text-accent hover:underline"
-                  href="https://opencode.ai/docs/skills/"
+                  href="https://github.com/ktaiorg/kt-opencode"
                 >
                   {language.t("settings.extensions.addSkills")}
                 </ExternalLink>
