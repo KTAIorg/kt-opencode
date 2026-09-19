@@ -368,3 +368,34 @@ fiber 异步通道接不住，类型化失败注入要用 `modelResolveHook`
 `stash@{0}`（runner-workspace-snapshot-foreign-wip），a424632 的 3 个测试
 文件（kt-settlement/ktai-model-order/integration.test.ts）efc3735 未含，
 待钱包线 owner 决定是否移植。
+
+---
+
+## 2025-XX · #114 零事件静默洞（fix-114-zero-event）
+
+叠在 fix-114-runner 上，堵 `llm.ts` 自认的洞：`stepStarted` 只在有事件时
+置位，上游 200+零帧/零事件 → 正常 Completed，依旧"不输出不报错"。
+
+**语义结论**：合法零事件不存在。`LLMClient.stream` 的
+`requireTerminalEvent`（packages/ai/src/route/client.ts）已强制每个流以
+`finish`/`provider-error` 收尾——生产路径零事件会先在上游变成
+`incomplete-stream` AIError 走重试；runner 层的判定是防御性兜底，覆盖任何
+不合规 `LLMClient.Interface` 实现。取消=纯 `Fiber.interrupt`
+（run-coordinator.ts）：stream exit 必为 Failure；即使中断在空 Success 后
+挂起，下一个 `restore()`（tool join）投递 interrupt→STEP_INTERRUPTED→
+`record().failure` 置位→跳过检查。`stream._tag === "Success"` 门槛已完整
+排除 abort，无"误报"窗口。
+
+**改动**：empty-response 判定去掉外层 `stepStarted` 前提，把"step-1 无
+输出"收窄进 `stepStarted` 内——唯一行为变化是 `!stepStarted && !finish`
+（零事件）现在也落 `provider.empty-response`；finish-only 流维持
+Started+Ended 不动。复用 `provider.empty-response` 而非新 type：用户语义
+相同（模型什么都没返回），前端 `session.error.model.empty` 文案直接接住，
+SessionError.type 自由字符串无需 schema/app 改动。
+
+**测试**：新增 `fails durably when the provider stream emits no events`
+（`TestLLM.push([])` 零事件流→empty-response+started/failed 配对）与
+`records an interruption instead of an empty response when a silent
+stream is cancelled`（Stream.never 零事件+Fiber.interrupt→aborted 不误报）；
+既有 step-start-无内容/空 finish 用例覆盖原行为回归。无 node_modules 未跑，
+待统一验证。
