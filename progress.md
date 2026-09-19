@@ -631,3 +631,27 @@ fiber 异步通道接不住，类型化失败注入要用 `modelResolveHook`
 `stash@{0}`（runner-workspace-snapshot-foreign-wip），a424632 的 3 个测试
 文件（kt-settlement/ktai-model-order/integration.test.ts）efc3735 未含，
 待钱包线 owner 决定是否移植。
+## 追加修复（2026-09-19）：OAuth 回调页 + desktop metainfo 品牌漏网（分支 fix-109-oauth-brand）
+
+- `packages/core/src/oauth/page.ts`：整页 OpenCode → Kito。成功/失败文案
+  （SSR 与页内 bootstrap JS 字符串同步）、`<title>· Kito</title>`；
+  wordmark 由内嵌 OpenCode pixel SVG 换为 Kito 幽灵 wordmark（内联自
+  `packages/ui/src/typography/wordmark/wordmark.tsx`，aria-label="Kito"，
+  显示高 30px，`.brand` 色 `var(--oc-text-strong)`）；删除"与 logo.tsx
+  一致"的过期注释。
+- `packages/core/src/mcp/oauth.ts`：MCP 动态客户端注册元数据
+  `client_name: "opencode"` → `"Kito"`、`client_uri` → `https://kito.ktai.im`
+  （该两项显示在第三方 OAuth 同意页，属用户可见）。
+- `packages/desktop/scripts/copy-metainfo.ts`：描述改 "Kito is an AI
+  coding agent for your desktop"；homepage → `https://kito.ktai.im`；
+  bugtracker/vcs-browser → `KTAIorg/kt-opencode`；删除指向上游
+  anomalyco/opencode 截图的 `<screenshots>` 字段。
+
+**不改**：`@opencode-ai/*` 包名、`ai.opencode.desktop` appId、`oc-*` CSS
+变量名、`opencode.ts` provider 及 HTTP-Referer 等上游真实服务引用。
+metainfo `<developer>` 仍为 "Anomaly Innovations Inc."（上架主体身份，
+未动，待产品决策）。
+
+**验证**：`bun -e` 直导入 page.ts 渲染 success/error/bootstrap 三页，
+断言无 OpenCode/opencode.ai 残留且含 Kito wordmark；`bun build`
+copy-metainfo.ts 打包通过。
