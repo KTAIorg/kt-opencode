@@ -112,7 +112,13 @@ const telegram = (): IntegrationOAuthMethodRegistration => ({
               refresh: KT_IDENTITY_REFRESH_MARKER,
               access: session.token,
               expires: sessionExpiresAt(session),
-              metadata: { accountId: session.account.id },
+              // Keep the server-provided expiry in metadata: `expires` may be a
+              // runtime estimate when Identity omits expiresAt, and only the
+              // real value may be written back to ktai-identity.json.
+              metadata: {
+                accountId: session.account.id,
+                ...(session.session.expiresAt ? { expiresAt: session.session.expiresAt } : {}),
+              },
             }),
           ),
         ),
@@ -134,7 +140,11 @@ export const KtaiPlugin = define({
       if (credential?.type === "oauth" && credential.access)
         persistIdentityToken(credential.access, {
           accountId: typeof credential.metadata?.accountId === "string" ? credential.metadata.accountId : undefined,
-          expiresAt: new Date(credential.expires).toISOString(),
+          // `credential.expires` can be an estimate, so persist only the
+          // server-provided expiresAt stored in metadata. Omitting it keeps a
+          // token without server expiry valid instead of inventing a logout.
+          expiresAt:
+            typeof credential.metadata?.expiresAt === "string" ? credential.metadata.expiresAt : undefined,
         })
       const managed = yield* Effect.promise(() => readManagedApiKey())
       const apiKey =

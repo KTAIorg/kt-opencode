@@ -1,4 +1,5 @@
 import { Global } from "@opencode-ai/util/global"
+import { kitoDataEnv } from "@opencode-ai/util/kito-env"
 import fs from "fs"
 import path from "path"
 import { fetchAccountMe } from "./identity"
@@ -81,7 +82,7 @@ function walletBaseUrls(explicit?: string, env: NodeJS.ProcessEnv = process.env)
 }
 
 export function managedApiKeyPath() {
-  return path.join(Global.Path.data, "ktai-api-key.json")
+  return kitoDataEnv("KTAI_API_KEY_PATH")?.trim() || path.join(Global.Path.data, "ktai-api-key.json")
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -139,6 +140,9 @@ function cookieHeader(response: Response) {
 export async function persistManagedApiKey(key: string) {
   const file = managedApiKeyPath()
   await Bun.write(file, JSON.stringify({ name: KTAI_MANAGED_TOKEN_NAME, key: formatRelayKey(key) }))
+  // Bun.write applies default permissions; the managed key is a credential, so
+  // force 0600 on every write (also repairs a pre-existing permissive file).
+  fs.chmodSync(file, 0o600)
 }
 
 export async function readManagedApiKey(): Promise<string | undefined> {
@@ -176,6 +180,9 @@ export async function clearManagedApiKey() {
     delete data[KTAI_API_AUTH_ID]
     delete data.ktai
     fs.writeFileSync(authFile, JSON.stringify(data, null, 2) + "\n", { mode: 0o600 })
+    // The mode option only applies to newly created files; an existing
+    // auth.json could still be world-readable.
+    fs.chmodSync(authFile, 0o600)
   } catch {
     // leftover auth.json is not enough to keep the user signed in
   }
@@ -390,7 +397,7 @@ export function clearNewapiSpendableCache() {
 }
 
 function spendableCachePath() {
-  return process.env.OPENCODE_KTAI_SPENDABLE_PATH?.trim() || path.join(Global.Path.data, "ktai-spendable.json")
+  return kitoDataEnv("KTAI_SPENDABLE_PATH")?.trim() || path.join(Global.Path.data, "ktai-spendable.json")
 }
 
 function rememberSession(cookie: string | undefined, userId?: number) {
@@ -401,7 +408,11 @@ function rememberSession(cookie: string | undefined, userId?: number) {
 function rememberSpendable(usd: number | undefined) {
   if (usd === undefined) return
   spendableUsd = usd
-  void Bun.write(spendableCachePath(), JSON.stringify({ remainingUsd: usd })).catch(() => undefined)
+  const file = spendableCachePath()
+  void Bun.write(file, JSON.stringify({ remainingUsd: usd }))
+    // The cached balance sits beside the managed key; keep it user-only too.
+    .then(() => fs.chmodSync(file, 0o600))
+    .catch(() => undefined)
   return usd
 }
 

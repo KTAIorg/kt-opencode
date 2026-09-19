@@ -4,7 +4,14 @@ import { NodeHttpServer } from "@effect/platform-node"
 import { SessionRestart } from "@opencode-ai/core/session/execution/restart"
 import { hasPtyConnectTicketURL } from "@opencode-ai/protocol/groups/pty"
 import { Cause, Context, Deferred, Effect, Exit, Layer, Option, Ref, Scope } from "effect"
-import { HttpMiddleware, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import {
+  HttpMiddleware,
+  HttpRouter,
+  HttpServer,
+  HttpServerError,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "effect/unstable/http"
 import { createServer } from "node:http"
 import { ServerAuth } from "./auth"
 import { isAllowedCorsOrigin } from "./cors"
@@ -30,12 +37,55 @@ type App = Effect.Effect<
 
 export type Transform = (app: App) => App
 
+// Browser clients authenticate with ?auth_token=, so request URLs can carry
+// credentials in the query string. Mask the values of secret-looking params in
+// logs while keeping the rest of the query for debugging.
+const SECRET_QUERY_PARAM = /(token|secret|password|key)/i
+
+export function redactUrl(url: string) {
+  try {
+    const parsed = new URL(url, "http://localhost")
+    for (const key of parsed.searchParams.keys()) {
+      if (SECRET_QUERY_PARAM.test(key)) parsed.searchParams.set(key, "REDACTED")
+    }
+    return parsed.pathname + parsed.search
+  } catch {
+    return url.split(/[?#]/)[0] ?? url
+  }
+}
+
+// Same shape as HttpMiddleware.logger but logs only 4xx/5xx outcomes and
+// redacts the query through redactUrl instead of dropping it wholesale.
 const errorResponseLogger = HttpMiddleware.make((app) =>
-  HttpMiddleware.logger(
-    Effect.tap(app, (response) =>
-      response.status < 400 ? HttpMiddleware.withLoggerDisabled(Effect.void) : Effect.void,
-    ),
-  ),
+  Effect.withFiber((fiber) => {
+    const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
+    const url = redactUrl(request.url)
+    return Effect.withLogSpan(
+      Effect.flatMap(Effect.exit(app), (exit) => {
+        if (exit._tag === "Failure") {
+          const [response, cause] = HttpServerError.causeResponseStripped(exit.cause)
+          return Effect.andThen(
+            Effect.annotateLogs(Effect.log(Option.getOrElse(cause, () => "Sent HTTP Response")), {
+              "http.method": request.method,
+              "http.url": url,
+              "http.status": response.status,
+            }),
+            exit,
+          )
+        }
+        if (exit.value.status < 400) return exit
+        return Effect.andThen(
+          Effect.annotateLogs(Effect.log("Sent HTTP response"), {
+            "http.method": request.method,
+            "http.url": url,
+            "http.status": exit.value.status,
+          }),
+          exit,
+        )
+      }),
+      "http.span",
+    )
+  }),
 )
 
 export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
@@ -200,7 +250,7 @@ function unavailable(status: Status.State) {
       {
         code: "service_failed",
         message: "The background service could not start.",
-        action: "Run `opencode service restart` after checking the service logs.",
+        action: "Run `opencode2 service restart` after checking the service logs.",
       },
       { status: 503 },
     )
