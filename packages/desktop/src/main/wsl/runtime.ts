@@ -282,8 +282,10 @@ export async function installWslCli(distro: string, cli: WslCliBuild, opts?: Run
 }
 
 export function wslCliInstallCommand(cli: WslCliBuild) {
-  const installer = "curl -fsSL https://raw.githubusercontent.com/anomalyco/opencode/v2/install | bash -s --"
-  if (!cli.binary) return `${installer} --version ${shellEscape(cli.version)}`
+  // Kito has no public CLI feed; installing by version would pull upstream
+  // OpenCode packages. Only bundled binaries are supported.
+  if (!cli.binary) throw new Error("Kito WSL install requires a bundled CLI binary")
+  const installer = "curl -fsSL https://raw.githubusercontent.com/ktaiorg/kt-opencode/main/install | bash -s --"
   return `${installer} --binary "$(wslpath -a ${shellEscape(cli.binary)})"`
 }
 

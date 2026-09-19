@@ -4,7 +4,7 @@ import type { Configuration } from "electron-builder"
 const legacyDesktopEntry = "resources/linux/opencode-desktop.desktop"
 
 const channels = [
-  { channel: "dev", appId: "cc.ktapi.desktop.dev", productName: "Kito Dev", protocolName: "Kito", schemes: ["ktai"] },
+  { channel: "dev", appId: "cc.ktapi.desktop.dev", productName: "Kito Dev", protocolName: "Kito", schemes: ["ktai", "opencode"] },
   { channel: "beta", appId: "cc.ktapi.desktop.beta", productName: "Kito Beta", protocolName: "Kito Beta", schemes: ["ktai", "opencode"] },
   { channel: "prod", appId: "cc.ktapi.desktop", productName: "Kito", protocolName: "Kito", schemes: ["ktai", "opencode"] },
 ] as const
@@ -76,9 +76,9 @@ test("keeps a hidden prod launcher for old Linux pins", async () => {
   ).toBe(true)
 
   const desktop = await Bun.file(legacyDesktopEntry).text()
-  expect(desktop).toContain("Exec=/opt/OpenCode/ai.opencode.desktop %U")
-  expect(desktop).toContain("Icon=ai.opencode.desktop")
-  expect(desktop).toContain("StartupWMClass=ai.opencode.desktop")
+  expect(desktop).toContain("Exec=/opt/Kito/cc.ktapi.desktop %U")
+  expect(desktop).toContain("Icon=cc.ktapi.desktop")
+  expect(desktop).toContain("StartupWMClass=cc.ktapi.desktop")
   expect(desktop).toContain("NoDisplay=true")
 })
 

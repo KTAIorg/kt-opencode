@@ -7,9 +7,15 @@ type ControllerOptions = Parameters<typeof createWslServersController>[0]
 
 let persistedServers: WslServerConfig[] = []
 
-test("passes a local CLI path directly to the V2 installer", () => {
+test("passes a local CLI path directly to the Kito installer", () => {
   expect(wslCliInstallCommand({ version: "local", binary: "C:\\build\\opencode2" })).toBe(
-    `curl -fsSL https://raw.githubusercontent.com/anomalyco/opencode/v2/install | bash -s -- --binary "$(wslpath -a 'C:\\build\\opencode2')"`,
+    `curl -fsSL https://raw.githubusercontent.com/ktaiorg/kt-opencode/main/install | bash -s -- --binary "$(wslpath -a 'C:\\build\\opencode2')"`,
+  )
+})
+
+test("refuses a version-only install that would pull upstream OpenCode", () => {
+  expect(() => wslCliInstallCommand({ version: "local" })).toThrow(
+    "Kito WSL install requires a bundled CLI binary",
   )
 })
 
