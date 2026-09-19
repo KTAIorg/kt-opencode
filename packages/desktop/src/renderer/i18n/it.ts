@@ -8,9 +8,12 @@ export const dict = {
   "desktop.updater.checkFailed.title": "Controllo degli aggiornamenti non riuscito",
   "desktop.updater.checkFailed.message": "Impossibile controllare gli aggiornamenti",
   "desktop.updater.none.title": "Nessun aggiornamento disponibile",
+  "desktop.updater.none.message": "Stai già utilizzando l'ultima versione di Kito",
   "desktop.updater.downloadFailed.title": "Aggiornamento non riuscito",
   "desktop.updater.downloadFailed.message": "Impossibile scaricare l'aggiornamento",
   "desktop.updater.downloaded.title": "Aggiornamento scaricato",
+  "desktop.updater.downloaded.prompt":
+    "La versione {{version}} di Kito è stata scaricata. Vuoi installarla e riavviare l'app?",
   "desktop.updater.installFailed.title": "Aggiornamento non riuscito",
   "desktop.updater.installFailed.message": "Impossibile installare l'aggiornamento",
 

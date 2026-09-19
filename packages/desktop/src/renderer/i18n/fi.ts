@@ -8,9 +8,12 @@ export const dict = {
   "desktop.updater.checkFailed.title": "Päivitystarkistus epäonnistui",
   "desktop.updater.checkFailed.message": "Päivitysten tarkistaminen epäonnistui",
   "desktop.updater.none.title": "Päivitystä ei ole saatavilla",
+  "desktop.updater.none.message": "Käytät jo Kiton uusinta versiota",
   "desktop.updater.downloadFailed.title": "Päivitys epäonnistui",
   "desktop.updater.downloadFailed.message": "Päivityksen lataaminen epäonnistui",
   "desktop.updater.downloaded.title": "Päivitys ladattu",
+  "desktop.updater.downloaded.prompt":
+    "Kiton versio {{version}} on ladattu. Haluatko asentaa sen ja käynnistää Kiton uudelleen?",
   "desktop.updater.installFailed.title": "Päivitys epäonnistui",
   "desktop.updater.installFailed.message": "Päivityksen asentaminen epäonnistui",
 

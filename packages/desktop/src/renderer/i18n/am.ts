@@ -8,9 +8,11 @@ export const dict = {
   "desktop.updater.checkFailed.title": "ማዘመን ቼክ አልተሳካም",
   "desktop.updater.checkFailed.message": "ዝማኔዎችን ማረጋገጥ አልተሳካም",
   "desktop.updater.none.title": "ምንም ማሻሻያ የለም",
+  "desktop.updater.none.message": "አሁን የቅርብ ጊዜውን የKito ስሪት እየተጠቀሙ ነው",
   "desktop.updater.downloadFailed.title": "ዝማኔ አልተሳካም",
   "desktop.updater.downloadFailed.message": "ዝማኔን ማውረድ አልተሳካም",
   "desktop.updater.downloaded.title": "ዝማኔው ወርዷል",
+  "desktop.updater.downloaded.prompt": "ስሪት {{version}} ከKito ወርዷል፣ መጫን እና እንደገና ማስጀመር ይፈልጋሉ?",
   "desktop.updater.installFailed.title": "ዝማኔ አልተሳካም",
   "desktop.updater.installFailed.message": "ዝማኔን መጫን አልተሳካም",
 

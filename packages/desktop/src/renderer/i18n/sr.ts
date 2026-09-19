@@ -8,9 +8,12 @@ export const dict = {
   "desktop.updater.checkFailed.title": "Провера ажурирања није успела",
   "desktop.updater.checkFailed.message": "Провера ажурирања није успела",
   "desktop.updater.none.title": "Ажурирање није доступно",
+  "desktop.updater.none.message": "Већ користите најновију верзију Kito",
   "desktop.updater.downloadFailed.title": "Ажурирање није успело",
   "desktop.updater.downloadFailed.message": "Преузимање ажурирања није успело",
   "desktop.updater.downloaded.title": "Преузето ажурирање",
+  "desktop.updater.downloaded.prompt":
+    "Верзија {{version}} од Kito је преузета, да ли желите да је инсталирате и поново покренете?",
   "desktop.updater.installFailed.title": "Ажурирање није успело",
   "desktop.updater.installFailed.message": "Инсталација ажурирања није успела",
 
