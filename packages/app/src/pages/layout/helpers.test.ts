@@ -45,24 +45,9 @@ describe("layout deep links", () => {
     expect(parseDeepLink("opencode://open-project?directory=/tmp/demo")).toBe("/tmp/demo")
   })
 
-  test("accepts the ktai:// scheme for Kito deep links", () => {
-    expect(parseDeepLink("ktai://open-project?directory=/tmp/demo")).toBe("/tmp/demo")
-    expect(parseNewSessionDeepLink("ktai://new-session?directory=/tmp/demo&prompt=hello%20world")).toEqual({
-      directory: "/tmp/demo",
-      prompt: "hello world",
-    })
-    expect(collectOpenProjectDeepLinks(["ktai://open-project?directory=/a"])).toEqual(["/a"])
-  })
-
   test("ignores non-project deep links", () => {
     expect(parseDeepLink("opencode://other?directory=/tmp/demo")).toBeUndefined()
-    expect(parseDeepLink("ktai://other?directory=/tmp/demo")).toBeUndefined()
     expect(parseDeepLink("https://example.com")).toBeUndefined()
-  })
-
-  test("ignores malformed ktai deep links safely", () => {
-    expect(() => parseDeepLink("ktai://open-project/%E0%A4%A%")).not.toThrow()
-    expect(parseDeepLink("ktai://open-project/%E0%A4%A%")).toBeUndefined()
   })
 
   test("ignores malformed deep links safely", () => {

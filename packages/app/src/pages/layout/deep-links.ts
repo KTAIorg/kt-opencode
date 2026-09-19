@@ -1,8 +1,7 @@
 export const deepLinkEvent = "opencode:deep-link"
 
 const parseUrl = (input: string) => {
-  // ktai:// is Kito's scheme; opencode:// remains accepted for legacy links.
-  if (!input.startsWith("ktai://") && !input.startsWith("opencode://")) return
+  if (!input.startsWith("opencode://")) return
   if (typeof URL.canParse === "function" && !URL.canParse(input)) return
   try {
     return new URL(input)

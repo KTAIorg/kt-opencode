@@ -187,7 +187,7 @@ export const ProjectSettingsExtensions: Component = () => {
           <div class="project-settings-extension-section">
             <div class="project-settings-extension-section-header">
               <span>{language.t("project.settings.extensions.added")}</span>
-              <ExternalLink class="project-settings-extension-link" href="https://github.com/ktaiorg/kt-opencode">
+              <ExternalLink class="project-settings-extension-link" href="https://opencode.ai/docs/skills/">
                 {language.t("settings.extensions.addSkills")}
               </ExternalLink>
             </div>

@@ -73,7 +73,7 @@ describe("buildPromptRequest", () => {
           type: "image",
           id: "img_external",
           filename: "opencode.global.dat",
-          sourcePath: "C:\\Users\\Luke\\AppData\\Roaming\\cc.ktapi.desktop.beta\\opencode.global.dat",
+          sourcePath: "C:\\Users\\Luke\\AppData\\Roaming\\ai.opencode.desktop.beta\\opencode.global.dat",
           mime: "text/plain",
           dataUrl: "data:text/plain;base64,AAA",
         },
@@ -83,7 +83,7 @@ describe("buildPromptRequest", () => {
     })
 
     expect(result.files[0]?.name).toBe(
-      "C:\\Users\\Luke\\AppData\\Roaming\\cc.ktapi.desktop.beta\\opencode.global.dat",
+      "C:\\Users\\Luke\\AppData\\Roaming\\ai.opencode.desktop.beta\\opencode.global.dat",
     )
   })
 
