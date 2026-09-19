@@ -399,3 +399,7 @@ SessionError.type 自由字符串无需 schema/app 改动。
 stream is cancelled`（Stream.never 零事件+Fiber.interrupt→aborted 不误报）；
 既有 step-start-无内容/空 finish 用例覆盖原行为回归。无 node_modules 未跑，
 待统一验证。
+- [x] 修正：runner 层零事件判错回退——`llm.stream` 契约允许零事件 Success（TestLLM `push([])` 为合法
+      "平凡成功"桩，误伤 38 个用例）；生产路径已由 `route/client.ts` `requireTerminalEvent` 兜底
+      （零帧/无终态 → `incomplete-stream` → 重试 → 耗尽落 Step.Failed），无需 runner 层重复判错。
+      本分支保留 abort 不误报回归用例
