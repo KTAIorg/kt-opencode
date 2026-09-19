@@ -10,7 +10,6 @@ import { KVTable } from "../kv/sql.js"
 import { EventSequenceTable } from "../event/sql.js"
 import { eq, sql } from "drizzle-orm"
 import { Global } from "@opencode-ai/util/global"
-import { kitoDataEnv } from "@opencode-ai/util/kito-env"
 import { existsSync } from "node:fs"
 import path from "node:path"
 import type { Database as SQLiteDatabase } from "bun:sqlite"
@@ -694,7 +693,7 @@ export function run(options: Options = {}): Effect.Effect<RunResult, never, Data
 
 function nextPath(options: Options, data: string) {
   if (options.nextDatabasePath) return options.nextDatabasePath
-  if (kitoDataEnv("DB") === ":memory:") return undefined
+  if (process.env.OPENCODE_DB === ":memory:") return undefined
   return path.join(data, "opencode-next.db")
 }
 

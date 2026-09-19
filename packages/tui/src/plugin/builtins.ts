@@ -1,4 +1,3 @@
-import { kitoEnv } from "@opencode-ai/util/kito-env"
 import HomeFooter from "../feature-plugins/home/footer"
 import PromptFooter from "../feature-plugins/prompt/footer"
 import SidebarContext from "../feature-plugins/sidebar/context"
@@ -20,7 +19,7 @@ export const builtins = [
   Plugins,
   Merman,
   // The storybook is a development tool; keep its route and palette commands out of
-  // normal launches and register it only for KITO_STORY runs.
-  ...(kitoEnv("STORY") ? [Storybook] : []),
+  // normal launches and register it only for OPENCODE_STORY runs.
+  ...(process.env.OPENCODE_STORY ? [Storybook] : []),
   DiffViewer,
 ]

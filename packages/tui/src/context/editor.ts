@@ -1,5 +1,4 @@
 import { onCleanup, onMount } from "solid-js"
-import { kitoEnv } from "@opencode-ai/util/kito-env"
 import { createStore } from "solid-js/store"
 import { Option, Schema, SchemaGetter } from "effect"
 import { isRecord } from "../util/record"
@@ -115,7 +114,7 @@ export const { use: useEditorContext, provider: EditorContextProvider } = create
   init: (props: { integration?: EditorIntegration; WebSocketImpl?: typeof WebSocket }) => {
     const paths = useTuiPaths()
     const editor = props.integration ?? editorIntegration
-    const value = process.env.CLAUDE_CODE_SSE_PORT || kitoEnv("EDITOR_SSE_PORT")
+    const value = process.env.CLAUDE_CODE_SSE_PORT || process.env.OPENCODE_EDITOR_SSE_PORT
     const parsedPort = value ? Number.parseInt(value, 10) : undefined
     const port =
       parsedPort && Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : undefined

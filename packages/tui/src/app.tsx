@@ -4,7 +4,6 @@ import { Deferred, Effect } from "effect"
 import { Service, type Endpoint } from "@opencode-ai/client/effect/service"
 import { OpenCode, type SessionInfo } from "@opencode-ai/client"
 import { Global } from "@opencode-ai/util/global"
-import { kitoEnv } from "@opencode-ai/util/kito-env"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
 import { LogProvider, useLog, type LogSink } from "./context/log"
 import { ExitProvider, useExit } from "./context/exit"
@@ -248,7 +247,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
             Effect.sync(() => destroyRenderer(renderer)),
           )
         }
-        if (kitoEnv("DRIVE")) {
+        if (process.env.OPENCODE_DRIVE) {
           const { Drive } = yield* Effect.promise(() => import("@opencode-ai/simulation/frontend"))
           return yield* Drive.create(options, input.app.version)
         }
@@ -340,21 +339,21 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                             >
                               <TuiStartupProvider
                                 value={{
-                                  initialRoute: kitoEnv("STORY")
+                                  initialRoute: process.env.OPENCODE_STORY
                                     ? {
                                         type: "plugin",
                                         id: "opencode.storybook",
                                         name: "storybook",
-                                        // KITO_STORY=1 opens the index; any other value opens that story.
+                                        // OPENCODE_STORY=1 opens the index; any other value opens that story.
                                         data:
-                                          kitoEnv("STORY") === "1"
+                                          process.env.OPENCODE_STORY === "1"
                                             ? undefined
-                                            : { story: kitoEnv("STORY") },
+                                            : { story: process.env.OPENCODE_STORY },
                                       }
-                                    : kitoEnv("ROUTE")
-                                      ? JSON.parse(kitoEnv("ROUTE") ?? "")
+                                    : process.env.OPENCODE_ROUTE
+                                      ? JSON.parse(process.env.OPENCODE_ROUTE)
                                       : undefined,
-                                  skipInitialLoading: Boolean(kitoEnv("FAST_BOOT")),
+                                  skipInitialLoading: Boolean(process.env.OPENCODE_FAST_BOOT),
                                 }}
                               >
                                 <ClipboardProvider value={clipboard}>
@@ -1036,7 +1035,7 @@ function App(props: { pair?: DialogPairCredentials }) {
         name: "docs.open",
         title: "Open docs",
         run: () => {
-          open("https://github.com/ktaiorg/kt-opencode").catch(() => {})
+          open("https://opencode.ai/docs").catch(() => {})
           dialog.clear()
         },
         category: "System",

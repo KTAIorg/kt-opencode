@@ -1,5 +1,4 @@
 import { Database } from "#zed-sqlite"
-import { kitoDataEnv } from "@opencode-ai/util/kito-env"
 import { statSync } from "node:fs"
 import { readFile as readFileAsync } from "node:fs/promises"
 import os from "node:os"
@@ -187,7 +186,7 @@ function isZedActiveEditorRow(row: ZedEditorRow): row is ZedActiveEditorRow {
 
 export function resolveZedDbPath() {
   const candidates = [
-    kitoDataEnv("ZED_DB"),
+    process.env.OPENCODE_ZED_DB,
     path.join(os.homedir(), "Library", "Application Support", "Zed", "db", "0-stable", "db.sqlite"),
     path.join(os.homedir(), ".local", "share", "zed", "db", "0-stable", "db.sqlite"),
   ].filter((item): item is string => Boolean(item))

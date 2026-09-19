@@ -2,7 +2,6 @@ import { Duration, Effect, Schema, Semaphore, Stream } from "effect"
 import type { Scope } from "effect"
 import type { IntegrationOAuthMethodRegistration } from "@opencode-ai/plugin/effect/integration"
 import { define } from "@opencode-ai/plugin/effect/plugin"
-import { kitoEnv } from "@opencode-ai/util/kito-env"
 import type { CredentialValue } from "@opencode-ai/sdk/v2/types"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { Bus } from "../../bus.js"
@@ -177,7 +176,7 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Scope
 
       const item = catalog.provider.get(Provider.ID.opencode)
       if (!item) return
-      const hasKey = Boolean(kitoEnv("API_KEY") || connected || item.provider.settings?.apiKey)
+      const hasKey = Boolean(process.env.OPENCODE_API_KEY || connected || item.provider.settings?.apiKey)
       catalog.provider.update(item.provider.id, (provider) => {
         if (!hasKey) {
           provider.activation = "enabled"

@@ -171,13 +171,11 @@ export const layer = Layer.effect(
     const hooks = yield* PluginHooks.Service
     const transport = yield* SessionModelTransport.Service
     const app = yield* App.Metadata
-    const webSocket = yield* Config.boolean("KITO_EXPERIMENTAL_OPENAI_RESPONSES_WEBSOCKET").pipe(
-      Config.orElse(() => Config.boolean("OPENCODE_EXPERIMENTAL_OPENAI_RESPONSES_WEBSOCKET")),
+    const webSocket = yield* Config.boolean("OPENCODE_EXPERIMENTAL_OPENAI_RESPONSES_WEBSOCKET").pipe(
       Config.withDefault(false),
       Effect.orDie,
     )
-    const diagnostics = yield* Config.boolean("KITO_PROMPT_CACHE_DIAGNOSTICS").pipe(
-      Config.orElse(() => Config.boolean("OPENCODE_PROMPT_CACHE_DIAGNOSTICS")),
+    const diagnostics = yield* Config.boolean("OPENCODE_PROMPT_CACHE_DIAGNOSTICS").pipe(
       Config.withDefault(false),
       Effect.orDie,
     )
