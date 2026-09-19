@@ -14,6 +14,9 @@ test("keeps only ktapi, ktai, and Zen as customer-facing providers", () => {
   expect(isCustomerFacingProvider("anthropic")).toBe(false)
   expect(isCustomerFacingProvider("openai")).toBe(false)
   expect(isCustomerFacingProvider("openrouter")).toBe(false)
+  // bare "ktai"/"ktapi" prefix without a separator must not match
+  expect(isCustomerFacingProvider("ktaiextra")).toBe(false)
+  expect(isCustomerFacingProvider("ktapiv2")).toBe(false)
 })
 
 test("shows Kito instead of internal ktai/KTAI names", () => {
