@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { compareKtaiModelOrder, ktaiModelOrderKey } from "./ktai-model-order"
+import { compareKtaiModelOrder, isKtaiProviderID, ktaiModelOrderKey } from "./ktai-model-order"
 
 describe("ktaiModelOrderKey", () => {
   test("follows curated family priority", () => {
@@ -26,5 +26,17 @@ describe("ktaiModelOrderKey", () => {
       "deepseek-v4-flash-vision-exp",
       "MiniMax-M2.7",
     ])
+  })
+})
+
+describe("isKtaiProviderID", () => {
+  test("matches ktai/ktapi ids only with a separator boundary", () => {
+    expect(isKtaiProviderID("ktai")).toBe(true)
+    expect(isKtaiProviderID("ktapi")).toBe(true)
+    expect(isKtaiProviderID("ktai-api")).toBe(true)
+    expect(isKtaiProviderID("ktai-go")).toBe(true)
+    expect(isKtaiProviderID("ktaiextra")).toBe(false)
+    expect(isKtaiProviderID("ktapiv2")).toBe(false)
+    expect(isKtaiProviderID("anthropic")).toBe(false)
   })
 })

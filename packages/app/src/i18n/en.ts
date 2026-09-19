@@ -1331,4 +1331,5 @@ export const dict = {
   "dialog.ktIdentity.copyLink": "Copy link",
   "dialog.ktIdentity.copied": "Link copied",
   "dialog.ktIdentity.ensureFailed": "Signed in, but Kito model access could not be provisioned. Top up or retry later.",
+  "dialog.ktIdentity.expired": "This sign-in request expired. Try again.",
 }

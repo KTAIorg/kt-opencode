@@ -425,6 +425,21 @@ describe("Integration", () => {
     }),
   )
 
+  it.effect("reports an unknown OAuth attempt as expired", () =>
+    Effect.gen(function* () {
+      const integrations = yield* Integration.Service
+      const integrationID = Integration.ID.make("openai")
+      // 过期 scrub、cancel、服务重启都会让 attempt 消失：status 必须回结构化
+      // expired 而不是 defect，客户端才能映射成"已过期请重试"。
+      const result = yield* integrations.oauth.status({
+        integrationID,
+        attemptID: Integration.AttemptID.create(),
+      })
+      expect(result.status).toBe("expired")
+      expect(result.time.expires).toBeLessThanOrEqual(result.time.created)
+    }),
+  )
+
   it.effect("uses provider-defined OAuth attempt expirations", () =>
     Effect.gen(function* () {
       const integrations = yield* Integration.Service

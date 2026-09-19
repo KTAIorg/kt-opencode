@@ -55,7 +55,7 @@ import { LocationProvider, useWorkspaceLocation } from "@/context/location"
 import { useServerSDK } from "@/context/server-sdk"
 import { ServerConnection, serverName, useServers } from "@/context/servers"
 import { useSettings } from "@/context/settings"
-import { useTabs } from "@/context/tabs"
+import { tabKey, useTabs } from "@/context/tabs"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptInputV2Composer, usePromptInputV2Controller } from "@/components/prompt-input-v2"
 import { useSettingsCommand } from "@/components/settings-dialog"
@@ -165,6 +165,21 @@ function SessionErrorFallback(props: { error: unknown; sessionID?: string; serve
   const server = useServers()
   const tabs = useTabs()
 
+  // 升级恢复的旧会话标签会指向已被清掉的会话：能从持久化的 tab info 确定
+  // 原目录时，自动在同目录开一个草稿会话标签并导航过去、关掉死标签，而不是
+  // 把用户丢在只有一行报错的页面上。目录未知时保留手动 Close Tab 兜底。
+  const notFound = isCurrentSessionNotFoundError(props.error, props.sessionID)
+  let recovered = false
+  createEffect(() => {
+    if (!notFound || recovered || !props.sessionID || !props.serverKey) return
+    const dead = { type: "session" as const, server: props.serverKey, sessionId: props.sessionID }
+    const directory = tabs.info[tabKey(dead)]?.directory
+    if (!directory) return
+    recovered = true
+    tabs.removeSessionTab({ server: dead.server, sessionId: dead.sessionId })
+    void tabs.newDraft({ server: dead.server, directory })
+  })
+
   const displayServer = createMemo(() => {
     const key = props.serverKey
     const conn = server.list.find((item) => ServerConnection.key(item) === key)
@@ -174,7 +189,7 @@ function SessionErrorFallback(props: { error: unknown; sessionID?: string; serve
     if (!props.sessionID || !props.serverKey) return
     tabs.removeSessionTab({ server: props.serverKey, sessionId: props.sessionID })
   }
-  if (isCurrentSessionNotFoundError(props.error, props.sessionID)) {
+  if (notFound) {
     return (
       <div class="flex-1 min-h-0 overflow-hidden">
         <div class="h-full px-6 pb-42 -mt-4 flex flex-col items-center justify-center text-center gap-4">

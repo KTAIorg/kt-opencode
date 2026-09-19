@@ -27,9 +27,16 @@ export function useKtaiSignedIn() {
     void (platform.fetch ?? fetch)(`${url}/ktai/credential`, {
       headers: ktaiHeaders(username, password),
     })
-      .then((response) => (response.ok ? (response.json() as Promise<{ identity?: boolean }>) : undefined))
+      .then((response) => {
+        // 与 account 读取器同口径：本地服务 5xx/瞬态故障保留上次判定，不把
+        // 已登录用户闪成"需登录"；只有明确的 401/403 才判未登录。
+        if (response.ok) return response.json() as Promise<{ identity?: boolean }>
+        if (response.status === 401 || response.status === 403) return { identity: false }
+        return undefined
+      })
       .then((payload) => {
-        if (!cancelled) setSignedIn(payload?.identity === true)
+        if (cancelled || payload === undefined) return
+        setSignedIn(payload.identity === true)
       })
       .catch(() => {
         if (!cancelled) setSignedIn(undefined)
@@ -49,6 +56,11 @@ export function useKtaiSignedIn() {
 }
 
 const ACCOUNT_THROTTLE_MS = 15_000
+// 上游 /ktai/account 串行 Ensure 最坏 60s+：读取必须有硬超时，否则 socket
+// 挂起时 inflight 永真，后续所有刷新（含入金完成）被永久吞掉。
+const ACCOUNT_TIMEOUT_MS = 30_000
+
+type AccountLoad = { url: string; headers?: Record<string, string>; fetchImpl: typeof fetch; force?: boolean }
 
 // 顶栏、错误卡片、额度弹窗会同时挂载，各自 fetch 会把一次刷新事件放大成 N 次
 // /ktai/account，而每个请求都会让本地服务向上游 NewAPI 打一次 Ensure（签发与 active
@@ -58,6 +70,43 @@ function createAccountReader() {
   const [ready, setReady] = createSignal(false)
   let lastAt = 0
   let inflight = false
+  let pending: AccountLoad | undefined
+
+  const load = (input: AccountLoad) => {
+    const now = Date.now()
+    // inflight 期间的强制刷新（入金完成 markPaid、登录成功）不能丢：
+    // 排队最新一次，等当前请求落地后立即追跑，余额才不会卡死不动。
+    if (inflight) {
+      if (input.force) pending = input
+      return
+    }
+    if (!input.force && now - lastAt < ACCOUNT_THROTTLE_MS) return
+    lastAt = now
+    inflight = true
+    void input
+      .fetchImpl(`${input.url}/ktai/account`, {
+        headers: input.headers,
+        signal: AbortSignal.timeout(ACCOUNT_TIMEOUT_MS),
+      })
+      .then((response) => {
+        // 4xx 视为真的未登录；5xx（上游 Identity 故障）与网络瞬态失败保留上次
+        // 成功结果，不把已登录用户闪成离线。
+        if (response.ok) return response.json() as Promise<KtaiAccountSummary>
+        if (response.status >= 500) return account()
+        return undefined
+      })
+      .then((payload) => {
+        setAccount(payload)
+        setReady(true)
+      })
+      .catch(() => setReady(true))
+      .finally(() => {
+        inflight = false
+        const next = pending
+        pending = undefined
+        if (next) load(next)
+      })
+  }
 
   return {
     account,
@@ -66,30 +115,7 @@ function createAccountReader() {
       setAccount(undefined)
       setReady(false)
     },
-    load: (input: { url: string; headers?: Record<string, string>; fetchImpl: typeof fetch; force?: boolean }) => {
-      const now = Date.now()
-      if (inflight) return
-      if (!input.force && now - lastAt < ACCOUNT_THROTTLE_MS) return
-      lastAt = now
-      inflight = true
-      void input
-        .fetchImpl(`${input.url}/ktai/account`, { headers: input.headers })
-        .then((response) => {
-          // 4xx 视为真的未登录；5xx（上游 Identity 故障）与网络瞬态失败保留上次
-          // 成功结果，不把已登录用户闪成离线。
-          if (response.ok) return response.json() as Promise<KtaiAccountSummary>
-          if (response.status >= 500) return account()
-          return undefined
-        })
-        .then((payload) => {
-          setAccount(payload)
-          setReady(true)
-        })
-        .catch(() => setReady(true))
-        .finally(() => {
-          inflight = false
-        })
-    },
+    load,
   }
 }
 
