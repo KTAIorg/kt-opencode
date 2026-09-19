@@ -1,8 +1,8 @@
-# OpenCode
+# Kito
 
-Use this guide as the starting point for work involving OpenCode itself. It
-covers the core concepts needed to configure and customize OpenCode, extend it
-with plugins, and build integrations with the OpenCode SDK, clients, and API.
+Use this guide as the starting point for work involving Kito itself. It
+covers the core concepts needed to configure and customize Kito, extend it
+with plugins, and build integrations with the Kito SDK, clients, and API.
 
 Full documentation is available at <https://opencode.ai/v2/docs/>. This overview is
 only an index of core concepts. Before answering a question about a topic below,
@@ -13,8 +13,8 @@ documentation page.
 
 ## Version policy
 
-Always answer for OpenCode V2 unless the user explicitly asks about V1,
-legacy OpenCode, or migrating from V1.
+Always answer for Kito V2 unless the user explicitly asks about V1,
+legacy Kito, or migrating from V1.
 
 Use only <https://opencode.ai/v2/docs/> documentation as the source of truth for V2.
 Do not use <https://opencode.ai/docs/>, which documents V1, and do not use
@@ -36,7 +36,7 @@ For questions about the terminal interface, command-line invocation, `run`,
 [CLI guide](https://opencode.ai/v2/docs/cli) and the relevant page linked from
 that section.
 
-CLI and TUI preferences are separate from OpenCode's server and project
+CLI and TUI preferences are separate from Kito's server and project
 configuration. They live in the global `~/.config/kito/cli.json`, or
 `$XDG_CONFIG_HOME/kito/cli.json` when `XDG_CONFIG_HOME` is set. There is no
 project-local CLI configuration. Most preferences can also be changed from the
@@ -59,9 +59,9 @@ Never guess a command ID, default binding, or accepted key syntax. Fetch the
 full [keybind reference](https://opencode.ai/v2/docs/cli/keybinds), which lists
 the current IDs and defaults, before answering or editing a binding.
 
-## [OpenCode configuration](https://opencode.ai/v2/docs/config)
+## [Kito configuration](https://opencode.ai/v2/docs/config)
 
-OpenCode's server and project configuration uses JSON or JSONC. Include the
+Kito's server and project configuration uses JSON or JSONC. Include the
 published schema so the user's editor can validate fields and provide
 autocomplete:
 
@@ -76,7 +76,7 @@ to every project for that user. Project configuration can live in any directory
 as `opencode.json(c)` or `.opencode/opencode.json(c)`, including nested packages
 in a monorepo.
 
-When OpenCode starts, it searches from the current directory up to the project
+When Kito starts, it searches from the current directory up to the project
 root. It merges direct `opencode.json(c)` files from root to current directory,
 then does the same for `.opencode/opencode.json(c)` files. This means every
 `.opencode` config overrides every direct config. Global configuration has the
@@ -119,7 +119,7 @@ opencode2 mcp list
 ```
 
 The auth command prints an authorization URL, waits for the browser redirect,
-and stores credentials outside the OpenCode configuration. Do not ask for or
+and stores credentials outside the Kito configuration. Do not ask for or
 store an API key when the server supports OAuth. Use header-based credentials
 only when OAuth is unavailable or the user explicitly requires them, and use an
 environment substitution such as `{env:MCP_API_KEY}` instead of writing a
@@ -127,7 +127,7 @@ secret into configuration.
 
 ## [V1 to V2 migration](https://opencode.ai/v2/docs/migrate-v1)
 
-For any request to migrate OpenCode configuration, agents, commands, skills,
+For any request to migrate Kito configuration, agents, commands, skills,
 plugins, integrations, or other behavior from V1 to V2, read the full
 [migration guide](https://opencode.ai/v2/docs/migrate-v1) before acting. In
 the repository, its source is `packages/www/content/docs/migrate-v1.mdx`.
@@ -151,11 +151,11 @@ transforms, tools, plugin context capabilities, and package entrypoints.
 
 ## [Service](https://opencode.ai/v2/docs/troubleshooting#check-the-background-service)
 
-OpenCode uses a client-server architecture. Interfaces such as the TUI connect
-to a background OpenCode service, which owns sessions, configuration, plugins,
+Kito uses a client-server architecture. Interfaces such as the TUI connect
+to a background Kito service, which owns sessions, configuration, plugins,
 permissions, and tool execution.
 
-OpenCode normally discovers or starts the shared background service
+Kito normally discovers or starts the shared background service
 automatically. If the service is stuck or unhealthy, restart it:
 
 ```sh
@@ -170,10 +170,10 @@ opencode2 service status
 
 ## [API](https://opencode.ai/v2/docs/api)
 
-OpenCode exposes an HTTP API from its server. The API is described by an
+Kito exposes an HTTP API from its server. The API is described by an
 OpenAPI document available from the running server at `/openapi.json`.
 
-Use OpenCode's built-in `api` command for local requests. It uses the same
+Use Kito's built-in `api` command for local requests. It uses the same
 discovery and authentication flow as the TUI and may start the background
 service when no compatible healthy service is available. It accepts either an
 HTTP method and path or an OpenAPI operation ID.
@@ -192,7 +192,7 @@ opencode2 api post /api/example --data '{"key":"value"}'
 opencode2 api get /api/example --header 'X-Example:value'
 ```
 
-Request bodies default to `Content-Type: application/json`. When OpenCode is
+Request bodies default to `Content-Type: application/json`. When Kito is
 connected to an explicit server instead of its managed background service, use
 the same configured server and authentication context rather than constructing
 an unauthenticated request separately.
@@ -204,21 +204,21 @@ available for code generation and other tooling.
 
 ## [Client](https://opencode.ai/v2/docs/build/client)
 
-For questions about connecting an application to OpenCode over the network,
+For questions about connecting an application to Kito over the network,
 fetch the full [client guide](https://opencode.ai/v2/docs/build/client) before
 answering.
 
-`@opencode-ai/client` is the generated TypeScript client for the OpenCode HTTP
+`@opencode-ai/client` is the generated TypeScript client for the Kito HTTP
 API. Its methods and types come from the same contract as the API reference.
 The default entrypoint exposes Promise-based resource clients and async
 iterables for streaming endpoints. The `@opencode-ai/client/effect` entrypoint
-exposes typed Effects, Streams, and decoded OpenCode schema values. Its
+exposes typed Effects, Streams, and decoded Kito schema values. Its
 `Service` API can discover, start, stop, and authenticate with the local
 background service from a Node application.
 
 ## [Troubleshooting](https://opencode.ai/v2/docs/troubleshooting)
 
-OpenCode runs a client and a background server. Start by determining whether a
+Kito runs a client and a background server. Start by determining whether a
 problem belongs to the client, the shared server, or one project.
 
 - Check the service with `opencode2 service status` and verify the API with

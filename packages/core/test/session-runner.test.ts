@@ -1664,7 +1664,7 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([
-        expect.stringContaining("You are OpenCode, You and the user share the same workspace"),
+        expect.stringContaining("You are Kito, You and the user share the same workspace"),
         "Initial context",
       ])
     }),
@@ -1687,7 +1687,7 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests.at(-1)?.system.map((part) => part.text)).toEqual([
-        expect.stringContaining("You are OpenCode, You and the user share the same workspace"),
+        expect.stringContaining("You are Kito, You and the user share the same workspace"),
         "Initial context",
       ])
     }),

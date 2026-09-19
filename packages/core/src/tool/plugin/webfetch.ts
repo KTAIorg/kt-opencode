@@ -57,7 +57,7 @@ const headers = (format: Format, userAgent: string) => ({
 })
 
 const openCodeUserAgent =
-  "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OpenCode-User/1.0; +https://opencode.ai"
+  "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; Kito-User/1.0; +https://kito.ktai.im"
 
 const isCloudflareChallenge = (error: unknown) => {
   if (!error || typeof error !== "object" || !("reason" in error)) return false
