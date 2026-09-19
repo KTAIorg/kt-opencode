@@ -4,6 +4,7 @@
 import {
   AppBaseProviders,
   AppInterface,
+  enabledCommandIds,
   PlatformProvider,
   ServerConnection,
   useCommand,
@@ -109,6 +110,11 @@ function DesktopEffects(props: { api: ElectronAPI }) {
   const command = useCommand()
   bindDesktopMenu((id) => command.trigger(id))
   const theme = useTheme()
+
+  // Keep the native menu in sync with the commands this window has registered.
+  createEffect(() => {
+    props.api.setMenuCommands([...enabledCommandIds(command.options)])
+  })
 
   createEffect(() => {
     theme.themeId()

@@ -733,3 +733,42 @@ SessionError.type 自由字符串无需 schema/app 改动。
 stream is cancelled`（Stream.never 零事件+Fiber.interrupt→aborted 不误报）；
 既有 step-start-无内容/空 finish 用例覆盖原行为回归。无 node_modules 未跑，
 待统一验证。
+## 桌面菜单死命令修复（fix-109-menu-cmds，基于 origin/fix-109-functional）
+
+审计发现的 app 侧菜单/快捷键缺陷，按"功能是否存在"逐条处理：
+
+1. **死命令处置**：
+   - `project.open`（Cmd+O）：功能存在于 home 页（目录选择器→`home.project.add`）。
+     在 `home-projects-controller.tsx` 提取 `choose()` 并按现有模式注册
+     `command.register("home.project")`（keybind `mod+o`，无 server 时 disabled）；
+     其它页面未注册 → 菜单灰显。
+   - `session.previous`/`session.next`：无独立实现，等价物是全局已注册的
+     `tab.prev`/`tab.next`（titlebar 标签循环）→ DESKTOP_MENU 重指向。
+   - `project.previous`/`project.next`：全仓无项目循环切换功能 → 从
+     DESKTOP_MENU 删除（连同多余分隔符；i18n key 保留）。
+   - `sidebar.toggle`：`layout` 的 sidebar 是未暴露的遗留持久化字段，
+     应用无侧栏功能 → 从 DESKTOP_MENU 删除（i18n key 保留）。
+   - `session.new`：等价物 `tab.new` 全局可用 → `app.tsx` `DesktopCommands`
+     全局补注册（onSelect 委托 `tab.new`，与 session 页实现一致；
+     session 页注册因后挂载去重优先，行为不变）。
+   - `terminal.toggle`/`fileTree.toggle`：仅 session 页功能 → 保留菜单项，
+     由新增防护在非 session 页灰显。
+2. **原生菜单未注册防护**：renderer 新增 `enabledCommandIds`（`command.tsx` 导出，
+   与 windows-app-menu 的 disabled 判定同规则：未注册或 disabled → 不启用），
+   `DesktopEffects` 用 effect 经新 IPC `Ipc.menu.setCommands`（send）上报；
+   main 按 webContents.id 存每窗口 enabled 集合，`createMenu` 取
+   `getLastFocusedWindow()` 对应集合决定 `enabled`，未上报→全灰（诚实反映
+   尚未注册）；`browser-window-focus` 与窗口销毁时重建，集合未变跳过重建。
+3. **快捷键 catalog 清理**：`settings-keybinds.tsx` `listFor` 过滤掉
+   `command.options` 中不存在的 catalog 条目（持久化 merge 不再只增不减），
+   用户自定义 override 条目仍保留以便解绑。
+4. **权限开关提示**：`general.tsx` auto-accept Switch 在 `!controller.enabled()`
+   时于描述下补小字 `settings.general.autoAccept.scopeHint`
+   （en "Available within a session or project"/zh "在会话或项目中可用"/
+   zht "在工作階段或專案中可用"）。
+
+验证：无 node_modules 无法跑 tsgo/bun test；全部 17 个改动文件经
+`bun build --external='*'` 语法转译通过；`command.test.ts` 新增
+`enabledCommandIds` 单测（待依赖就位后跑）。
+遗留：devtools/非主窗口获焦时菜单会按未上报集合全灰（重建即恢复）；
+draft 页 Cmd+O 仍灰（该页语义是选择已有项目 `project.select`，非打开新目录）。
