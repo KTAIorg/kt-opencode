@@ -59,7 +59,10 @@ export function configureApplication() {
   })
 
   loadProxyEnvironment(logger)
-  app.commandLine.appendSwitch("proxy-bypass-list", "<-loopback>")
+  // Keep loopback traffic (the local sidecar, including its credentials) off
+  // any configured system proxy. `<-loopback>` would do the opposite: it
+  // removes Chromium's implicit loopback bypass.
+  app.commandLine.appendSwitch("proxy-bypass-list", "127.0.0.1;localhost;[::1]")
   const features = app.commandLine.getSwitchValue("enable-features")
   app.commandLine.appendSwitch("enable-features", features ? `${jsCallStackFeature},${features}` : jsCallStackFeature)
   if (!app.isPackaged) app.commandLine.appendSwitch("remote-debugging-port", "9222")

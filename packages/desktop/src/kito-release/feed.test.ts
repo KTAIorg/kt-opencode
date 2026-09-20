@@ -48,16 +48,64 @@ test("uses the Release Service generic feed when an update is assigned", async (
         data: {
           decision: "update_available",
           targetVersion: "1.2.3",
-          feed: { provider: "generic", baseUrl: "https://download.example/kito/1.2.3/" },
+          feed: { provider: "generic", baseUrl: "https://updates.ktyun.cc/download/kito/1.2.3/" },
         },
       })
     },
   })
   expect(source).toEqual({
     kind: "generic",
-    baseUrl: "https://download.example/kito/1.2.3/",
+    baseUrl: "https://updates.ktyun.cc/download/kito/1.2.3/",
     version: "1.2.3",
   })
+})
+
+test("trusts a generic feed on the configured Release Service host", async () => {
+  const source = await selectKitoUpdaterSource({
+    currentVersion: "1.0.0",
+    platform: "linux",
+    arch: "x64",
+    publicBaseUrl: "https://releases.internal.example",
+    fetchImpl: async (input) => {
+      const url = String(input)
+      if (url.includes("/releases/history")) return json({ items: [{ version: "1.2.3" }] })
+      return json({
+        decision: "update_available",
+        targetVersion: "1.2.3",
+        feed: { provider: "generic", baseUrl: "https://releases.internal.example/feeds/1.2.3/" },
+      })
+    },
+  })
+  expect(source).toEqual({
+    kind: "generic",
+    baseUrl: "https://releases.internal.example/feeds/1.2.3/",
+    version: "1.2.3",
+  })
+})
+
+test("falls back to GitHub when the assigned feed is not HTTPS or not ours", async () => {
+  for (const baseUrl of [
+    "http://updates.ktyun.cc/download/kito/1.2.3/",
+    "https://evil.example/kito/1.2.3/",
+    "https://updates.ktyun.cc.evil.example/kito/",
+    "not a url",
+  ]) {
+    const source = await selectKitoUpdaterSource({
+      currentVersion: "1.0.0",
+      platform: "darwin",
+      arch: "arm64",
+      fetchImpl: async (input) => {
+        const url = String(input)
+        if (url.includes("/releases/history")) return json({ items: [{ version: "1.2.3" }] })
+        return json({
+          decision: "force_update",
+          targetVersion: "1.2.3",
+          feed: { provider: "generic", baseUrl },
+        })
+      },
+    })
+    expect(source).toEqual({ kind: "github" })
+  }
 })
 
 test("falls back to GitHub when the public Release Service entry is unreachable", async () => {

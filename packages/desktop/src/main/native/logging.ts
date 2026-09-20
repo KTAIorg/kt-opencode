@@ -67,7 +67,6 @@ export async function exportDebugLogs() {
       { name: "manifest.json", data: Buffer.from(JSON.stringify(manifest(), null, 2)) },
       ...collect(root, "desktop"),
       ...serverLogRoots().flatMap((dir, i) => collect(dir, `server-${i + 1}`)),
-      ...collect(app.getPath("crashDumps"), "crashpad"),
     ])
     shell.showItemInFolder(output)
     return output
@@ -158,16 +157,10 @@ function manifest() {
 function serverLogRoots() {
   const xdgData = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share")
   const userData = app.getPath("userData")
-  // Sidecar logs live under the "kito" data leaf; keep the legacy "opencode"
-  // roots so pre-migration log files still make it into the debug bundle.
-  return [
-    ...new Set([
-      join(xdgData, "kito", "log"),
-      join(userData, "kito", "log"),
-      join(xdgData, "opencode", "log"),
-      join(userData, "opencode", "log"),
-    ]),
-  ]
+  // Sidecar logs live under the "kito" data leaf. A co-installed OpenCode's
+  // roots are deliberately excluded: its logs are not ours to export and can
+  // carry sensitive session content.
+  return [...new Set([join(xdgData, "kito", "log"), join(userData, "kito", "log")])]
 }
 
 type Entry = { name: string; path?: string; data?: Buffer }

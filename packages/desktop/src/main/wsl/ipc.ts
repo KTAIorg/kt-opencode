@@ -3,6 +3,7 @@ import type { WebContents } from "electron"
 import type { WslServerConfig, WslServersState } from "@opencode-ai/app/wsl/types"
 import { Ipc, sendIpcEvent } from "../../shared/ipc-contract"
 import type { WslServersController } from "./servers"
+import { isValidWslDistroName } from "./distro"
 import { nativeT } from "../native/translations"
 
 export type WslIpc = {
@@ -58,11 +59,11 @@ export function createWslIpc(controller?: WslServersController): WslIpc {
     probeRuntime: () => controller.probeRuntime(),
     refreshDistros: () => controller.refreshDistros(),
     installWsl: () => controller.installWsl(),
-    installDistro: (value) => controller.installDistro(requireWslIpcString("distro", value)),
-    probeAddable: (value) => controller.probeAddable(requireWslIpcStrings("distro", value)),
-    installOpencode: (value) => controller.installOpencode(requireWslIpcString("distro", value)),
-    openTerminal: (value) => controller.openTerminal(requireWslIpcString("distro", value)),
-    addServer: (value) => controller.addServer(requireWslIpcString("distro", value)),
+    installDistro: (value) => controller.installDistro(requireWslIpcDistro("distro", value)),
+    probeAddable: (value) => controller.probeAddable(requireWslIpcDistros("distro", value)),
+    installOpencode: (value) => controller.installOpencode(requireWslIpcDistro("distro", value)),
+    openTerminal: (value) => controller.openTerminal(requireWslIpcDistro("distro", value)),
+    addServer: (value) => controller.addServer(requireWslIpcDistro("distro", value)),
     removeServer: (value) => controller.removeServer(requireWslIpcString("server id", value)),
     startServer: (value) => controller.startServer(requireWslIpcString("server id", value)),
   }
@@ -109,9 +110,17 @@ function requireWslIpcString(name: string, value: unknown) {
   throw new Error(`Invalid ${name}`)
 }
 
-function requireWslIpcStrings(name: string, value: unknown) {
+// Distro names are interpolated into wsl.exe and cmd.exe command lines, so
+// they must be plain name tokens — not arbitrary strings.
+function requireWslIpcDistro(name: string, value: unknown) {
+  const distro = requireWslIpcString(name, value)
+  if (!isValidWslDistroName(distro)) throw new Error(`Invalid ${name}`)
+  return distro
+}
+
+function requireWslIpcDistros(name: string, value: unknown) {
   if (!Array.isArray(value)) throw new Error(`Invalid ${name}`)
-  const values = value.map((item) => requireWslIpcString(name, item))
+  const values = value.map((item) => requireWslIpcDistro(name, item))
   if (values.length) return values
   throw new Error(`Invalid ${name}`)
 }

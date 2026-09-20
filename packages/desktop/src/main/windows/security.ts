@@ -1,19 +1,28 @@
-import type { BrowserWindow } from "electron"
+import { BrowserWindow } from "electron"
+import type { Session } from "electron"
 import { openExternalURL } from "../files"
 import { addRendererHeaders, isRendererUrl, upsertHeader } from "./protocol"
 
 const rendererPermissions = new Set(["clipboard-sanitized-write", "notifications"])
+const permissionedSessions = new WeakSet<Session>()
 
+// Permission handlers are session-scoped: registering them per window would
+// leave only the most recently created window covered. Register once per
+// session and resolve the requesting window inside the handler instead.
 export function allowRendererPermissions(win: BrowserWindow) {
-  const webContentsId = win.webContents.id
-  win.webContents.session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+  const session = win.webContents.session
+  if (permissionedSessions.has(session)) return
+  permissionedSessions.add(session)
+  session.setPermissionRequestHandler((webContents, permission, callback, details) => {
     callback(
-      rendererPermissions.has(permission) && isRendererUrl(details.requestingUrl) && webContents.id === webContentsId,
+      rendererPermissions.has(permission) &&
+        isRendererUrl(details.requestingUrl) &&
+        Boolean(BrowserWindow.fromWebContents(webContents)),
     )
   })
-  win.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+  session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
     if (!rendererPermissions.has(permission)) return false
-    if (webContents && webContents.id !== webContentsId) return false
+    if (webContents && !BrowserWindow.fromWebContents(webContents)) return false
     return isRendererUrl(details.requestingUrl) || isRendererUrl(requestingOrigin)
   })
 }

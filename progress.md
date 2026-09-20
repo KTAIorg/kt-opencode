@@ -786,3 +786,30 @@ draft 页 Cmd+O 仍灰（该页语义是选择已有项目 `project.select`，�
    server.js `use` 导出的预存在环境问题（main 上同样失败，与本次改动无关）。
 4. **PR**：#127(oauth品牌)/#128(错误文案i18n)/#129(钱包$1+重试)/
    #130(菜单命令+IPC防护)/#131(stream调查+回归) —— 均未合并，待验收。
+
+## 2026-05-24 desktop 主进程安全修复（fix/audit-desktop-security）
+
+1. **P0**：`storage/store.ts` store 名 allowlist（`^[a-z0-9_.-]+$`、禁 `..` 与 `.`），
+   getStore/removeStoreFile/removeStoreFileIfEmpty 三入口统一校验，堵 renderer
+   路径穿越；`files/index.ts` openPath/openLocalFile 对可执行扩展名
+   （exe/bat/cmd/command/app/ps1/sh/lnk/msi 等 26 种）改 `shell.showItemInFolder`，
+   `app` 参数经新模块 `files/open-target.ts` 白名单校验（裸名固定集合 +
+   Windows 已安装编辑器路径形态：绝对 .exe + 白名单 basename + 安装目录根）。
+2. **P1**：`environment.ts` proxy-bypass `<-loopback>`（实为移除 loopback
+   bypass）改为显式 `127.0.0.1;localhost;[::1]`；`windows/security.ts`
+   权限 handler 改 session 级 WeakSet 只注册一次、内部
+   `BrowserWindow.fromWebContents` 定位窗口；`kito-release/feed.ts`
+   feed.baseUrl 校验 https + hostname ∈ {updates.ktyun.cc, 配置域名}，
+   不合法回退 github provider；`server-settings.ts` 持久化前校验 http/https。
+3. **P2**：`main/index.ts` menu.setCommands 先 `Array.isArray`；WSL distro
+   名收敛到新模块 `wsl/distro.ts`（`^[A-Za-z0-9._-]+$` 禁 `-` 开头），
+   ipc 边界与 openWslTerminal（cmd.exe 汇点）双处校验；sidecar
+   `--hostname 0.0.0.0`→`127.0.0.1`；debug 导出移除 opencode 日志根与
+   crashDumps 收集；窗口持久化尺寸按 display workArea clamp；
+   protocol.ts `decodeURIComponent` 移进 try。
+4. **验证**：`bun test` 117 pass / 0 fail（基线 101+新 16：store/open-target/
+   feed/server-settings/distro）；`tsgo -b` 0 error；oxlint 0 error
+   （38 warning，新增 2 条为 feed.test.ts 沿用既有 `String(input)` 模式）。
+5. **遗留**：`wireRendererHeaders` 的 session webRequest handler 仍每窗重复
+   注册（回调无状态幂等，无行为差异）；Windows 非标准安装位置（便携版
+   解压目录）的 open-in-app 会因路径不在安装根下被拒，走错误提示而非执行。

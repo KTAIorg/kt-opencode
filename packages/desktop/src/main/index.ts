@@ -77,6 +77,7 @@ const main = Effect.gen(function* () {
       if (setNativeTranslations(bundle)) createMenu(menu)
     },
     setMenuCommands: (sender, ids) => {
+      if (!Array.isArray(ids)) return
       const previous = menuCommands.get(sender.id)
       if (previous && previous.size === ids.length && ids.every((id) => previous.has(id))) return
       menuCommands.set(sender.id, new Set(ids))
