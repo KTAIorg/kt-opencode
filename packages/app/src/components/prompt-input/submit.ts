@@ -261,6 +261,15 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     if (!currentModel || !currentAgent) {
       // 目录还没拉到时这不是用户的错：提示连接中，而不是「请先选择模型」。
       if (!local.catalogReady()) {
+        if (local.catalogFailed()) {
+          showToast({
+            variant: "error",
+            title: language.t("prompt.toast.modelCatalogFailed.title"),
+            description: language.t("prompt.toast.modelCatalogFailed.description"),
+          })
+          local.catalogRetry()
+          return
+        }
         showToast({
           title: language.t("prompt.toast.modelCatalogLoading.title"),
           description: language.t("prompt.toast.modelCatalogLoading.description"),

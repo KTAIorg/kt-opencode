@@ -256,6 +256,7 @@ export const dict = {
   "common.loading.ellipsis": "...",
   "common.cancel": "Cancel",
   "common.clear": "Clear",
+  "common.retry": "Try again",
   "common.open": "Open",
   "common.connect": "Connect",
   "common.disconnect": "Disconnect",
@@ -331,6 +332,8 @@ export const dict = {
   "prompt.toast.modelAgentRequired.description": "Choose an agent and model before sending a prompt.",
   "prompt.toast.modelCatalogLoading.title": "Connecting to model service",
   "prompt.toast.modelCatalogLoading.description": "Models are still loading. Your session will be ready in a moment.",
+  "prompt.toast.modelCatalogFailed.title": "Failed to load models",
+  "prompt.toast.modelCatalogFailed.description": "Check the server connection and try again.",
   "prompt.toast.worktreeCreateFailed.title": "Failed to create worktree",
   "prompt.toast.sessionCreateFailed.title": "Failed to create session",
   "prompt.toast.shellSendFailed.title": "Failed to send shell command",
@@ -583,6 +586,7 @@ export const dict = {
 
   "toast.session.listFailed.title": "Failed to load sessions for {{project}}",
   "toast.project.reloadFailed.title": "Failed to reload {{project}}",
+  "toast.project.addFailed.title": "Failed to add {{project}}",
   "toast.migration.failed.title": "Data migration failed",
 
   "toast.update.title": "Update available",
@@ -941,6 +945,7 @@ export const dict = {
   "settings.extensions.availableAll": "Available to all projects",
   "settings.extensions.manageConfig": "Manage in opencode.json",
   "settings.extensions.addSkills": "How to add skills",
+  "settings.extensions.skills.empty": "No skills found",
   "settings.desktop.section.wsl": "WSL",
   "settings.desktop.wsl.title": "WSL integration",
   "settings.desktop.wsl.description": "Run the Kito server inside WSL on Windows.",

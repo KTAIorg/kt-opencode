@@ -1,4 +1,5 @@
-import { Component, For, createEffect, createMemo, createResource } from "solid-js"
+import { Component, For, JSX, Show, createEffect, createMemo, createResource, createSignal } from "solid-js"
+import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Switch } from "@opencode-ai/ui/switch"
 import { Tabs } from "@opencode-ai/ui/tabs"
@@ -41,7 +42,7 @@ export const SettingsExtensionsV2: Component = () => {
     toggleMcp.mutate(item.name)
   }
 
-  const [pluginList] = createResource(
+  const [pluginList, { refetch: refetchPlugins }] = createResource(
     () => serverSdk.connection.status() === "connected",
     () => serverSdk.api.plugin.list().then((result) => result.data),
   )
@@ -49,9 +50,18 @@ export const SettingsExtensionsV2: Component = () => {
     (pluginList.latest ?? []).map((item) => ({ name: pluginLabel(item) })),
   )
 
+  const [skillFailed, setSkillFailed] = createSignal(false)
+  const syncSkills = () =>
+    void data.location.skill
+      .sync()
+      .then(() => setSkillFailed(false))
+      .catch((cause) => {
+        console.error("Failed to load skills", cause)
+        setSkillFailed(true)
+      })
   createEffect(() => {
     if (serverSdk.connection.status() !== "connected") return
-    void data.location.skill.sync().catch(() => undefined)
+    syncSkills()
   })
   const skills = () => data.location.skill.list() ?? []
 
@@ -84,19 +94,27 @@ export const SettingsExtensionsV2: Component = () => {
                 <span class="text-13-regular text-v2-text-faint">{language.t("settings.extensions.manageConfig")}</span>
               </div>
               <div class="bg-[var(--v2-background-bg-base)] border-[0.5px] border-[var(--v2-border-border-base)] rounded-[8px] pl-4 pr-3 overflow-hidden">
-                <For each={mcps()}>
-                  {(item) => (
-                    <div class="py-4 flex items-center justify-between border-b-[0.5px] border-[var(--v2-border-border-base)] last:border-b-0">
-                      <div class="flex items-center gap-2.5 min-w-0">
-                        <Icon name="mcp" class="text-v2-icon-icon-muted shrink-0" />
-                        <span class="text-13-medium text-v2-text-text-base truncate">{item.name}</span>
+                <ExtensionsListStatus
+                  loading={mcpList.loading}
+                  error={!!mcpList.error}
+                  empty={mcps().length === 0}
+                  emptyText={language.t("dialog.mcp.empty")}
+                  onRetry={() => refetchMcp()}
+                >
+                  <For each={mcps()}>
+                    {(item) => (
+                      <div class="py-4 flex items-center justify-between border-b-[0.5px] border-[var(--v2-border-border-base)] last:border-b-0">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                          <Icon name="mcp" class="text-v2-icon-icon-muted shrink-0" />
+                          <span class="text-13-medium text-v2-text-text-base truncate">{item.name}</span>
+                        </div>
+                        <Switch checked={item.enabled} onChange={(checked) => handleMcpToggle(item, checked)} hideLabel>
+                          {item.name}
+                        </Switch>
                       </div>
-                      <Switch checked={item.enabled} onChange={(checked) => handleMcpToggle(item, checked)} hideLabel>
-                        {item.name}
-                      </Switch>
-                    </div>
-                  )}
-                </For>
+                    )}
+                  </For>
+                </ExtensionsListStatus>
               </div>
             </div>
           </Tabs.Content>
@@ -110,16 +128,24 @@ export const SettingsExtensionsV2: Component = () => {
                 <span class="text-13-regular text-v2-text-faint">{language.t("settings.extensions.manageConfig")}</span>
               </div>
               <div class="bg-[var(--v2-background-bg-base)] border-[0.5px] border-[var(--v2-border-border-base)] rounded-[8px] pl-4 pr-3 overflow-hidden">
-                <For each={plugins()}>
-                  {(plugin) => (
-                    <div class="py-4 flex items-center justify-between border-b-[0.5px] border-[var(--v2-border-border-base)] last:border-b-0">
-                      <div class="flex items-center gap-2.5 min-w-0">
-                        <Icon name="cube" class="text-v2-icon-icon-muted shrink-0" />
-                        <span class="text-13-medium text-v2-text-text-base truncate font-mono">{plugin.name}</span>
+                <ExtensionsListStatus
+                  loading={pluginList.loading}
+                  error={!!pluginList.error}
+                  empty={plugins().length === 0}
+                  emptyText={language.t("dialog.plugins.empty")}
+                  onRetry={() => refetchPlugins()}
+                >
+                  <For each={plugins()}>
+                    {(plugin) => (
+                      <div class="py-4 flex items-center justify-between border-b-[0.5px] border-[var(--v2-border-border-base)] last:border-b-0">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                          <Icon name="cube" class="text-v2-icon-icon-muted shrink-0" />
+                          <span class="text-13-medium text-v2-text-text-base truncate font-mono">{plugin.name}</span>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </For>
+                    )}
+                  </For>
+                </ExtensionsListStatus>
               </div>
             </div>
           </Tabs.Content>
@@ -138,21 +164,71 @@ export const SettingsExtensionsV2: Component = () => {
                 </ExternalLink>
               </div>
               <div class="bg-[var(--v2-background-bg-base)] border-[0.5px] border-[var(--v2-border-border-base)] rounded-[8px] pl-4 pr-3 overflow-hidden">
-                <For each={skills()}>
-                  {(skill) => (
-                    <div class="py-4 flex items-center justify-between border-b-[0.5px] border-[var(--v2-border-border-base)] last:border-b-0">
-                      <div class="flex items-center gap-2.5 min-w-0">
-                        <Icon name="post-skill" class="text-v2-icon-icon-muted shrink-0" />
-                        <span class="text-13-medium text-v2-text-text-base truncate">{skill.name}</span>
+                <ExtensionsListStatus
+                  loading={
+                    serverSdk.connection.status() === "connected" &&
+                    data.location.skill.list() === undefined &&
+                    !skillFailed()
+                  }
+                  error={skillFailed()}
+                  empty={skills().length === 0}
+                  emptyText={language.t("settings.extensions.skills.empty")}
+                  onRetry={syncSkills}
+                >
+                  <For each={skills()}>
+                    {(skill) => (
+                      <div class="py-4 flex items-center justify-between border-b-[0.5px] border-[var(--v2-border-border-base)] last:border-b-0">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                          <Icon name="post-skill" class="text-v2-icon-icon-muted shrink-0" />
+                          <span class="text-13-medium text-v2-text-text-base truncate">{skill.name}</span>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </For>
+                    )}
+                  </For>
+                </ExtensionsListStatus>
               </div>
             </div>
           </Tabs.Content>
         </Tabs>
       </div>
     </>
+  )
+}
+
+const ExtensionsListStatus: Component<{
+  loading: boolean
+  error: boolean
+  empty: boolean
+  emptyText: string
+  onRetry: () => void
+  children: JSX.Element
+}> = (props) => {
+  const language = useLanguage()
+  return (
+    <Show
+      when={!props.loading}
+      fallback={
+        <div class="settings-v2-provider-empty">
+          {language.t("common.loading")}
+          {language.t("common.loading.ellipsis")}
+        </div>
+      }
+    >
+      <Show
+        when={!props.error}
+        fallback={
+          <div class="settings-v2-provider-empty flex items-center justify-between">
+            <span>{language.t("common.requestFailed")}</span>
+            <Button size="normal" variant="ghost-muted" onClick={() => props.onRetry()}>
+              {language.t("common.retry")}
+            </Button>
+          </div>
+        }
+      >
+        <Show when={!props.empty} fallback={<div class="settings-v2-provider-empty">{props.emptyText}</div>}>
+          {props.children}
+        </Show>
+      </Show>
+    </Show>
   )
 }
