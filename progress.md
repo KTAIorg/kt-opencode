@@ -870,3 +870,32 @@ kt-settlement 15/15；themes.test 2/2。
 5. **遗留**：`wireRendererHeaders` 的 session webRequest handler 仍每窗重复
    注册（回调无状态幂等，无行为差异）；Windows 非标准安装位置（便携版
    解压目录）的 open-in-app 会因路径不在安装根下被拒，走错误提示而非执行。
+
+## fix/audit-ux-i18n：i18n 补齐 + 静默失败暴露
+
+1. **zh.ts**：补 5 个 `dialog.ktIdentity.*`（scanQr/copyLink/copied/ensureFailed/expired），
+   放入文件尾部既有排序补录块。
+2. **zht.ts**：补 86 个 en/zh 已有但缺失的 key（ktIdentity×5、ktWallet×3、
+   titlebar.account.signingOut、modelCatalogLoading、command.session.background、
+   common.viewAll、session.summary/background/timeline.notice/new.workspace、
+   workspace.move/onboarding、settings.tab/preferences/projects/extensions/workspaces、
+   settings.*.description、project.settings.* 等），繁体经 OpenCC s2twp 转换 +
+   术语校正层对齐 zht 惯例（工作階段/伺服器/儲值/到帳/預設/偵測/簽出/擴充套件/
+   本機/背景執行/存取權限），追加于文件尾部排序块；7 个死 key
+   （workspace.lifecycle.*×5、toast.migration.failed.title、
+   dialog.server.authenticate.title）按任务要求不补。
+3. **静默失败修复**：
+   - `global-sync/bootstrap.ts` bootstrapGlobal 恢复 showErrors（allSettled 结果不再丢弃）。
+   - `use-providers.ts` 目录同步失败记入 `failure` signal + 暴露 `failed()`/`retry()`；
+     `local.tsx` 透出 `catalogFailed`/`catalogRetry`；`submit.ts` 在 catalog 失败终态
+     toast `prompt.toast.modelCatalogFailed.*`（新 en/zh/zht key）并自动重试；
+     `session-composer-controls.ts` model.loading 失败时停转。
+   - `settings-v2/extensions.tsx` 三个 tab（MCPs/Plugins/Skills）补 loading/
+     error(可重试)/empty 分支，新 `ExtensionsListStatus` 复用 `settings-v2-provider-empty`
+     样式；skills 同步失败记 `skillFailed`；新 key `common.retry`、
+     `settings.extensions.skills.empty`。
+   - `home-controller.ts` project.add：file.list/project.current 失败不再入 recents
+     （`projects.open` 移入成功分支），失败 toast `toast.project.addFailed.title`（新 key）。
+4. **验证**：`bun install --frozen-lockfile`（bun.lock 无改动）；
+   `bun run typecheck` 通过；`bun run test:unit` 598 pass/0 fail；
+   `bun run test:browser` 51 pass/0 fail；oxlint 0 errors（仅存量警告）。

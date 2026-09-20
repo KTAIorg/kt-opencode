@@ -140,13 +140,13 @@ export async function bootstrapGlobal(input: {
         .fetchQuery(loadProjectsQuery(input.scope, input.serverAPI.project, input.serverAPI.worktree))
         .then((data) => input.setGlobalStore("project", data)),
   ]
-  await runAll(slow)
-  // showErrors({
-  //   errors: errors(),
-  //   title: input.requestFailedTitle,
-  //   translate: input.translate,
-  //   formatMoreCount: input.formatMoreCount,
-  // })
+  const slowErrs = errors(await runAll(slow))
+  showErrors({
+    errors: slowErrs,
+    title: input.requestFailedTitle,
+    translate: input.translate,
+    formatMoreCount: input.formatMoreCount,
+  })
 }
 
 function projectID(directory: string, projects: Project[]) {

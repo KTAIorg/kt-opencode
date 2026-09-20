@@ -2,7 +2,7 @@ import { useData } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { normalizeProviderList } from "@/context/global-sync/utils"
 import { Iterable, pipe } from "effect"
-import { createEffect, createMemo, type Accessor } from "solid-js"
+import { createEffect, createMemo, createSignal, type Accessor } from "solid-js"
 import { emptyProviderCatalog } from "./provider-catalog"
 import { useIntegrations } from "./use-integrations"
 import { customerFacingProviderName } from "@/utils/kt-settlement"
@@ -18,14 +18,25 @@ export function useProviders(directory: Accessor<string | undefined>) {
     return dir ? { directory: dir } : undefined
   }
 
-  createEffect(() => {
-    if (sdk.connection.status() !== "connected") return
-    const ref = location()
+  // Catalog sync failures must reach a terminal state: keep the cause so the
+  // composer can stop showing "loading" forever and offer a retry.
+  const [failure, setFailure] = createSignal<unknown>()
+  const retry = () => {
+    setFailure(undefined)
     void (async () => {
+      const ref = location()
       if (!ref) await data.location.syncInfo()
       const resolved = ref ?? data.location.default()
       await Promise.all([data.location.provider.sync(resolved), data.location.model.sync(resolved)])
-    })().catch(() => undefined)
+    })().catch((cause) => {
+      console.error("Failed to load provider catalog", cause)
+      setFailure(cause)
+    })
+  }
+
+  createEffect(() => {
+    if (sdk.connection.status() !== "connected") return
+    retry()
   })
   const integrations = useIntegrations(directory)
 
@@ -42,6 +53,8 @@ export function useProviders(directory: Accessor<string | undefined>) {
       const ref = location()
       return data.location.provider.list(ref) !== undefined && data.location.model.list(ref) !== undefined
     },
+    failed: () => failure() !== undefined,
+    retry,
     all: () => providers().all,
     default: () => providers().default,
     // V2 servers list only available providers, so the connectable catalog
