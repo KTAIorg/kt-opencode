@@ -208,7 +208,38 @@ const register = Effect.fnUntraced(function* (
     found.url === info.url &&
     found.pid === info.pid &&
     found.password === info.password
-  yield* fs.writeFileString(temp, encoded, { mode: 0o600 }).pipe(Effect.andThen(fs.rename(temp, file)))
+  // A concurrently spawned contender must not displace a healthy incumbent:
+  // registration is last-writer-wins and the replaced service shuts down, so
+  // an unchecked write can strand consumers that already discovered the loser.
+  // Skipping our own write lets the recheck loop below retire this process.
+  const found = yield* current.pipe(Effect.option)
+  const incumbent = Option.isSome(found) && !owns(found.value) && found.value.version === OPENCODE_VERSION
+    ? found.value
+    : undefined
+  const yieldToIncumbent = incumbent !== undefined && (yield* Effect.promise(() =>
+    fetch(new URL("/api/health", incumbent.url), {
+      headers: {
+        authorization: "Basic " + Buffer.from("opencode:" + incumbent.password).toString("base64"),
+      },
+      signal: AbortSignal.timeout(3000),
+    })
+      .then(async (response) => {
+        if (!response.ok) return false
+        const body = (await response.json()) as { pid?: number; version?: string }
+        return body.pid === incumbent.pid && body.version === incumbent.version
+      })
+      .catch(() => false),
+  ))
+  if (yieldToIncumbent) {
+    yield* Effect.logInfo("managed service already healthy; yielding registration", {
+      serviceID: id,
+      servicePID: process.pid,
+      incumbentServiceID: incumbent.id,
+      incumbentURL: incumbent.url,
+    })
+  } else {
+    yield* fs.writeFileString(temp, encoded, { mode: 0o600 }).pipe(Effect.andThen(fs.rename(temp, file)))
+  }
   yield* current.pipe(
     Effect.catchCause((cause) =>
       Effect.logWarning("managed service registration check failed; shutting down", {
