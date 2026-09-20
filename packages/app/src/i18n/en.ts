@@ -1297,6 +1297,7 @@ export const dict = {
   "dialog.ktWallet.fiatDisabled":
     "WeChat and Alipay are not available on this environment yet. Use USDT / USDC instead.",
   "dialog.ktWallet.fiatError": "Could not start KTPay. Try again in a moment.",
+  "dialog.ktWallet.retry": "Try again",
   "dialog.ktWallet.custom": "Custom USD amount",
   "dialog.ktWallet.alipay": "Alipay",
   "dialog.ktWallet.wechat": "WeChat Pay",
@@ -1343,4 +1344,5 @@ export const dict = {
   "dialog.ktIdentity.copyLink": "Copy link",
   "dialog.ktIdentity.copied": "Link copied",
   "dialog.ktIdentity.ensureFailed": "Signed in, but Kito model access could not be provisioned. Top up or retry later.",
+  "dialog.ktIdentity.expired": "This sign-in request expired. Try again.",
 }

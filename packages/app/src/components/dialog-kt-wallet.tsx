@@ -37,9 +37,12 @@ type KtpayInfo = {
 type KtpayOrder = {
   orderId: string
   cashierUrl: string
+  /** 本地建单时间：轮询以此为绝对期限，超时按过期处理。 */
+  createdAt: number
 }
 
 const DEFAULT_AMOUNTS = [10, 30, 50, 100]
+const ORDER_POLL_LIMIT_MS = 15 * 60 * 1000
 const TERMINAL_FAILURE = new Set(["failed", "expired", "cancelled", "canceled"])
 
 function acceptedAssets(network: CryptoNetwork) {
@@ -136,6 +139,7 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   const [address, setAddress] = createSignal<DepositAddress>()
   const [addressError, setAddressError] = createSignal<Error>()
   const [addressLoading, setAddressLoading] = createSignal(false)
+  const [ledgerBaseline, setLedgerBaseline] = createSignal<number>()
 
   createEffect(() => {
     void authTick()
@@ -145,6 +149,8 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
       return
     }
     setInfoLoading(true)
+    // 重发前清掉上一轮的失败态，否则重试期间错误文案和 spinner 同时挂着。
+    setInfoError()
     let cancelled = false
     void request("/ktai/wallet/ktpay/info")
       .then(async (response) => {
@@ -171,11 +177,22 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
       setAddress()
       setAddressError()
       setAddressLoading(false)
+      setLedgerBaseline()
       return
     }
     setAddressLoading(true)
     setAddressError()
     let cancelled = false
+    // ledger 基线与取址并发：记录"地址获取时点"的已知余额，此后（含地址
+    // 返回途中）到账都能被轮询的 ledger>baseline 捕获；失败由轮询首读兜底。
+    void request("/ktai/wallet/crypto/status")
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => undefined)) as { ledgerBalance?: number } | undefined
+        if (!cancelled && response.ok && typeof payload?.ledgerBalance === "number") {
+          setLedgerBaseline(payload.ledgerBalance)
+        }
+      })
+      .catch(() => undefined)
     void request(`/ktai/wallet/deposit-address?${new URLSearchParams({ chain: selected, asset: "USDT" })}`)
       .then(async (response) => {
         const payload = (await response.json().catch(() => undefined)) as
@@ -251,31 +268,54 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   }
 
   const checkOrder = (current: KtpayOrder, quiet = true) =>
-    request(`/ktai/wallet/ktpay/status/${encodeURIComponent(current.orderId)}`).then(async (response) => {
-      const payload = await response.json().catch(() => undefined)
-      if (isKtpayPaid(payload)) {
-        markPaid()
-        return true
-      }
-      const row = readKtpayStatus(payload)
-      // 上游契约：失败终态以 localStatus 为准，但兼容只回 status 的网关，任一命中即终态。
-      const remote = [row?.localStatus.toLowerCase(), row?.status.toLowerCase()].find(
-        (value) => value && TERMINAL_FAILURE.has(value),
-      )
-      if (response.ok && remote) {
-        setPayError(language.t(remote === "expired" ? "dialog.ktWallet.expired" : "dialog.ktWallet.failed"))
-        setOrder(undefined)
+    request(`/ktai/wallet/ktpay/status/${encodeURIComponent(current.orderId)}`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => undefined)
+        if (isKtpayPaid(payload)) {
+          markPaid()
+          return true
+        }
+        const row = readKtpayStatus(payload)
+        // 上游契约：失败终态以 localStatus 为准，但兼容只回 status 的网关，任一命中即终态。
+        // 终态不看 HTTP 状态码：响应体已明确写出失败就必须终止轮询。
+        const remote = [row?.localStatus.toLowerCase(), row?.status.toLowerCase()].find(
+          (value) => value && TERMINAL_FAILURE.has(value),
+        )
+        if (remote) {
+          setPayError(language.t(remote === "expired" ? "dialog.ktWallet.expired" : "dialog.ktWallet.failed"))
+          setOrder(undefined)
+          return false
+        }
+        if (!quiet) showToast({ variant: "error", title: language.t("dialog.ktWallet.confirmPaid.waiting") })
         return false
-      }
-      if (!quiet) showToast({ variant: "error", title: language.t("dialog.ktWallet.confirmPaid.waiting") })
-      return false
-    })
+      })
+      // 网络/平台 fetch reject 只是本轮失败（轮询有绝对期限兜底），不能漏成
+      // unhandled rejection，也不能让"I've paid"按钮的 finally 永远不执行。
+      .catch(() => {
+        if (!quiet) showToast({ variant: "error", title: language.t("dialog.ktWallet.confirmPaid.waiting") })
+        return false
+      })
 
   createEffect(() => {
     const current = order()
     if (!current || paid()) return
-    void checkOrder(current)
-    const timer = window.setInterval(() => void checkOrder(current), 2000)
+    // 轮询有绝对期限（本地建单起 15 分钟）：超时按过期处理并清掉订单回到表单；
+    // 上一 tick 未完成的请求不叠加，慢上游不再堆积并发轮询。
+    let inflight = false
+    const tick = () => {
+      if (inflight) return
+      if (Date.now() - current.createdAt > ORDER_POLL_LIMIT_MS) {
+        setPayError(language.t("dialog.ktWallet.expired"))
+        setOrder(undefined)
+        return
+      }
+      inflight = true
+      void checkOrder(current).finally(() => {
+        inflight = false
+      })
+    }
+    tick()
+    const timer = window.setInterval(tick, 2000)
     onCleanup(() => window.clearInterval(timer))
   })
 
@@ -286,9 +326,10 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
 
   // crypto 到账检测：轮询轻量 /ktai/wallet/crypto/status（只查 Identity ledger，不打 NewAPI，
   // 避免烧 NewAPI Ensure 限流桶）。到账（ledger 增加）→ 成功提示 + 刷新顶栏 + 关窗。
+  // 基线在取址 effect 里与地址并发取好（地址获取时点的余额）；它没回来前
+  // 先用首次成功读数兜底，避免把"提前到账"误当基线、ledger>baseline 永不成立。
   createEffect(() => {
     if (tab() !== "crypto" || !visibleAddress() || paid() || addressError()) return
-    let baseline: number | undefined
     let stopped = false
     const tick = async () => {
       if (stopped || paid() || tab() !== "crypto" || !visibleAddress()) return
@@ -297,12 +338,12 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
       const payload = (await response.json().catch(() => undefined)) as { ledgerBalance?: number } | undefined
       const ledger = payload?.ledgerBalance
       if (typeof ledger !== "number") return
+      const baseline = ledgerBaseline()
       if (baseline === undefined) {
-        baseline = ledger
+        setLedgerBaseline(ledger)
         return
       }
       if (ledger > baseline) {
-        baseline = ledger
         markPaid()
         close()
       }
@@ -335,20 +376,27 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
     setPayError()
     setPaid(false)
     setPaying(method)
-    const response = await request("/ktai/wallet/ktpay/pay", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ amount: selectedAmount(), method }),
-    })
-    const payload = (await response.json().catch(() => undefined)) as
-      | (KtpayOrder & { error?: string; message?: string })
-      | undefined
-    setPaying()
-    if (!response.ok || !payload?.orderId || !payload.cashierUrl) {
-      setPayError(payload?.error || payload?.message || language.t("dialog.ktWallet.fiatError"))
-      return
+    // fetch reject（断网/平台层异常）必须落到 catch + finally：否则 paying
+    // 永远不复位，两个支付按钮永久 disabled 且没有任何错误提示。
+    try {
+      const response = await request("/ktai/wallet/ktpay/pay", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amount: selectedAmount(), method }),
+      })
+      const payload = (await response.json().catch(() => undefined)) as
+        | (KtpayOrder & { error?: string; message?: string })
+        | undefined
+      if (!response.ok || !payload?.orderId || !payload.cashierUrl) {
+        setPayError(payload?.error || payload?.message || language.t("dialog.ktWallet.fiatError"))
+        return
+      }
+      setOrder({ orderId: payload.orderId, cashierUrl: payload.cashierUrl, createdAt: Date.now() })
+    } catch {
+      setPayError(language.t("dialog.ktWallet.fiatError"))
+    } finally {
+      setPaying()
     }
-    setOrder({ orderId: payload.orderId, cashierUrl: payload.cashierUrl })
   }
 
   return (
@@ -407,7 +455,18 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
               <p class="text-14-regular text-v2-state-fg-danger">
                 {infoError()?.message || language.t("dialog.ktWallet.fiatError")}
               </p>
-              {loginAction()}
+              <div class="flex gap-2">
+                {/* 与 kito-account-refresh 同一机制：authTick 变化触发 info 拉取 effect 重发。 */}
+                <Button
+                  variant="outline"
+                  size="large"
+                  type="button"
+                  onClick={() => setAuthTick((n) => n + 1)}
+                >
+                  {language.t("dialog.ktWallet.retry")}
+                </Button>
+                {loginAction()}
+              </div>
             </div>
           </Show>
           <Show when={info()?.enabled === false}>
@@ -433,9 +492,10 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
                   )}
                 </For>
               </div>
+              {/* 上游 info 的 min_topup 可能滞后（实测上报 5 时 $1 已可下单）；客户端下限封顶 $1，不再拿上报值卡自定义金额。 */}
               <input
                 type="number"
-                min={info()?.minTopup ?? 1}
+                min={Math.min(info()?.minTopup ?? 1, 1)}
                 max={info()?.maxTopup ?? 500}
                 value={custom()}
                 placeholder={language.t("dialog.ktWallet.custom")}

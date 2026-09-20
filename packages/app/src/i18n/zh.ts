@@ -1280,6 +1280,7 @@ export const dict = {
   "dialog.ktWallet.fiatHint": "先选金额，再打开收银台付款。KTPay 确认后余额会更新。",
   "dialog.ktWallet.fiatDisabled": "当前环境还不能用微信 / 支付宝，请改用 USDT / USDC。",
   "dialog.ktWallet.fiatError": "无法发起 KTPay，请稍后重试。",
+  "dialog.ktWallet.retry": "重试",
   "dialog.ktWallet.custom": "自定义美元金额",
   "dialog.ktWallet.alipay": "支付宝",
   "dialog.ktWallet.wechat": "微信支付",

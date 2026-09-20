@@ -65,5 +65,12 @@ export function compareKtaiModelOrder(a: { id: string; name?: string }, b: { id:
 }
 
 export function isKtaiProviderID(providerID: string) {
-  return providerID === "ktai" || providerID === "ktapi" || providerID.startsWith("ktai")
+  // 精确匹配本体 + "ktai-"/"ktapi-" 前缀的派生 id；裸 startsWith("ktai")
+  // 会把未来任何 ktai 开头的无关 provider（如 ktai2、ktaiabc）误吸进来。
+  return (
+    providerID === "ktai" ||
+    providerID === "ktapi" ||
+    providerID.startsWith("ktai-") ||
+    providerID.startsWith("ktapi-")
+  )
 }
