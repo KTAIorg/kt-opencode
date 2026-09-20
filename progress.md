@@ -295,3 +295,81 @@ metainfo `<developer>` 仍为 "Anomaly Innovations Inc."（上架主体身份，
 **验证**：`bun -e` 直导入 page.ts 渲染 success/error/bootstrap 三页，
 断言无 OpenCode/opencode.ai 残留且含 Kito wordmark；`bun build`
 copy-metainfo.ts 打包通过。
+## L. Issue #109 · Kito 2.1.8 实测七项修复（2026-09-19）
+
+对应 https://github.com/KTAIorg/kt-opencode/issues/109（#108 实测清单，base=main+#105+#107 之后）。
+
+1. **品牌**：模型自我标识全改 Kito——`plugin/system-prompt/`7 个 family prompt
+   （gpt/anthropic/gemini/kimi/codex/meta/trinity）+ `session/runner/prompt/system.txt`
+   + `plugin/skill/opencode.md`（产品问答 skill）+ `plugin/skill.ts`（skill 名/描述/report
+   描述/诊断标签）+ `plugin/skill/report.md` + `tool/plugin/websearch.ts`（权限提示）
+   + `tool/plugin/webfetch.ts`（UA `Kito-User/1.0; +https://kito.ktai.im`）
+   + `plugin/command/initialize.txt` + desktop `renderer/i18n/`60+ locale 的 updater 文案。
+   **保留**：`opencode.json`/`.opencode/` 真实文件名、`@opencode-ai/*` 包名、
+   `opencode2` CLI 二进制、opencode.ai 上游文档 URL、provider 集成标识
+   （X-Title/originator/HTTP-Referer——上游注册 attribution 不能动）、
+   OpenCode Zen（上游真实产品名）。
+2. **自动接受权限**：`general-controllers` 的开关此前仅支持会话作用域，全局设置页
+   无 sessionID → 永远 disabled。新增 `resolvePermissionScope` 纯函数
+   （general-controller-behavior）：有 sessionID→会话级，无→目录级；permission
+   context 补 `enableDirectory`/`disableDirectory`；与命令面板 toggleAutoAccept
+   语义对齐。
+3. **探测精度**：`model-probe.ts` 的 `send()` 此前 `response.ok` 直接判 ok——
+   NewAPI 一类网关把上游错误装进 HTTP 200 的 `error` 信封/`success:false` 返回。
+   现在解析响应体，检出错误信封即判 fail（真实探测 grok-4.6 之雷）。
+4. **静默失败**：`runner/llm.ts` 新增 empty-response 兜底——provider 事务已开始
+   （`stepStarted`）但留不下任何可渲染内容时记 `provider.empty-response` 持久错误
+   而非静默 Completed。判定：`stream._tag==="Success" && stepStarted &&
+   !failure && !calls.some(called||settled) && (!finish || (step===1 &&
+   !outputStarted))`。截断（无 finish）任何步都报；stop-零内容只在第一步报
+   （首问欠答）；零事件流无法区分测试 noop 不报；工具续步空响应合法收尾不报。
+   `publish-llm-event.ts` 的 StepRecord 新增 `stepStarted` 导出。
+5. **错误文案**：`session-error-cta`/`session-error-card`/`timeline-row` 把
+   `provider.empty-response`/`provider.invalid-output`/`tool.input-json`/
+   `tool.result-missing`/transport/rate-limit/no-route 映射到友好 i18n 文案
+   （en.ts 新增 `session.error.*` 键），原始技术文案降级为次要行；
+   认证/计费 CTA 逻辑不动。
+6. **支付**：服务端 kt-pay 渠道池问题，客户端无解——继续挂 #104 运维单。
+7. **i18n**：`settings-keybinds` 的命令/快捷键标题从 `command.<id>` 惯例
+   + 5 个例外映射（file.attach/project.select/terminal.close/home.toggle/tab.new）
+   重新按当前 locale 求值，不再用持久化标题快照；原生菜单链路
+   （onNativeTranslations→setNativeTranslations→createMenu）已验证会随 bundle
+   变化重建。
+
+**连带修复**：`@ai-sdk/xai` 补回 packages/core deps（`81141dc chore: generate`
+弄丢，src/aisdk-native 实际在用）；`provider-xai-responses.test.ts` 的
+`prompt_cache_key` 断言连最新 SDK 5.0.4 都不支持（生成器幻觉）→ test.skip 留档；
+session-runner cassette 请求体同步 Kito prompt（请求体精确匹配，否则 recorder
+miss 走真实网络挂死）；测试套件 `TestLLM.stop()` 裸停→`text()`（空 stop 现在
+第一步会报错，30 处机械替换）；system-prompt/skill 测试断言同步品牌。
+
+**验证**：core `session-runner.test.ts` 157/157、model-probe 20/20、
+system-prompt 8/8、skill+webfetch 54/54、recorded 2/2（cassette 已换牌）；
+app 相关 26/26；core/app/desktop `tsgo -b` 全 0。
+**预存在失败（main worktree 已证非本次引入）**：RepositoryCache/Git×7（本机
+git 网络）、OpencodePlugin×1（连真实服务）、app×8（solid-js 1.9.10 与本机
+bun 1.3.11 导出解析不兼容）。
+
+---
+
+## M. Issue #109 第 5 项收尾：错误文案 i18n 补全（2026-09-19，worktree kito-wt-i18n）
+
+分支 `fix-109-error-i18n`（基于 origin/fix-109-functional）。
+
+- `session-error-cta.ts` `MODEL_ERROR_LEAD_KEYS` 补 `"provider.invalid-request"` →
+  `session.error.model.invalidRequest`（to-session-error.ts:27 产生，此前未映射
+  显示技术原文）。
+- `en.ts` 新增 `session.error.model.invalidRequest` 英文源文案；`zh.ts`/`zht.ts`
+  补齐全部 9 个 `session.error.model.*` key（此前 8 个 key 仅 en 有，中文用户看
+  英文兜底）。zh 用"模型/连接/重试"，zht 沿用文件内既有"模型/伺服器/連線"术语。
+- `session-error-card.test.ts` 新增 `maps invalid-request to friendly copy` 断言。
+
+**验证**：`bun test session-error-card.test.ts` 24/24 pass（临时 symlink
+kito-src 的 packages/app/node_modules 供 happydom preload，已删）；`tsgo -b`
+app 0 错；en/zh/zht 三边 `session.error.model.*` 各 9 key 对齐。
+
+**遗留（非本任务范围，如实记录）**：zht 相对 en+zh 仍缺 ~84 个 feature key
+（settings.* / workspace.* / session.background / session.new / session.summary /
+session.timeline.notice / dialog.ktWallet.crypto* 等——按 AGENTS「翻译随语言
+评审单独落地」惯例属既有积压）；zh 缺 4 个 `dialog.ktIdentity.*`（L 节已注明
+刻意仅 en）。

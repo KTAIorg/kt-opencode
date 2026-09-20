@@ -100,6 +100,7 @@ const classifyToolExits = (
 const TOOLS_INTERRUPTED = { type: "aborted", message: "Tool execution interrupted" } as const
 const STEP_INTERRUPTED = { type: "aborted", message: "Step interrupted" } as const
 const RESULT_MISSING = { type: "tool.result-missing", message: "Provider did not return a tool result" } as const
+const EMPTY_RESPONSE = { type: "provider.empty-response", message: "The model returned no content." } as const
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
   "The previous response was interrupted. Continue from where you left off without repeating completed content."
 
@@ -500,6 +501,20 @@ const layer = Layer.effect(
             const hostedResultMissing = yield* publisher.failUnsettledTools(RESULT_MISSING, "hosted")
             if (hostedResultMissing && !publisher.record().finish) yield* publisher.failAssistant(RESULT_MISSING)
           }
+          // The provider transaction began but left nothing renderable. A stream that
+          // ended before its finish event is always an anomaly. A step that finished
+          // with zero content is only an anomaly on the first step, where the user
+          // prompt is still owed a visible answer; later steps may end quietly after
+          // tool output. A zero-event stream is indistinguishable from an intentional
+          // no-op, so only flag once the provider actually started the step.
+          if (
+            stream._tag === "Success" &&
+            publisher.record().stepStarted &&
+            !publisher.record().failure &&
+            !publisher.record().calls.some((call) => call.called || call.settled) &&
+            (!publisher.record().finish || (currentStep === 1 && !publisher.record().outputStarted))
+          )
+            yield* publisher.failAssistant(EMPTY_RESPONSE)
 
           // One terminal event: Step.Ended on a clean finish, Step.Failed otherwise.
           const record = publisher.record()

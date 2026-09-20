@@ -328,6 +328,15 @@ export function createServerPermissionState(input: { sdk: ServerSDK; sync: Serve
       if (meta.disposed) return
       disable(sessionID, directory)
     },
+    enableAutoAcceptDirectory(directory: string) {
+      if (meta.disposed) return
+      if (isAutoAcceptingDirectory(directory)) return
+      enableDirectory(directory)
+    },
+    disableAutoAcceptDirectory(directory: string) {
+      if (meta.disposed) return
+      disableDirectory(directory)
+    },
     isPermissionAllowAll(directory: string) {
       if (meta.disposed) return false
       const [childStore] = input.sync.child(directory)

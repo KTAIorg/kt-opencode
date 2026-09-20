@@ -1,8 +1,30 @@
 import { describe, expect, test, vi } from "bun:test"
 import { createRoot } from "solid-js"
-import { createShellOptions, createSoundPreviewController } from "./general-controller-behavior"
+import {
+  createShellOptions,
+  createSoundPreviewController,
+  resolvePermissionScope,
+} from "./general-controller-behavior"
 
 describe("settings v2 controllers", () => {
+  test("resolves auto-accept scope from session or directory context", () => {
+    expect(
+      resolvePermissionScope({ sessionID: "ses_1", sessionDirectory: "/repo", directory: "/other" }),
+    ).toEqual({ kind: "session", sessionID: "ses_1", directory: "/repo" })
+
+    expect(
+      resolvePermissionScope({ sessionID: undefined, sessionDirectory: undefined, directory: "/repo" }),
+    ).toEqual({ kind: "directory", directory: "/repo" })
+
+    expect(
+      resolvePermissionScope({ sessionID: undefined, sessionDirectory: undefined, directory: undefined }),
+    ).toBeUndefined()
+
+    expect(
+      resolvePermissionScope({ sessionID: "ses_1", sessionDirectory: undefined, directory: "/repo" }),
+    ).toBeUndefined()
+  })
+
   test("normalizes shell names and preserves an unavailable configured shell", () => {
     expect(
       createShellOptions({
