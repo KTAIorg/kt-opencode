@@ -129,6 +129,7 @@ const api: ElectronAPI = {
   onZoomFactorChanged: (cb) => listen(Ipc.window.zoomFactorChanged, cb),
   setTitlebar: (theme) => invoke(Ipc.window.setTitlebar, theme),
   runDesktopMenuAction: (action) => invoke(Ipc.menu.runAction, action),
+  setMenuCommands: (ids) => send(Ipc.menu.setCommands, ids),
   setBackgroundColor: (color) => invoke(Ipc.app.setBackgroundColor, color),
   exportDebugLogs: () => invoke(Ipc.app.exportDebugLogs),
   setForceFocus: (enabled) => invoke(Ipc.app.setForceFocus, enabled),

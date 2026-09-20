@@ -67,6 +67,7 @@ export const Ipc = {
   menu: {
     command: "menu-command",
     runAction: "run-desktop-menu-action",
+    setCommands: "menu-set-commands",
   },
   updater: {
     subscribe: "updater-subscribe",
@@ -215,6 +216,7 @@ export type IpcSend = {
   [Ipc.app.relaunch]: []
   [Ipc.files.openExternal]: [url: string]
   [Ipc.files.openLocalFile]: [url: string]
+  [Ipc.menu.setCommands]: [ids: string[]]
 }
 
 export type IpcEvent = {

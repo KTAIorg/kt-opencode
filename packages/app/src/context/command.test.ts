@@ -3,6 +3,7 @@ import {
   activeCommandRegistrations,
   addCommandRegistration,
   commandPaletteOptions,
+  enabledCommandIds,
   resolveKeybindOption,
   type CommandOption,
 } from "./command"
@@ -18,6 +19,18 @@ const paletteOptions: CommandOption[] = [
 describe("commandPaletteOptions", () => {
   test("keeps visible enabled commands", () => {
     expect(commandPaletteOptions(paletteOptions).map((option) => option.id)).toEqual(["settings.open", "session.undo"])
+  })
+})
+
+describe("enabledCommandIds", () => {
+  test("collects ids of enabled commands including hidden ones", () => {
+    expect(enabledCommandIds(paletteOptions)).toEqual(new Set(["settings.open", "session.undo", "file.open", "hidden"]))
+  })
+
+  test("maps suggested ids back to the underlying command", () => {
+    expect(enabledCommandIds([{ id: "suggested.tab.new", title: "New" }])).toEqual(
+      new Set(["suggested.tab.new", "tab.new"]),
+    )
   })
 })
 
