@@ -78,8 +78,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Distro gurup bilmedi: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kito gurmak şowsuz",
   "desktop.wsl.error.alreadyAdded": "{{distro}} eýýäm goşuldy",
-  "desktop.wsl.error.opencodeMissing": "açyk kod bu distroda gurlanok",
-  "desktop.wsl.error.opencodeCannotRun": "opencode guruldy, ýöne işledip bilmedi",
+  "desktop.wsl.error.opencodeMissing": "Kito bu distroda gurlanok",
+  "desktop.wsl.error.opencodeCannotRun": "Kito guruldy, ýöne işledip bilmedi",
   "desktop.wsl.error.opencodeNotInstalled": "Kito {{distro}} gurulmady",
   "desktop.wsl.error.updateVersion":
     "Kito täzelenmesi gutardy, ýöne {{distro}} henizem {{installed}} habar berýär; garaşylýan {{expected}}",

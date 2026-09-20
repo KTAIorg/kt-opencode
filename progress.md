@@ -786,3 +786,36 @@ draft 页 Cmd+O 仍灰（该页语义是选择已有项目 `project.select`，�
    server.js `use` 导出的预存在环境问题（main 上同样失败，与本次改动无关）。
 4. **PR**：#127(oauth品牌)/#128(错误文案i18n)/#129(钱包$1+重试)/
    #130(菜单命令+IPC防护)/#131(stream调查+回归) —— 均未合并，待验收。
+
+## 2026-05-23 品牌残留清扫（fix/audit-brand-residual）
+
+1. **WSL 错误文案 opencode→Kito**：`desktop.wsl.error.opencodeMissing` /
+   `opencodeCannotRun` 两个 key 的 value 全部归一为 Kito（key 名不动）。
+   - 59 个 i18n 文件脚本批量替换（`desktop-native.ts` 英文源 + 58 个直写
+     locale）；变体已处理：tk `açyk kod`、el `ο ανοιχτός κώδικας`（改
+     `το Kito` 并同步中性分词 `εγκατεστημένο`）、am `ክፍት ኮድ`、hy
+     `opencode-ը`→`Kito-ն`（元音后定冠词）、fi 部分格 `opencodea`→`Kitoa`。
+   - hr/hu/is/lt 四个用 `DESKTOP_NATIVE_KEYS` 位置数组的 locale 手工补改
+     （数组第 82-83 项）。
+   - `en` 及 hr/hu/is/lt 以外无 override 的 locale 走 `DESKTOP_NATIVE_ENGLISH`
+     兜底，已随英文源修复。
+2. **主题显示名**：`packages/ui` `context.tsx` `names.opencode` 与
+   `themes/opencode.json` `name` 均 `OpenCode`→`Kito Classic`（id/file 名
+   保留 `opencode`）。TUI `dialog-theme-list` 用 theme key 当 title（显示
+   `opencode` id，与 cursor/dracula 等一致），不渲染 `name` 字段，无需归一；
+   TUI `assets/opencode.json` 无 `name` 字段。
+3. **免费模型弹窗 provider 卡片**：`dialog-select-model-unpaid-v2.tsx` 渲染
+   改走 `customerFacingProviderName(provider.id, provider.name)`，与
+   `dialog-connect-provider`/`use-providers`/`dialog-select-model` 同口径。
+4. **debug 导出文件名**：`packages/desktop` `logging.ts`
+   `opencode-debug-*.zip`→`kito-debug-*.zip`。
+5. **AGENTS.md**：`:195` identity 路径 `~/.local/share/opencode/`→
+   `~/.local/share/kito/`；`:199` "OpenCode XDG data dir"→"Kito XDG data dir
+   (`~/.local/share/kito`)"（与 `packages/util` global.ts 的 kito leaf +
+   `cli/src/services/legacy-data.ts` 迁移注释一致）。
+
+测试：`ui/src/theme/themes.test.ts`（opencode 主题 id/name 断言 + 全部
+内置主题无 OpenCode 名）；`app/src/i18n/kito-branding.test.ts` 新增
+WSL 4-key 全 locale 含 Kito 且无 /opencode/i 残留断言。
+验证：app/desktop/ui `bun typecheck` 全过；kito-branding+desktop-native+
+kt-settlement 15/15；themes.test 2/2。

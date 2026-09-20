@@ -81,8 +81,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Không cài đặt được bản phân phối: {{distro}}",
   "desktop.wsl.error.installOpencode": "Không cài đặt được Kito",
   "desktop.wsl.error.alreadyAdded": "{{distro}} đã được thêm",
-  "desktop.wsl.error.opencodeMissing": "opencode chưa được cài đặt trong bản phân phối này",
-  "desktop.wsl.error.opencodeCannotRun": "opencode đã được cài đặt nhưng không thể chạy",
+  "desktop.wsl.error.opencodeMissing": "Kito chưa được cài đặt trong bản phân phối này",
+  "desktop.wsl.error.opencodeCannotRun": "Kito đã được cài đặt nhưng không thể chạy",
   "desktop.wsl.error.opencodeNotInstalled": "Kito chưa được cài đặt trong {{distro}}",
   "desktop.wsl.error.updateVersion":
     "Đã cập nhật Kito nhưng {{distro}} vẫn báo phiên bản {{installed}}; phiên bản dự kiến là {{expected}}",
