@@ -54,6 +54,102 @@ it.live("loads embedded and remote configuration", () =>
   ),
 )
 
+it.live("restricts remote config env fallback to a non-sensitive allowlist", () =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const previous = {
+        host: process.env.KITO_WELLKNOWN_TEST_HOST,
+        token: process.env.KITO_WELLKNOWN_TEST_TOKEN,
+        other: process.env.WELLKNOWN_TEST_OTHER,
+      }
+      process.env.KITO_WELLKNOWN_TEST_HOST = "safe-value"
+      process.env.KITO_WELLKNOWN_TEST_TOKEN = "top-secret"
+      process.env.WELLKNOWN_TEST_OTHER = "other-value"
+      const server = Bun.serve({
+        port: 0,
+        fetch(request) {
+          const url = new URL(request.url)
+          if (url.pathname === "/.well-known/opencode") {
+            return Response.json({
+              remote_config: {
+                url: `${url.origin}/config/{env:KITO_WELLKNOWN_TEST_HOST}`,
+                headers: {
+                  "x-token": "{env:KITO_WELLKNOWN_TEST_TOKEN}",
+                  "x-other": "{env:WELLKNOWN_TEST_OTHER}",
+                  "x-home": "{env:HOME}",
+                },
+              },
+            })
+          }
+          if (url.pathname === "/config/safe-value") {
+            return Response.json({
+              token: request.headers.get("x-token"),
+              other: request.headers.get("x-other"),
+              home: request.headers.get("x-home"),
+            })
+          }
+          return new Response("Not found", { status: 404 })
+        },
+      })
+      const restore = () => {
+        if (previous.host === undefined) delete process.env.KITO_WELLKNOWN_TEST_HOST
+        else process.env.KITO_WELLKNOWN_TEST_HOST = previous.host
+        if (previous.token === undefined) delete process.env.KITO_WELLKNOWN_TEST_TOKEN
+        else process.env.KITO_WELLKNOWN_TEST_TOKEN = previous.token
+        if (previous.other === undefined) delete process.env.WELLKNOWN_TEST_OTHER
+        else process.env.WELLKNOWN_TEST_OTHER = previous.other
+      }
+      return { server, restore }
+    }),
+    ({ server }) =>
+      Effect.gen(function* () {
+        const configs = yield* WellKnown.resolve({ origin: server.url.origin, variables: {} })
+        // Non-credential KITO_* and allowlisted names resolve; credential-shaped
+        // and arbitrary names resolve empty.
+        expect(configs).toEqual([{ token: "", other: "", home: process.env.HOME ?? null }])
+      }),
+    ({ server, restore }) =>
+      Effect.promise(() => {
+        restore()
+        return server.stop(true)
+      }),
+  ),
+)
+
+it.live("honors caller-supplied variables for sensitive names", () =>
+  Effect.acquireUseRelease(
+    Effect.sync(() =>
+      Bun.serve({
+        port: 0,
+        fetch(request) {
+          const url = new URL(request.url)
+          if (url.pathname === "/.well-known/opencode") {
+            return Response.json({
+              remote_config: {
+                url: `${url.origin}/config`,
+                headers: { "x-key": "{env:WELLKNOWN_TEST_SECRET_KEY}" },
+              },
+            })
+          }
+          if (url.pathname === "/config") {
+            return Response.json({ key: request.headers.get("x-key") })
+          }
+          return new Response("Not found", { status: 404 })
+        },
+      }),
+    ),
+    (server) =>
+      Effect.gen(function* () {
+        const configs = yield* WellKnown.resolve({
+          origin: server.url.origin,
+          variables: { WELLKNOWN_TEST_SECRET_KEY: "explicit-value" },
+        })
+        expect(configs).toEqual([{ key: "explicit-value" }])
+      }),
+    (server) => Effect.promise(() => server.stop(true)),
+  ),
+)
+
 serviceIt.live("persists sources in one KV value", () =>
   Effect.acquireUseRelease(
     Effect.sync(() =>

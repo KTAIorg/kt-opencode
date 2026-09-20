@@ -222,6 +222,37 @@ describe("Integration", () => {
     }),
   )
 
+  it.live("bounds command stderr echoed into the attempt message", () =>
+    Effect.gen(function* () {
+      const integrations = yield* Integration.Service
+      const integrationID = Integration.ID.make("company")
+      const methodID = Integration.MethodID.make("login")
+      yield* integrations.transform((editor) =>
+        editor.method.update({
+          integrationID,
+          method: {
+            id: methodID,
+            type: "command",
+            label: "Log in",
+            command: [process.execPath, "-e", 'process.stderr.write("x".repeat(20000)); process.exit(3)'],
+          },
+        }),
+      )
+
+      const attempt = yield* integrations.command.connect({ integrationID, methodID })
+      const terminal = yield* eventually(
+        integrations.command.status({ integrationID, attemptID: attempt.attemptID }),
+        (status) => status.status !== "pending",
+      )
+      expect(terminal.status).toBe("failed")
+      if (terminal.status === "failed") {
+        const message = terminal.message ?? ""
+        expect(message.length).toBeLessThanOrEqual(4 * 1024 + " ... (stderr truncated)".length)
+        expect(message).toContain("(stderr truncated)")
+      }
+    }),
+  )
+
   it.effect("completes code OAuth once and stores the credential", () =>
     Effect.gen(function* () {
       const integrations = yield* Integration.Service

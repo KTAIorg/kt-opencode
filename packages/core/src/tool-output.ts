@@ -82,7 +82,8 @@ const layer = Layer.effect(
       const unit = hitBytes ? (removed === 1 ? "byte" : "bytes") : removed === 1 ? "line" : "lines"
       const file = path.join(directory, Identifier.ascending("tool"))
       yield* fs.ensureDir(directory).pipe(Effect.orDie)
-      yield* fs.writeFileString(file, text).pipe(Effect.orDie)
+      // Captured tool output can hold secrets; keep the spill file owner-only.
+      yield* fs.writeFileString(file, text, { mode: 0o600 }).pipe(Effect.orDie)
       const marker = `... ${removed} ${unit} truncated; full content saved to ${file} ...`
       const bounded: Tool.Content[] = []
       let remaining = kept.join("\n").length

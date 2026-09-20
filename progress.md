@@ -786,3 +786,25 @@ draft 页 Cmd+O 仍灰（该页语义是选择已有项目 `project.select`，�
    server.js `use` 导出的预存在环境问题（main 上同样失败，与本次改动无关）。
 4. **PR**：#127(oauth品牌)/#128(错误文案i18n)/#129(钱包$1+重试)/
    #130(菜单命令+IPC防护)/#131(stream调查+回归) —— 均未合并，待验收。
+
+## 2026-09-20 凭据/环境变量卫生修复（fix/audit-cred-hygiene）
+
+1. **AIError 请求头打码**：`packages/ai/src/route/executor.ts` `headerDetails`
+   改为先经 `Headers.redact`（authorization/proxy-authorization/cookie/
+   set-cookie/x-api-key/x-goog-api-key/x-auth-token），序列化值固定
+   `"<redacted>"`；请求错误、非 2xx、流读取失败三条路径共用。
+2. **子进程环境净化**：`packages/util/src/kito-env.ts` 新增
+   `sanitizeChildEnv`/`isSensitiveEnvName`（剥全部 `KTAI_*`、`KITO_DB`/
+   `OPENCODE_DB`、凭据形 `KITO_*`/`OPENCODE_*`，保留 `*_TERMINAL` 标记）。
+   在 `cross-spawn-spawner.ts` 的 `extendEnv` 合并处统一套用（覆盖 MCP
+   stdio、integration command、git/formatter/ripgrep 等全部 extendEnv 调用），
+   `shell.ts`/`pty.ts` 调用点各套用；`cli/services/standalone.ts` 改为显式传
+   `process.env`（托管 server 是自身进程，需保留 KTAI_*/KITO_DB）。
+3. **integration command stderr 上限**：`integration.ts` pending attempt
+   message 累计超 4KB 截断并追加 `... (stderr truncated)`。
+4. **wellknown `{env:}` 收敛**：`wellknown.ts` 远端 manifest 的 env 回退改为
+   小 allowlist——`HOME`/`PATH`/`LANG`/`TERM`/`TMPDIR`/`USER` + 非凭据形
+   `KITO_*`/`OPENCODE_*`；含 KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL/AUTH 的名
+   字与其余任意主机 env 一律置空；调用方显式 `variables` 仍优先。
+5. **会话产物权限**：`tool-output.ts` 溢出文件与 `shell.ts` 输出文件
+   0600；`global.ts` acquire 后 `Global.Path.data` chmod 0700。
