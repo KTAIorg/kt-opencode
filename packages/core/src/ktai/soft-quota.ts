@@ -79,7 +79,10 @@ export function write(state: State, file = filePath()) {
     version: 1,
     zenFreeChats: Math.max(0, Math.floor(state.zenFreeChats)),
   }
-  fs.writeFileSync(file, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 })
+  // tmp+rename 原子写：崩溃/并发不会把半截 JSON 留给读者。
+  const tmp = `${file}.${crypto.randomUUID()}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 })
+  fs.renameSync(tmp, file)
   return next
 }
 

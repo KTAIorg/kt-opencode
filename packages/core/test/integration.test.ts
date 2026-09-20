@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Cause, Clock, Duration, Effect, Exit, Fiber, Layer, Scope, Stream } from "effect"
+import { Cause, Clock, Deferred, Duration, Effect, Exit, Fiber, Layer, Scope, Stream } from "effect"
 import * as TestClock from "effect/testing/TestClock"
 import { Credential } from "@opencode-ai/core/credential"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
@@ -345,6 +345,58 @@ describe("Integration", () => {
         time: attempt.time,
       })
       expect(yield* credentials.list(integrationID)).toHaveLength(1)
+    }),
+  )
+
+  it.effect("serializes concurrent OAuth refreshes per credential", () =>
+    Effect.gen(function* () {
+      const integrations = yield* Integration.Service
+      const credentials = yield* Credential.Service
+      const integrationID = Integration.ID.make("openai")
+      const methodID = Integration.MethodID.make("chatgpt")
+      const gate = yield* Deferred.make<void>()
+      let refreshes = 0
+      yield* integrations.transform((editor) =>
+        editor.method.update({
+          integrationID,
+          method: {
+            id: methodID,
+            type: "oauth",
+            label: "ChatGPT",
+          },
+          authorize: () => Effect.die("unused"),
+          refresh: (credential) =>
+            Effect.gen(function* () {
+              refreshes += 1
+              yield* Deferred.await(gate)
+              return Credential.OAuth.make({
+                type: "oauth",
+                methodID: credential.methodID,
+                access: `access-${refreshes}`,
+                refresh: credential.refresh,
+                expires: Number.MAX_SAFE_INTEGER,
+              })
+            }),
+        }),
+      )
+      yield* credentials.create({
+        integrationID,
+        value: Credential.OAuth.make({ type: "oauth", methodID, access: "old", refresh: "refresh", expires: 0 }),
+      })
+      const connection = yield* integrations.connection.active(integrationID)
+      if (!connection || connection.type !== "credential") throw new Error("missing connection")
+
+      // 两个 resolve 并发看到同一个临期凭据：锁内重读后第二个复用结果，
+      // refresh 只跑一次，而不是各自拿旧 refresh_token 互相覆盖。
+      const first = yield* integrations.connection.resolve(connection).pipe(Effect.forkChild)
+      const second = yield* integrations.connection.resolve(connection).pipe(Effect.forkChild)
+      yield* Effect.yieldNow
+      yield* Deferred.succeed(gate, undefined)
+      const results = yield* Effect.all([Fiber.join(first), Fiber.join(second)])
+      expect(refreshes).toBe(1)
+      expect(results[0]).toEqual(results[1])
+      expect(results[0]).toMatchObject({ access: "access-1" })
+      expect((yield* credentials.get(connection.id))?.value).toMatchObject({ access: "access-1" })
     }),
   )
 
