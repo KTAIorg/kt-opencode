@@ -78,8 +78,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Дистро суулгаж чадсангүй: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kito суулгаж чадсангүй",
   "desktop.wsl.error.alreadyAdded": "{{distro}} аль хэдийн нэмэгдсэн байна",
-  "desktop.wsl.error.opencodeMissing": "opencode энэ түгээлтэд суулгаагүй байна",
-  "desktop.wsl.error.opencodeCannotRun": "opencode суулгасан боловч ажиллуулж чадсангүй",
+  "desktop.wsl.error.opencodeMissing": "Kito энэ түгээлтэд суулгаагүй байна",
+  "desktop.wsl.error.opencodeCannotRun": "Kito суулгасан боловч ажиллуулж чадсангүй",
   "desktop.wsl.error.opencodeNotInstalled": "Kito-г {{distro}}-д суулгаагүй байна",
   "desktop.wsl.error.updateVersion":
     "Kito шинэчлэлт дууссан боловч {{distro}} мэдээлсэн хэвээр {{installed}}; хүлээгдэж буй {{expected}}",

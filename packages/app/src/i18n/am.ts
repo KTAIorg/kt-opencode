@@ -77,8 +77,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "distroን መጫን አልተቻለም፡ {{distro}}",
   "desktop.wsl.error.installOpencode": "Kitoመጫኑ አልተሳካም",
   "desktop.wsl.error.alreadyAdded": "{{distro}} አስቀድሞ ታክሏል",
-  "desktop.wsl.error.opencodeMissing": "ክፍት ኮድ በዚህ ዲስትሪ ውስጥ አልተጫነም",
-  "desktop.wsl.error.opencodeCannotRun": "ክፍት ኮድ ተጭኗል ግን ማሄድ አልቻለም",
+  "desktop.wsl.error.opencodeMissing": "Kito በዚህ ዲስትሪ ውስጥ አልተጫነም",
+  "desktop.wsl.error.opencodeCannotRun": "Kito ተጭኗል ግን ማሄድ አልቻለም",
   "desktop.wsl.error.opencodeNotInstalled": "Kito በ{{distro}}] ውስጥ አልተጫነም",
   "desktop.wsl.error.updateVersion":
     "Kito ዝማኔ አልቋል ግን {{distro}} አሁንም ሪፖርት ያደርጋል {{installed}}; የሚጠበቀው {{expected}}",

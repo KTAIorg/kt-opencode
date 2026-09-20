@@ -310,8 +310,8 @@ export const DESKTOP_NATIVE_ENGLISH = {
   "desktop.wsl.error.installDistro": "Failed to install distro: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kito installation failed",
   "desktop.wsl.error.alreadyAdded": "{{distro}} is already added",
-  "desktop.wsl.error.opencodeMissing": "opencode is not installed in this distro",
-  "desktop.wsl.error.opencodeCannotRun": "opencode is installed but could not run",
+  "desktop.wsl.error.opencodeMissing": "Kito is not installed in this distro",
+  "desktop.wsl.error.opencodeCannotRun": "Kito is installed but could not run",
   "desktop.wsl.error.opencodeNotInstalled": "Kito is not installed in {{distro}}",
   "desktop.wsl.error.updateVersion":
     "Kito update finished but {{distro}} still reports {{installed}}; expected {{expected}}",

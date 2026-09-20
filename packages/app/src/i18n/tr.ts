@@ -86,8 +86,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Dağıtım kurulamadı: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kito kurulamadı",
   "desktop.wsl.error.alreadyAdded": "{{distro}} zaten eklendi",
-  "desktop.wsl.error.opencodeMissing": "opencode bu dağıtımda kurulu değil",
-  "desktop.wsl.error.opencodeCannotRun": "opencode kurulu ancak çalıştırılamadı",
+  "desktop.wsl.error.opencodeMissing": "Kito bu dağıtımda kurulu değil",
+  "desktop.wsl.error.opencodeCannotRun": "Kito kurulu ancak çalıştırılamadı",
   "desktop.wsl.error.opencodeNotInstalled": "Kito, {{distro}} içinde kurulu değil",
   "desktop.wsl.error.updateVersion":
     "Kito güncellemesi tamamlandı ancak {{distro}} hâlâ {{installed}} sürümünü bildiriyor; beklenen sürüm: {{expected}}",

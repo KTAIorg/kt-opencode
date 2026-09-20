@@ -82,8 +82,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "ڈسٹری بیوشن انسٹال نہیں ہو سکی: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kito کی تنصیب ناکام ہو گئی",
   "desktop.wsl.error.alreadyAdded": "{{distro}} پہلے ہی شامل ہے",
-  "desktop.wsl.error.opencodeMissing": "اس ڈسٹری بیوشن میں opencode انسٹال نہیں ہے",
-  "desktop.wsl.error.opencodeCannotRun": "opencode انسٹال ہے لیکن چل نہیں سکا",
+  "desktop.wsl.error.opencodeMissing": "اس ڈسٹری بیوشن میں Kito انسٹال نہیں ہے",
+  "desktop.wsl.error.opencodeCannotRun": "Kito انسٹال ہے لیکن چل نہیں سکا",
   "desktop.wsl.error.opencodeNotInstalled": "{{distro}} میں Kito انسٹال نہیں ہے",
   "desktop.wsl.error.updateVersion":
     "Kito کی اپ ڈیٹ مکمل ہو گئی لیکن {{distro}} اب بھی {{installed}} کی اطلاع دے رہا ہے؛ متوقع ورژن {{expected}} ہے",

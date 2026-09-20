@@ -60,7 +60,7 @@ export async function exportDebugLogs() {
     await netLog.stopLogging().catch((error) => writeLog("network", "failed to stop net log", { error }))
   }
 
-  const output = join(app.getPath("downloads"), `opencode-debug-${stamp()}.zip`)
+  const output = join(app.getPath("downloads"), `kito-debug-${stamp()}.zip`)
   try {
     writeLog("main", "exporting debug logs", { output })
     await writeZip(output, [
