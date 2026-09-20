@@ -159,7 +159,7 @@ describe("RequestExecutor", () => {
         http: {
           request: {
             url: "https://proxy.test/v1/chat?api_key=proxy-secret",
-            headers: { authorization: "Bearer proxy-secret" },
+            headers: { authorization: "<redacted>" },
           },
         },
       })
@@ -309,14 +309,14 @@ describe("RequestExecutor", () => {
             request: {
               method: "POST",
               url: "https://provider.test/v1/chat?api_key=secret&key=secret&debug=1",
-              headers: { authorization: "Bearer secret", "x-safe": "visible" },
+              headers: { authorization: "<redacted>", "x-safe": "visible" },
             },
             response: {
               status: 429,
               headers: {
                 "retry-after-ms": "0",
                 "x-request-id": "req_123",
-                "x-api-key": "secret",
+                "x-api-key": "<redacted>",
               },
             },
           },
@@ -346,6 +346,58 @@ describe("RequestExecutor", () => {
     }).pipe(
       Effect.provide(responsesLayer([new Response("bad", { status: 400, headers: { "x-safe": "response-secret" } })])),
       Effect.provideService(Headers.CurrentRedactedNames, ["x-safe"]),
+    ),
+  )
+
+  it.effect("redacts credential headers in serialized diagnostics", () =>
+    Effect.gen(function* () {
+      const executor = yield* RequestExecutor.Service
+      const sensitive = HttpClientRequest.post("https://provider.test/v1/chat").pipe(
+        HttpClientRequest.setHeaders(
+          Headers.fromInput({
+            authorization: "Bearer auth-secret",
+            "proxy-authorization": "Bearer proxy-secret",
+            "x-api-key": "apikey-secret",
+            "x-goog-api-key": "goog-secret",
+            "x-auth-token": "authtoken-secret",
+            cookie: "session=cookie-secret",
+            "x-safe": "visible",
+          }),
+        ),
+      )
+      const error = yield* executor.execute(sensitive).pipe(Effect.flip)
+
+      expectAIError(error)
+      expect(errorHttp(error)?.request.headers).toMatchObject({
+        authorization: "<redacted>",
+        "proxy-authorization": "<redacted>",
+        "x-api-key": "<redacted>",
+        "x-goog-api-key": "<redacted>",
+        "x-auth-token": "<redacted>",
+        cookie: "<redacted>",
+        "x-safe": "visible",
+      })
+      const serialized = JSON.stringify(error)
+      for (const secret of [
+        "auth-secret",
+        "proxy-secret",
+        "apikey-secret",
+        "goog-secret",
+        "authtoken-secret",
+        "cookie-secret",
+        "response-cookie-secret",
+      ]) {
+        expect(serialized).not.toContain(secret)
+      }
+    }).pipe(
+      Effect.provide(
+        responsesLayer([
+          new Response("unauthorized", {
+            status: 401,
+            headers: { "set-cookie": "session=response-cookie-secret" },
+          }),
+        ]),
+      ),
     ),
   )
 
