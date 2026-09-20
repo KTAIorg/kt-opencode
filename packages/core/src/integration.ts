@@ -216,6 +216,9 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/In
 const attemptLifetime = Duration.toMillis(Duration.minutes(10))
 const terminalRetention = Duration.toMillis(Duration.minutes(1))
 const scrubInterval = Duration.seconds(30)
+// Command-method stderr is echoed to the client through the attempt message;
+// bound it so a chatty or hostile auth command cannot grow it without limit.
+const commandStderrLimit = 4 * 1024
 
 type AttemptTime = { created: number; expires: number }
 type PendingAttempt = {
@@ -629,7 +632,11 @@ const layer = Layer.effect(
               const attempt = current.get(attemptID)
               if (!attempt || attempt.status !== "pending") return current
               const message = (attempt.message ?? "") + chunk
-              return new Map(current).set(attemptID, { ...attempt, message })
+              const bounded =
+                message.length <= commandStderrLimit
+                  ? message
+                  : `${message.slice(0, commandStderrLimit)} ... (stderr truncated)`
+              return new Map(current).set(attemptID, { ...attempt, message: bounded })
             }),
           ),
           Stream.runDrain,

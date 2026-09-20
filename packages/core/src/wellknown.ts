@@ -6,6 +6,7 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstab
 import { isDeepStrictEqual } from "node:util"
 import { makeGlobalNode } from "@opencode-ai/util/effect/app-node"
 import { httpClient } from "@opencode-ai/util/effect/app-node-platform"
+import { isSensitiveEnvName } from "@opencode-ai/util/kito-env"
 import { Bus } from "./bus.js"
 import { KV } from "./kv.js"
 
@@ -74,12 +75,27 @@ export const resolve = Effect.fn("WellKnown.resolve")(function* (input: ResolveI
   )
 })
 
+// Non-sensitive names a remote manifest may resolve implicitly from the host
+// environment; see `substitute` below.
+const ENV_FALLBACK_NAMES = new Set(["HOME", "PATH", "LANG", "TERM", "TMPDIR", "USER"])
+
 const resolveEntry = Effect.fnUntraced(function* (entry: Entry, variables: Readonly<Record<string, string>>) {
   const configs = entry.manifest.config ? [entry.manifest.config] : []
   if (!entry.manifest.remote_config) return configs
 
+  // A remote manifest must not read arbitrary host environment. The implicit
+  // process.env fallback resolves only a small non-credential allowlist —
+  // common locale/path values plus non-sensitive KITO_*/OPENCODE_* selectors —
+  // and credential-shaped names (KEY/TOKEN/SECRET/PASSWORD/AUTH, e.g. KITO_DB
+  // is a path so it stays, KITO_SERVER_PASSWORD does not) never resolve.
+  // Callers may still supply any name explicitly via `variables`.
   const substitute = (value: string) =>
-    value.replace(/\{env:([^}]+)\}/g, (_, name: string) => variables[name] ?? process.env[name] ?? "")
+    value.replace(/\{env:([^}]+)\}/g, (_, name: string) => {
+      const explicit = Object.hasOwn(variables, name) ? variables[name] : undefined
+      if (explicit !== undefined) return explicit
+      const allowed = ENV_FALLBACK_NAMES.has(name) || (/^(KITO|OPENCODE)_/i.test(name) && !isSensitiveEnvName(name))
+      return (allowed ? process.env[name] : undefined) ?? ""
+    })
   const url = substitute(entry.manifest.remote_config.url)
   const headers = Object.fromEntries(
     Object.entries(entry.manifest.remote_config.headers ?? {}).map(([key, value]) => [key, substitute(value)]),

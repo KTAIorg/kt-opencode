@@ -21,3 +21,39 @@ export function kitoEnv(name: string) {
 export function kitoDataEnv(name: string) {
   return process.env[`KITO_${name}`]
 }
+
+/**
+ * Names that look like credentials (API keys, tokens, secrets, passwords, auth
+ * material). Used both to strip inherited environment before spawning child
+ * processes and to refuse `{env:NAME}` substitutions that would leak secrets
+ * into remote wellknown configuration.
+ */
+const SENSITIVE_ENV_NAME = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i
+
+export function isSensitiveEnvName(name: string) {
+  return SENSITIVE_ENV_NAME.test(name)
+}
+
+/**
+ * Filters an environment about to be inherited by a spawned child process
+ * (shell tool, PTY, MCP stdio server, auth command, VCS/formatter helpers).
+ * Kito's own credentials must not leak into every child:
+ *
+ * - All `KTAI_*` identity/billing credentials are dropped.
+ * - `KITO_DB`/`OPENCODE_DB` are dropped; they select the session database.
+ * - Other `KITO_*`/`OPENCODE_*` entries survive only when not
+ *   credential-shaped, so markers like `KITO_TERMINAL`/`OPENCODE_TERMINAL` and
+ *   selectors like `KITO_CONFIG_DIR` still propagate.
+ *
+ * Explicit `env` entries on a spawn are applied after this filter, so callers
+ * that deliberately pass a credential still can.
+ */
+export function sanitizeChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(([name]) => {
+      if (/^KTAI_/i.test(name)) return false
+      if (/^(KITO|OPENCODE)_DB$/i.test(name)) return false
+      return !(/^(KITO|OPENCODE)_/i.test(name) && isSensitiveEnvName(name))
+    }),
+  )
+}

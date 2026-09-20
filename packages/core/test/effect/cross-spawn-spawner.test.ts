@@ -156,6 +156,43 @@ describe("cross-spawn spawner", () => {
         expect(out).toBe("one-two-three")
       }),
     )
+
+    fx.effect(
+      "strips Kito credentials from the inherited environment",
+      Effect.gen(function* () {
+        const names = ["KTAI_IDENTITY_TOKEN", "OPENCODE_API_KEY", "KITO_DB", "KITO_TERMINAL"] as const
+        yield* Effect.acquireRelease(
+          Effect.sync(() => {
+            const saved = new Map(names.map((name) => [name, process.env[name]]))
+            process.env.KTAI_IDENTITY_TOKEN = "ktai-secret"
+            process.env.OPENCODE_API_KEY = "opencode-secret"
+            process.env.KITO_DB = "/tmp/secret.db"
+            process.env.KITO_TERMINAL = "1"
+            return saved
+          }),
+          (saved) =>
+            Effect.sync(() => {
+              for (const [name, value] of saved) {
+                if (value === undefined) delete process.env[name]
+                else process.env[name] = value
+              }
+            }),
+        )
+
+        const handle = yield* js(
+          "process.stdout.write([process.env.KTAI_IDENTITY_TOKEN, process.env.OPENCODE_API_KEY, process.env.KITO_DB, process.env.KITO_TERMINAL, process.env.PATH && 'path'].map((v) => v ?? '').join('|'))",
+          { extendEnv: true },
+        )
+        expect(yield* decodeByteStream(handle.stdout)).toBe("|||1|path")
+
+        // Explicit env entries still win over the sanitized base.
+        const explicit = yield* js('process.stdout.write(process.env.KTAI_IDENTITY_TOKEN ?? "")', {
+          env: { KTAI_IDENTITY_TOKEN: "explicit" },
+          extendEnv: true,
+        })
+        expect(yield* decodeByteStream(explicit.stdout)).toBe("explicit")
+      }),
+    )
   })
 
   describe("stderr", () => {
