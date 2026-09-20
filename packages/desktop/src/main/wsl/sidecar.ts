@@ -45,7 +45,7 @@ export async function spawnWslSidecar(
     'export XDG_CONFIG_HOME="$HOME/.kito/config"',
     'export XDG_CACHE_HOME="$HOME/.kito/cache"',
     'export XDG_STATE_HOME="$HOME/.kito/state"',
-    `exec ${shellEscape(opencode)} --log-level ${app.isPackaged ? "warn" : "info"} serve --hostname 0.0.0.0 --port ${port}`,
+    `exec ${shellEscape(opencode)} --log-level ${app.isPackaged ? "warn" : "info"} serve --hostname 127.0.0.1 --port ${port}`,
   ].join("\n")
   const child = spawn("wsl", wslArgs(["bash", "-se"], distro), {
     stdio: ["pipe", "pipe", "pipe"],

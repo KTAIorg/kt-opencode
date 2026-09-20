@@ -31,7 +31,11 @@ export async function selectKitoUpdaterSource(input: SelectKitoUpdaterSourceInpu
     arch: input.arch,
   })
   if (resolved?.decision === "update_available" || resolved?.decision === "force_update") {
-    if (resolved.baseUrl) return { kind: "generic", baseUrl: resolved.baseUrl, version: resolved.version }
+    const feedUrl = trustedFeedUrl(resolved.baseUrl, baseUrl)
+    if (feedUrl) return { kind: "generic", baseUrl: feedUrl, version: resolved.version }
+    // A feed URL outside our update hosts is unusable; the built-in GitHub
+    // provider still gives the device a trustworthy update channel.
+    return { kind: "github" }
   }
   return { kind: "hold" }
 }
@@ -72,6 +76,17 @@ async function resolveUpdate(
     version: typeof payload.targetVersion === "string" ? payload.targetVersion : undefined,
     baseUrl: feed && typeof feed.baseUrl === "string" ? feed.baseUrl : undefined,
   }
+}
+
+// The release service chooses which URL the updater downloads from. Only HTTPS
+// feeds on our own update hosts are trusted — anything else could redirect
+// installs to an attacker-controlled origin.
+function trustedFeedUrl(value: string | undefined, serviceBaseUrl: string) {
+  if (!value || !URL.canParse(value) || !URL.canParse(serviceBaseUrl)) return undefined
+  const url = new URL(value)
+  if (url.protocol !== "https:") return undefined
+  const hosts = new Set(["updates.ktyun.cc", new URL(serviceBaseUrl).hostname])
+  return hosts.has(url.hostname) ? url.href : undefined
 }
 
 async function readJson(response: Response) {

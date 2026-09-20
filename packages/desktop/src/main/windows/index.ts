@@ -76,11 +76,17 @@ export function restoreMainWindows() {
 export function createMainWindow(id: string = randomUUID()) {
   const state = windowState({ file: windowStateFile(id), defaultWidth: 1280, defaultHeight: 800 })
   const onscreen = state.x !== undefined && state.y !== undefined && isVisible(state)
+  // Persisted sizes may exceed the current display after a monitor change.
+  const area = (
+    onscreen
+      ? screen.getDisplayMatching({ x: state.x, y: state.y, width: state.width, height: state.height })
+      : screen.getPrimaryDisplay()
+  ).workArea
   const win = new BrowserWindow({
     x: onscreen ? state.x : undefined,
     y: onscreen ? state.y : undefined,
-    width: state.width,
-    height: state.height,
+    width: Math.min(state.width, area.width),
+    height: Math.min(state.height, area.height),
     show: false,
     autoHideMenuBar: true,
     ...windowAppearance(),
