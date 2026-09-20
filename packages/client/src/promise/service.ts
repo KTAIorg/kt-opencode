@@ -78,7 +78,16 @@ export async function ensure(options: EnsureOptions = {}): Promise<Endpoint> {
         spawnDelay = timing.spawnDelay
         const service = registration.service
         const compatible = !service.legacy && matchesVersion(service.version, options)
-        if (compatible && service.state === "ready") return service.endpoint
+        if (compatible && service.state === "ready") {
+          // A concurrently spawned contender can replace the registration and
+          // make the loser we just probed shut down. Settle for one poll
+          // interval and confirm the same registration still wins before
+          // returning its endpoint.
+          await delay(timing.pollInterval)
+          const settled = await registered(options.file, true, timing.requestTimeout)
+          if (settled.service !== undefined && same(settled.info, service.info)) return settled.service.endpoint
+          continue
+        }
         if (compatible && service.state === "failed") throw new Error("Background service failed to start")
         if (!compatible) {
           announce("version-mismatch", service.version)
