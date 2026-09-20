@@ -786,3 +786,27 @@ draft 页 Cmd+O 仍灰（该页语义是选择已有项目 `project.select`，�
    server.js `use` 导出的预存在环境问题（main 上同样失败，与本次改动无关）。
 4. **PR**：#127(oauth品牌)/#128(错误文案i18n)/#129(钱包$1+重试)/
    #130(菜单命令+IPC防护)/#131(stream调查+回归) —— 均未合并，待验收。
+
+## 深链端到端 + 安全确认门（fix/audit-deep-links）
+
+1. **消费端接入**：新增 `packages/app/src/pages/layout/deep-link-gate.tsx`，
+   在 `Layout` 内挂载 `DeepLinkGate`；onMount 先 `drainPendingDeepLinks(window)`
+   再以 `makeEventListener` 监听 `opencode:deep-link`，两条入口统一进
+   `createDeepLinkGate`（`deep-links.ts` 内纯逻辑：URL 解析 + Set 去重 +
+   confirm/open 回调）。
+2. **确认门**：所有外链动作（`open-project`/`new-session`，ktai:// 与兼容
+   opencode://）先弹 `DialogDeepLink`（`dialog.push` 入栈），显示目标目录与
+   完整 prompt，「打开」(`common.open`) 才 `projects.open/touch` + `tabs.newDraft`
+   落盘到本地 server 并预填提示词；「取消」丢弃。仅处理本地 server
+   （`ServerConnection.local`），无则 debug 日志忽略。i18n：en/zh/zht 新增
+   `dialog.deepLink.{title,description,directory,prompt}`。
+3. **desktop 主进程**：新增 `lifecycle/deep-links.ts` 纯模块
+   （`isDeepLink`/`deepLinksFromArgv`/`createDeepLinkOutbox`）；`index.ts`
+   启动时扫 `process.argv` 补 Windows/Linux 冷启动直启；`emitDeepLinks`
+   改为「窗口就绪才 send，否则入 pending」单通道投递，修掉
+   push+send 双投递；send 时整体冲刷 backlog。
+4. **测试**：app `helpers.test.ts` +12 用例（action 解析/绝对路径校验/
+   collect/dedup/确认开/取消弃/重复 URL 只问一次/畸形静默）；desktop
+   `deep-links.test.ts` +5 用例（scheme 过滤/argv 扫描/排队与冲刷/consume
+   一次/双通道不重投）。验证：app 606 单测全过 + typecheck 干净；desktop
+   106 单测全过 + typecheck 干净。

@@ -454,6 +454,11 @@ export const dict = {
   "dialog.directory.parent": "上層目錄",
   "dialog.directory.readError": "無法讀取此資料夾",
 
+  "dialog.deepLink.title": "開啟外部連結？",
+  "dialog.deepLink.description": "一個外部連結要求 Kito 在此目錄中開啟工作階段。僅在信任該連結來源時才繼續。",
+  "dialog.deepLink.directory": "目錄",
+  "dialog.deepLink.prompt": "提示詞",
+
   "dialog.server.title": "伺服器",
   "dialog.server.description": "切換此應用程式連線的 Kito 伺服器。",
   "dialog.server.search.placeholder": "搜尋伺服器",

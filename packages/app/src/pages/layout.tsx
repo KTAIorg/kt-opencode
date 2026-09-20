@@ -5,6 +5,7 @@ import { Titlebar, type TitlebarUpdate } from "@/components/titlebar"
 import { KitoTitlebar } from "@/components/kito-titlebar"
 import { usePlatform } from "@/context/platform"
 import { ToastRegion } from "@/utils/toast"
+import { DeepLinkGate } from "@/pages/layout/deep-link-gate"
 
 export default function Layout(props: ParentProps) {
   const platform = usePlatform()
@@ -45,6 +46,7 @@ export default function Layout(props: ParentProps) {
       <Show when={import.meta.env.DEV && state.debugTools}>
         <DebugBar inline />
       </Show>
+      <DeepLinkGate />
       <ToastRegion />
     </div>
   )
