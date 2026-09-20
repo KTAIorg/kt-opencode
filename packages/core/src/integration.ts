@@ -21,6 +21,7 @@ import { Integration } from "@opencode-ai/schema/integration"
 import { Credential } from "./credential.js"
 import { State } from "./state.js"
 import { Bus } from "./bus.js"
+import { KeyedMutex } from "./effect/keyed-mutex.js"
 import { IntegrationConnection } from "./integration/connection.js"
 import { AppProcess } from "@opencode-ai/util/process"
 import { ChildProcess } from "effect/unstable/process"
@@ -264,6 +265,7 @@ const layer = Layer.effect(
     const scope = yield* Scope.Scope
     const attempts = SynchronizedRef.makeUnsafe(new Map<AttemptID, AttemptEntry>())
     const commandAttempts = SynchronizedRef.makeUnsafe(new Map<AttemptID, CommandAttemptEntry>())
+    const refreshLocks = KeyedMutex.makeUnsafe<Credential.ID>()
     const state = State.create<Data, Draft>({
       name: "integration",
       initial: () => ({ integrations: new Map<ID, Entry>() }),
@@ -677,16 +679,29 @@ const layer = Layer.effect(
           const credential = yield* credentials.get(connection.id)
           if (!credential) return undefined
           if (credential.value.type === "key") return credential.value
-          const implementation = state
+          const refresh = state
             .get()
             .integrations.get(credential.integrationID)
-            ?.implementations.get(credential.value.methodID)
-          if (!implementation?.refresh) return credential.value
+            ?.implementations.get(credential.value.methodID)?.refresh
+          if (!refresh) return credential.value
           const now = yield* Clock.currentTimeMillis
           if (credential.value.expires > now + Duration.toMillis(Duration.minutes(5))) return credential.value
-          const value = yield* authorize(implementation.refresh(credential.value))
-          yield* credentials.update(credential.id, { value })
-          return value
+          // 并发 resolve 会同时判定临期：按 credential id 串行化 refresh+update，
+          // 否则后者会拿已轮换掉的 refresh_token 再刷一次并覆盖前者写入的新凭据。
+          return yield* refreshLocks.withLock(connection.id)(
+            Effect.gen(function* () {
+              // 拿锁后重读：排队者通常能直接复用先到者刚刷好的凭据。
+              const current = yield* credentials.get(connection.id)
+              if (!current || current.value.type === "key") return current?.value
+              const now = yield* Clock.currentTimeMillis
+              if (current.value.expires > now + Duration.toMillis(Duration.minutes(5))) {
+                return current.value
+              }
+              const value = yield* authorize(refresh(current.value))
+              yield* credentials.update(current.id, { value })
+              return value
+            }),
+          )
         }),
         key: Effect.fn("Integration.connection.key")(function* (input) {
           const method = state

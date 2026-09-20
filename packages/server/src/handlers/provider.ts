@@ -4,7 +4,7 @@ import { ModelProbe } from "@opencode-ai/core/model-probe"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
-import { InvalidRequestError, ProviderNotFoundError } from "@opencode-ai/protocol/errors"
+import { InvalidRequestError, ProviderNotFoundError, ServiceUnavailableError } from "@opencode-ai/protocol/errors"
 import { response } from "../location"
 
 export const ProviderHandler = HttpApiBuilder.group(Api, "server.provider", (handlers) =>
@@ -54,8 +54,18 @@ export const ProviderHandler = HttpApiBuilder.group(Api, "server.provider", (han
           })
         }
         // 缺凭据等失败由 probeProvider 汇报为 per-model 结果，而不是 401 整个接口。
+        // 探测内部按 Effect.promise 的 signal 响应中断（客户端断开即取消）；
+        // timeoutOrElse 是兜底：即使底层 fetch 忽略 signal 也不会挂起整个请求。
         return yield* response(
-          ModelProbe.probeProvider(catalog, integrations, provider, ids),
+          ModelProbe.probeProvider(catalog, integrations, provider, ids).pipe(
+            Effect.timeoutOrElse({
+              duration: "15 seconds",
+              orElse: () =>
+                Effect.fail(
+                  new ServiceUnavailableError({ message: "Model probe timed out", service: "provider" }),
+                ),
+            }),
+          ),
         )
       }),
     ),

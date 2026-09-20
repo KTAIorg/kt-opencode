@@ -148,6 +148,55 @@ describe("OpencodePlugin", () => {
     ),
   )
 
+  it.live("stops device polling at the device code deadline", () =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const requests: string[] = []
+        const server = Bun.serve({
+          port: 0,
+          fetch: (request) => {
+            const url = new URL(request.url)
+            requests.push(`${request.method} ${url.pathname}`)
+            if (url.pathname.endsWith("/auth/device/code")) {
+              return Response.json({
+                device_code: "device",
+                user_code: "user",
+                verification_uri_complete: `${url.origin}/verify`,
+                expires_in: 0.25,
+                interval: 0.05,
+              })
+            }
+            if (url.pathname.endsWith("/auth/device/token")) {
+              // 永远 pending：没有 expires_in 死线的话这里会无限轮询。
+              return Response.json({ error: "authorization_pending" })
+            }
+            return new Response("Not found", { status: 404 })
+          },
+        })
+        return { requests, server }
+      }),
+      ({ requests, server }) =>
+        Effect.gen(function* () {
+          yield* addPlugin()
+          const integrations = yield* Integration.Service
+          const integrationID = Integration.ID.make("opencode")
+          const attempt = yield* integrations.oauth.connect({
+            integrationID,
+            methodID: Integration.MethodID.make("device"),
+            answer: { server: server.url.origin },
+          })
+          const status = yield* eventually(
+            integrations.oauth.status({ integrationID, attemptID: attempt.attemptID }),
+            (value) => value.status !== "pending",
+          )
+          expect(status).toMatchObject({ status: "failed", message: expect.stringContaining("expired") })
+          // 确实轮询过，但在死线处停住而不是无限 pending。
+          expect(requests).toContain("POST /auth/device/token")
+        }),
+      ({ server }) => Effect.promise(() => server.stop(true)),
+    ),
+  )
+
   it.effect("rejects non-HTTP OpenCode servers", () =>
     Effect.gen(function* () {
       yield* addPlugin()

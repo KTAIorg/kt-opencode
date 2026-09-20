@@ -55,6 +55,14 @@ describe("SoftQuota", () => {
     expect(SoftQuota.limit()).toBe(Number.POSITIVE_INFINITY)
   })
 
+  test("writes the counter file atomically without tmp residue", () => {
+    const file = tempFile()
+    SoftQuota.increment(file)
+    SoftQuota.increment(file)
+    expect(fs.readdirSync(path.dirname(file))).toEqual(["soft-quota.json"])
+    expect(SoftQuota.read(file).zenFreeChats).toBe(2)
+  })
+
   test("reset clears the counter", () => {
     const file = tempFile()
     process.env.OPENCODE_SOFT_QUOTA_LIMIT = "1"

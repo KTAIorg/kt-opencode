@@ -13,7 +13,7 @@ export type FetchLike = ModelProbe.FetchLike
 export async function probeKtaiModels(
   modelIDs: string[],
   apiKey: string,
-  options?: { fetchImpl?: FetchLike },
+  options?: { fetchImpl?: FetchLike; signal?: AbortSignal },
 ) {
   if (!apiKey) return { ok: false as const, reason: "missing-api-key" as const }
   const results = await ModelProbe.probe(

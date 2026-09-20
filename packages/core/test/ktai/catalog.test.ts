@@ -1,11 +1,17 @@
 import { expect, test } from "bun:test"
+import fs from "fs"
+import os from "os"
+import path from "path"
 import {
+  KTAI_MODELS_CACHE_TTL_MS,
   catalogModels,
   pickDefaultVisibleModelIDs,
   pricingIndex,
   pricingModels,
+  readCachedKtaiModels,
   resolveKtaiModels,
   withDefaultVisibility,
+  writeCachedKtaiModels,
 } from "../../src/ktai/catalog"
 
 test("builds Kito models from /v1/models catalog enriched by pricing", () => {
@@ -107,6 +113,27 @@ test("uses the last server catalog when live fetch is empty", () => {
   expect(models.map((model) => model.id)).toEqual(["grok-4.6", "gpt-5.6", "gemini-2.5-flash"])
   expect(models.find((model) => model.id === "grok-4.6")?.defaultVisible).toBe(true)
   expect(models.find((model) => model.id === "gemini-2.5-flash")?.defaultVisible).toBe(false)
+})
+
+test("serves the disk cache only within its TTL and writes it atomically", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kt-catalog-"))
+  try {
+    const file = path.join(dir, "ktai-models.json")
+    // 过期缓存不落回：updatedAt 超过 TTL 或缺失都返回空。
+    const stale = Date.now() - KTAI_MODELS_CACHE_TTL_MS - 1
+    await Bun.write(file, JSON.stringify({ models: [{ id: "old", input: 1, output: 1 }], updatedAt: stale }))
+    expect(await readCachedKtaiModels(file)).toEqual([])
+
+    await Bun.write(file, JSON.stringify({ models: [{ id: "old", input: 1, output: 1 }] }))
+    expect(await readCachedKtaiModels(file)).toEqual([])
+
+    await writeCachedKtaiModels([{ id: "fresh", input: 1, output: 2 }], file)
+    expect((await readCachedKtaiModels(file)).map((model) => model.id)).toEqual(["fresh"])
+    // tmp+rename 落地后目录里不留半成品缓存文件。
+    expect(fs.readdirSync(dir)).toEqual(["ktai-models.json"])
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test("pricing fallback still filters to ktai + openai endpoints", () => {

@@ -54,11 +54,13 @@ function oauth(http: HttpClient.HttpClient) {
         if (verification && verification.protocol !== "http:" && verification.protocol !== "https:") {
           return yield* Effect.fail(new Error("Invalid device verification URL: expected HTTP(S)"))
         }
+        const expiresAt = Date.now() + device.expires_in * 1000
         return {
           mode: "auto" as const,
           url: verification?.href ?? `${server}/${device.verification_uri_complete.replace(/^\/+/, "")}`,
           instructions: `Enter code: ${device.user_code}`,
-          callback: poll(http, server, device.device_code, Duration.seconds(device.interval)),
+          expiresAt,
+          callback: poll(http, server, device.device_code, Duration.seconds(device.interval), expiresAt),
         }
       }),
     refresh: (credential) =>
@@ -268,10 +270,20 @@ function remoteCost(input: NonNullable<(typeof ConfigProviderV1.Model.Type)["cos
   ]
 }
 
-function poll(http: HttpClient.HttpClient, server: string, deviceCode: string, interval: Duration.Duration) {
+function poll(
+  http: HttpClient.HttpClient,
+  server: string,
+  deviceCode: string,
+  interval: Duration.Duration,
+  deadline: number,
+) {
   const loop = (wait: Duration.Duration): Effect.Effect<Credential.OAuth, unknown> =>
     Effect.gen(function* () {
       yield* Effect.sleep(wait)
+      // device.expires_in 给了死线：pending/slow_down 不能无限轮询下去。
+      if (Date.now() >= deadline) {
+        return yield* Effect.fail(new Error("Device authorization expired"))
+      }
       const result = yield* post(
         http,
         `${server}/auth/device/token`,
