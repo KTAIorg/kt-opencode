@@ -476,6 +476,11 @@ export const dict = {
   "dialog.directory.parent": "上级目录",
   "dialog.directory.readError": "无法读取此文件夹",
 
+  "dialog.deepLink.title": "打开外部链接？",
+  "dialog.deepLink.description": "一个外部链接请求 Kito 在此目录中打开会话。仅在信任该链接来源时才继续。",
+  "dialog.deepLink.directory": "目录",
+  "dialog.deepLink.prompt": "提示词",
+
   "dialog.server.title": "服务器",
   "dialog.server.description": "切换此应用连接的 Kito 服务器。",
   "dialog.server.search.placeholder": "搜索服务器",

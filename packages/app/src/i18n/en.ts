@@ -361,6 +361,12 @@ export const dict = {
   "dialog.directory.parent": "Parent",
   "dialog.directory.readError": "Unable to read this folder",
 
+  "dialog.deepLink.title": "Open external link?",
+  "dialog.deepLink.description":
+    "An external link asked Kito to open a session in this directory. Continue only if you trust where the link came from.",
+  "dialog.deepLink.directory": "Directory",
+  "dialog.deepLink.prompt": "Prompt",
+
   "app.server.unreachable": "Could not reach {{server}}",
   "app.server.retrying": "Retrying automatically...",
   "app.server.otherServers": "Other servers",
