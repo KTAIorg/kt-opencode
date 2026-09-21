@@ -263,7 +263,7 @@ export async function writeCachedKtaiModels(models: RawModel[], file = cachePath
   if (!models.length) return
   // tmp+rename 原子写：进程中途崩溃也不会给读者留半个 JSON。
   const tmp = `${file}.${crypto.randomUUID()}.tmp`
-  await Bun.write(tmp, JSON.stringify({ models, updatedAt: Date.now() }))
+  await fs.promises.writeFile(tmp, JSON.stringify({ models, updatedAt: Date.now() }), { mode: 0o600 })
   await fs.promises.rename(tmp, file)
 }
 
