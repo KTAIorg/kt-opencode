@@ -11,6 +11,7 @@ import { useModels } from "@/context/models"
 import { useServerSDK } from "@/context/server-sdk"
 import { popularProviders } from "@/hooks/use-providers"
 import { Persist, persisted } from "@/utils/persist"
+import { customerFacingProviderName } from "@/utils/kt-settlement"
 import { InlineServerSelect } from "./parts/server-select"
 import { SettingsListV2 } from "./parts/list"
 import { SettingsRowV2 } from "./parts/row"
@@ -154,7 +155,9 @@ export const SettingsModelsV2: Component = () => {
                             height={PROVIDER_ICON_SIZE}
                             class="settings-v2-models-provider-icon shrink-0"
                           />
-                          <span class="settings-v2-section-title">{group.items[0].provider.name}</span>
+                          <span class="settings-v2-section-title">
+                            {customerFacingProviderName(group.items[0].provider.id, group.items[0].provider.name)}
+                          </span>
                         </span>
                       </button>
                     </h3>
