@@ -59,6 +59,7 @@ export const iconNames = [
   "kuae-cloud-coding-plan",
   "kimi-for-coding",
   "kilo",
+  "ktai",
   "jiekou",
   "io-net",
   "inference",

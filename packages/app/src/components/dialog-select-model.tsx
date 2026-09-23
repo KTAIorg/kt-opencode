@@ -7,6 +7,7 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { popularProviders } from "@/hooks/use-providers"
 import { Badge } from "@opencode-ai/ui/badge"
 import { Icon } from "@opencode-ai/ui/icon"
+import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { ScrollView } from "@opencode-ai/ui/scroll-view"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { Menu } from "@opencode-ai/ui/menu"
@@ -24,11 +25,13 @@ const isFree = (provider: string, cost: { input: number } | undefined) =>
 
 type ModelState = ReturnType<typeof useLocal>["model"]
 type ModelItem = ReturnType<ModelState["list"]>[number]
+type ModelGroup = { category: string; items: ModelItem[]; total: number; ok: number; probed: number }
 
 const modelKey = (model: ModelItem) => `${model.provider.id}:${model.id}`
 const manageKey = "action:manage"
+const moreKey = (category: string) => `more:${category}`
 
-const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { category: string; items: ModelItem[] }) => {
+const sortModelGroups = (a: ModelGroup, b: ModelGroup) => {
   const aIndex = popularProviders.indexOf(a.category)
   const bIndex = popularProviders.indexOf(b.category)
   const aPopular = aIndex >= 0
@@ -68,6 +71,11 @@ export function ModelSelectorPopoverV2(props: {
       select={controller.select}
       onManage={() => {
         void import("./dialog-manage-models").then((module) => module.openManageModels({ dialog }))
+      }}
+      onManageGroup={(group) => {
+        void import("./dialog-manage-models").then((module) =>
+          module.openManageModels({ dialog, search: group.items[0].provider.name }),
+        )
       }}
       onClose={() => props.onClose?.()}
     />
@@ -110,13 +118,25 @@ function createModelSelectorController(input: {
     probe: {
       running: () => models.probe.running(),
       autoRun: () => models.probe.autoRun(),
+      progress: () => models.probe.progress(),
     },
-    groups: (models: ModelItem[]) => {
+    groups: (list: ModelItem[]) => {
       const byProvider = new Map<string, ModelItem[]>()
-      for (const item of models) {
+      for (const item of list) {
         byProvider.set(item.provider.id, [...(byProvider.get(item.provider.id) ?? []), item])
       }
-      return Array.from(byProvider, ([category, items]) => ({ category, items })).sort(sortModelGroups)
+      return Array.from(byProvider, ([category, items]) => {
+        // 计数按整组（含被隐藏的模型）算：客户看到的「还有多少选择」必须是真实总量，不能只剩列表里露出的几行。
+        const scopeItems = scope().filter((item) => item.provider.id === category)
+        const counts = { ok: 0, probed: 0 }
+        for (const item of scopeItems) {
+          const result = models.probe.result({ providerID: item.provider.id, modelID: item.id })
+          if (!result) continue
+          counts.probed++
+          if (result.ok) counts.ok++
+        }
+        return { category, items, total: scopeItems.length, ok: counts.ok, probed: counts.probed }
+      }).sort(sortModelGroups)
     },
     current: () => {
       const value = model.current()
@@ -134,11 +154,12 @@ function ModelSelectorPopoverV2View(props: {
   models: (search: string) => ModelItem[]
   hiddenUnavailable: (search: string) => number
   hiddenByUser: (search: string) => number
-  probe: { running: () => boolean; autoRun: () => void }
-  groups: (models: ModelItem[]) => { category: string; items: ModelItem[] }[]
+  probe: { running: () => boolean; autoRun: () => void; progress: () => { done: number; total: number } }
+  groups: (models: ModelItem[]) => ModelGroup[]
   current: string | undefined
   select: (item: ModelItem) => void
   onManage: () => void
+  onManageGroup: (group: ModelGroup) => void
   onClose: () => void
 }) {
   const language = useLanguage()
@@ -150,7 +171,13 @@ function ModelSelectorPopoverV2View(props: {
 
   const models = createMemo(() => props.models(store.search))
   const groups = createMemo(() => props.groups(models()))
-  const keys = () => [...models().map(modelKey), manageKey]
+  // 「查看全部」行也进键盘导航：方向键能落到它上面，回车直接跳管理弹窗。
+  const moreGroups = () => (store.search.trim() ? [] : groups().filter((group) => group.total > group.items.length))
+  const keys = () => [
+    ...models().map(modelKey),
+    ...moreGroups().map((group) => moreKey(group.category)),
+    manageKey,
+  ]
   const initialActive = () => {
     const selected = props.current
     const options = keys()
@@ -185,13 +212,23 @@ function ModelSelectorPopoverV2View(props: {
     setOpen(false)
     dismiss.afterClose(props.onManage)
   }
+  const manageGroup = (group: ModelGroup) => {
+    dismiss.preventTriggerRestore()
+    setOpen(false)
+    dismiss.afterClose(() => props.onManageGroup(group))
+  }
   const selectActive = () => {
     const item = models().find((item) => modelKey(item) === store.active)
     if (item) {
       selectModel(item)
       return
     }
-    if (store.active === manageKey) manage()
+    if (store.active === manageKey) {
+      manage()
+      return
+    }
+    const group = moreGroups().find((group) => moreKey(group.category) === store.active)
+    if (group) manageGroup(group)
   }
   const moveActive = (delta: number) => {
     const options = keys()
@@ -284,7 +321,12 @@ function ModelSelectorPopoverV2View(props: {
           <ScrollView data-slot="model-selector-scroll" class="max-h-[220px] min-h-0">
             <div class="flex flex-col p-0.5 pt-0">
               <Show when={props.probe.running()}>
-                <div class={noticeClass}>{language.t("dialog.model.probe.running")}</div>
+                <div class={noticeClass}>
+                  {language.t("dialog.model.probe.progress", {
+                    done: props.probe.progress().done,
+                    total: props.probe.progress().total,
+                  })}
+                </div>
               </Show>
               <Show when={props.hiddenUnavailable(store.search) > 0}>
                 <div class={noticeClass}>
@@ -308,9 +350,27 @@ function ModelSelectorPopoverV2View(props: {
                   {(group) => (
                     <Menu.Group>
                       <Menu.GroupLabel class="gap-2 px-3">
-                        <span class="min-w-0 truncate">
+                        <ProviderIcon id={group.category} width={14} height={14} class="shrink-0" />
+                        <span class="min-w-0 flex-1 truncate">
                           {customerFacingProviderName(group.items[0].provider.id, group.items[0].provider.name)}
                         </span>
+                        {/* 有探测结果后展示「可用 x / 总量」，没探测过先给总量，避免读成「0 可用」。 */}
+                        <Show
+                          when={group.probed > 0}
+                          fallback={
+                            <span class="shrink-0 text-[11px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-faint">
+                              {language.plural("dialog.model.group.count", group.items.length)}
+                            </span>
+                          }
+                        >
+                          <span
+                            class={`shrink-0 text-[11px] font-[440] leading-4 tracking-[-0.04px] ${
+                              group.ok > 0 ? "text-v2-state-fg-success" : "text-v2-text-text-faint"
+                            }`}
+                          >
+                            {language.plural("dialog.model.group.available", group.ok, { total: group.total })}
+                          </span>
+                        </Show>
                       </Menu.GroupLabel>
                       <Menu.RadioGroup value={props.current}>
                         <For each={group.items}>
@@ -354,6 +414,23 @@ function ModelSelectorPopoverV2View(props: {
                           )}
                         </For>
                       </Menu.RadioGroup>
+                      {/* 组里还有没列出来的模型（默认规则/用户隐藏）时给个明确入口，别让客户以为只有眼前几个可选。 */}
+                      <Show when={group.total > group.items.length && !store.search.trim()}>
+                        <Menu.Item
+                          data-option-key={moreKey(group.category)}
+                          classList={{ "!bg-v2-overlay-simple-overlay-hover": store.active === moreKey(group.category) }}
+                          onMouseEnter={() => {
+                            setStore("active", moreKey(group.category))
+                            setTimeout(() => searchRef?.focus())
+                          }}
+                          onSelect={() => manageGroup(group)}
+                        >
+                          <Icon name="chevron-right" size="small" class="shrink-0 text-v2-icon-icon-muted" />
+                          <span class="min-w-0 flex-1 truncate leading-5">
+                            {language.plural("dialog.model.group.more", group.total)}
+                          </span>
+                        </Menu.Item>
+                      </Show>
                     </Menu.Group>
                   )}
                 </For>

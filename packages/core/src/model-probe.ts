@@ -189,6 +189,39 @@ export function target(
   }
 }
 
+// zen（provider "opencode"）的免费层会拒绝探测用的合成对话请求
+// （403 FreeTierError "free tier can only be used from within OpenCode"），
+// 可用性改由 live 目录判定：目录里存在即可用；目录拉不下来时整体失败，而不是把每个模型标红。
+const ZEN_MODELS_URL = "https://opencode.ai/zen/v1/models"
+const ZEN_CATALOG_TTL_MS = 60_000
+let zenCatalogCache: { at: number; ids: Set<string> } | undefined
+
+export function parseZenCatalog(payload: unknown): Set<string> {
+  const data = (payload as { data?: unknown } | undefined)?.data
+  if (!Array.isArray(data)) throw new Error("invalid zen catalog response")
+  const ids = new Set<string>()
+  for (const item of data) {
+    const id = (item as { id?: unknown }).id
+    if (typeof id === "string" && id) ids.add(id)
+  }
+  return ids
+}
+
+async function zenCatalog(): Promise<Set<string>> {
+  if (zenCatalogCache && Date.now() - zenCatalogCache.at < ZEN_CATALOG_TTL_MS) return zenCatalogCache.ids
+  const response = await fetch(ZEN_MODELS_URL, { headers: { accept: "application/json" } })
+  if (!response.ok) throw new Error(`zen catalog HTTP ${response.status}`)
+  const ids = parseZenCatalog(await response.json())
+  zenCatalogCache = { at: Date.now(), ids }
+  return ids
+}
+
+export function zenProbeResults(modelIDs: readonly string[], live: ReadonlySet<string>): ModelProbeResult[] {
+  return modelIDs.map((modelID) =>
+    live.has(modelID) ? { modelID, ok: true } : { modelID, ok: false, error: "not-in-live-catalog" },
+  )
+}
+
 async function send(
   fetchImpl: FetchLike,
   modelID: string,
@@ -266,6 +299,12 @@ export const probeProvider = Effect.fn("ModelProbe.probeProvider")(function* (
   modelIDs: readonly string[],
 ) {
   const ids = [...new Set(modelIDs.map((id) => id.trim()).filter(Boolean))].slice(0, PROBE_BATCH_LIMIT)
+  if (provider.id === "opencode") {
+    // 目录拉取失败时 Effect.promise 的异常以 defect 终止整个探测（HTTP 报错、前端 toast），
+    // 不给任何 zen 模型落「不可用」结果——免费池可用性不靠合成对话请求判断。
+    const live = yield* Effect.promise(() => zenCatalog())
+    return { results: zenProbeResults(ids, live), probedAt: Date.now() }
+  }
   const connection = yield* integrations.connection.active(
     provider.integrationID ?? Integration.ID.make(provider.id),
   )
