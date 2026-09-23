@@ -12,3 +12,11 @@ so app icons appear larger than expected.
 
 For unpackaged Electron on macOS, `app.dock.setIcon()` should use a PNG. Keep `dock.png` in each channel folder synced with the
 extracted `icon_128x128@2x.png` from that channel's `icon.icns` so the dev Dock icon matches the packaged app inset.
+
+## Kito brand icon
+
+All three channel folders now carry the same Kito ghost brand mark (white ghost on the mint/sky/peach mosaic tile from the
+kito.ktai.im landing page `icon-kito-ghost` favicon); the per-channel OpenCode color variants were retired when Kito became a
+single product. macOS sizes render the full-bleed tile inset on a transparent canvas (~80% content, Big Sur-like), everything
+else is full-bleed. The Android adaptive foreground is the ghost only, paired with the `#a9f7d6` background color declared in
+`android/values/ic_launcher_background.xml`.
