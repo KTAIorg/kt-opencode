@@ -1,5 +1,22 @@
 import { onCleanup } from "solid-js"
 
+export type PermissionScope =
+  | { kind: "session"; sessionID: string; directory: string }
+  | { kind: "directory"; directory: string }
+
+export function resolvePermissionScope(input: {
+  sessionID: string | undefined
+  sessionDirectory: string | undefined
+  directory: string | undefined
+}): PermissionScope | undefined {
+  if (input.sessionID) {
+    if (!input.sessionDirectory) return undefined
+    return { kind: "session", sessionID: input.sessionID, directory: input.sessionDirectory }
+  }
+  if (!input.directory) return undefined
+  return { kind: "directory", directory: input.directory }
+}
+
 export type ShellOption = {
   path: string
   name: string

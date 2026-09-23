@@ -1035,7 +1035,7 @@ function MessageTimelineView(
         return (
           <TimelineRowFrame row={errorRow()}>
             <div data-slot="session-turn-message-container" class={`w-full ${turnPadding()}`}>
-              <SessionErrorCard text={errorRow().text} />
+              <SessionErrorCard text={errorRow().text} type={errorRow().type} />
             </div>
           </TimelineRowFrame>
         )

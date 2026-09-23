@@ -71,18 +71,15 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
     window.dispatchEvent(new Event("kito-account-refresh"))
     attempt.id = undefined
     close()
+    // 登录成功与 ensure 失败合并为一条 toast：双 toast 既吵又让成功提示看着像误报。
+    // ensure 失败（Ensure 限流/网关故障）时把警示放进同一条的描述里如实告知。
     showToast({
       variant: "success",
       title: language.t("provider.connect.toast.connected.title", { provider: "Kito" }),
-      description: language.t("provider.connect.toast.connected.description", { provider: "Kito" }),
+      description: ensured
+        ? language.t("provider.connect.toast.connected.description", { provider: "Kito" })
+        : language.t("dialog.ktIdentity.ensureFailed"),
     })
-    // 登录已成功，但 managed key 下发失败（Ensure 限流/网关故障）：如实提示，不再静默。
-    if (!ensured) {
-      showToast({
-        variant: "error",
-        title: language.t("dialog.ktIdentity.ensureFailed"),
-      })
-    }
   }
 
   const start = async () => {
@@ -149,8 +146,10 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
         return
       }
       if (status.status.status === "expired") {
+        // attempt 消失（服务端重启/已取消/超时）时服务端也按 expired 返回，
+        // 统一走"已过期请重试"而不是生错误原文或笼统的 requestFailed。
         attempt.id = undefined
-        setState("error", language.t("common.requestFailed"))
+        setState("error", language.t("dialog.ktIdentity.expired"))
         return
       }
       await new Promise((resolve) => setTimeout(resolve, 1000))

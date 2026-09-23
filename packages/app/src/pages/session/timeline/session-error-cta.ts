@@ -101,6 +101,28 @@ export function sessionBillingLeadKey(
   return "dialog.ktAccess.switch.lead"
 }
 
+// 技术性 SessionError.type → 面向用户的友好文案 i18n key。映射命中的错误替换原始
+// 技术文案（原文仍在卡片次要行展示），未命中类型保持原文。auth/billing 文案走文本
+// 分类的 lead key，优先级在本映射之上。
+const MODEL_ERROR_LEAD_KEYS: Record<string, string> = {
+  "provider.invalid-output": "session.error.model.invalidOutput",
+  "provider.invalid-request": "session.error.model.invalidRequest",
+  "provider.empty-response": "session.error.model.empty",
+  "provider.transport": "session.error.model.transport",
+  "provider.internal": "session.error.model.internal",
+  "provider.unknown": "session.error.model.internal",
+  "provider.rate-limit": "session.error.model.rateLimit",
+  "provider.no-route": "session.error.model.noRoute",
+  "provider.content-filter": "session.error.model.contentFilter",
+  "tool.input-json": "session.error.model.invalidOutput",
+  "tool.result-missing": "session.error.model.toolResult",
+}
+
+export function sessionModelLeadKey(type: string | undefined) {
+  if (!type) return
+  return MODEL_ERROR_LEAD_KEYS[type]
+}
+
 // 免费额度/免费模型相关的报错文案（软配额触发时由 runner 发出）。
 const FREE_USAGE_EXCEEDED = /free usage exceeded|free model quota|top up on kt|免费额度|免費額度/i
 

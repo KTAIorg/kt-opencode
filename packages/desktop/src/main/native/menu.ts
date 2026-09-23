@@ -15,6 +15,9 @@ import { nativeT } from "./translations"
 
 type Deps = {
   trigger: (id: string) => void
+  // Enabled command ids reported by the focused window's renderer. Commands the
+  // renderer has not registered are disabled instead of silently doing nothing.
+  commands: () => ReadonlySet<string> | undefined
   checkForUpdates: () => void
   relaunch: () => void
 }
@@ -22,13 +25,14 @@ type Deps = {
 export function createMenu(deps: Deps) {
   if (process.platform !== "darwin") return
 
+  const commands = deps.commands()
   const template = DESKTOP_MENU.filter((menu) => desktopMenuVisible(menu, "macos")).map((menu) => {
     if (menu.role) return { role: nativeRole(menu.role), label: nativeT(menu.labelKey) }
     return {
       label: nativeT(menu.labelKey),
       submenu: menu.items
         ?.filter((entry) => desktopMenuVisible(entry, "macos"))
-        .map((entry) => nativeItem(entry, deps)),
+        .map((entry) => nativeItem(entry, deps, commands)),
     }
   })
 
@@ -39,14 +43,22 @@ export function sendMenuCommand(win: BrowserWindow, id: string) {
   sendIpcEvent(win.webContents, Ipc.menu.command, id)
 }
 
-function nativeItem(entry: DesktopMenuEntry, deps: Deps): MenuItemConstructorOptions {
+function nativeItem(
+  entry: DesktopMenuEntry,
+  deps: Deps,
+  commands: ReadonlySet<string> | undefined,
+): MenuItemConstructorOptions {
   if (entry.type === "separator") return { type: "separator" }
   if (entry.role) return { role: nativeRole(entry.role), label: entry.labelKey ? nativeT(entry.labelKey) : undefined }
 
   const item: MenuItemConstructorOptions = {
     label: entry.labelKey ? nativeT(entry.labelKey) : undefined,
     accelerator: entry.accelerator?.macos,
-    enabled: entry.enabled === "updater" ? UPDATER_ENABLED : undefined,
+    enabled: entry.command
+      ? (commands?.has(entry.command) ?? false)
+      : entry.enabled === "updater"
+        ? UPDATER_ENABLED
+        : undefined,
   }
 
   if (entry.command) {

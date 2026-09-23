@@ -690,6 +690,18 @@ export const dict = {
   "session.timeline.notice.failed": "{{actor}} failed",
   "session.timeline.notice.cancelled": "{{actor}} cancelled",
   "session.error.serverConnection": "Can't connect to this server",
+  "session.error.model.invalidOutput":
+    "The model returned an invalid response (for example, malformed tool call data). Try again, or switch to a different model.",
+  "session.error.model.invalidRequest":
+    "The request to the model was invalid. Try again, or switch to a different model.",
+  "session.error.model.empty": "The model returned no content. Try again, or switch to a different model.",
+  "session.error.model.transport": "Couldn't reach the model service. Check your connection and try again.",
+  "session.error.model.internal": "The model service hit a temporary problem. Try again, or switch to a different model.",
+  "session.error.model.rateLimit":
+    "The model service is rate-limited right now. Wait a moment and try again, or switch to a different model.",
+  "session.error.model.noRoute": "This model is currently unavailable. Switch to a different model.",
+  "session.error.model.contentFilter": "The model declined to respond to this request. Try rephrasing your message.",
+  "session.error.model.toolResult": "The model service didn't return a tool result. Try again.",
   "session.review.filesChanged": "Files Changed {{count}}",
   "session.review.change.one": "Change",
   "session.review.change.other": "Changes",
@@ -1001,6 +1013,7 @@ export const dict = {
     "Show edit, write, and patch tool parts expanded by default in the timeline",
   "settings.general.row.pinchZoom.title": "Pinch to zoom",
   "settings.general.row.pinchZoom.description": "Allow trackpad pinch and Ctrl-scroll gestures to zoom",
+  "settings.general.autoAccept.scopeHint": "Available within a session or project",
 
   "settings.general.row.wayland.title": "Use native Wayland",
   "settings.general.row.wayland.description": "Disable X11 fallback on Wayland. Requires restart.",
@@ -1285,6 +1298,7 @@ export const dict = {
   "dialog.ktWallet.fiatDisabled":
     "WeChat and Alipay are not available on this environment yet. Use USDT / USDC instead.",
   "dialog.ktWallet.fiatError": "Could not start KTPay. Try again in a moment.",
+  "dialog.ktWallet.retry": "Try again",
   "dialog.ktWallet.custom": "Custom USD amount",
   "dialog.ktWallet.alipay": "Alipay",
   "dialog.ktWallet.wechat": "WeChat Pay",
@@ -1331,4 +1345,5 @@ export const dict = {
   "dialog.ktIdentity.copyLink": "Copy link",
   "dialog.ktIdentity.copied": "Link copied",
   "dialog.ktIdentity.ensureFailed": "Signed in, but Kito model access could not be provisioned. Top up or retry later.",
+  "dialog.ktIdentity.expired": "This sign-in request expired. Try again.",
 }

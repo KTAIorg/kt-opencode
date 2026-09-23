@@ -74,7 +74,16 @@ const PermissionScopeSetting: Component<{ controller: PermissionScopeController 
   return (
     <SettingsRowV2
       title={language.t("command.permissions.autoaccept.enable")}
-      description={language.t("toast.permissions.autoaccept.on.description")}
+      description={
+        <>
+          {language.t("toast.permissions.autoaccept.on.description")}
+          <Show when={!props.controller.enabled()}>
+            <div class="text-11-regular text-v2-text-text-muted">
+              {language.t("settings.general.autoAccept.scopeHint")}
+            </div>
+          </Show>
+        </>
+      }
     >
       <div data-action="settings-auto-accept-permissions">
         <Switch
@@ -281,6 +290,7 @@ const LanguageSetting = () => {
 export const SettingsGeneral: Component<{
   sessionID?: string
   server?: ServerConnection.Any
+  directory?: string
 }> = (props) => {
   const language = useLanguage()
   const platform = usePlatform()
@@ -290,6 +300,7 @@ export const SettingsGeneral: Component<{
   const permissionScope = createPermissionScopeController(
     () => props.server,
     () => props.sessionID,
+    () => props.directory,
   )
   const shell = createShellSettingsController(() => props.server)
   const desktop = createMemo(() => platform.platform === "desktop")

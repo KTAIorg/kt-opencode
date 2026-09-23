@@ -161,7 +161,15 @@ function DesktopCommands() {
   const platform = usePlatform()
 
   command.register("desktop", () => {
-    const commands: CommandOption[] = []
+    const commands: CommandOption[] = [
+      {
+        id: "session.new",
+        title: language.t("command.session.new"),
+        category: language.t("command.category.session"),
+        keybind: "mod+shift+s",
+        onSelect: (source) => command.trigger("tab.new", source),
+      },
+    ]
     if (platform.platform === "desktop" && platform.exportDebugLogs) {
       commands.push({
         id: "logs.export",
