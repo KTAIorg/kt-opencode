@@ -8,7 +8,7 @@ export const KTAI_SETTLEMENT_APP_ID = "2079689277851045900"
 export const KTAI_RECHARGE_CALLBACK_URL = "http://kt-billing.kt-billing-prod.svc.cluster.local/recharge/crypto/webhook"
 export const KTAI_MANAGED_TOKEN_NAME = "kito"
 export const KTAI_API_AUTH_ID = "ktai-api"
-export const KTAI_CUSTOMER_GROUP = "ktai"
+export const KTAI_CUSTOMER_GROUP = "default"
 export const NEWAPI_QUOTA_PER_USD = 500_000
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>

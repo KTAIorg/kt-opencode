@@ -487,11 +487,11 @@ test("pins an Ensure user that still has ox-free back to the customer group", as
       }
       expect(url).toBe("https://newapi.test/api/user/")
       expect(init?.method).toBe("PUT")
-      expect(JSON.parse(String(init?.body))).toMatchObject({ id: 370, group: "ktai" })
+      expect(JSON.parse(String(init?.body))).toMatchObject({ id: 370, group: "default" })
       return new Response(JSON.stringify({ success: true }), { status: 200 })
     },
   })
-  expect(result).toEqual({ pinned: true, group: "ktai" })
+  expect(result).toEqual({ pinned: true, group: "default" })
   expect(calls).toEqual(["POST https://newapi.test/api/iam/ensure", "PUT https://newapi.test/api/user/"])
 })
 
