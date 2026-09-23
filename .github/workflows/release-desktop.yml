@@ -126,7 +126,15 @@ jobs:
           path: packages/cli/dist
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        shell: pwsh
+        run: |
+          bun install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::warning::bun install failed, clearing the bun cache and retrying once"
+            bun pm cache rm
+            bun install --frozen-lockfile
+          }
+          exit $LASTEXITCODE
 
       - name: Prepare desktop bundle
         working-directory: packages/desktop
