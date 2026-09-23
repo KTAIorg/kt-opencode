@@ -315,13 +315,11 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
   }
 
   // 可探测模型按 provider 分组：ktai 组走 /ktai/models/probe，其余走通用 provider 探测端点。
-  // auto 时排除 opencode（zen 匿名免费池）：探测是真实对话请求，自动跑会消耗免费额度、
-  // 自我制造 429；手动「一键检测」仍然覆盖它。
-  const probeTargets = (options?: { auto?: boolean }) => {
+  // zen 也参与自动探测：它只是拉官方目录比对（server 端 60s 缓存），没有对话请求、不烧免费额度。
+  const probeTargets = () => {
     const groups = new Map<string, string[]>()
     for (const model of list()) {
       if (!probeable(model)) continue
-      if (options?.auto && model.provider.id === "opencode") continue
       const group = groups.get(model.provider.id) ?? []
       if (!group.includes(model.id)) group.push(model.id)
       groups.set(model.provider.id, group)
@@ -331,9 +329,9 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
 
   // 探测只有这一份实现：管理弹窗的「一键检测」和打开模型列表时的自动检测都走 run()。
   // 并发去重（探测中重复调用复用同一个 promise），silent 时不弹 toast（自动检测不能打扰用户）。
-  const runProbe = (options?: { silent?: boolean; auto?: boolean }) => {
+  const runProbe = (options?: { silent?: boolean }) => {
     if (probeRun) return probeRun
-    const targets = probeTargets({ auto: options?.auto })
+    const targets = probeTargets()
     if (targets.size === 0) return Promise.resolve()
     const pending: Record<string, boolean> = {}
     let total = 0
@@ -357,7 +355,7 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
   // 列表被打开时调用：结果过期才跑，新鲜时不重复请求。
   const autoRunProbe = () => {
     if (!probeStale()) return
-    void runProbe({ silent: true, auto: true })
+    void runProbe({ silent: true })
   }
 
   // provider 并行（上限 3）、组内分批串行，每个分批结果立即落盘。server 单次探测上限 100 个模型；
