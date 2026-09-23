@@ -29,14 +29,17 @@ type ModelItem = ReturnType<ReturnType<typeof useLocal>["model"]["list"]>[number
 // 分组折叠状态放模块级：弹窗关掉再打开也保留，应用重启后回到默认全展开。
 const [collapsedGroups, setCollapsedGroups] = createStore<Record<string, boolean | undefined>>({})
 
-export const DialogManageModelsV2: Component = () => {
+export const DialogManageModelsV2: Component<{ initialSearch?: string }> = (props) => {
   const local = useLocal()
   const language = useLanguage()
   const dialog = useDialog()
   const models = useModels()
   const directory = () => decode64(local.slug())
 
-  onMount(() => models.probe.autoRun())
+  onMount(() => {
+    models.probe.autoRun()
+    if (props.initialSearch) list.onInput(props.initialSearch)
+  })
 
   const handleConnectProvider = () => {
     void dialog.show(() => <DialogConnectProvider directory={directory()} />)
@@ -379,9 +382,14 @@ export const DialogManageModelsV2: Component = () => {
 }
 
 // 需要选择模型的地方（额度用尽后的「选择付费模型」）打开这个居中的弹窗，而不是挂在组合器上的 popover。
-export function openManageModels(input: { dialog: ReturnType<typeof useDialog>; onClose?: () => void }) {
+// search 用来从模型选择器「查看全部」跳转时预填过滤词，直接落到对应分组。
+export function openManageModels(input: {
+  dialog: ReturnType<typeof useDialog>
+  onClose?: () => void
+  search?: string
+}) {
   void input.dialog.show(
-    () => <DialogManageModelsV2 />,
+    () => <DialogManageModelsV2 initialSearch={input.search} />,
     () => input.onClose?.(),
   )
 }
