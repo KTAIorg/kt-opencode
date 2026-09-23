@@ -314,8 +314,12 @@ function ModelSelectorPopoverV2View(props: {
                   {(group) => (
                     <Menu.Group>
                       <Menu.GroupLabel class="gap-2 px-3">
-                        <span class="min-w-0 truncate">
+                        <span class="min-w-0 flex-1 truncate">
                           {customerFacingProviderName(group.items[0].provider.id, group.items[0].provider.name)}
+                        </span>
+                        {/* 组内可选模型数：列表很长要滚动，计数让用户知道每组还有多少选择。 */}
+                        <span class="shrink-0 text-[11px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-faint">
+                          {language.plural("dialog.model.group.count", group.items.length)}
                         </span>
                       </Menu.GroupLabel>
                       <Menu.RadioGroup value={props.current}>

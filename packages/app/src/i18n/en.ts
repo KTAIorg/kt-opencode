@@ -132,6 +132,8 @@ export const dict = {
   "dialog.model.manage.defaultHidden": "Hidden by default",
   "dialog.model.manage.group.expand": "Expand {{provider}}",
   "dialog.model.manage.group.collapse": "Collapse {{provider}}",
+  "dialog.model.group.count.one": "{{count}} model",
+  "dialog.model.group.count.other": "{{count}} models",
   "dialog.model.use": "Set as current",
   "dialog.model.use.current": "In use",
   "dialog.model.probe.action": "Check availability",

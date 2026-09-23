@@ -232,6 +232,8 @@ export const dict = {
   "dialog.model.manage.defaultHidden": "預設隱藏",
   "dialog.model.manage.group.expand": "展開 {{provider}}",
   "dialog.model.manage.group.collapse": "摺疊 {{provider}}",
+  "dialog.model.group.count.one": "{{count}} 個模型",
+  "dialog.model.group.count.other": "{{count}} 個模型",
   "dialog.model.use": "設為目前",
   "dialog.model.use.current": "使用中",
   "dialog.model.probe.action": "一鍵檢查",
