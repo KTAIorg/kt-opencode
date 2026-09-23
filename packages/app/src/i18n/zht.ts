@@ -230,6 +230,8 @@ export const dict = {
   "dialog.model.manage.visibility.default": "預設",
   "dialog.model.manage.visibility.hide": "全部隱藏",
   "dialog.model.manage.defaultHidden": "預設隱藏",
+  "dialog.model.manage.group.expand": "展開 {{provider}}",
+  "dialog.model.manage.group.collapse": "摺疊 {{provider}}",
   "dialog.model.use": "設為目前",
   "dialog.model.use.current": "使用中",
   "dialog.model.probe.action": "一鍵檢查",
