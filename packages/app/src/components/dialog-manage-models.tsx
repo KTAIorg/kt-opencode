@@ -15,6 +15,7 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogConnectProvider } from "./dialog-connect-provider"
 import { ModelProbeBadge } from "./model-probe-badge"
 import { decode64 } from "@/utils/base64"
+import { customerFacingProviderName } from "@/utils/kt-settlement"
 import { SettingsListV2 } from "./settings-v2/parts/list"
 import { SettingsRowV2 } from "./settings-v2/parts/row"
 import "./settings-v2/settings-v2.css"
@@ -163,7 +164,9 @@ export const DialogManageModelsV2: Component = () => {
                       <div class="settings-v2-models-group-header justify-between">
                         <div class="flex min-w-0 items-center gap-2">
                           <ProviderIcon id={group.category} width={16} height={16} class="ml-4 shrink-0" />
-                          <h3 class="settings-v2-section-title">{group.items[0].provider.name}</h3>
+                          <h3 class="settings-v2-section-title">
+                            {customerFacingProviderName(group.items[0].provider.id, group.items[0].provider.name)}
+                          </h3>
                         </div>
                         <div>
                           <Switch
