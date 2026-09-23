@@ -1,5 +1,6 @@
 import { Show, type Component, type JSX } from "solid-js"
 import { useLanguage } from "@/context/language"
+import { customerFacingProviderName } from "@/utils/kt-settlement"
 
 type InputKey = "text" | "image" | "audio" | "video" | "pdf"
 type InputMap = Record<InputKey, boolean>
@@ -8,6 +9,7 @@ type ModelInfo = {
   id: string
   name: string
   provider: {
+    id: string
     name: string
   }
   capabilities?: {
@@ -45,7 +47,7 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
     if (/grok|xai/.test(value)) return language.t("model.provider.xai")
     if (/llama|meta/.test(value)) return language.t("model.provider.meta")
 
-    return model.provider.name
+    return customerFacingProviderName(model.provider.id, model.provider.name)
   }
   const inputLabel = (value: string) => {
     if (value === "text") return language.t("model.input.text")
@@ -97,7 +99,10 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
     return (
       <div class="flex w-[180px] flex-col gap-2">
         <ModelTooltipRow name={language.t("model.tooltip.model")} value={name()} />
-        <ModelTooltipRow name={language.t("model.tooltip.provider")} value={props.model.provider.name} />
+        <ModelTooltipRow
+          name={language.t("model.tooltip.provider")}
+          value={customerFacingProviderName(props.model.provider.id, props.model.provider.name)}
+        />
         <Show when={inputs()}>
           {(value) => <ModelTooltipRow name={language.t("model.tooltip.inputs")} value={value()} />}
         </Show>
