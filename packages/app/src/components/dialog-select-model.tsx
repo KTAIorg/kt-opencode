@@ -110,6 +110,7 @@ function createModelSelectorController(input: {
     probe: {
       running: () => models.probe.running(),
       autoRun: () => models.probe.autoRun(),
+      progress: () => models.probe.progress(),
     },
     groups: (models: ModelItem[]) => {
       const byProvider = new Map<string, ModelItem[]>()
@@ -134,7 +135,7 @@ function ModelSelectorPopoverV2View(props: {
   models: (search: string) => ModelItem[]
   hiddenUnavailable: (search: string) => number
   hiddenByUser: (search: string) => number
-  probe: { running: () => boolean; autoRun: () => void }
+  probe: { running: () => boolean; autoRun: () => void; progress: () => { done: number; total: number } }
   groups: (models: ModelItem[]) => { category: string; items: ModelItem[] }[]
   current: string | undefined
   select: (item: ModelItem) => void
@@ -284,7 +285,12 @@ function ModelSelectorPopoverV2View(props: {
           <ScrollView data-slot="model-selector-scroll" class="max-h-[220px] min-h-0">
             <div class="flex flex-col p-0.5 pt-0">
               <Show when={props.probe.running()}>
-                <div class={noticeClass}>{language.t("dialog.model.probe.running")}</div>
+                <div class={noticeClass}>
+                  {language.t("dialog.model.probe.progress", {
+                    done: props.probe.progress().done,
+                    total: props.probe.progress().total,
+                  })}
+                </div>
               </Show>
               <Show when={props.hiddenUnavailable(store.search) > 0}>
                 <div class={noticeClass}>

@@ -2,9 +2,11 @@ import { Button } from "@opencode-ai/ui/button"
 import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
+import { Menu } from "@opencode-ai/ui/menu"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Switch } from "@opencode-ai/ui/switch"
 import { TextInput } from "@opencode-ai/ui/text-input"
+import { Badge } from "@opencode-ai/ui/badge"
 import { useFilteredList } from "@opencode-ai/ui/hooks"
 import { For, Show, type Component, createMemo, onMount } from "solid-js"
 import { useLocal } from "@/context/local"
@@ -34,15 +36,21 @@ export const DialogManageModelsV2: Component = () => {
   const handleConnectProvider = () => {
     void dialog.show(() => <DialogConnectProvider directory={directory()} />)
   }
-  const providerList = (providerID: string) => local.model.list().filter((x) => x.provider.id === providerID)
-  const providerVisible = (providerID: string) =>
-    providerList(providerID).every((x) => local.model.visible({ modelID: x.id, providerID: x.provider.id }))
-  const setProviderVisibility = (providerID: string, checked: boolean) => {
-    providerList(providerID).forEach((x) => {
-      local.model.setVisibility({ modelID: x.id, providerID: x.provider.id }, checked)
-    })
+  // 分组显示偏好是三态：default（清偏好回默认规则）/ show（显示全部）/ hide（隐藏全部）。
+  const providerPref = (providerID: string) => models.providerPreference(providerID) ?? "default"
+  const setProviderPref = (providerID: string, value: string) => {
+    models.setProviderVisibility(providerID, value === "show" || value === "hide" ? value : "default")
   }
+  const prefLabel = (pref: string) =>
+    pref === "show"
+      ? language.t("dialog.model.manage.showAll")
+      : pref === "hide"
+        ? language.t("dialog.model.manage.visibility.hide")
+        : language.t("dialog.model.manage.visibility.default")
   const modelVisible = (item: ModelItem) => local.model.visible({ modelID: item.id, providerID: item.provider.id })
+  // 默认规则藏起来的行（非用户显式关闭）：标出来，让「为什么这里看不到」可解释。
+  const defaultHidden = (item: ModelItem) =>
+    !models.hiddenByUser({ modelID: item.id, providerID: item.provider.id }) && !modelVisible(item)
   const setModelVisibility = (item: ModelItem, checked: boolean) => {
     local.model.setVisibility({ modelID: item.id, providerID: item.provider.id }, checked)
   }
@@ -99,7 +107,12 @@ export const DialogManageModelsV2: Component = () => {
             disabled={models.probe.running() || models.probe.probeable() === 0}
             onClick={() => void models.probe.run()}
           >
-            {models.probe.running() ? language.t("dialog.model.probe.running") : language.t("dialog.model.probe.action")}
+            {models.probe.running()
+              ? language.t("dialog.model.probe.progress", {
+                  done: models.probe.progress().done,
+                  total: models.probe.progress().total,
+                })
+              : language.t("dialog.model.probe.action")}
           </Button>
           <Button variant="neutral" icon="plus" onClick={handleConnectProvider}>
             {language.t("command.provider.connect")}
@@ -168,15 +181,48 @@ export const DialogManageModelsV2: Component = () => {
                             {customerFacingProviderName(group.items[0].provider.id, group.items[0].provider.name)}
                           </h3>
                         </div>
-                        <div>
-                          <Switch
-                            class="mr-6"
-                            appearance="standard"
-                            checked={providerVisible(group.category)}
-                            onChange={(checked) => setProviderVisibility(group.category, checked)}
-                          >
-                            {language.t("dialog.model.manage.showAll")}
-                          </Switch>
+                        <div class="mr-6">
+                          <Menu placement="bottom-end" gutter={4}>
+                            <Menu.Trigger
+                              class="flex h-7 cursor-pointer items-center gap-1 rounded-sm px-2 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base hover:bg-v2-overlay-simple-overlay-hover"
+                              aria-label={language.t("dialog.model.manage.provider.toggle", {
+                                provider: customerFacingProviderName(
+                                  group.items[0].provider.id,
+                                  group.items[0].provider.name,
+                                ),
+                              })}
+                            >
+                              {prefLabel(providerPref(group.category))}
+                              <Icon name="chevron-down" size="small" class="text-v2-icon-icon-muted" />
+                            </Menu.Trigger>
+                            <Menu.Portal>
+                              <Menu.Content class="min-w-[170px] overflow-hidden rounded-md border-0 bg-v2-background-bg-layer-01 p-0.5 shadow-[var(--v2-elevation-floating)] focus:outline-none">
+                                <Menu.RadioGroup
+                                  value={providerPref(group.category)}
+                                  onChange={(value) => setProviderPref(group.category, value)}
+                                >
+                                  <Menu.RadioItem
+                                    value="default"
+                                    class="h-7 cursor-pointer rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
+                                  >
+                                    {language.t("dialog.model.manage.visibility.default")}
+                                  </Menu.RadioItem>
+                                  <Menu.RadioItem
+                                    value="show"
+                                    class="h-7 cursor-pointer rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
+                                  >
+                                    {language.t("dialog.model.manage.showAll")}
+                                  </Menu.RadioItem>
+                                  <Menu.RadioItem
+                                    value="hide"
+                                    class="h-7 cursor-pointer rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
+                                  >
+                                    {language.t("dialog.model.manage.visibility.hide")}
+                                  </Menu.RadioItem>
+                                </Menu.RadioGroup>
+                              </Menu.Content>
+                            </Menu.Portal>
+                          </Menu>
                         </div>
                       </div>
                       <SettingsListV2>
@@ -186,6 +232,9 @@ export const DialogManageModelsV2: Component = () => {
                               <SettingsRowV2 title={item.name} description="">
                                 <div class="flex items-center gap-2">
                                   <ModelProbeBadge class="ml-2" providerID={item.provider.id} modelID={item.id} />
+                                  <Show when={defaultHidden(item)}>
+                                    <Badge class="shrink-0">{language.t("dialog.model.manage.defaultHidden")}</Badge>
+                                  </Show>
                                   <Button
                                     variant="neutral"
                                     disabled={isCurrentModel(item)}
