@@ -212,9 +212,10 @@ export const DialogManageModelsV2: Component = () => {
                       group.items[0].provider.id,
                       group.items[0].provider.name,
                     )
-                    const expanded = groupExpanded(group.category)
-                    const counts = groupStatus(group.items)
-                    const summary = statusSummary(counts)
+                    // 存取器而非一次性求值：Solid 的列表项渲染只跑一次，折叠态与计数必须跟着 store 走。
+                    const expanded = () => groupExpanded(group.category)
+                    const counts = () => groupStatus(group.items)
+                    const summary = () => statusSummary(counts())
                     return (
                       <div class="settings-v2-section" data-component="settings-models-provider">
                         <div class="settings-v2-models-group-header justify-between">
@@ -222,48 +223,48 @@ export const DialogManageModelsV2: Component = () => {
                             <button
                               type="button"
                               class="flex min-w-0 cursor-pointer items-center gap-2"
-                              aria-expanded={expanded}
+                              aria-expanded={expanded()}
                               aria-label={language.t(
-                                expanded ? "dialog.model.manage.group.collapse" : "dialog.model.manage.group.expand",
+                                expanded() ? "dialog.model.manage.group.collapse" : "dialog.model.manage.group.expand",
                                 { provider: providerName },
                               )}
                               onClick={() => toggleGroup(group.category)}
                             >
                               <Icon
-                                name={expanded ? "chevron-down" : "chevron-right"}
+                                name={expanded() ? "chevron-down" : "chevron-right"}
                                 size="small"
                                 class="ml-4 shrink-0 text-v2-icon-icon-muted"
                               />
                               <ProviderIcon id={group.category} width={16} height={16} class="shrink-0" />
                               <h3 class="settings-v2-section-title truncate">{providerName}</h3>
                             </button>
-                            <Show when={summary}>
+                            <Show when={summary()}>
                               <div
                                 class="flex shrink-0 items-center gap-2 text-[11px] font-[440] leading-none text-v2-text-text-muted"
-                                title={summary}
+                                title={summary()}
                               >
-                                <Show when={counts.pending > 0}>
+                                <Show when={counts().pending > 0}>
                                   <span class="flex items-center gap-1">
                                     <Spinner class="h-3 w-3 text-v2-icon-icon-muted" />
-                                    {counts.pending}
+                                    {counts().pending}
                                   </span>
                                 </Show>
-                                <Show when={counts.ok > 0}>
+                                <Show when={counts().ok > 0}>
                                   <span class="flex items-center gap-1">
                                     <span class="h-1.5 w-1.5 rounded-full bg-v2-state-fg-success" />
-                                    {counts.ok}
+                                    {counts().ok}
                                   </span>
                                 </Show>
-                                <Show when={counts.limited > 0}>
+                                <Show when={counts().limited > 0}>
                                   <span class="flex items-center gap-1">
                                     <span class="h-1.5 w-1.5 rounded-full bg-v2-state-fg-warning" />
-                                    {counts.limited}
+                                    {counts().limited}
                                   </span>
                                 </Show>
-                                <Show when={counts.unavailable > 0}>
+                                <Show when={counts().unavailable > 0}>
                                   <span class="flex items-center gap-1">
                                     <span class="h-1.5 w-1.5 rounded-full bg-v2-state-fg-danger" />
-                                    {counts.unavailable}
+                                    {counts().unavailable}
                                   </span>
                                 </Show>
                               </div>
@@ -324,7 +325,7 @@ export const DialogManageModelsV2: Component = () => {
                             </Menu>
                           </div>
                         </div>
-                        <Show when={expanded}>
+                        <Show when={expanded()}>
                           <SettingsListV2>
                             <For each={group.items}>
                               {(item) => (
