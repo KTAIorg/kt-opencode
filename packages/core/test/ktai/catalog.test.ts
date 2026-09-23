@@ -109,19 +109,19 @@ test("uses the last server catalog when live fetch is empty", () => {
   expect(models.find((model) => model.id === "gemini-2.5-flash")?.defaultVisible).toBe(false)
 })
 
-test("pricing fallback still filters to ktai + openai endpoints", () => {
+test("pricing fallback still filters to default + openai endpoints", () => {
   const list = pricingModels({
     data: [
       {
         model_name: "skip-me",
-        enable_groups: ["default"],
+        enable_groups: ["ktai"],
         supported_endpoint_types: ["openai"],
         model_price: 1,
         quota_type: 1,
       },
       {
         model_name: "gpt-5.4",
-        enable_groups: ["ktai"],
+        enable_groups: ["default"],
         supported_endpoint_types: ["openai"],
         quota_type: 0,
         model_ratio: 2,

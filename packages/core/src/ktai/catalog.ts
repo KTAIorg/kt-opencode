@@ -175,7 +175,8 @@ export function pricingModels(input: unknown): RawModel[] {
     const row = value as PricingModel
     const id = typeof row.model_name === "string" ? row.model_name.trim() : ""
     if (!id) return []
-    if (Array.isArray(row.enable_groups) && !row.enable_groups.includes("ktai")) return []
+    // Preview mirrors the group customers are actually pinned to (default); the legacy ktai group no longer gates access.
+    if (Array.isArray(row.enable_groups) && !row.enable_groups.includes("default")) return []
     const endpoints = Array.isArray(row.supported_endpoint_types) ? row.supported_endpoint_types : []
     if (!endpoints.includes("openai") && !endpoints.includes("openai-response")) return []
     const cost = pricingCost(row)
