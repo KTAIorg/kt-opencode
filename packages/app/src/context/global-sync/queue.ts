@@ -30,7 +30,9 @@ export function createRefreshQueue(input: QueueInput) {
     if (timer) return
     timer = setTimeout(() => {
       timer = undefined
-      void drain()
+      void drain().catch((cause) => {
+        console.error("Refresh queue drain failed", cause)
+      })
     }, 0)
   }
 

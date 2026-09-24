@@ -364,7 +364,14 @@ export function DialogKtWallet(props: { onClose?: () => void }) {
   const copy = async () => {
     const value = visibleAddress()?.address
     if (!value) return
-    await navigator.clipboard.writeText(value)
+    const ok = await navigator.clipboard.writeText(value).then(
+      () => true,
+      () => false,
+    )
+    if (!ok) {
+      showToast({ variant: "error", title: language.t("dialog.ktWallet.copyFailed") })
+      return
+    }
     setCopied(true)
     showToast({
       variant: "success",

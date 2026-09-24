@@ -19,16 +19,26 @@ export function useProviders(directory: Accessor<string | undefined>) {
   }
 
   // Catalog sync failures must reach a terminal state: keep the cause so the
-  // composer can stop showing "loading" forever and offer a retry.
+  // composer can stop showing "loading" forever and offer a retry. Bound the
+  // wait as well — while the server is still building its location layer the
+  // underlying requests can hang far longer than a user would wait, and a
+  // never-settling retry would keep `model.loading` (and everything gated on
+  // it) stuck.
   const [failure, setFailure] = createSignal<unknown>()
   const retry = () => {
     setFailure(undefined)
-    void (async () => {
+    const task = (async () => {
       const ref = location()
       if (!ref) await data.location.syncInfo()
       const resolved = ref ?? data.location.default()
       await Promise.all([data.location.provider.sync(resolved), data.location.model.sync(resolved)])
-    })().catch((cause) => {
+    })()
+    void Promise.race([
+      task,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Provider catalog load timed out")), 30_000),
+      ),
+    ]).catch((cause) => {
       console.error("Failed to load provider catalog", cause)
       setFailure(cause)
     })

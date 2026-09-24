@@ -211,14 +211,21 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
         const draftID = uuid()
         const tab = { type: "draft" as const, draftID, ...draft }
         memory.ensure(tabKey(tab), "prompt", () => createDraftPromptSession(draftID, { prompt, model }))
-        await startTransition(() => {
-          setStore(
-            produce((tabs) => {
-              tabs.push(tab)
-            }),
-          )
-          navigate(draftHref(draftID))
-        })
+        // The route subtree can stay suspended while location-scoped data is
+        // still loading; a pending transition would keep this await (and the
+        // onboarding flow that calls it) hanging indefinitely. Bound the wait
+        // so callers always continue — the transition still commits later.
+        await Promise.race([
+          startTransition(() => {
+            setStore(
+              produce((tabs) => {
+                tabs.push(tab)
+              }),
+            )
+            navigate(draftHref(draftID))
+          }),
+          new Promise((resolve) => setTimeout(resolve, 10_000)),
+        ])
         return tab
       },
       updateDraft(draftID: string, draft: Partial<Omit<DraftTab, "type" | "draftID">>) {

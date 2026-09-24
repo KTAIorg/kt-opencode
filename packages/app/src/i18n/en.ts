@@ -1355,6 +1355,8 @@ export const dict = {
   "dialog.ktIdentity.scanQr": "Scan with your phone to confirm in Telegram.",
   "dialog.ktIdentity.copyLink": "Copy link",
   "dialog.ktIdentity.copied": "Link copied",
+  "dialog.ktIdentity.copyFailed": "Could not copy the link. Copy it from Telegram instead.",
+  "dialog.ktWallet.copyFailed": "Could not copy the address. Try again.",
   "dialog.ktIdentity.ensureFailed": "Signed in, but Kito model access could not be provisioned. Top up or retry later.",
   "dialog.ktIdentity.expired": "This sign-in request expired. Try again.",
 }

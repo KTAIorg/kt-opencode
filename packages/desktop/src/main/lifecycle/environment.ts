@@ -43,7 +43,11 @@ export function configureApplication() {
 
   const appID = app.isPackaged ? appIDs[CHANNEL] : "cc.ktapi.desktop.dev"
   const onboardingRoot = createOnboardingTestRoot()
-  app.setName(app.isPackaged ? appNames[CHANNEL] : "Kito Dev")
+  const appName = app.isPackaged ? appNames[CHANNEL] : "Kito Dev"
+  app.setName(appName)
+  // The macOS About panel reads the bundle's Info.plist, not app.getName(), so
+  // an unpackaged dev run would show "Electron" and the Electron version.
+  app.setAboutPanelOptions({ applicationName: appName, applicationVersion: VERSION })
   app.setAppUserModelId(appID)
   app.setPath("userData", onboardingRoot ? join(onboardingRoot, "desktop") : join(app.getPath("appData"), appID))
   if (onboardingRoot) app.setPath("sessionData", join(onboardingRoot, "session"))

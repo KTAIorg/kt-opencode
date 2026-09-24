@@ -211,10 +211,14 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
     })
 
     booting.set(key, promise)
-    void promise.finally(() => {
-      booting.delete(key)
-      children.unpin(key)
-    })
+    void promise
+      .catch((cause) => {
+        console.error("Failed to bootstrap directory", directory, cause)
+      })
+      .finally(() => {
+        booting.delete(key)
+        children.unpin(key)
+      })
     return promise
   }
 
