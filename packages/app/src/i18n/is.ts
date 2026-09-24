@@ -2,6 +2,11 @@ import { DESKTOP_NATIVE_KEYS } from "./desktop-native"
 
 const desktop = [
   "Kito",
+  "Um {{app}}",
+  "Fela {{app}}",
+  "Fela hin",
+  "Sýna öll",
+  "Hætta {{app}}",
   "Skrá",
   "Breyta",
   "Skoða",

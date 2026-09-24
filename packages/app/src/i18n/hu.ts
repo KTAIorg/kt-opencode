@@ -2,6 +2,11 @@ import { DESKTOP_NATIVE_KEYS } from "./desktop-native"
 
 const desktop = [
   "Kito",
+  "Az {{app}} névjegye",
+  "{{app}} elrejtése",
+  "Többiek elrejtése",
+  "Összes megjelenítése",
+  "Kilépés a(z) {{app}}-ból",
   "Fájl",
   "Szerkesztés",
   "Nézet",

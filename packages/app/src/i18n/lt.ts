@@ -2,6 +2,11 @@ import { DESKTOP_NATIVE_KEYS } from "./desktop-native"
 
 const desktop = [
   "Kito",
+  "Apie „{{app}}“",
+  "Slėpti „{{app}}“",
+  "Slėpti kitas",
+  "Rodyti visas",
+  "Baigti „{{app}}“",
   "Failas",
   "Taisa",
   "Rodymas",

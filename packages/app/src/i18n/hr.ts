@@ -2,6 +2,11 @@ import { DESKTOP_NATIVE_KEYS } from "./desktop-native"
 
 const desktop = [
   "Kito",
+  "O aplikaciji {{app}}",
+  "Sakrij {{app}}",
+  "Sakrij ostale",
+  "Prikaži sve",
+  "Izađi iz {{app}}",
   "Datoteka",
   "Uredi",
   "Prikaz",
