@@ -77,8 +77,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Namestitev distribucije ni uspela: {{distro}}",
   "desktop.wsl.error.installOpencode": "Namestitev Kito ni uspela",
   "desktop.wsl.error.alreadyAdded": "{{distro}} je že dodan",
-  "desktop.wsl.error.opencodeMissing": "opencode ni nameščen v tej distribuciji",
-  "desktop.wsl.error.opencodeCannotRun": "opencode je nameščen, vendar se ne more zagnati",
+  "desktop.wsl.error.opencodeMissing": "Kito ni nameščen v tej distribuciji",
+  "desktop.wsl.error.opencodeCannotRun": "Kito je nameščen, vendar se ne more zagnati",
   "desktop.wsl.error.opencodeNotInstalled": "Kito ni nameščen v {{distro}}",
   "desktop.wsl.error.updateVersion":
     "Posodobitev Kito je končana, vendar {{distro}} še vedno poroča {{installed}}; pričakovano {{expected}}",

@@ -42,7 +42,7 @@ export function TitlebarAccountButton() {
         })
         .catch(() => account.latest),
   )
-  const signedIn = createMemo(() => Boolean(account()))
+  const signedIn = createMemo(() => Boolean(account()?.account))
   const signedInLabel = createMemo(() => {
     const current = account()
     const name = titlebarAccountName(current)

@@ -4,15 +4,19 @@ import { Ipc, sendIpcEvent } from "../../shared/ipc-contract"
 import { writeLog, type DesktopLogger } from "../native/logging"
 import { safeWebContentsURL } from "../windows/state"
 import { getLastFocusedWindow, restoreMainWindows, setAppQuitting, setRelaunchHandler } from "../windows"
+import { createDeepLinkOutbox, deepLinksFromArgv } from "./deep-links"
 
 export function createApplicationLifecycle(logger: DesktopLogger) {
-  const pendingDeepLinks: string[] = []
+  const deepLinks = createDeepLinkOutbox()
   const wsl = { stop: async () => {} }
   const emitDeepLinks = (urls: string[]) => {
-    if (!urls.length) return
-    pendingDeepLinks.push(...urls)
     const win = getLastFocusedWindow()
-    if (win) sendIpcEvent(win.webContents, Ipc.app.deepLink, urls)
+    // A window that is still loading has no IPC listener yet; buffer instead of dropping.
+    if (win && !win.webContents.isLoading()) {
+      deepLinks.emit(urls, (next) => sendIpcEvent(win.webContents, Ipc.app.deepLink, next))
+      return
+    }
+    deepLinks.emit(urls)
   }
   const relaunch = () => {
     setAppQuitting()
@@ -22,8 +26,16 @@ export function createApplicationLifecycle(logger: DesktopLogger) {
     })
   }
 
+  // Windows/Linux launches the app directly with the URL as an argv entry, so
+  // cold-start links arrive here rather than through open-url/second-instance.
+  const initial = deepLinksFromArgv(process.argv)
+  if (initial.length) {
+    logger.log("deep link received via argv", { urls: initial })
+    emitDeepLinks(initial)
+  }
+
   app.on("second-instance", (_event: Event, argv: string[]) => {
-    const urls = argv.filter((arg) => arg.startsWith("opencode://"))
+    const urls = deepLinksFromArgv(argv)
     if (urls.length) {
       logger.log("deep link received via second-instance", { urls })
       emitDeepLinks(urls)
@@ -66,7 +78,7 @@ export function createApplicationLifecycle(logger: DesktopLogger) {
     setWslShutdown(stop: () => Promise<void>) {
       wsl.stop = stop
     },
-    consumeInitialDeepLinks: () => pendingDeepLinks.splice(0),
+    consumeInitialDeepLinks: () => deepLinks.consume(),
     restoreWindows() {
       app.on("window-all-closed", () => {
         if (process.platform !== "darwin") app.quit()

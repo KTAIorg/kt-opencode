@@ -7,6 +7,7 @@ import { Context, Effect, Layer } from "effect"
 // native-module stubs, so no runtime sniffing happens here.
 import { roots } from "#global-roots"
 import { Flock } from "./flock.js"
+import { kitoDataEnv } from "./kito-env.js"
 import { makeGlobalNode } from "./effect/app-node.js"
 
 // Kito isolates its data, config, state, and cache directories from a co-installed
@@ -18,7 +19,7 @@ const { data, cache, config, state, tmp } = roots(app)
 
 const paths = {
   get home() {
-    return process.env.OPENCODE_TEST_HOME ?? os.homedir()
+    return kitoDataEnv("TEST_HOME") ?? os.homedir()
   },
   data,
   bin: path.join(cache, "bin"),
@@ -74,13 +75,19 @@ const acquire = (input: Partial<Interface>) =>
         ),
       ),
     )
+    // The data directory holds the session database, stored credentials, and
+    // tool/shell output files; keep it private to the owning user. chmod is a
+    // no-op on platforms without POSIX modes.
+    yield* Effect.promise(() => fs.promises.chmod(service.data, 0o700)).pipe(
+      Effect.catchDefect(() => Effect.void),
+    )
     const canonicalTmp = yield* Effect.promise(() => fs.promises.realpath(service.tmp))
     return Service.of({ ...service, tmp: input.tmp ?? canonicalTmp })
   })
 
 const layer = Layer.effect(
   Service,
-  Effect.suspend(() => acquire({ config: process.env.OPENCODE_CONFIG_DIR ?? Path.config })),
+  Effect.suspend(() => acquire({ config: kitoDataEnv("CONFIG_DIR") ?? Path.config })),
 )
 
 export const node = makeGlobalNode({ service: Service, layer: layer, deps: [] })

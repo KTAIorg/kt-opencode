@@ -2,10 +2,11 @@ import { useData } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { normalizeProviderList } from "@/context/global-sync/utils"
 import { Iterable, pipe } from "effect"
-import { createEffect, createMemo, type Accessor } from "solid-js"
+import { createEffect, createMemo, createSignal, type Accessor } from "solid-js"
 import { emptyProviderCatalog } from "./provider-catalog"
 import { useIntegrations } from "./use-integrations"
 import { customerFacingProviderName } from "@/utils/kt-settlement"
+import type { ProviderListResponse } from "@/types"
 
 export const popularProviders = ["ktai", "opencode"]
 const popularProviderSet = new Set(popularProviders)
@@ -18,23 +19,58 @@ export function useProviders(directory: Accessor<string | undefined>) {
     return dir ? { directory: dir } : undefined
   }
 
-  createEffect(() => {
-    if (sdk.connection.status() !== "connected") return
-    const ref = location()
-    void (async () => {
+  // Catalog sync failures must reach a terminal state: keep the cause so the
+  // composer can stop showing "loading" forever and offer a retry. Bound the
+  // wait as well — while the server is still building its location layer the
+  // underlying requests can hang far longer than a user would wait, and a
+  // never-settling retry would keep `model.loading` (and everything gated on
+  // it) stuck.
+  const [failure, setFailure] = createSignal<unknown>()
+  const retry = () => {
+    setFailure(undefined)
+    const task = (async () => {
+      const ref = location()
       if (!ref) await data.location.syncInfo()
       const resolved = ref ?? data.location.default()
       await Promise.all([data.location.provider.sync(resolved), data.location.model.sync(resolved)])
-    })().catch(() => undefined)
+    })()
+    void Promise.race([
+      task,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Provider catalog load timed out")), 30_000),
+      ),
+    ]).catch((cause) => {
+      console.error("Failed to load provider catalog", cause)
+      setFailure(cause)
+    })
+  }
+
+  createEffect(() => {
+    if (sdk.connection.status() !== "connected") return
+    retry()
   })
   const integrations = useIntegrations(directory)
 
-  const providers = createMemo(() => {
+  // Hold the last resolved catalog while a location change re-fetches: the
+  // workspace directory can be re-resolved to a canonical form mid-session and
+  // returning an empty catalog briefly would flicker `paid`/model lists and
+  // unmount an open model popover.
+  const providers = createMemo<ProviderListResponse>((prev) => {
     const ref = location()
     const provider = data.location.provider.list(ref)
     const model = data.location.model.list(ref)
-    if (!provider || !model) return emptyProviderCatalog
+    if (!provider || !model) return prev
     return normalizeProviderList(provider, model)
+  }, emptyProviderCatalog)
+
+  // Once any catalog has loaded, keep the composer rendered while the next
+  // location's data streams in — the workspace directory can be re-resolved to
+  // a canonical form mid-session, and treating that as "loading" would unmount
+  // the controls (and close an open model popover).
+  const [everLoaded, setEverLoaded] = createSignal(false)
+  createEffect(() => {
+    if (data.location.provider.list(location()) !== undefined && data.location.model.list(location()) !== undefined)
+      setEverLoaded(true)
   })
 
   return {
@@ -42,6 +78,9 @@ export function useProviders(directory: Accessor<string | undefined>) {
       const ref = location()
       return data.location.provider.list(ref) !== undefined && data.location.model.list(ref) !== undefined
     },
+    everLoaded,
+    failed: () => failure() !== undefined,
+    retry,
     all: () => providers().all,
     default: () => providers().default,
     // V2 servers list only available providers, so the connectable catalog

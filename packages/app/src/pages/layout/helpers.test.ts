@@ -1,10 +1,17 @@
 import { describe, expect, test } from "bun:test"
 import {
+  collectDeepLinkActions,
   collectNewSessionDeepLinks,
   collectOpenProjectDeepLinks,
+  createDeepLinkGate,
+  deepLinkEvent,
   drainPendingDeepLinks,
+  filterFreshDeepLinks,
   parseDeepLink,
+  parseDeepLinkAction,
   parseNewSessionDeepLink,
+  readDeepLinkEventDetail,
+  type DeepLinkAction,
 } from "./deep-links"
 import type { SessionInfo } from "@opencode-ai/client/promise"
 import {
@@ -45,9 +52,24 @@ describe("layout deep links", () => {
     expect(parseDeepLink("opencode://open-project?directory=/tmp/demo")).toBe("/tmp/demo")
   })
 
+  test("accepts the ktai:// scheme for Kito deep links", () => {
+    expect(parseDeepLink("ktai://open-project?directory=/tmp/demo")).toBe("/tmp/demo")
+    expect(parseNewSessionDeepLink("ktai://new-session?directory=/tmp/demo&prompt=hello%20world")).toEqual({
+      directory: "/tmp/demo",
+      prompt: "hello world",
+    })
+    expect(collectOpenProjectDeepLinks(["ktai://open-project?directory=/a"])).toEqual(["/a"])
+  })
+
   test("ignores non-project deep links", () => {
     expect(parseDeepLink("opencode://other?directory=/tmp/demo")).toBeUndefined()
+    expect(parseDeepLink("ktai://other?directory=/tmp/demo")).toBeUndefined()
     expect(parseDeepLink("https://example.com")).toBeUndefined()
+  })
+
+  test("ignores malformed ktai deep links safely", () => {
+    expect(() => parseDeepLink("ktai://open-project/%E0%A4%A%")).not.toThrow()
+    expect(parseDeepLink("ktai://open-project/%E0%A4%A%")).toBeUndefined()
   })
 
   test("ignores malformed deep links safely", () => {
@@ -111,6 +133,123 @@ describe("layout deep links", () => {
 
     expect(drainPendingDeepLinks(target)).toEqual(["opencode://open-project?directory=/a"])
     expect(drainPendingDeepLinks(target)).toEqual([])
+  })
+
+  test("parses open-project and new-session actions", () => {
+    expect(parseDeepLinkAction("ktai://open-project?directory=/tmp/demo")).toEqual({
+      type: "open-project",
+      directory: "/tmp/demo",
+    })
+    expect(parseDeepLinkAction("ktai://new-session?directory=/tmp/demo&prompt=hello%20world")).toEqual({
+      type: "new-session",
+      directory: "/tmp/demo",
+      prompt: "hello world",
+    })
+    expect(parseDeepLinkAction("opencode://new-session?directory=C%3A%5Cwork")).toEqual({
+      type: "new-session",
+      directory: "C:\\work",
+    })
+  })
+
+  test("rejects deep links without an absolute directory", () => {
+    expect(parseDeepLinkAction("ktai://new-session?directory=relative/path")).toBeUndefined()
+    expect(parseDeepLinkAction("ktai://open-project?directory=../escape")).toBeUndefined()
+    expect(parseDeepLinkAction("ktai://new-session?directory=\\\\server\\share")).toEqual({
+      type: "new-session",
+      directory: "\\\\server\\share",
+    })
+  })
+
+  test("collects actions and ignores unrecognized links", () => {
+    expect(
+      collectDeepLinkActions([
+        "ktai://new-session?directory=/a&prompt=hi",
+        "https://example.com",
+        "ktai://unknown",
+        "not a url",
+        "opencode://open-project?directory=/b",
+      ]),
+    ).toEqual([
+      { type: "new-session", directory: "/a", prompt: "hi" },
+      { type: "open-project", directory: "/b" },
+    ])
+  })
+
+  test("filters deep links already seen", () => {
+    const seen = new Set<string>()
+    const url = "ktai://new-session?directory=/a"
+    expect(filterFreshDeepLinks(seen, [url])).toEqual([url])
+    expect(filterFreshDeepLinks(seen, [url, "ktai://open-project?directory=/b"])).toEqual([
+      "ktai://open-project?directory=/b",
+    ])
+  })
+
+  test("opens a deep link only after confirmation", () => {
+    const opened: DeepLinkAction[] = []
+    const confirmed: DeepLinkAction[] = []
+    const gate = createDeepLinkGate({
+      open: (link) => opened.push(link),
+      confirm: (link, approve) => {
+        confirmed.push(link)
+        approve()
+      },
+    })
+
+    gate.handle(["ktai://new-session?directory=/tmp/demo&prompt=ship%20it"])
+    expect(confirmed).toEqual([{ type: "new-session", directory: "/tmp/demo", prompt: "ship it" }])
+    expect(opened).toEqual([{ type: "new-session", directory: "/tmp/demo", prompt: "ship it" }])
+  })
+
+  test("drops a deep link when confirmation is declined", () => {
+    const opened: DeepLinkAction[] = []
+    let asked = 0
+    const gate = createDeepLinkGate({
+      open: (link) => opened.push(link),
+      confirm: () => {
+        asked++
+      },
+    })
+
+    gate.handle(["ktai://new-session?directory=/tmp/demo&prompt=ship%20it"])
+    expect(asked).toBe(1)
+    expect(opened).toEqual([])
+  })
+
+  test("asks once when the same URL arrives through buffer and event", () => {
+    const asked: DeepLinkAction[] = []
+    const gate = createDeepLinkGate({
+      open: () => undefined,
+      confirm: (link) => asked.push(link),
+    })
+    const urls = ["ktai://new-session?directory=/tmp/demo"]
+
+    gate.handle(urls)
+    gate.handle(urls)
+    expect(asked).toEqual([{ type: "new-session", directory: "/tmp/demo" }])
+  })
+
+  test("reads urls only from well-formed deep link events", () => {
+    expect(
+      readDeepLinkEventDetail(
+        new CustomEvent(deepLinkEvent, { detail: { urls: ["ktai://open-project?directory=/a", 1] } }),
+      ),
+    ).toEqual(["ktai://open-project?directory=/a"])
+    expect(readDeepLinkEventDetail(new Event(deepLinkEvent))).toEqual([])
+    expect(readDeepLinkEventDetail(new CustomEvent(deepLinkEvent, { detail: null }))).toEqual([])
+    expect(readDeepLinkEventDetail(new CustomEvent(deepLinkEvent, { detail: { urls: "nope" } }))).toEqual([])
+  })
+
+  test("never asks for malformed or unknown links", () => {
+    let asked = 0
+    const gate = createDeepLinkGate({
+      open: () => undefined,
+      confirm: () => {
+        asked++
+      },
+    })
+
+    gate.handle(["https://example.com", "ktai://bogus", "ktai://new-session", "garbage"])
+    expect(asked).toBe(0)
   })
 })
 

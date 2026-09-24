@@ -17,9 +17,10 @@ type Logger = {
 }
 
 export async function startBackgroundCli(logger: Logger) {
-  const isolated = !app.isPackaged && process.env.OPENCODE_DESKTOP_ISOLATED_SERVER === "1"
-  const development = !app.isPackaged && process.env.OPENCODE_DESKTOP_CLI_DEV
-  const developmentVersion = process.env.OPENCODE_VERSION ?? "local"
+  const isolated =
+    !app.isPackaged && (process.env.KITO_DESKTOP_ISOLATED_SERVER ?? process.env.OPENCODE_DESKTOP_ISOLATED_SERVER) === "1"
+  const development = !app.isPackaged && (process.env.KITO_DESKTOP_CLI_DEV ?? process.env.OPENCODE_DESKTOP_CLI_DEV)
+  const developmentVersion = process.env.KITO_VERSION ?? process.env.OPENCODE_VERSION ?? "local"
   const cli = development
     ? {
         version: developmentVersion,
@@ -37,7 +38,7 @@ export async function startBackgroundCli(logger: Logger) {
   if (isolated) process.env.XDG_STATE_HOME = app.getPath("userData")
   const service = await Service.ensure({
     file:
-      isolated && process.env.OPENCODE_DESKTOP_SERVER_CHANNEL === "local"
+      isolated && (process.env.KITO_DESKTOP_SERVER_CHANNEL ?? process.env.OPENCODE_DESKTOP_SERVER_CHANNEL) === "local"
         ? join(app.getPath("userData"), "kito", "service-local.json")
         : packagedRegistrationFile(),
     version: cli.version,
@@ -51,18 +52,14 @@ export async function startBackgroundCli(logger: Logger) {
     ...endpoint(service.url),
   })
   if (isolated && cli.binary) await cleanCliStages(cli.binary, logger)
+  const wslScript = process.env.KITO_DESKTOP_WSL_CLI_BUILD ?? process.env.OPENCODE_DESKTOP_WSL_CLI_BUILD
+  const wslOutput = process.env.KITO_DESKTOP_WSL_CLI_OUTPUT ?? process.env.OPENCODE_DESKTOP_WSL_CLI_OUTPUT
   return {
     url: service.url,
     username: service.auth.username,
     password: service.auth.password,
     version: cli.version,
-    wslBuild:
-      app.isPackaged || !process.env.OPENCODE_DESKTOP_WSL_CLI_BUILD || !process.env.OPENCODE_DESKTOP_WSL_CLI_OUTPUT
-        ? undefined
-        : {
-            script: process.env.OPENCODE_DESKTOP_WSL_CLI_BUILD,
-            output: process.env.OPENCODE_DESKTOP_WSL_CLI_OUTPUT,
-          },
+    wslBuild: app.isPackaged || !wslScript || !wslOutput ? undefined : { script: wslScript, output: wslOutput },
   }
 }
 

@@ -78,8 +78,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Инсталација дистрибуције није успела: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kito инсталација није успела",
   "desktop.wsl.error.alreadyAdded": "{{distro}} је већ додат",
-  "desktop.wsl.error.opencodeMissing": "opencode није инсталиран у овој дистрибуцији",
-  "desktop.wsl.error.opencodeCannotRun": "opencode је инсталиран, али не може да се покрене",
+  "desktop.wsl.error.opencodeMissing": "Kito није инсталиран у овој дистрибуцији",
+  "desktop.wsl.error.opencodeCannotRun": "Kito је инсталиран, али не може да се покрене",
   "desktop.wsl.error.opencodeNotInstalled": "Kito није инсталиран у {{distro}}",
   "desktop.wsl.error.updateVersion":
     "Kito ажурирање је завршено, али {{distro}} и даље извештава {{installed}}; очекивано {{expected}}",

@@ -3,7 +3,9 @@ import { resolveChannel } from "./utils"
 const arg = process.argv[2]
 const channel = arg === "dev" || arg === "beta" || arg === "prod" ? arg : resolveChannel()
 
-const appId = channel === "prod" ? "ai.opencode.desktop" : `ai.opencode.desktop.${channel}`
+// Must match the packaged appId in electron-builder.config.ts so the generated
+// file lands where the deb/rpm fpm mappings expect it.
+const appId = channel === "prod" ? "cc.ktapi.desktop" : `cc.ktapi.desktop.${channel}`
 const productName = channel === "prod" ? "Kito" : `Kito ${channel.charAt(0).toUpperCase() + channel.slice(1)}`
 const summary = `AI coding agent${channel !== "prod" ? ` (${channel})` : ""}`
 

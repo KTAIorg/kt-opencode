@@ -22,6 +22,10 @@ import { Event } from "@opencode-ai/schema/event"
 import { blobDataUrl } from "@/utils/draft-store"
 import { useServer } from "@/context/server"
 import { sessionHref } from "@/utils/session-route"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { usePlatform } from "@/context/platform"
+import { openKtIdentityLogin } from "@/components/dialog-kt-identity-login"
+import { fetchKtaiCredential } from "@/utils/kt-signed-in"
 
 const submitting = new Set<string>()
 
@@ -185,6 +189,8 @@ export function createPromptSubmit(input: PromptSubmitInput) {
   const navigate = useNavigate()
   const sdk = useWorkspaceLocation()
   const serverSDK = useServerSDK()
+  const dialog = useDialog()
+  const platform = usePlatform()
   const data = useData()
   const server = useServer()
   const local = useLocal()
@@ -261,6 +267,15 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     if (!currentModel || !currentAgent) {
       // 目录还没拉到时这不是用户的错：提示连接中，而不是「请先选择模型」。
       if (!local.catalogReady()) {
+        if (local.catalogFailed()) {
+          showToast({
+            variant: "error",
+            title: language.t("prompt.toast.modelCatalogFailed.title"),
+            description: language.t("prompt.toast.modelCatalogFailed.description"),
+          })
+          local.catalogRetry()
+          return
+        }
         showToast({
           title: language.t("prompt.toast.modelCatalogLoading.title"),
           description: language.t("prompt.toast.modelCatalogLoading.description"),
@@ -272,6 +287,22 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         description: language.t("prompt.toast.modelAgentRequired.description"),
       })
       return
+    }
+
+    // Fail fast when the selected Kito model has no usable credential: sending
+    // with an empty key only produces an upstream 401 after a long wait. Open
+    // the Telegram login dialog instead so the user lands on the real remedy.
+    if (currentModel.providerID === "ktai") {
+      const credential = await fetchKtaiCredential({
+        url: serverSDK.url,
+        username: serverSDK.server.http.username,
+        password: serverSDK.server.http.password,
+        fetchImpl: platform.fetch ?? fetch,
+      })
+      if (credential && !credential.identity && !credential.keyPresent) {
+        openKtIdentityLogin({ dialog })
+        return
+      }
     }
 
     const submissionSDK = sdk()

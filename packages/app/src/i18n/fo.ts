@@ -77,8 +77,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Tað eydnaðist ikki at seta distro upp: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kito uppsetingin miseydnaðist",
   "desktop.wsl.error.alreadyAdded": "{{distro}} er longu lagt afturat .",
-  "desktop.wsl.error.opencodeMissing": "opencode er ikki sett upp í hesi distro",
-  "desktop.wsl.error.opencodeCannotRun": "opencode er sett upp men kundi ikki koyra",
+  "desktop.wsl.error.opencodeMissing": "Kito er ikki sett upp í hesi distro",
+  "desktop.wsl.error.opencodeCannotRun": "Kito er sett upp men kundi ikki koyra",
   "desktop.wsl.error.opencodeNotInstalled": "Kito er ikki sett upp í {{distro}}",
   "desktop.wsl.error.updateVersion":
     "Kito dagføring liðug men {{distro}} greiðir enn frá {{installed}}; væntað {{expected}}.",

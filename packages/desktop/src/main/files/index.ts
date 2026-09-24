@@ -7,6 +7,7 @@ import { writeLog } from "../native/logging"
 import { nativeT } from "../native/translations"
 import { assertAttachmentBudget, createPickedFileAuthorizations } from "./attachment-picker"
 import { resolveExternalURL, resolveLocalFilePath } from "./external-url"
+import { isAllowedOpenApp, isExecutablePath } from "./open-target"
 
 export function createFileCapabilities() {
   const pickedFiles = createPickedFileAuthorizations()
@@ -46,7 +47,15 @@ export function createFileCapabilities() {
       return result.filePath ?? null
     },
     async openPath(path: string, application?: string) {
+      // Opening an executable hands control to the OS; reveal it instead.
+      if (isExecutablePath(path)) {
+        shell.showItemInFolder(path)
+        return ""
+      }
       if (!application) return shell.openPath(path)
+      // `application` is renderer-controlled; only allow the known "open in"
+      // app names or an installed editor binary, never an arbitrary executable.
+      if (!isAllowedOpenApp(application)) throw new Error(`Unsupported application: ${application}`)
       await new Promise<void>((resolve, reject) => {
         const command =
           process.platform === "darwin"
@@ -86,6 +95,10 @@ export function openLocalFileURL(value: string) {
   const path = resolveLocalFilePath(value)
   if (!path) {
     writeLog("window", "blocked local file target", { url: value }, "warn")
+    return
+  }
+  if (isExecutablePath(path)) {
+    shell.showItemInFolder(path)
     return
   }
   void shell.openPath(path).then((error) => {

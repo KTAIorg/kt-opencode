@@ -34,8 +34,27 @@ export type HttpMiddleware = (
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/AI/RequestExecutor") {}
 
+// Credential-carrying headers recorded on AIError diagnostics (and through them
+// into logs and serialized client payloads) must never hold real values.
+// Headers stores names in canonical lowercase, so plain Set membership matches
+// case-insensitively.
+const REDACTED_HEADERS = new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "x-api-key",
+  "x-goog-api-key",
+  "x-auth-token",
+])
+
 const headerDetails = (headers: Headers.Headers) =>
-  Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, String(value)]))
+  Object.fromEntries(
+    Object.entries(headers).map(([name, value]) => [
+      name,
+      REDACTED_HEADERS.has(name.toLowerCase()) ? "<redacted>" : String(value),
+    ]),
+  )
 
 const normalizedHeaders = (headers: Headers.Headers) =>
   Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]))

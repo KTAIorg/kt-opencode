@@ -1,3 +1,4 @@
+import fs from "fs"
 import path from "path"
 import { Global } from "@opencode-ai/util/global"
 
@@ -8,6 +9,8 @@ export const KTAI_TOPUP_URL = "https://www.ktapi.cc/wallet"
 export const HIDDEN_RELEASE_DATE = "2020-01-01"
 export const DEFAULT_CONTEXT = 131_072
 export const DEFAULT_OUTPUT = 32_768
+/** ktai-models.json 磁盘缓存有效期：超过即视为不可用，不落回陈旧目录。 */
+export const KTAI_MODELS_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 
 /**
  * Curated Kito defaults shown in the model picker for new customers.
@@ -232,8 +235,10 @@ export function resolveKtaiModels(input: { catalog?: unknown; pricing?: unknown;
 
 export async function readCachedKtaiModels(file = cachePath()) {
   try {
-    const data = (await Bun.file(file).json()) as { models?: unknown }
+    const data = (await Bun.file(file).json()) as { models?: unknown; updatedAt?: unknown }
     if (!Array.isArray(data.models)) return []
+    const updatedAt = typeof data.updatedAt === "number" ? data.updatedAt : 0
+    if (Date.now() - updatedAt > KTAI_MODELS_CACHE_TTL_MS) return []
     return data.models.flatMap((value): RawModel[] => {
       if (!value || typeof value !== "object") return []
       const row = value as RawModel
@@ -256,7 +261,10 @@ export async function readCachedKtaiModels(file = cachePath()) {
 
 export async function writeCachedKtaiModels(models: RawModel[], file = cachePath()) {
   if (!models.length) return
-  await Bun.write(file, JSON.stringify({ models, updatedAt: Date.now() }))
+  // tmp+rename 原子写：进程中途崩溃也不会给读者留半个 JSON。
+  const tmp = `${file}.${crypto.randomUUID()}.tmp`
+  await fs.promises.writeFile(tmp, JSON.stringify({ models, updatedAt: Date.now() }), { mode: 0o600 })
+  await fs.promises.rename(tmp, file)
 }
 
 export async function loadKtaiModels(apiKey?: string, options?: { cachePath?: string }) {

@@ -45,6 +45,11 @@ describe("ToolOutput", () => {
           expect(typeof outputPath).toBe("string")
           if (typeof outputPath !== "string") return
           expect(yield* fs.readFileString(outputPath)).toBe("one\ntwo\nthree")
+          // Spill files can hold secrets; they must be owner-only.
+          if (process.platform !== "win32") {
+            const stat = yield* fs.stat(outputPath)
+            expect(stat.mode & 0o777).toBe(0o600)
+          }
           expect(result.content).toEqual([
             { type: "text", text: "one\ntwo" },
             { type: "text", text: `... 1 line truncated; full content saved to ${outputPath} ...` },

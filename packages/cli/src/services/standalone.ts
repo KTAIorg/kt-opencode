@@ -20,10 +20,12 @@ function command(password: string, options: Options) {
   if (!executable) throw new Error("Failed to resolve standalone server command")
   return ChildProcess.make(executable, [...args, "--stdio", "--port", "0"], {
     cwd: startupDirectory,
-    // Explicit entry wins over anything inherited, so a user-exported
-    // OPENCODE_PASSWORD cannot shadow the child's lease credential.
-    env: { OPENCODE_PASSWORD: password },
-    extendEnv: true,
+    // The child is our own server, so it needs the full ambient environment
+    // (embedded-mode KTAI_* identity, KITO_DB, config selectors) — extendEnv
+    // would sanitize those away. Explicit entries still win over anything
+    // inherited, so a user-exported KITO_PASSWORD or OPENCODE_PASSWORD cannot
+    // shadow the lease credential.
+    env: { ...process.env, KITO_PASSWORD: password, OPENCODE_PASSWORD: password },
     // The server treats EOF on this pipe as the end of its ownership lease.
     // The OS closes it even when the TUI is killed before Effect finalizers run.
     stdin: "pipe",

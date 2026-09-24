@@ -78,8 +78,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Насб кардани distro иҷро нашуд: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kito насб карда нашуд",
   "desktop.wsl.error.alreadyAdded": "{{distro}} аллакай илова карда шудааст",
-  "desktop.wsl.error.opencodeMissing": "opencode дар ин паҳнкунӣ насб нашудааст",
-  "desktop.wsl.error.opencodeCannotRun": "opencode насб шудааст, аммо иҷро карда натавонист",
+  "desktop.wsl.error.opencodeMissing": "Kito дар ин паҳнкунӣ насб нашудааст",
+  "desktop.wsl.error.opencodeCannotRun": "Kito насб шудааст, аммо иҷро карда натавонист",
   "desktop.wsl.error.opencodeNotInstalled": "Kito дар {{distro}} насб нашудааст",
   "desktop.wsl.error.updateVersion":
     "Kito навсозӣ анҷом ёфт, аммо {{distro}} то ҳол гузориш медиҳад {{installed}}; интизорӣ {{expected}}",

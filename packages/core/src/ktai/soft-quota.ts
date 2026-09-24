@@ -1,4 +1,5 @@
 import { Global } from "@opencode-ai/util/global"
+import { kitoDataEnv, kitoEnv } from "@opencode-ai/util/kito-env"
 import fs from "fs"
 import path from "path"
 
@@ -19,19 +20,19 @@ export type ModelLike = {
   cost?: { input?: number } | ReadonlyArray<{ input?: number }>
 }
 
-export function filePath(override = process.env.OPENCODE_SOFT_QUOTA_PATH) {
+export function filePath(override = kitoDataEnv("SOFT_QUOTA_PATH")) {
   if (override?.trim()) return path.resolve(override.trim())
   return path.join(Global.Path.data, FILE_NAME)
 }
 
 export function disabled() {
-  const raw = process.env.OPENCODE_DISABLE_SOFT_QUOTA?.trim().toLowerCase()
+  const raw = kitoEnv("DISABLE_SOFT_QUOTA")?.trim().toLowerCase()
   return raw === "1" || raw === "true" || raw === "yes"
 }
 
 export function limit() {
   if (disabled()) return Number.POSITIVE_INFINITY
-  const raw = process.env.OPENCODE_SOFT_QUOTA_LIMIT?.trim()
+  const raw = kitoEnv("SOFT_QUOTA_LIMIT")?.trim()
   if (raw) {
     const n = Number(raw)
     if (Number.isFinite(n) && n >= 0) return Math.floor(n)
@@ -78,7 +79,10 @@ export function write(state: State, file = filePath()) {
     version: 1,
     zenFreeChats: Math.max(0, Math.floor(state.zenFreeChats)),
   }
-  fs.writeFileSync(file, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 })
+  // tmp+rename 原子写：崩溃/并发不会把半截 JSON 留给读者。
+  const tmp = `${file}.${crypto.randomUUID()}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 })
+  fs.renameSync(tmp, file)
   return next
 }
 

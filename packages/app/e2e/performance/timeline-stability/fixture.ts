@@ -715,7 +715,34 @@ function messageContent(
 
 function toolEvents(part: ToolSeed, messageID: string): readonly OpenCodeEvent[] {
   const previous = toolStates.get(part.callID)
-  if (previous === "completed" || previous === "error") return []
+  const terminal = part.state.status === "completed" || part.state.status === "error"
+  // A completed tool can still mutate (answer updates, output refreshes,
+  // duplicate delivery): the server re-emits the terminal event with the new
+  // state instead of dropping it.
+  if (previous === "completed" || previous === "error") {
+    if (!terminal) return []
+    return [
+      part.state.status === "error"
+        ? makeEvent("session.tool.failed", {
+            sessionID,
+            assistantMessageID: messageID,
+            id: part.callID,
+            error: { type: "ToolError", message: part.state.error },
+            metadata: jsonRecord(part.state.metadata),
+            executed: part.executed ?? true,
+            resultState: jsonRecord(part.providerResultState),
+          })
+        : makeEvent("session.tool.success", {
+            sessionID,
+            assistantMessageID: messageID,
+            id: part.callID,
+            content: [{ type: "text", text: part.state.output }],
+            metadata: jsonRecord(part.state.metadata),
+            executed: part.executed ?? true,
+            resultState: jsonRecord(part.providerResultState),
+          }),
+    ]
+  }
 
   const events: OpenCodeEvent[] = []
   if (!previous) {

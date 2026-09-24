@@ -148,6 +148,55 @@ describe("OpencodePlugin", () => {
     ),
   )
 
+  it.live("stops device polling at the device code deadline", () =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const requests: string[] = []
+        const server = Bun.serve({
+          port: 0,
+          fetch: (request) => {
+            const url = new URL(request.url)
+            requests.push(`${request.method} ${url.pathname}`)
+            if (url.pathname.endsWith("/auth/device/code")) {
+              return Response.json({
+                device_code: "device",
+                user_code: "user",
+                verification_uri_complete: `${url.origin}/verify`,
+                expires_in: 0.25,
+                interval: 0.05,
+              })
+            }
+            if (url.pathname.endsWith("/auth/device/token")) {
+              // 永远 pending：没有 expires_in 死线的话这里会无限轮询。
+              return Response.json({ error: "authorization_pending" })
+            }
+            return new Response("Not found", { status: 404 })
+          },
+        })
+        return { requests, server }
+      }),
+      ({ requests, server }) =>
+        Effect.gen(function* () {
+          yield* addPlugin()
+          const integrations = yield* Integration.Service
+          const integrationID = Integration.ID.make("opencode")
+          const attempt = yield* integrations.oauth.connect({
+            integrationID,
+            methodID: Integration.MethodID.make("device"),
+            answer: { server: server.url.origin },
+          })
+          const status = yield* eventually(
+            integrations.oauth.status({ integrationID, attemptID: attempt.attemptID }),
+            (value) => value.status !== "pending",
+          )
+          expect(status).toMatchObject({ status: "failed", message: expect.stringContaining("expired") })
+          // 确实轮询过，但在死线处停住而不是无限 pending。
+          expect(requests).toContain("POST /auth/device/token")
+        }),
+      ({ server }) => Effect.promise(() => server.stop(true)),
+    ),
+  )
+
   it.effect("rejects non-HTTP OpenCode servers", () =>
     Effect.gen(function* () {
       yield* addPlugin()
@@ -189,8 +238,8 @@ describe("OpencodePlugin", () => {
           server: Bun.serve({
             port: 0,
             fetch: async (request) => {
-              await gate.promise
               authorization.push(request.headers.get("authorization"))
+              await gate.promise
               const origin = new URL(request.url).origin
               return Response.json({
                 config: {
@@ -256,9 +305,25 @@ describe("OpencodePlugin", () => {
           })
 
           yield* addPlugin()
-          expect(authorization).toEqual(["Bearer secret"])
-
-          const provider = required(yield* catalog.provider.get(Provider.ID.make("remote")))
+          // The plugin load is forked: wait for the request to actually reach
+          // the mock before asserting on the captured header.
+          yield* eventually(
+            Effect.sync(() => authorization.length),
+            (count) => count > 0,
+          )
+          expect(authorization).toContain("Bearer secret")
+          // The plugin's catalog load is forked: release the gate so the
+          // in-flight /api/config response can complete, then wait for the
+          // remote provider to land in the catalog.
+          release()
+          // Catalog reload is debounced and plugin refreshes serialize on a
+          // semaphore behind boot-time retries, so the populated provider can
+          // take a few seconds to materialize.
+          const provider = yield* eventually(
+            catalog.provider.get(Provider.ID.make("remote")),
+            (value) => value?.integrationID === Integration.ID.make("opencode"),
+            8000,
+          ).pipe(Effect.map(required))
           expect(provider).toMatchObject({
             name: "Remote",
             integrationID: "opencode",

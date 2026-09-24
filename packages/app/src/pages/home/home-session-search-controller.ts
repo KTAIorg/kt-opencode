@@ -24,7 +24,10 @@ export function createHomeSessionSearchController(home: HomeController, sessions
     if (!value) return []
     return sessions.data
       .searchRecords()
-      .filter((record) => `${sessionLabel(record.session)} ${record.projectName}`.toLowerCase().includes(value))
+      .filter(
+        (record) =>
+          `${sessionLabel(record.session, language)} ${record.projectName}`.toLowerCase().includes(value),
+      )
   })
   const active = createMemo(() => {
     const records = results()

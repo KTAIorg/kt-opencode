@@ -19,12 +19,18 @@ const appNames: Record<string, string> = {
   beta: "Kito Beta",
   prod: "Kito",
 }
+// Keep these ids in sync with the packaged appId in electron-builder.config.ts.
+// They root the Chromium userData directory and the single-instance lock, so
+// sharing "ai.opencode.desktop" with a co-installed OpenCode desktop let each
+// product see the other's persisted state and hijack the other's deep links.
+// The old shared userData is intentionally not migrated: it only held window
+// state and permissions that should never have been shared in the first place.
 const appIDs: Record<string, string> = {
-  dev: "ai.opencode.desktop.dev",
-  beta: "ai.opencode.desktop.beta",
-  prod: "ai.opencode.desktop",
+  dev: "cc.ktapi.desktop.dev",
+  beta: "cc.ktapi.desktop.beta",
+  prod: "cc.ktapi.desktop",
 }
-const testOnboarding = process.env.OPENCODE_TEST_ONBOARDING === "1"
+const testOnboarding = (process.env.KITO_TEST_ONBOARDING ?? process.env.OPENCODE_TEST_ONBOARDING) === "1"
 const jsCallStackFeature = "DocumentPolicyIncludeJSCallStacksInCrashReports"
 
 export function configureApplication() {
@@ -32,11 +38,16 @@ export function configureApplication() {
   try {
     process.chdir(homedir())
   } catch {}
+  process.env.KITO_DISABLE_EMBEDDED_WEB_UI = "true"
   process.env.OPENCODE_DISABLE_EMBEDDED_WEB_UI = "true"
 
-  const appID = app.isPackaged ? appIDs[CHANNEL] : "ai.opencode.desktop.dev"
+  const appID = app.isPackaged ? appIDs[CHANNEL] : "cc.ktapi.desktop.dev"
   const onboardingRoot = createOnboardingTestRoot()
-  app.setName(app.isPackaged ? appNames[CHANNEL] : "Kito Dev")
+  const appName = app.isPackaged ? appNames[CHANNEL] : "Kito Dev"
+  app.setName(appName)
+  // The macOS About panel reads the bundle's Info.plist, not app.getName(), so
+  // an unpackaged dev run would show "Electron" and the Electron version.
+  app.setAboutPanelOptions({ applicationName: appName, applicationVersion: VERSION })
   app.setAppUserModelId(appID)
   app.setPath("userData", onboardingRoot ? join(onboardingRoot, "desktop") : join(app.getPath("appData"), appID))
   if (onboardingRoot) app.setPath("sessionData", join(onboardingRoot, "session"))
@@ -52,15 +63,25 @@ export function configureApplication() {
   })
 
   loadProxyEnvironment(logger)
-  app.commandLine.appendSwitch("proxy-bypass-list", "<-loopback>")
+  // Keep loopback traffic (the local sidecar, including its credentials) off
+  // any configured system proxy. `<-loopback>` would do the opposite: it
+  // removes Chromium's implicit loopback bypass.
+  app.commandLine.appendSwitch("proxy-bypass-list", "127.0.0.1;localhost;[::1]")
   const features = app.commandLine.getSwitchValue("enable-features")
   app.commandLine.appendSwitch("enable-features", features ? `${jsCallStackFeature},${features}` : jsCallStackFeature)
   if (!app.isPackaged) app.commandLine.appendSwitch("remote-debugging-port", "9222")
   return logger
 }
 
-export function acquireApplicationLock() {
-  if (app.requestSingleInstanceLock()) return true
+// A relaunched instance starts while the previous one is still draining
+// (wsl.stop + app.quit), so the first lock attempt can fail even though the
+// old process is already on its way out. Retry briefly before giving up —
+// without this, clicking "Restart" on the recovery sheet quits everything.
+export async function acquireApplicationLock() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (app.requestSingleInstanceLock()) return true
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
   app.quit()
   return false
 }
@@ -71,8 +92,13 @@ export function preferApplicationEnvironment(logger: DesktopLogger) {
   if (!shellEnv?.XDG_STATE_HOME) delete process.env.XDG_STATE_HOME
   const merged = applyShellEnvironment(process.env, shellEnv)
   Object.assign(process.env, merged, {
+    // Exported under both names: in-repo readers go through the KITO_*
+    // namespace while bundled upstream code paths may still read OPENCODE_*.
+    KITO_EXPERIMENTAL_ICON_DISCOVERY: "true",
     OPENCODE_EXPERIMENTAL_ICON_DISCOVERY: "true",
+    KITO_EXPERIMENTAL_FILEWATCHER: "true",
     OPENCODE_EXPERIMENTAL_FILEWATCHER: "true",
+    KITO_CLIENT: "desktop",
     OPENCODE_CLIENT: "desktop",
   })
   for (const key of HOST_PROVIDER_ENV_KEYS) {
@@ -91,6 +117,9 @@ export function prepareDesktop(logger: DesktopLogger) {
       ),
       Effect.catch((error) => Effect.sync(() => logger.warn("failed to clean scoped store files", error))),
     )
+    // ktai:// is Kito's scheme; opencode:// stays registered so legacy links
+    // keep landing in Kito instead of a co-installed OpenCode.
+    app.setAsDefaultProtocolClient("ktai")
     app.setAsDefaultProtocolClient("opencode")
     registerRendererProtocol()
     setDockIcon()
@@ -115,7 +144,9 @@ function createOnboardingTestRoot() {
   ;["data", "config", "cache", "state", "desktop", "session"].forEach((dir) =>
     mkdirSync(join(root, dir), { recursive: true }),
   )
-  process.env.OPENCODE_DB = ":memory:"
+  // KITO_DB only: kitoDataEnv reads KITO_* exclusively so an upstream
+  // OPENCODE_DB can never repoint Kito's database.
+  process.env.KITO_DB = ":memory:"
   process.env.XDG_DATA_HOME = join(root, "data")
   process.env.XDG_CONFIG_HOME = join(root, "config")
   process.env.XDG_CACHE_HOME = join(root, "cache")

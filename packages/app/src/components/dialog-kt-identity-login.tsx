@@ -179,7 +179,10 @@ export function DialogKtIdentityLogin(props: { onClose?: () => void }) {
       () => true,
       () => false,
     )
-    if (!ok) return
+    if (!ok) {
+      showToast({ variant: "error", title: language.t("dialog.ktIdentity.copyFailed") })
+      return
+    }
     setState("copied", true)
   }
 

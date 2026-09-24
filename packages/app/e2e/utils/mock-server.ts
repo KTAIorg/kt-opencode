@@ -145,6 +145,15 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
       )
     }
     if (path === "/api/health") return json(route, { healthy: true, version: "2.0.0", pid: 1 })
+    // Kito account surface: an unauthenticated desktop renders logged-out
+    // chrome, so answer with the same shapes the real sidecar produces.
+    if (path === "/ktai/credential") return json(route, { identity: false, keyPresent: false })
+    // A real sidecar answers 401 when logged out, but Playwright counts any
+    // failed resource as a console error — a 200 null body drives the same
+    // signed-out state without tripping expectNoSmokeErrors.
+    if (path === "/ktai/account" || path === "/ktai/wallet") return json(route, null)
+    if (path === "/ktai/models") return json(route, { data: [] })
+    if (path === "/ktai/models/probe" || path === "/ktai/catalog") return json(route, { data: {} })
     if (path === "/api/reference")
       return json(route, {
         location: {
@@ -238,6 +247,8 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
       return route.fulfill({ status: 204, headers: { "access-control-allow-origin": "*" } })
     if (/^\/api\/worktree\/[^/]+\/refresh$/.test(path))
       return route.fulfill({ status: 204, headers: { "access-control-allow-origin": "*" } })
+    if (/^\/api\/permission\/saved\/[^/]+$/.test(path))
+      return json(route, { location: location(config), data: [] })
     if (path === "/api/permission/request")
       return json(route, {
         location: location(config),

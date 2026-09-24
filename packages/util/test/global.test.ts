@@ -52,6 +52,8 @@ describe("global", () => {
 
     Object.values(directories).forEach((directory) => expect(fs.statSync(directory).isDirectory()).toBe(true))
     expect(Context.get(context, Global.Service).tmp).toBe(directories.tmp)
+    // The data directory holds the session database and credentials; it must be owner-only.
+    if (process.platform !== "win32") expect(fs.statSync(directories.data).mode & 0o777).toBe(0o700)
     fs.rmSync(root, { recursive: true, force: true })
   })
 

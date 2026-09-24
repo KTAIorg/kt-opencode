@@ -271,6 +271,196 @@ opencode.db 不可见（新库全新）；运行中的旧版守护进程保留�
 
 ---
 
+## L. Issue #114 隔离与安全加固（2026-09-19，fix-114-isolation）
+
+目标：Kito 不再与上游 OpenCode 共享身份、配置、数据库、Chromium userData、
+协议处理、凭据、日志与更新行为；不可被上游静默替换或跨产品泄漏秘密。
+
+### A. CLI 上游更新器停用
+- `cli/src/services/updater.ts`：Kito 构建（`OPENCODE_CLI_NAME` 未设/以
+  `opencode2` 开头）跳过 update.opencode.ai 检查与 `opencode.ai/v2/install`
+  安装路径，日志标记 `kito-build`；留 TODO 待接 Kito 更新 feed。
+
+### B. 桌面身份与 userData 隔离
+- `desktop/lifecycle/environment.ts`：appId 改为 `cc.ktapi.desktop{,.dev,.beta}`；
+  `app.setPath("userData")` 随之隔离；`setAsDefaultProtocolClient("ktai")` +
+  保留 `opencode` 兼容注册。
+- `electron-builder.config.ts` / `copy-metainfo.ts` / 旧版
+  `opencode-desktop.desktop` 启动器全部改 Kito 目标
+  （`/opt/Kito/cc.ktapi.desktop`）；打包测试同步更新。
+- 旧共享 userData 刻意不迁移（只有窗口状态与权限，本不该共享）。
+
+### C. OPENCODE_* 环境变量隔离
+- 新增 `util/src/kito-env.ts`：`kitoEnv()` = KITO_ 优先 + OPENCODE_ 兼容
+  回退（安全开关）；`kitoDataEnv()` = 仅 KITO_（一切路径/文件选择器，
+  上游 OPENCODE_* 不得重指 Kito 的库与二进制）。
+- 全仓数据路径变量走 kitoDataEnv（CONFIG_DIR/DB/CONFIG/CONFIG_CONTENT/
+  MODELS_PATH/TEST_HOME/资产与 wasm 覆盖/KTAI_SPENDABLE_PATH 等）；
+  安全开关走 kitoEnv 双名（CLIENT/DISABLE_*/LOG_LEVEL/CPU_PROFILE 等）。
+- `desktop/service/shell-env.ts` 过滤导入的 KITO_*/OPENCODE_* 与宿主凭据。
+- `cli/services/standalone.ts`：子进程 env 同时写 KITO_PASSWORD +
+  OPENCODE_PASSWORD——修复 extendEnv 下宿主 KITO_PASSWORD 抢先于
+  OPENCODE_PASSWORD 遮蔽租约凭据的问题。
+- Effect Config 读（model-request 等）用 `Config.orElse` 双名等价。
+
+### D. 凭据文件 0600
+- `core/ktai/newapi.ts`：`ktai-api-key.json`/`ktai-spendable.json` 写后
+  `chmod 0600`（含修复已存在的宽松文件）；`auth.json` 同样修补。
+- `core/ktai/identity.ts`：`ktai-identity.json` 写后 chmod 0600。
+
+### E. 日志脱敏
+- `server/src/process.ts`：自研 request logger 替代默认 logger——查询串
+  中 token|secret|password|key 类参数值置 `REDACTED`，其余参数保留；
+  只记录 4xx/5xx，保持原有错误语义。
+- `cli/src/util/process.ts` 新增 `redactArgs()`（-H/--header/--prompt/
+  --token/--password/--api-key/--auth-token/--data/--param 值置
+  `<redacted>`），index.ts 启动与失败日志、mini-host trace 统一使用。
+
+### F. ktai:// 深链
+- desktop 注册 `ktai` + 保留 `opencode`；second-instance argv 双协议过滤；
+  app `parseUrl` 双协议解析；打包三通道 protocols 均为 `[ktai, opencode]`。
+
+### G. 身份过期时间不再杜撰
+- `identity.ts` `asSession`：服务端未给 expiresAt 时不再编造 +1h；
+  `sessionExpiresAt` 缺省仅在运行时返回估算（Credential.expires 必填），
+  不落盘；`persistIdentityToken/Session` 只写实有值；
+  `readPersistedIdentityToken` 无 expiresAt 视为有效、仅拒绝真实过期；
+  新增 `KITO_KTAI_IDENTITY_PATH` 覆盖供测试/部署。
+- `provider/ktai.ts`：真实 expiresAt 经 credential.metadata 传递，
+  持久化只写服务端实值。
+
+### H. 面向用户文案去 OpenCode 化
+- CLI：`commands.ts` 程序名 opencode2 / "Kito command line interface"，
+  描述文案改 Kito；`default.ts`/`service-config.ts`/`pair.ts` 错误与
+  用法提示改 Kito 或 `selfCommand()`；`update-preflight.tsx` 阶段文案改
+  Kito；console/login.ts "Connecting to OpenCode..." → Kito。
+- TUI：error-component 崩溃页与 issue 链接指向 ktaiorg/kt-opencode；
+  dialog-pair/mini/splash/footer/util-error 文案改 opencode2/Kito；
+  app.tsx "Open docs" 指向 fork 仓库。
+- app：四处 `opencode.ai/docs/*` "learn more" 链接与
+  dialog-custom-provider 文档链接指向 fork 仓库；
+  `context/highlights.tsx` CHANGELOG_URL 置空（Kito 无公开 changelog
+  feed，防止拉取展示上游 release notes，留注释待接 Kito feed）。
+- desktop i18n：`desktop.updater.none.message` 与
+  `desktop.updater.downloaded.prompt` 英文源改 Kito；62 个非英语 locale
+  中陈旧 OpenCode 译文删除走英文兜底（符合本仓本地化约定）。
+- WSL 安装器：`wslCliInstallCommand` 改指 fork 仓库
+  `ktaiorg/kt-opencode/main/install`；无 bundled binary 时显式抛错，
+  不再从上游 npm 拉 `@opencode-ai/cli`（修自我替换风险；代价是打包版
+  桌面在 WSL 安装按钮会失败，待 Kito 自带 CLI feed 或随包 Linux 二进制）。
+
+**不改（有意保留）**：`opencode.db` 文件名、`auth.json`、`opencode.json`
+配置名、basic-auth 用户名 `opencode`、`x-opencode-*` 协议头、
+`opencode` 集成/provider id、OpenCode Console/Zen 产品名引用、
+storage key 命名空间（`opencode.*`，改名会丢存量数据）、legacy 日志只读
+回收路径、compile-time 常量（OPENCODE_VERSION/CHANNEL/CLI_NAME）、
+OPENCODE_DRIVE/STORY 等 dev 工具 env、simulation `opencode-drive` state 目录。
+
+### 测试
+- desktop：electron-builder 8 + wsl servers 7（含新「拒绝上游安装」用例）
+  + shell-env 10 = 25 pass；`bun typecheck` 0。
+- app：helpers 43 pass（ktai:// 覆盖）；typecheck 0。
+- core：ktai 5 文件 + config = 84 pass（新增 expiresAt 缺失/畸形/过期、
+  0600 修补用例）；`bun typecheck` 仅预存在 `@ai-sdk/xai` 声明缺失
+  （test/provider-xai-responses.test.ts，未触碰，core package.json 未声明）。
+- server：process/auth/request-tracing/log-leak = 5 pass；typecheck 0。
+- cli：argv-redact 新 2 + service 21 + env + standalone = 25 pass；
+  typecheck 0。util/tui typecheck 0。
+
+### 未完成/后续
+- Kito 无自有 CLI/desktop 更新 feed：CLI 更新器整段跳过、app release
+  highlights 停用、打包版 WSL 安装会显式失败——待 feed 落地后逐项恢复。
+- `install` 脚本本体仍是上游内容（下载 `@opencode-ai/cli` npm 包），
+  仅 `--binary` 路径安全；接入 Kito 分发渠道前勿用于版本安装。
+- OPENCODE_DRIVE/STORY dev env 保留原名（文档既有接口），未加 KITO_ 别名。
+
+---
+
+## 追加实施：Issue #114 Kito/OpenCode 隔离与凭据安全（分支 fix-114-isolation）
+
+工作树 `/Users/fuwuqi/kito-pr-iso`，基于 origin/main 的 `fix-114-isolation` 分支。
+
+### A/P0 CLI updater 禁用
+- `packages/cli/src/services/updater.ts`：Kito 构建（`OPENCODE_CLI_NAME` 未定义或
+  `opencode2*`）在 `check()` 入口直接返回，不再触达
+  `update.opencode.ai`、`@opencode-ai/cli` 或 `opencode.ai/v2/install`。
+  TODO 注明重开前需接 Kito 自有 feed。
+- `packages/desktop/src/main/wsl/runtime.ts`：无内置二进制时拒绝版本安装
+  （原会从 anomalyco/opencode 拉上游包）；安装脚本指向 ktaiorg/kt-opencode。
+
+### B/P0 桌面运行时 ID / userData
+- `electron-builder.config.ts`、`lifecycle/environment.ts`、`copy-metainfo.ts`、
+  `resources/linux/opencode-desktop.desktop`：appId/userData 根改为
+  `cc.ktapi.desktop[.dev|.beta]`；旧的共享 `ai.opencode.desktop` userData
+  不迁移（只含窗口状态与权限）。
+
+### C/P0 环境变量集中化
+- 新增 `packages/util/src/kito-env.ts`：`kitoEnv`（KITO_* 优先、OPENCODE_* 兼容）
+  与 `kitoDataEnv`（仅 KITO_*，用于一切数据/路径变量）。
+- 数据根 leaf 由 `opencode` 改为 `kito`（`util/global.ts`），`OPENCODE_TEST_HOME`
+  → `KITO_TEST_HOME`。
+- DB/CONFIG*/MODELS_PATH/KTAI_*_PATH/SOFT_QUOTA_PATH/PARCEL_WATCHER_PATH/
+  PHOTON_WASM_PATH/NODE_PTY_PATH/TREE_SITTER_*/NODE_ASSETS_DIR/FFF_FFI_PATH/
+  GIT_BASH_PATH/ZED_DB/KTAI_SPENDABLE_PATH/SIMULATE 等全部走 `kitoDataEnv`。
+- `vite.node.config.ts` bundle prelude 改为写 `KITO_*` 资产变量。
+- desktop `shell-env.ts`：登录 shell 导入同时屏蔽 `KITO_*` 与 `OPENCODE_*`；
+  desktop 写双命名空间仅为兼容（CLIENT/EXPERIMENTAL_*）。
+- `cli/env.ts`：`KITO_PASSWORD`/`KITO_SERVER_PASSWORD` 优先并同样从 session env 剔除。
+- `script/src/index.ts`：发布脚本 KITO_* 优先（BUMP/VERSION/CHANNEL/RELEASE）。
+
+### D/P1 凭据文件 0600
+- `newapi.ts` persistManagedApiKey、`identity.ts` persistIdentityToken、
+  `clearManagedApiKey` 的 auth.json 重写、spendable cache 写入后均 `chmodSync 0600`，
+  修复已存在宽松权限文件；含修复性测试。
+
+### E/P1 日志脱敏
+- `server/src/process.ts`：`redactUrl` 将 token/secret/password/key 类查询参数值
+  替换为 REDACTED（保留安全参数），替换原 HttpMiddleware.logger 仅 4xx/5xx 输出。
+- `cli/util/process.ts` 新增 `redactArgs`：`--prompt/--token/--password/--api-key/
+  --auth-token/--header/--data/--param`（含 `=` 形式）写日志/诊断前打码；
+  `index.ts`、`mini-host.ts` argv 记录全部接入。
+
+### F/P1 双 scheme 深链
+- electron-builder protocols、`lifecycle/index.ts` second-instance argv、
+  `app/.../deep-links.ts` 解析同时接受 `ktai://` 与 `opencode://`；
+  helpers.test 增补 ktai 用例 + 畸形链接安全用例。
+
+### G/P0 不再虚构 expiresAt
+- `IdentityBearerSession.session.expiresAt` 改可选；`asSession` 不再编造 +1h。
+- `sessionExpiresAt` 仅在内存为必填的 Credential.OAuth.expires 给估算值；
+  `plugin/provider/ktai.ts` 仅持久化服务端真实 expiresAt（经 metadata 传递）。
+- `readPersistedIdentityToken` 仅拒绝"有效且已过期"的时间戳；无 expiresAt 的
+  token 重启后仍有效。
+
+### H/P2 用户面命名
+- CLI usage/描述/用法错误经 `selfCommand()` 输出 `opencode2`；ACP agentInfo.name、
+  terminal-auth、登录提示改 `Kito`/`opencode2`；TUI `/exit`、crash 屏、mini
+  splash、pair 提示等文案改 Kito/opencode2。
+- app：`opencode.ai` 文档/更新日志链接替换为 ktaiorg/kt-opencode；changelog
+  feed 置空（Kito 无自有 feed 前不再拉取上游 release notes）。
+- desktop i18n：en 两条 updater 文案改 Kito；其余 60+ 语言删除同名过期译文，
+  走英文兜底（符合 i18n 规范：不留指向旧产品名的译文）。
+
+### 验证结果
+- typecheck：util / cli / server / desktop / tui / app / enterprise 全部 0 错误。
+  core `tsgo -b` 仅余 `test/provider-xai-responses.test.ts` 缺 `@ai-sdk/xai`
+  声明——该测试文件在 HEAD 未改动且包未声明于 core/package.json，属预存在问题。
+- 测试：cli service 21/21（含 1 处期望文案改 `service set port`）；
+  acp 全套 48 pass；auth+mini 20 pass；argv-redact/env/updater/legacy-data/
+  mini-host/node-assets 29 pass；debug-config 2 pass；core ktai 48 pass +
+  config 35 pass；app helpers+build-prompt 43 pass；desktop 18 pass；
+  server log-leak/process/request-tracing 4 pass；tui 抽样 32 pass。
+- 新修测试：electron-builder 各 channel 期望 `["ktai","opencode"]`；
+  identity 新增"无 expiresAt 仍有效 + 0600"两例；newapi 新增 0600 修复例；
+  shell-env 增补 KITO_* 屏蔽断言；servers.test 新增拒绝上游版本安装例；
+  acp command/initialize-auth 期望改 Kito；service.test 端口冲突提示断言放宽到
+  `service set port <port>`（selfCommand 前缀）。
+
+### 未解决/说明
+- core typecheck 的 `@ai-sdk/xai` 缺失为预存在环境/依赖声明问题，非本次引入。
+- `packages/web` 文档站仍为上游 OpenCode 文档内容，不在本 issue 范围。
+- 内部 wire/协议标识（`x-opencode-*` 头、basic-auth 用户名 `opencode`、
+  `opencode.*` 命令 ID、主题名、provider id、`ai.opencode` 兼容常量）按规范保留。
 ## 追加修复（2026-09-19）：OAuth 回调页 + desktop metainfo 品牌漏网（分支 fix-109-oauth-brand）
 
 - `packages/core/src/oauth/page.ts`：整页 OpenCode → Kito。成功/失败文案
@@ -446,6 +636,63 @@ session.timeline.notice / dialog.ktWallet.crypto* 等——按 AGENTS「翻译�
   `fix(core)` 将 `provider-xai-responses.test.ts` 引用的 `@ai-sdk/xai`
   声明为直接依赖（`9881387`），修复上文记录的预存在缺依赖 typecheck
   报错（pre-push turbo 缓存未命中时必现）。
+## L. Issue #109 · Kito 2.1.8 实测七项修复（2026-09-19）
+
+对应 https://github.com/KTAIorg/kt-opencode/issues/109（#108 实测清单，base=main+#105+#107 之后）。
+
+1. **品牌**：模型自我标识全改 Kito——`plugin/system-prompt/`7 个 family prompt
+   （gpt/anthropic/gemini/kimi/codex/meta/trinity）+ `session/runner/prompt/system.txt`
+   + `plugin/skill/opencode.md`（产品问答 skill）+ `plugin/skill.ts`（skill 名/描述/report
+   描述/诊断标签）+ `plugin/skill/report.md` + `tool/plugin/websearch.ts`（权限提示）
+   + `tool/plugin/webfetch.ts`（UA `Kito-User/1.0; +https://kito.ktai.im`）
+   + `plugin/command/initialize.txt` + desktop `renderer/i18n/`60+ locale 的 updater 文案。
+   **保留**：`opencode.json`/`.opencode/` 真实文件名、`@opencode-ai/*` 包名、
+   `opencode2` CLI 二进制、opencode.ai 上游文档 URL、provider 集成标识
+   （X-Title/originator/HTTP-Referer——上游注册 attribution 不能动）、
+   OpenCode Zen（上游真实产品名）。
+2. **自动接受权限**：`general-controllers` 的开关此前仅支持会话作用域，全局设置页
+   无 sessionID → 永远 disabled。新增 `resolvePermissionScope` 纯函数
+   （general-controller-behavior）：有 sessionID→会话级，无→目录级；permission
+   context 补 `enableDirectory`/`disableDirectory`；与命令面板 toggleAutoAccept
+   语义对齐。
+3. **探测精度**：`model-probe.ts` 的 `send()` 此前 `response.ok` 直接判 ok——
+   NewAPI 一类网关把上游错误装进 HTTP 200 的 `error` 信封/`success:false` 返回。
+   现在解析响应体，检出错误信封即判 fail（真实探测 grok-4.6 之雷）。
+4. **静默失败**：`runner/llm.ts` 新增 empty-response 兜底——provider 事务已开始
+   （`stepStarted`）但留不下任何可渲染内容时记 `provider.empty-response` 持久错误
+   而非静默 Completed。判定：`stream._tag==="Success" && stepStarted &&
+   !failure && !calls.some(called||settled) && (!finish || (step===1 &&
+   !outputStarted))`。截断（无 finish）任何步都报；stop-零内容只在第一步报
+   （首问欠答）；零事件流无法区分测试 noop 不报；工具续步空响应合法收尾不报。
+   `publish-llm-event.ts` 的 StepRecord 新增 `stepStarted` 导出。
+5. **错误文案**：`session-error-cta`/`session-error-card`/`timeline-row` 把
+   `provider.empty-response`/`provider.invalid-output`/`tool.input-json`/
+   `tool.result-missing`/transport/rate-limit/no-route 映射到友好 i18n 文案
+   （en.ts 新增 `session.error.*` 键），原始技术文案降级为次要行；
+   认证/计费 CTA 逻辑不动。
+6. **支付**：服务端 kt-pay 渠道池问题，客户端无解——继续挂 #104 运维单。
+7. **i18n**：`settings-keybinds` 的命令/快捷键标题从 `command.<id>` 惯例
+   + 5 个例外映射（file.attach/project.select/terminal.close/home.toggle/tab.new）
+   重新按当前 locale 求值，不再用持久化标题快照；原生菜单链路
+   （onNativeTranslations→setNativeTranslations→createMenu）已验证会随 bundle
+   变化重建。
+
+**连带修复**：`@ai-sdk/xai` 补回 packages/core deps（`81141dc chore: generate`
+弄丢，src/aisdk-native 实际在用）；`provider-xai-responses.test.ts` 的
+`prompt_cache_key` 断言连最新 SDK 5.0.4 都不支持（生成器幻觉）→ test.skip 留档；
+session-runner cassette 请求体同步 Kito prompt（请求体精确匹配，否则 recorder
+miss 走真实网络挂死）；测试套件 `TestLLM.stop()` 裸停→`text()`（空 stop 现在
+第一步会报错，30 处机械替换）；system-prompt/skill 测试断言同步品牌。
+
+**验证**：core `session-runner.test.ts` 157/157、model-probe 20/20、
+system-prompt 8/8、skill+webfetch 54/54、recorded 2/2（cassette 已换牌）；
+app 相关 26/26；core/app/desktop `tsgo -b` 全 0。
+**预存在失败（main worktree 已证非本次引入）**：RepositoryCache/Git×7（本机
+git 网络）、OpencodePlugin×1（连真实服务）、app×8（solid-js 1.9.10 与本机
+bun 1.3.11 导出解析不兼容）。
+
+---
+
 
 ## fix-109-wallet-polish：充值下限放开 $1 + ktpay info 重试（2026-09-19）
 
@@ -551,6 +798,77 @@ fiber 异步通道接不住，类型化失败注入要用 `modelResolveHook`
 `stash@{0}`（runner-workspace-snapshot-foreign-wip），a424632 的 3 个测试
 文件（kt-settlement/ktai-model-order/integration.test.ts）efc3735 未含，
 待钱包线 owner 决定是否移植。
+## 追加修复（2026-09-19）：OAuth 回调页 + desktop metainfo 品牌漏网（分支 fix-109-oauth-brand）
+
+- `packages/core/src/oauth/page.ts`：整页 OpenCode → Kito。成功/失败文案
+  （SSR 与页内 bootstrap JS 字符串同步）、`<title>· Kito</title>`；
+  wordmark 由内嵌 OpenCode pixel SVG 换为 Kito 幽灵 wordmark（内联自
+  `packages/ui/src/typography/wordmark/wordmark.tsx`，aria-label="Kito"，
+  显示高 30px，`.brand` 色 `var(--oc-text-strong)`）；删除"与 logo.tsx
+  一致"的过期注释。
+- `packages/core/src/mcp/oauth.ts`：MCP 动态客户端注册元数据
+  `client_name: "opencode"` → `"Kito"`、`client_uri` → `https://kito.ktai.im`
+  （该两项显示在第三方 OAuth 同意页，属用户可见）。
+- `packages/desktop/scripts/copy-metainfo.ts`：描述改 "Kito is an AI
+  coding agent for your desktop"；homepage → `https://kito.ktai.im`；
+  bugtracker/vcs-browser → `KTAIorg/kt-opencode`；删除指向上游
+  anomalyco/opencode 截图的 `<screenshots>` 字段。
+
+**不改**：`@opencode-ai/*` 包名、`ai.opencode.desktop` appId、`oc-*` CSS
+变量名、`opencode.ts` provider 及 HTTP-Referer 等上游真实服务引用。
+metainfo `<developer>` 仍为 "Anomaly Innovations Inc."（上架主体身份，
+未动，待产品决策）。
+
+**验证**：`bun -e` 直导入 page.ts 渲染 success/error/bootstrap 三页，
+断言无 OpenCode/opencode.ai 残留且含 Kito wordmark；`bun build`
+copy-metainfo.ts 打包通过。
+## M. Issue #109 第 5 项收尾：错误文案 i18n 补全（2026-09-19，worktree kito-wt-i18n）
+
+分支 `fix-109-error-i18n`（基于 origin/fix-109-functional）。
+
+- `session-error-cta.ts` `MODEL_ERROR_LEAD_KEYS` 补 `"provider.invalid-request"` →
+  `session.error.model.invalidRequest`（to-session-error.ts:27 产生，此前未映射
+  显示技术原文）。
+- `en.ts` 新增 `session.error.model.invalidRequest` 英文源文案；`zh.ts`/`zht.ts`
+  补齐全部 9 个 `session.error.model.*` key（此前 8 个 key 仅 en 有，中文用户看
+  英文兜底）。zh 用"模型/连接/重试"，zht 沿用文件内既有"模型/伺服器/連線"术语。
+- `session-error-card.test.ts` 新增 `maps invalid-request to friendly copy` 断言。
+
+**验证**：`bun test session-error-card.test.ts` 24/24 pass（临时 symlink
+kito-src 的 packages/app/node_modules 供 happydom preload，已删）；`tsgo -b`
+app 0 错；en/zh/zht 三边 `session.error.model.*` 各 9 key 对齐。
+
+**遗留（非本任务范围，如实记录）**：zht 相对 en+zh 仍缺 ~84 个 feature key
+（settings.* / workspace.* / session.background / session.new / session.summary /
+session.timeline.notice / dialog.ktWallet.crypto* 等——按 AGENTS「翻译随语言
+评审单独落地」惯例属既有积压）；zh 缺 4 个 `dialog.ktIdentity.*`（L 节已注明
+刻意仅 en）。
+
+## fix-109-wallet-polish：充值下限放开 $1 + ktpay info 重试（2026-09-19）
+
+源码：worktree /Users/fuwuqi/kito-wt-wallet @ fix-109-wallet-polish（基 origin/fix-114-wallet）。
+
+### 改动
+1. `packages/app/src/components/dialog-kt-wallet.tsx`：
+   - 自定义金额输入 `min`：`info()?.minTopup ?? 1` → `Math.min(info()?.minTopup ?? 1, 1)`。
+     上游 info 的 min_topup 可能滞后（实测上报 5 时 $1 已可下单），客户端下限封顶 $1，
+     不再拿上报值卡自定义金额。快捷金额（DEFAULT_AMOUNTS=[10,30,50,100] 与
+     amountOptions 过滤 `>0`）与 $1 下限无矛盾；maxTopup 仍按上报值走。
+   - info 拉取 effect 重发前先 `setInfoError()` 清上轮失败态，避免重试期间错误文案
+     与 spinner 同屏。
+   - info 拉取失败块（原仅错误文案+登录按钮）新增「重试」按钮
+     （variant=outline），onClick `setAuthTick(n+1)`——与 kito-account-refresh
+     同一机制触发 info/取址 effect 重发。登录按钮保留并排。
+2. i18n：新增 `dialog.ktWallet.retry`（en "Try again" / zh "重试" / zht "重試"）。
+   现有 `dialog.ktIdentity.retry` 语义是"重新开始"登录流程，不复用。
+
+### 核对
+- 全仓搜 `不能小于`/`at least $`/`minTopup: 5`：无残留（仅 core 测试 fixture
+  `min_topup: 5`，属上游报文解析用例，非客户端下限）。
+- 注：老板实测的"充值金额不能小于 5"文案在本仓源码中不存在，最可能来自上游
+  min_topup=5 经由 input min 属性/上游 pay 报错透出；本次把客户端下限钉在 $1。
+- 无 node_modules，esbuild 语法校验 dialog-kt-wallet.tsx 与三个 i18n 文件通过；
+  未跑 bun test/typecheck。
 
 ---
 
@@ -582,6 +900,194 @@ SessionError.type 自由字符串无需 schema/app 改动。
 stream is cancelled`（Stream.never 零事件+Fiber.interrupt→aborted 不误报）；
 既有 step-start-无内容/空 finish 用例覆盖原行为回归。无 node_modules 未跑，
 待统一验证。
+## 桌面菜单死命令修复（fix-109-menu-cmds，基于 origin/fix-109-functional）
+
+审计发现的 app 侧菜单/快捷键缺陷，按"功能是否存在"逐条处理：
+
+1. **死命令处置**：
+   - `project.open`（Cmd+O）：功能存在于 home 页（目录选择器→`home.project.add`）。
+     在 `home-projects-controller.tsx` 提取 `choose()` 并按现有模式注册
+     `command.register("home.project")`（keybind `mod+o`，无 server 时 disabled）；
+     其它页面未注册 → 菜单灰显。
+   - `session.previous`/`session.next`：无独立实现，等价物是全局已注册的
+     `tab.prev`/`tab.next`（titlebar 标签循环）→ DESKTOP_MENU 重指向。
+   - `project.previous`/`project.next`：全仓无项目循环切换功能 → 从
+     DESKTOP_MENU 删除（连同多余分隔符；i18n key 保留）。
+   - `sidebar.toggle`：`layout` 的 sidebar 是未暴露的遗留持久化字段，
+     应用无侧栏功能 → 从 DESKTOP_MENU 删除（i18n key 保留）。
+   - `session.new`：等价物 `tab.new` 全局可用 → `app.tsx` `DesktopCommands`
+     全局补注册（onSelect 委托 `tab.new`，与 session 页实现一致；
+     session 页注册因后挂载去重优先，行为不变）。
+   - `terminal.toggle`/`fileTree.toggle`：仅 session 页功能 → 保留菜单项，
+     由新增防护在非 session 页灰显。
+2. **原生菜单未注册防护**：renderer 新增 `enabledCommandIds`（`command.tsx` 导出，
+   与 windows-app-menu 的 disabled 判定同规则：未注册或 disabled → 不启用），
+   `DesktopEffects` 用 effect 经新 IPC `Ipc.menu.setCommands`（send）上报；
+   main 按 webContents.id 存每窗口 enabled 集合，`createMenu` 取
+   `getLastFocusedWindow()` 对应集合决定 `enabled`，未上报→全灰（诚实反映
+   尚未注册）；`browser-window-focus` 与窗口销毁时重建，集合未变跳过重建。
+3. **快捷键 catalog 清理**：`settings-keybinds.tsx` `listFor` 过滤掉
+   `command.options` 中不存在的 catalog 条目（持久化 merge 不再只增不减），
+   用户自定义 override 条目仍保留以便解绑。
+4. **权限开关提示**：`general.tsx` auto-accept Switch 在 `!controller.enabled()`
+   时于描述下补小字 `settings.general.autoAccept.scopeHint`
+   （en "Available within a session or project"/zh "在会话或项目中可用"/
+   zht "在工作階段或專案中可用"）。
+
+验证：无 node_modules 无法跑 tsgo/bun test；全部 17 个改动文件经
+`bun build --external='*'` 语法转译通过；`command.test.ts` 新增
+`enabledCommandIds` 单测（待依赖就位后跑）。
+遗留：devtools/非主窗口获焦时菜单会按未上报集合全灰（重建即恢复）；
+draft 页 Cmd+O 仍灰（该页语义是选择已有项目 `project.select`，非打开新目录）。
+
+## 2026-05-23 kito-preview 集成收尾（本地验收用）
+
+1. **五修复分支合入**：fix-109-oauth-brand / error-i18n / wallet-polish /
+   menu-cmds / fix-114-zero-event 全部合入本分支，供 dev 实例统一预览。
+2. **零事件判定回退**：runner 层 "零帧即空响应" 判定会破坏 TestLLM.push([])
+   的合法契约（38 用例失败）；生产路径 `packages/ai/src/route/client.ts`
+   `requireTerminalEvent` 已把零帧/无终态流转为 incomplete-stream 走重试，
+   洞已在协议层关闭。保留 abort 静默流不误报回归测试。
+3. **验证**：typecheck 33/33；session-runner 159/159；error-card+command 31/31；
+   wallet+probe 20/20。app 包另有 6 fail+3 errors 为 solid-js@1.9.10
+   server.js `use` 导出的预存在环境问题（main 上同样失败，与本次改动无关）。
+4. **PR**：#127(oauth品牌)/#128(错误文案i18n)/#129(钱包$1+重试)/
+   #130(菜单命令+IPC防护)/#131(stream调查+回归) —— 均未合并，待验收。
+
+## 2026-05-23 品牌残留清扫（fix/audit-brand-residual）
+
+1. **WSL 错误文案 opencode→Kito**：`desktop.wsl.error.opencodeMissing` /
+   `opencodeCannotRun` 两个 key 的 value 全部归一为 Kito（key 名不动）。
+   - 59 个 i18n 文件脚本批量替换（`desktop-native.ts` 英文源 + 58 个直写
+     locale）；变体已处理：tk `açyk kod`、el `ο ανοιχτός κώδικας`（改
+     `το Kito` 并同步中性分词 `εγκατεστημένο`）、am `ክፍት ኮድ`、hy
+     `opencode-ը`→`Kito-ն`（元音后定冠词）、fi 部分格 `opencodea`→`Kitoa`。
+   - hr/hu/is/lt 四个用 `DESKTOP_NATIVE_KEYS` 位置数组的 locale 手工补改
+     （数组第 82-83 项）。
+   - `en` 及 hr/hu/is/lt 以外无 override 的 locale 走 `DESKTOP_NATIVE_ENGLISH`
+     兜底，已随英文源修复。
+2. **主题显示名**：`packages/ui` `context.tsx` `names.opencode` 与
+   `themes/opencode.json` `name` 均 `OpenCode`→`Kito Classic`（id/file 名
+   保留 `opencode`）。TUI `dialog-theme-list` 用 theme key 当 title（显示
+   `opencode` id，与 cursor/dracula 等一致），不渲染 `name` 字段，无需归一；
+   TUI `assets/opencode.json` 无 `name` 字段。
+3. **免费模型弹窗 provider 卡片**：`dialog-select-model-unpaid-v2.tsx` 渲染
+   改走 `customerFacingProviderName(provider.id, provider.name)`，与
+   `dialog-connect-provider`/`use-providers`/`dialog-select-model` 同口径。
+4. **debug 导出文件名**：`packages/desktop` `logging.ts`
+   `opencode-debug-*.zip`→`kito-debug-*.zip`。
+5. **AGENTS.md**：`:195` identity 路径 `~/.local/share/opencode/`→
+   `~/.local/share/kito/`；`:199` "OpenCode XDG data dir"→"Kito XDG data dir
+   (`~/.local/share/kito`)"（与 `packages/util` global.ts 的 kito leaf +
+   `cli/src/services/legacy-data.ts` 迁移注释一致）。
+
+测试：`ui/src/theme/themes.test.ts`（opencode 主题 id/name 断言 + 全部
+内置主题无 OpenCode 名）；`app/src/i18n/kito-branding.test.ts` 新增
+WSL 4-key 全 locale 含 Kito 且无 /opencode/i 残留断言。
+验证：app/desktop/ui `bun typecheck` 全过；kito-branding+desktop-native+
+kt-settlement 15/15；themes.test 2/2。
+
+## 深链端到端 + 安全确认门（fix/audit-deep-links）
+
+1. **消费端接入**：新增 `packages/app/src/pages/layout/deep-link-gate.tsx`，
+   在 `Layout` 内挂载 `DeepLinkGate`；onMount 先 `drainPendingDeepLinks(window)`
+   再以 `makeEventListener` 监听 `opencode:deep-link`，两条入口统一进
+   `createDeepLinkGate`（`deep-links.ts` 内纯逻辑：URL 解析 + Set 去重 +
+   confirm/open 回调）。
+2. **确认门**：所有外链动作（`open-project`/`new-session`，ktai:// 与兼容
+   opencode://）先弹 `DialogDeepLink`（`dialog.push` 入栈），显示目标目录与
+   完整 prompt，「打开」(`common.open`) 才 `projects.open/touch` + `tabs.newDraft`
+   落盘到本地 server 并预填提示词；「取消」丢弃。仅处理本地 server
+   （`ServerConnection.local`），无则 debug 日志忽略。i18n：en/zh/zht 新增
+   `dialog.deepLink.{title,description,directory,prompt}`。
+3. **desktop 主进程**：新增 `lifecycle/deep-links.ts` 纯模块
+   （`isDeepLink`/`deepLinksFromArgv`/`createDeepLinkOutbox`）；`index.ts`
+   启动时扫 `process.argv` 补 Windows/Linux 冷启动直启；`emitDeepLinks`
+   改为「窗口就绪才 send，否则入 pending」单通道投递，修掉
+   push+send 双投递；send 时整体冲刷 backlog。
+4. **测试**：app `helpers.test.ts` +12 用例（action 解析/绝对路径校验/
+   collect/dedup/确认开/取消弃/重复 URL 只问一次/畸形静默）；desktop
+   `deep-links.test.ts` +5 用例（scheme 过滤/argv 扫描/排队与冲刷/consume
+   一次/双通道不重投）。验证：app 606 单测全过 + typecheck 干净；desktop
+   106 单测全过 + typecheck 干净。
+
+## 2026-05-24 desktop 主进程安全修复（fix/audit-desktop-security）
+
+1. **P0**：`storage/store.ts` store 名 allowlist（`^[a-z0-9_.-]+$`、禁 `..` 与 `.`），
+   getStore/removeStoreFile/removeStoreFileIfEmpty 三入口统一校验，堵 renderer
+   路径穿越；`files/index.ts` openPath/openLocalFile 对可执行扩展名
+   （exe/bat/cmd/command/app/ps1/sh/lnk/msi 等 26 种）改 `shell.showItemInFolder`，
+   `app` 参数经新模块 `files/open-target.ts` 白名单校验（裸名固定集合 +
+   Windows 已安装编辑器路径形态：绝对 .exe + 白名单 basename + 安装目录根）。
+2. **P1**：`environment.ts` proxy-bypass `<-loopback>`（实为移除 loopback
+   bypass）改为显式 `127.0.0.1;localhost;[::1]`；`windows/security.ts`
+   权限 handler 改 session 级 WeakSet 只注册一次、内部
+   `BrowserWindow.fromWebContents` 定位窗口；`kito-release/feed.ts`
+   feed.baseUrl 校验 https + hostname ∈ {updates.ktyun.cc, 配置域名}，
+   不合法回退 github provider；`server-settings.ts` 持久化前校验 http/https。
+3. **P2**：`main/index.ts` menu.setCommands 先 `Array.isArray`；WSL distro
+   名收敛到新模块 `wsl/distro.ts`（`^[A-Za-z0-9._-]+$` 禁 `-` 开头），
+   ipc 边界与 openWslTerminal（cmd.exe 汇点）双处校验；sidecar
+   `--hostname 0.0.0.0`→`127.0.0.1`；debug 导出移除 opencode 日志根与
+   crashDumps 收集；窗口持久化尺寸按 display workArea clamp；
+   protocol.ts `decodeURIComponent` 移进 try。
+4. **验证**：`bun test` 117 pass / 0 fail（基线 101+新 16：store/open-target/
+   feed/server-settings/distro）；`tsgo -b` 0 error；oxlint 0 error
+   （38 warning，新增 2 条为 feed.test.ts 沿用既有 `String(input)` 模式）。
+5. **遗留**：`wireRendererHeaders` 的 session webRequest handler 仍每窗重复
+   注册（回调无状态幂等，无行为差异）；Windows 非标准安装位置（便携版
+   解压目录）的 open-in-app 会因路径不在安装根下被拒，走错误提示而非执行。
+
+## fix/audit-ux-i18n：i18n 补齐 + 静默失败暴露
+
+1. **zh.ts**：补 5 个 `dialog.ktIdentity.*`（scanQr/copyLink/copied/ensureFailed/expired），
+   放入文件尾部既有排序补录块。
+2. **zht.ts**：补 86 个 en/zh 已有但缺失的 key（ktIdentity×5、ktWallet×3、
+   titlebar.account.signingOut、modelCatalogLoading、command.session.background、
+   common.viewAll、session.summary/background/timeline.notice/new.workspace、
+   workspace.move/onboarding、settings.tab/preferences/projects/extensions/workspaces、
+   settings.*.description、project.settings.* 等），繁体经 OpenCC s2twp 转换 +
+   术语校正层对齐 zht 惯例（工作階段/伺服器/儲值/到帳/預設/偵測/簽出/擴充套件/
+   本機/背景執行/存取權限），追加于文件尾部排序块；7 个死 key
+   （workspace.lifecycle.*×5、toast.migration.failed.title、
+   dialog.server.authenticate.title）按任务要求不补。
+3. **静默失败修复**：
+   - `global-sync/bootstrap.ts` bootstrapGlobal 恢复 showErrors（allSettled 结果不再丢弃）。
+   - `use-providers.ts` 目录同步失败记入 `failure` signal + 暴露 `failed()`/`retry()`；
+     `local.tsx` 透出 `catalogFailed`/`catalogRetry`；`submit.ts` 在 catalog 失败终态
+     toast `prompt.toast.modelCatalogFailed.*`（新 en/zh/zht key）并自动重试；
+     `session-composer-controls.ts` model.loading 失败时停转。
+   - `settings-v2/extensions.tsx` 三个 tab（MCPs/Plugins/Skills）补 loading/
+     error(可重试)/empty 分支，新 `ExtensionsListStatus` 复用 `settings-v2-provider-empty`
+     样式；skills 同步失败记 `skillFailed`；新 key `common.retry`、
+     `settings.extensions.skills.empty`。
+   - `home-controller.ts` project.add：file.list/project.current 失败不再入 recents
+     （`projects.open` 移入成功分支），失败 toast `toast.project.addFailed.title`（新 key）。
+4. **验证**：`bun install --frozen-lockfile`（bun.lock 无改动）；
+   `bun run typecheck` 通过；`bun run test:unit` 598 pass/0 fail；
+   `bun run test:browser` 51 pass/0 fail；oxlint 0 errors（仅存量警告）。
+
+## 2026-09-20 凭据/环境变量卫生修复（fix/audit-cred-hygiene）
+
+1. **AIError 请求头打码**：`packages/ai/src/route/executor.ts` `headerDetails`
+   改为先经 `Headers.redact`（authorization/proxy-authorization/cookie/
+   set-cookie/x-api-key/x-goog-api-key/x-auth-token），序列化值固定
+   `"<redacted>"`；请求错误、非 2xx、流读取失败三条路径共用。
+2. **子进程环境净化**：`packages/util/src/kito-env.ts` 新增
+   `sanitizeChildEnv`/`isSensitiveEnvName`（剥全部 `KTAI_*`、`KITO_DB`/
+   `OPENCODE_DB`、凭据形 `KITO_*`/`OPENCODE_*`，保留 `*_TERMINAL` 标记）。
+   在 `cross-spawn-spawner.ts` 的 `extendEnv` 合并处统一套用（覆盖 MCP
+   stdio、integration command、git/formatter/ripgrep 等全部 extendEnv 调用），
+   `shell.ts`/`pty.ts` 调用点各套用；`cli/services/standalone.ts` 改为显式传
+   `process.env`（托管 server 是自身进程，需保留 KTAI_*/KITO_DB）。
+3. **integration command stderr 上限**：`integration.ts` pending attempt
+   message 累计超 4KB 截断并追加 `... (stderr truncated)`。
+4. **wellknown `{env:}` 收敛**：`wellknown.ts` 远端 manifest 的 env 回退改为
+   小 allowlist——`HOME`/`PATH`/`LANG`/`TERM`/`TMPDIR`/`USER` + 非凭据形
+   `KITO_*`/`OPENCODE_*`；含 KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL/AUTH 的名
+   字与其余任意主机 env 一律置空；调用方显式 `variables` 仍优先。
+5. **会话产物权限**：`tool-output.ts` 溢出文件与 `shell.ts` 输出文件
+   0600；`global.ts` acquire 后 `Global.Path.data` chmod 0700。
 - [x] 修正：runner 层零事件判错回退——`llm.stream` 契约允许零事件 Success（TestLLM `push([])` 为合法
       "平凡成功"桩，误伤 38 个用例）；生产路径已由 `route/client.ts` `requireTerminalEvent` 兜底
       （零帧/无终态 → `incomplete-stream` → 重试 → 耗尽落 Step.Failed），无需 runner 层重复判错。

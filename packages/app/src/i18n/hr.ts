@@ -2,6 +2,11 @@ import { DESKTOP_NATIVE_KEYS } from "./desktop-native"
 
 const desktop = [
   "Kito",
+  "O aplikaciji {{app}}",
+  "Sakrij {{app}}",
+  "Sakrij ostale",
+  "Prikaži sve",
+  "Izađi iz {{app}}",
   "Datoteka",
   "Uredi",
   "Prikaz",
@@ -79,8 +84,8 @@ const desktop = [
   "Instalacija distribucije nije uspjela: {{distro}}",
   "Instalacija aplikacije Kito nije uspjela",
   "Distribucija {{distro}} već je dodana",
-  "opencode nije instaliran u ovoj distribuciji",
-  "opencode je instaliran, ali se ne može pokrenuti",
+  "Kito nije instaliran u ovoj distribuciji",
+  "Kito je instaliran, ali se ne može pokrenuti",
   "Kito nije instaliran u distribuciji {{distro}}",
   "Ažuriranje aplikacije Kito je završeno, ali {{distro}} i dalje prijavljuje {{installed}}; očekivano je {{expected}}",
   "nema verzije",

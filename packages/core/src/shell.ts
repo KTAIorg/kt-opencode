@@ -6,6 +6,7 @@ import { ChildProcess } from "effect/unstable/process"
 import { produce } from "immer"
 import { Shell } from "@opencode-ai/schema/shell"
 import { AppProcess } from "@opencode-ai/util/process"
+import { sanitizeChildEnv } from "@opencode-ai/util/kito-env"
 import { makeLocationNode } from "@opencode-ai/util/effect/app-node"
 import { Config } from "./config.js"
 import { Bus } from "./bus.js"
@@ -198,8 +199,9 @@ export const layer = (options?: ShellSelect.Options) =>
           timeout: input.timeout,
           shell: yield* resolve(),
           env: {
-            ...(sessionEnvironment ?? process.env),
+            ...(sessionEnvironment ?? sanitizeChildEnv(process.env)),
             TERM: "xterm-256color",
+            KITO_TERMINAL: "1",
             OPENCODE_TERMINAL: "1",
           },
         }
@@ -251,7 +253,7 @@ export const layer = (options?: ShellSelect.Options) =>
               }
               sessions.set(id, session)
 
-              const stream = createWriteStream(file)
+              const stream = createWriteStream(file, { mode: 0o600 })
               const outputDone = Deferred.makeUnsafe<void>()
               const pump = handle.all.pipe(
                 Stream.runForEach((chunk: Uint8Array) =>

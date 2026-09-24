@@ -116,6 +116,14 @@ function locationQuery(ref?: LocationRef) {
   return ref ? { directory: ref.directory, workspace: ref.workspaceID } : undefined
 }
 
+// A location-scoped request can hang indefinitely while the server is still
+// building its location layer (first boot, migrations, plugin activation).
+// Without a bound, the dedupe map would hand the same pending promise to every
+// retry and the caller could never reach a terminal state. Evict the key after
+// SYNC_TIMEOUT_MS so a retry issues a fresh load, and reject the pending
+// promise so callers see a failure instead of waiting forever.
+const SYNC_TIMEOUT_MS = 45_000
+
 function createSync() {
   const state = new Map<string, true | Promise<void>>()
   return {
@@ -123,11 +131,16 @@ function createSync() {
       const active = state.get(key)
       if (active === true) return Promise.resolve()
       if (active) return active
-      const pending = load()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`sync "${key}" timed out`)), SYNC_TIMEOUT_MS)
+      })
+      const pending = Promise.race([load(), timeout])
         .then(() => {
           if (state.get(key) === pending) state.set(key, true)
         })
         .finally(() => {
+          if (timer) clearTimeout(timer)
           if (state.get(key) === pending) state.delete(key)
         })
       state.set(key, pending)
@@ -733,7 +746,9 @@ export function createData(config: CreateDataInput) {
             message.assistant(draft, index, event.data.assistantMessageID),
             event.data.id,
           )
-          if (match?.state.status !== "running") return
+          // Terminal states are still mutable: servers re-emit success when a
+          // completed tool's output or metadata changes (e.g. question answers).
+          if (!match || (match.state.status !== "running" && match.state.status !== "completed")) return
           match.state = {
             status: "completed",
             input: match.state.input,
@@ -751,7 +766,11 @@ export function createData(config: CreateDataInput) {
             message.assistant(draft, index, event.data.assistantMessageID),
             event.data.id,
           )
-          if (!match || (match.state.status !== "streaming" && match.state.status !== "running")) return
+          if (
+            !match ||
+            (match.state.status !== "streaming" && match.state.status !== "running" && match.state.status !== "error")
+          )
+            return
           match.state = {
             status: "error",
             error: event.data.error,

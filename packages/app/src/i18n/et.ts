@@ -77,8 +77,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Distro installimine ebaõnnestus: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kito installimine ebaõnnestus",
   "desktop.wsl.error.alreadyAdded": "{{distro}} on juba lisatud",
-  "desktop.wsl.error.opencodeMissing": "opencode pole sellesse distrosse installitud",
-  "desktop.wsl.error.opencodeCannotRun": "opencode on installitud, kuid seda ei saa käivitada",
+  "desktop.wsl.error.opencodeMissing": "Kito pole sellesse distrosse installitud",
+  "desktop.wsl.error.opencodeCannotRun": "Kito on installitud, kuid seda ei saa käivitada",
   "desktop.wsl.error.opencodeNotInstalled": "Kito pole installitud asukohta {{distro}}",
   "desktop.wsl.error.updateVersion":
     "Kito värskendus on lõpetatud, kuid {{distro}} teatab endiselt {{installed}}; oodata {{expected}}",

@@ -4,6 +4,11 @@ type Keys = keyof typeof en
 
 export const dict = {
   "desktop.menu.app": "Kito",
+  "desktop.menu.aboutApp": "关于 {{app}}",
+  "desktop.menu.hideApp": "隐藏 {{app}}",
+  "desktop.menu.hideOthers": "隐藏其他",
+  "desktop.menu.unhide": "全部显示",
+  "desktop.menu.quitApp": "退出 {{app}}",
   "desktop.menu.file": "文件",
   "desktop.menu.edit": "编辑",
   "desktop.menu.view": "视图",
@@ -85,8 +90,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "无法安装发行版：{{distro}}",
   "desktop.wsl.error.installOpencode": "Kito 安装失败",
   "desktop.wsl.error.alreadyAdded": "已添加 {{distro}}",
-  "desktop.wsl.error.opencodeMissing": "此发行版中未安装 opencode",
-  "desktop.wsl.error.opencodeCannotRun": "已安装 opencode，但无法运行",
+  "desktop.wsl.error.opencodeMissing": "此发行版中未安装 Kito",
+  "desktop.wsl.error.opencodeCannotRun": "已安装 Kito，但无法运行",
   "desktop.wsl.error.opencodeNotInstalled": "{{distro}} 中未安装 Kito",
   "desktop.wsl.error.updateVersion":
     "Kito 更新已完成，但 {{distro}} 仍报告版本 {{installed}}；预期版本为 {{expected}}",
@@ -154,6 +159,8 @@ export const dict = {
   "command.language.set": "使用语言：{{language}}",
 
   "command.session.new": "新建会话",
+  "session.title.new": "新建会话",
+  "session.title.child": "子会话",
 
   "command.file.open": "打开文件",
 
@@ -386,6 +393,7 @@ export const dict = {
   "common.loading.ellipsis": "...",
   "common.cancel": "取消",
   "common.clear": "清除",
+  "common.retry": "重试",
   "common.connect": "连接",
   "common.disconnect": "断开连接",
   "common.continue": "继续",
@@ -457,6 +465,8 @@ export const dict = {
   "prompt.toast.modelAgentRequired.description": "发送提示前请先选择智能体和模型。",
   "prompt.toast.modelCatalogLoading.title": "正在连接模型服务",
   "prompt.toast.modelCatalogLoading.description": "模型列表仍在加载，稍等片刻即可使用。",
+  "prompt.toast.modelCatalogFailed.title": "连接模型服务失败",
+  "prompt.toast.modelCatalogFailed.description": "请检查服务器连接后重试。",
   "prompt.toast.worktreeCreateFailed.title": "创建工作区失败",
   "prompt.toast.sessionCreateFailed.title": "创建会话失败",
   "prompt.toast.shellSendFailed.title": "发送 shell 命令失败",
@@ -487,6 +497,11 @@ export const dict = {
   "dialog.directory.root": "根目录",
   "dialog.directory.parent": "上级目录",
   "dialog.directory.readError": "无法读取此文件夹",
+
+  "dialog.deepLink.title": "打开外部链接？",
+  "dialog.deepLink.description": "一个外部链接请求 Kito 在此目录中打开会话。仅在信任该链接来源时才继续。",
+  "dialog.deepLink.directory": "目录",
+  "dialog.deepLink.prompt": "提示词",
 
   "dialog.server.title": "服务器",
   "dialog.server.description": "切换此应用连接的 Kito 服务器。",
@@ -1153,6 +1168,7 @@ export const dict = {
   "dialog.releaseNotes.action.hideFuture": "不再显示",
   "dialog.releaseNotes.media.alt": "版本说明预览",
   "toast.project.reloadFailed.title": "无法重新加载 {{project}}",
+  "toast.project.addFailed.title": "无法添加 {{project}}",
   "error.server.invalidConfiguration": "配置无效",
   "common.moreCountSuffix": " (还有 {{count}} 个)",
   "common.time.justNow": "刚刚",
@@ -1333,6 +1349,11 @@ export const dict = {
   "dialog.ktIdentity.noTelegram": "没有反应？请确认本机已安装 Telegram，或用手机打开链接。",
   "command.session.background": "移到后台",
   "common.viewAll": "查看全部",
+  "dialog.ktIdentity.copied": "链接已复制",
+  "dialog.ktIdentity.copyLink": "复制链接",
+  "dialog.ktIdentity.ensureFailed": "已登录，但未能开通 Kito 模型访问权限。请充值或稍后重试。",
+  "dialog.ktIdentity.expired": "此登录请求已过期，请重试。",
+  "dialog.ktIdentity.scanQr": "用手机扫码，在 Telegram 中确认。",
   "dialog.ktWallet.cryptoProgress": "充值还没到账？可在 Kito 控制台查看充值记录。",
   "dialog.ktWallet.cryptoTiming": "链上充值通常几分钟内到账，视网络状况可能更久。到账后此窗口会自动关闭。",
   "dialog.server.authenticate.title": "身份验证",
@@ -1369,6 +1390,7 @@ export const dict = {
   "settings.extensions.availableAll": "对所有项目可用",
   "settings.extensions.description": "管理此服务器上的扩展",
   "settings.extensions.manageConfig": "在 opencode.json 中管理",
+  "settings.extensions.skills.empty": "暂无技能",
   "settings.extensions.tab.mcps": "MCP",
   "settings.extensions.tab.skills": "技能",
   "settings.general.section.general": "通用",

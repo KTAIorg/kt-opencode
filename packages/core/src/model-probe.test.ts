@@ -356,4 +356,48 @@ describe("ModelProbe.probe", () => {
     expect(results[0]?.ok).toBe(false)
     expect(results[0]?.error).toContain("connection refused")
   })
+
+  test("marks never-sent requests as skipped when the batch budget expires", async () => {
+    let sent = 0
+    const hanging = ((_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        sent += 1
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason ?? new Error("aborted")))
+      })) as FetchLike
+    // 并发上限 5：预算到期时在途 5 个算真实 timeout，排队未发出的 2 个标 skipped，
+    // 回归「整批预算把未发请求打成假 timeout」。
+    const results = await ModelProbe.probe(
+      Array.from({ length: 7 }, (_, index) => ({
+        modelID: `m${index}`,
+        target: { url: `https://probe.test/${index}`, headers: {}, body: {} },
+      })),
+      { fetchImpl: hanging, timeout: 30 },
+    )
+    expect(sent).toBe(5)
+    expect(results).toHaveLength(7)
+    expect(results.filter((result) => result.error === "timeout")).toHaveLength(5)
+    expect(results.filter((result) => result.error === "skipped")).toHaveLength(2)
+  })
+
+  test("cancels in-flight requests through the caller abort signal", async () => {
+    const controller = new AbortController()
+    let observed: AbortSignal | undefined
+    const hanging = ((_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        observed = init?.signal ?? undefined
+        init?.signal?.addEventListener("abort", () => reject(new Error("aborted")))
+      })) as FetchLike
+    const pending = ModelProbe.probe(
+      [
+        { modelID: "m0", target: { url: "https://probe.test/0", headers: {}, body: {} } },
+        { modelID: "m1", target: { url: "https://probe.test/1", headers: {}, body: {} } },
+      ],
+      { fetchImpl: hanging, signal: controller.signal },
+    )
+    controller.abort()
+    const results = await pending
+    expect(observed?.aborted).toBe(true)
+    expect(results).toHaveLength(2)
+    expect(results.every((result) => !result.ok)).toBe(true)
+  })
 })

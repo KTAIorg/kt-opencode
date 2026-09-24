@@ -2,6 +2,11 @@ import { DESKTOP_NATIVE_KEYS } from "./desktop-native"
 
 const desktop = [
   "Kito",
+  "Az {{app}} névjegye",
+  "{{app}} elrejtése",
+  "Többiek elrejtése",
+  "Összes megjelenítése",
+  "Kilépés a(z) {{app}}-ból",
   "Fájl",
   "Szerkesztés",
   "Nézet",
@@ -79,8 +84,8 @@ const desktop = [
   "A disztribúció telepítése sikertelen: {{distro}}",
   "Az Kito telepítése sikertelen",
   "A(z) {{distro}} már hozzá van adva",
-  "Az opencode nincs telepítve ebben a disztribúcióban",
-  "Az opencode telepítve van, de nem futtatható",
+  "Az Kito nincs telepítve ebben a disztribúcióban",
+  "Az Kito telepítve van, de nem futtatható",
   "Az Kito nincs telepítve ebben: {{distro}}",
   "Az Kito frissítése befejeződött, de a(z) {{distro}} továbbra is ezt jelenti: {{installed}}; a várt érték: {{expected}}",
   "nincs verzió",

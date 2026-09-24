@@ -200,10 +200,16 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
             catch: (error) => upstream(error, "NewAPI ensure failed"),
           })
         }
+        // tryPromise 的 signal 在 fiber 中断（客户端断开、下方 timeoutOrElse 兜底）时中止探测。
         const probed = yield* Effect.tryPromise({
-          try: async () => probeKtaiModels(ids, (await readManagedApiKey()) ?? ""),
+          try: async (signal) => probeKtaiModels(ids, (await readManagedApiKey()) ?? "", { signal }),
           catch: (error) => upstream(error, "model probe failed"),
-        })
+        }).pipe(
+          Effect.timeoutOrElse({
+            duration: "15 seconds",
+            orElse: () => Effect.fail(new BadGatewayError({ message: "Model probe timed out", service: "ktai" })),
+          }),
+        )
         if (!probed.ok) {
           return yield* new BadGatewayError({
             message: probed.reason,

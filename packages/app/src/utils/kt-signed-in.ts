@@ -8,6 +8,30 @@ function ktaiHeaders(username?: string, password?: string) {
   return { authorization: `Basic ${btoa(`${username}:${password}`)}` }
 }
 
+export type KtaiCredential = { identity?: boolean; keyPresent?: boolean }
+
+// Single-shot credential probe for submit-time gating: callers need the latest
+// state (identity token OR an injected api key both count as usable) rather than
+// a possibly-stale signal.
+export async function fetchKtaiCredential(input: {
+  url: string
+  username?: string
+  password?: string
+  fetchImpl?: typeof fetch
+}): Promise<KtaiCredential | undefined> {
+  try {
+    const response = await (input.fetchImpl ?? fetch)(`${input.url.replace(/\/+$/, "")}/ktai/credential`, {
+      headers: ktaiHeaders(input.username, input.password),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (response.status === 401 || response.status === 403) return { identity: false, keyPresent: false }
+    if (!response.ok) return
+    return (await response.json()) as KtaiCredential
+  } catch {
+    return
+  }
+}
+
 export function useKtaiSignedIn() {
   const platform = usePlatform()
   const serverSDK = useServerSDK()

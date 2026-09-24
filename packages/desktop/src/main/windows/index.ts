@@ -2,7 +2,7 @@ import windowState from "electron-window-state"
 import { randomUUID } from "node:crypto"
 import { rmSync } from "node:fs"
 import { join } from "node:path"
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, screen } from "electron"
 import { removeStoreFile, getStore } from "../storage/store"
 import { WINDOW_IDS_KEY } from "../storage/keys"
 import {
@@ -75,11 +75,18 @@ export function restoreMainWindows() {
 
 export function createMainWindow(id: string = randomUUID()) {
   const state = windowState({ file: windowStateFile(id), defaultWidth: 1280, defaultHeight: 800 })
+  const onscreen = state.x !== undefined && state.y !== undefined && isVisible(state)
+  // Persisted sizes may exceed the current display after a monitor change.
+  const area = (
+    onscreen
+      ? screen.getDisplayMatching({ x: state.x, y: state.y, width: state.width, height: state.height })
+      : screen.getPrimaryDisplay()
+  ).workArea
   const win = new BrowserWindow({
-    x: state.x,
-    y: state.y,
-    width: state.width,
-    height: state.height,
+    x: onscreen ? state.x : undefined,
+    y: onscreen ? state.y : undefined,
+    width: Math.min(state.width, area.width),
+    height: Math.min(state.height, area.height),
     show: false,
     autoHideMenuBar: true,
     ...windowAppearance(),
@@ -96,6 +103,17 @@ export function createMainWindow(id: string = randomUUID()) {
   wireZoom(win)
   win.once("ready-to-show", () => win.show())
   return win
+}
+
+// A persisted rect may target a since-disconnected display; screen.getDisplayMatching
+// always returns the nearest display instead of failing, so check real overlap instead.
+function isVisible(state: { x: number; y: number; width: number; height: number }) {
+  return screen.getAllDisplays().some((d) => {
+    const b = d.bounds
+    const overlapX = Math.min(state.x + state.width, b.x + b.width) - Math.max(state.x, b.x)
+    const overlapY = Math.min(state.y + state.height, b.y + b.height) - Math.max(state.y, b.y)
+    return overlapX > 40 && overlapY > 40
+  })
 }
 
 function registerWindow(win: BrowserWindow, id: string) {

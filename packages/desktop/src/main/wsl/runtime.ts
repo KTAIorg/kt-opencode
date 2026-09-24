@@ -5,6 +5,7 @@ import * as pty from "@lydell/node-pty"
 import type { WslDistroProbe, WslInstalledDistro, WslOnlineDistro, WslRuntimeCheck } from "@opencode-ai/app/wsl/types"
 import { nativeT } from "../native/translations"
 import { parseCliVersion } from "../service/cli-version"
+import { isValidWslDistroName } from "./distro"
 
 export type WslCommandLine = {
   stream: "stdout" | "stderr"
@@ -282,8 +283,10 @@ export async function installWslCli(distro: string, cli: WslCliBuild, opts?: Run
 }
 
 export function wslCliInstallCommand(cli: WslCliBuild) {
-  const installer = "curl -fsSL https://raw.githubusercontent.com/anomalyco/opencode/v2/install | bash -s --"
-  if (!cli.binary) return `${installer} --version ${shellEscape(cli.version)}`
+  // Kito has no public CLI feed; installing by version would pull upstream
+  // OpenCode packages. Only bundled binaries are supported.
+  if (!cli.binary) throw new Error("Kito WSL install requires a bundled CLI binary")
+  const installer = "curl -fsSL https://raw.githubusercontent.com/ktaiorg/kt-opencode/main/install | bash -s --"
   return `${installer} --binary "$(wslpath -a ${shellEscape(cli.binary)})"`
 }
 
@@ -338,6 +341,12 @@ export async function readWslCliVersion(command: string, distro: string, opts?: 
 
 export function openWslTerminal(distro?: string | null) {
   return new Promise<void>((resolve, reject) => {
+    // cmd.exe interprets the argument line, so the distro name must stay a
+    // plain token even if a caller skips IPC validation.
+    if (distro && !isValidWslDistroName(distro)) {
+      reject(new Error("Invalid distro"))
+      return
+    }
     const child = spawn("cmd.exe", ["/c", "start", "", "wsl", ...(distro ? ["-d", distro] : [])], {
       detached: true,
       stdio: "ignore",

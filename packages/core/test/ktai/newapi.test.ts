@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import fs from "fs"
 import {
   addressLooksLikeChain,
   assetsForChain,
@@ -12,6 +13,7 @@ import {
   KTAI_MANAGED_TOKEN_NAME,
   newapiQuotaToUsd,
   normalizeDepositChain,
+  persistManagedApiKey,
   pinEnsuredUserToCustomerGroup,
 } from "@opencode-ai/core/ktai/newapi"
 
@@ -366,9 +368,26 @@ test("converts NewAPI remaining quota to the wallet USD the console shows", () =
   expect(newapiQuotaToUsd(5_070_855_823)).toBe(10141.71)
 })
 
+test("persists the managed API key user-only, repairing permissive files", async () => {
+  const file = `/tmp/ktai-api-key-${crypto.randomUUID()}.json`
+  process.env.KITO_KTAI_API_KEY_PATH = file
+  try {
+    fs.writeFileSync(file, "{}", { mode: 0o644 })
+    await persistManagedApiKey("sk-managed")
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600)
+
+    fs.chmodSync(file, 0o644)
+    await persistManagedApiKey("sk-managed")
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600)
+  } finally {
+    delete process.env.KITO_KTAI_API_KEY_PATH
+    fs.rmSync(file, { force: true })
+  }
+})
+
 function isolatedSpendablePath() {
   clearNewapiSpendableCache()
-  process.env.OPENCODE_KTAI_SPENDABLE_PATH = `/tmp/ktai-spendable-${crypto.randomUUID()}.json`
+  process.env.KITO_KTAI_SPENDABLE_PATH = `/tmp/ktai-spendable-${crypto.randomUUID()}.json`
 }
 
 test("reads spendable balance from Identity-gated Ensure", async () => {

@@ -370,6 +370,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       // provider/model 目录是否已拉到（启动早期为 false）。提交前用它区分
       // 「模型服务还没连上」和「真的没选模型」，避免把加载中误报成用户错误。
       catalogReady: providers.ready,
+      // 目录拉取失败的终态：提交时据此提示错误并允许重试，而不是永远停在加载中。
+      catalogFailed: providers.failed,
+      catalogRetry: providers.retry,
       session: {
         ready: savedReady,
         reset() {

@@ -78,8 +78,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Distribütivi quraşdırmaq mümkün olmadı: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kito quraşdırılması uğursuz oldu",
   "desktop.wsl.error.alreadyAdded": "{{distro}} artıq əlavə edilib",
-  "desktop.wsl.error.opencodeMissing": "Bu distribütivdə opencode quraşdırılmayıb",
-  "desktop.wsl.error.opencodeCannotRun": "opencode quraşdırılıb, lakin onu işə salmaq mümkün olmadı",
+  "desktop.wsl.error.opencodeMissing": "Bu distribütivdə Kito quraşdırılmayıb",
+  "desktop.wsl.error.opencodeCannotRun": "Kito quraşdırılıb, lakin onu işə salmaq mümkün olmadı",
   "desktop.wsl.error.opencodeNotInstalled": "Kito {{distro}} distribütivində quraşdırılmayıb",
   "desktop.wsl.error.updateVersion":
     "Kito yeniləməsi tamamlandı, lakin {{distro}} hələ də {{installed}} versiyasını bildirir; gözlənilən versiya: {{expected}}",

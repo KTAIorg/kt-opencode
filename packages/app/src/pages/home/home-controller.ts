@@ -1,10 +1,14 @@
 import { useGlobal, useServerCtx } from "@/context/global"
 import { type HomeProjectSelection, useLayout } from "@/context/layout"
+import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { ServerConnection } from "@/context/servers"
 import { useTabs } from "@/context/tabs"
 import { toggleHomeProjectSelection } from "@/pages/layout/helpers"
+import { showToast } from "@/utils/toast"
+import { formatServerError } from "@/utils/server-errors"
+import { getFilename } from "@opencode-ai/util/path"
 import { createEffect, createMemo } from "solid-js"
 
 export function createHomeController() {
@@ -13,6 +17,7 @@ export function createHomeController() {
   const tabs = useTabs()
   const platform = usePlatform()
   const settings = useSettings()
+  const language = useLanguage()
   const selection = layout.home.selection
   const focusedServer = createMemo<ServerConnection.Any | undefined>(
     () =>
@@ -107,9 +112,18 @@ export function createHomeController() {
               // TODO: Initialize empty directories when V2 exposes a native Git init API.
               return ctx.sdk.api.project.current({ location })
             })
-            .then((project) => ctx.sync.child(item, { bootstrap: false })[1]("project", project.id))
-            .catch(() => undefined)
-          ctx.projects.open(item)
+            .then((project) => {
+              ctx.sync.child(item, { bootstrap: false })[1]("project", project.id)
+              ctx.projects.open(item)
+            })
+            .catch((cause) => {
+              console.error("Failed to add project", item, cause)
+              showToast({
+                variant: "error",
+                title: language.t("toast.project.addFailed.title", { project: getFilename(item) }),
+                description: formatServerError(cause, language.t),
+              })
+            })
         })
         ctx.projects.touch(directory)
         setSelection({ server: ServerConnection.key(conn), directory })

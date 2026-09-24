@@ -265,19 +265,26 @@ async function send(
   }
 }
 
-/** 并发 5、整体超时 12s 的探测引擎，与 ktai 探测同一节奏。 */
+/** 并发 5、整体预算 12s 的探测引擎，与 ktai 探测同一节奏。 */
 export async function probe(
   requests: readonly { modelID: string; target: ProbeTarget }[],
-  options?: { fetchImpl?: FetchLike },
+  options?: { fetchImpl?: FetchLike; signal?: AbortSignal; timeout?: number },
 ) {
   const fetchImpl = options?.fetchImpl ?? fetch
   const results: ModelProbeResult[] = []
   const queue = [...requests]
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)
+  const budget = new AbortController()
+  const timeout = setTimeout(() => budget.abort(), options?.timeout ?? PROBE_TIMEOUT_MS)
+  // 外部取消（客户端断开等）与整批预算合并成同一信号。
+  const signal = options?.signal ? AbortSignal.any([budget.signal, options.signal]) : budget.signal
   const worker = async () => {
     for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
-      results.push(await send(fetchImpl, item.modelID, item.target, controller.signal))
+      // 信号已中止后才出队的请求从未发出：标 skipped，与真实超时的在途请求区分开。
+      results.push(
+        signal.aborted
+          ? { modelID: item.modelID, ok: false, error: "skipped" }
+          : await send(fetchImpl, item.modelID, item.target, signal),
+      )
     }
   }
   try {
@@ -326,6 +333,8 @@ export const probeProvider = Effect.fn("ModelProbe.probeProvider")(function* (
     }
     planned.push({ modelID: id, target: probeTarget.target })
   }
-  const probed = yield* Effect.promise(() => probe(planned))
+  // Effect.promise 的 signal 在 fiber 中断（客户端断开、handler 超时兜底）时中止，
+  // 传给 probe 取消在途请求并把未发出的队列项标为 skipped。
+  const probed = yield* Effect.promise((signal) => probe(planned, { signal }))
   return { results: [...results, ...probed], probedAt: Date.now() }
 })

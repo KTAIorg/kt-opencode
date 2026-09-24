@@ -129,6 +129,43 @@ describe("pty", () => {
     }),
   )
 
+  ptyTest("does not inherit Kito credentials into the terminal environment", () =>
+    Effect.gen(function* () {
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const previous = {
+            token: process.env.KTAI_IDENTITY_TOKEN,
+            db: process.env.KITO_DB,
+            key: process.env.OPENCODE_API_KEY,
+          }
+          process.env.KTAI_IDENTITY_TOKEN = "pty-secret"
+          process.env.KITO_DB = "/tmp/pty-secret.db"
+          process.env.OPENCODE_API_KEY = "pty-secret"
+          return previous
+        }),
+        (previous) =>
+          Effect.sync(() => {
+            for (const [name, value] of [
+              ["KTAI_IDENTITY_TOKEN", previous.token],
+              ["KITO_DB", previous.db],
+              ["OPENCODE_API_KEY", previous.key],
+            ] as const) {
+              if (value === undefined) delete process.env[name]
+              else process.env[name] = value
+            }
+          }),
+      )
+
+      const info = yield* createPty("/bin/sh", [
+        "-c",
+        'printf "t=%s|d=%s|k=%s|m=%s|end\\n" "${KTAI_IDENTITY_TOKEN-unset}" "${KITO_DB-unset}" "${OPENCODE_API_KEY-unset}" "${OPENCODE_TERMINAL-unset}"',
+      ])
+      const collected = yield* attachCollecting(info.id)
+      const output = yield* waitForOutput(collected.output, "|end")
+      expect(output).toContain("t=unset|d=unset|k=unset|m=1|end")
+    }),
+  )
+
   ptyTest("replays buffered output and streams live output to attachments", () =>
     Effect.gen(function* () {
       const pty = yield* Pty.Service

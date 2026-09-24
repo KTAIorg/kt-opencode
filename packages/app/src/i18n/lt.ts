@@ -2,6 +2,11 @@ import { DESKTOP_NATIVE_KEYS } from "./desktop-native"
 
 const desktop = [
   "Kito",
+  "Apie „{{app}}“",
+  "Slėpti „{{app}}“",
+  "Slėpti kitas",
+  "Rodyti visas",
+  "Baigti „{{app}}“",
   "Failas",
   "Taisa",
   "Rodymas",
@@ -79,8 +84,8 @@ const desktop = [
   "Nepavyko įdiegti distributyvo: {{distro}}",
   "Kito įdiegti nepavyko",
   "{{distro}} jau pridėtas",
-  "opencode šiame distributyve neįdiegtas",
-  "opencode įdiegtas, bet jo paleisti nepavyko",
+  "Kito šiame distributyve neįdiegtas",
+  "Kito įdiegtas, bet jo paleisti nepavyko",
   "Kito neįdiegtas distributyve {{distro}}",
   "Kito naujinimas baigtas, bet {{distro}} vis dar praneša {{installed}}; tikėtasi {{expected}}",
   "versijos nėra",

@@ -1127,8 +1127,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Jakelun asentaminen epäonnistui: {{distro}}",
   "desktop.wsl.error.installOpencode": "Kiton asennus epäonnistui",
   "desktop.wsl.error.alreadyAdded": "{{distro}} on jo lisätty",
-  "desktop.wsl.error.opencodeMissing": "opencodea ei ole asennettu tähän jakeluun",
-  "desktop.wsl.error.opencodeCannotRun": "opencode on asennettu, mutta sitä ei voitu suorittaa",
+  "desktop.wsl.error.opencodeMissing": "Kitoa ei ole asennettu tähän jakeluun",
+  "desktop.wsl.error.opencodeCannotRun": "Kito on asennettu, mutta sitä ei voitu suorittaa",
   "desktop.wsl.error.opencodeNotInstalled": "Kitoa ei ole asennettu jakeluun {{distro}}",
   "desktop.wsl.error.updateVersion":
     "Kiton päivitys valmistui, mutta {{distro}} ilmoittaa yhä version {{installed}}; odotettu versio on {{expected}}",

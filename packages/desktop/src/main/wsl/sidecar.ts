@@ -30,9 +30,13 @@ export async function spawnWslSidecar(
     'PATH=$(awk -v RS=: -v ORS=: \'$0 !~ /^\\/mnt\\//\' <<<"$PATH" | sed "s/:$//")',
     "export PATH",
     "export WSLENV=",
+    "export KITO_EXPERIMENTAL_DISABLE_FILEWATCHER=true",
     "export OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER=true",
+    "export KITO_CLIENT=desktop",
     "export OPENCODE_CLIENT=desktop",
+    `export KITO_SERVER_USERNAME=${shellEscape(username)}`,
     `export OPENCODE_SERVER_USERNAME=${shellEscape(username)}`,
+    `export KITO_SERVER_PASSWORD=${shellEscape(password)}`,
     `export OPENCODE_SERVER_PASSWORD=${shellEscape(password)}`,
     // Isolate the sidecar's XDG roots from any OpenCode install inside the
     // distro: the resolved binary may be an upstream build, so the "kito" data
@@ -41,7 +45,7 @@ export async function spawnWslSidecar(
     'export XDG_CONFIG_HOME="$HOME/.kito/config"',
     'export XDG_CACHE_HOME="$HOME/.kito/cache"',
     'export XDG_STATE_HOME="$HOME/.kito/state"',
-    `exec ${shellEscape(opencode)} --log-level ${app.isPackaged ? "warn" : "info"} serve --hostname 0.0.0.0 --port ${port}`,
+    `exec ${shellEscape(opencode)} --log-level ${app.isPackaged ? "warn" : "info"} serve --hostname 127.0.0.1 --port ${port}`,
   ].join("\n")
   const child = spawn("wsl", wslArgs(["bash", "-se"], distro), {
     stdio: ["pipe", "pipe", "pipe"],

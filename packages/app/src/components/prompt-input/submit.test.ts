@@ -251,6 +251,17 @@ beforeAll(async () => {
     }),
   }))
 
+  mock.module("@opencode-ai/ui/context/dialog", () => ({
+    useDialog: () => ({
+      show: () => Promise.resolve(),
+      push: () => Promise.resolve(),
+    }),
+  }))
+
+  mock.module("@/components/dialog-kt-identity-login", () => ({
+    openKtIdentityLogin: () => undefined,
+  }))
+
   mock.module("@/context/language", () => ({
     useLanguage: () => ({
       t: (key: string) => key,

@@ -1,6 +1,7 @@
 import { Effect, FileSystem, Formatter, Logger, type LogLevel } from "effect"
 import path from "path"
 import { Global } from "../global.js"
+import { kitoEnv } from "../kito-env.js"
 import { runID } from "./shared.js"
 
 function formatter(id: string = runID()) {
@@ -63,7 +64,7 @@ export function fileLogger(target = file(), id: string = runID()) {
 const stderrLogger = Logger.make((options) => process.stderr.write(formatter().log(options) + "\n"))
 
 export function minimumLogLevel() {
-  const value = process.env.OPENCODE_LOG_LEVEL?.toUpperCase()
+  const value = kitoEnv("LOG_LEVEL")?.toUpperCase()
   const levels = {
     DEBUG: "Debug",
     INFO: "Info",
@@ -75,7 +76,7 @@ export function minimumLogLevel() {
 
 export function loggers(local = true, channel = "local") {
   const logger = fileLogger(file(local, channel))
-  return process.env.OPENCODE_PRINT_LOGS === "1" ? [logger, stderrLogger] : [logger]
+  return kitoEnv("PRINT_LOGS") === "1" ? [logger, stderrLogger] : [logger]
 }
 
 export * as Logging from "./logging.js"

@@ -10,6 +10,7 @@ import { Location } from "./location.js"
 import { PtyID } from "./pty/schema.js"
 import { ShellSelect } from "./shell/select.js"
 import { Global } from "@opencode-ai/util/global"
+import { sanitizeChildEnv } from "@opencode-ai/util/kito-env"
 import { lazy } from "./util/lazy.js"
 
 const BUFFER_LIMIT = 1024 * 1024 * 2
@@ -172,9 +173,12 @@ export const layer = (options?: ShellSelect.Options) =>
         const args = ShellSelect.login(command) ? [...(input.args ?? []), "-l"] : [...(input.args ?? [])]
         const cwd = input.cwd || location.directory
         const env = {
-          ...process.env,
+          ...sanitizeChildEnv(process.env),
           ...input.env,
           TERM: "xterm-256color",
+          // Both names: Kito tooling keys off KITO_TERMINAL while integrations
+          // written for OpenCode still see the upstream marker.
+          KITO_TERMINAL: "1",
           OPENCODE_TERMINAL: "1",
         } as Record<string, string>
         if (process.platform === "win32") {

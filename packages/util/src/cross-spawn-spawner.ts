@@ -20,6 +20,7 @@ import { PassThrough } from "node:stream"
 import launch from "cross-spawn"
 import { makeGlobalNode } from "./effect/app-node.js"
 import { filesystem, path } from "./effect/app-node-platform.js"
+import { sanitizeChildEnv } from "./kito-env.js"
 
 const toError = (err: unknown): Error => (err instanceof globalThis.Error ? err : new globalThis.Error(String(err)))
 
@@ -100,8 +101,11 @@ const makeCrossSpawnSpawner = Effect.gen(function* () {
     return path.resolve(opts.cwd)
   })
 
+  // Kito credentials (KTAI_*, credential-shaped KITO_*/OPENCODE_*, store
+  // selectors) must not leak into every spawned tool/MCP/auth child; explicit
+  // `env` entries still win over the sanitized base.
   const env = (opts: ChildProcess.CommandOptions) =>
-    opts.extendEnv ? { ...globalThis.process.env, ...opts.env } : opts.env
+    opts.extendEnv ? { ...sanitizeChildEnv(globalThis.process.env), ...opts.env } : opts.env
 
   const input = (x: ChildProcess.CommandInput | undefined): NodeChildProcess.IOType | undefined =>
     Stream.isStream(x) ? "pipe" : x

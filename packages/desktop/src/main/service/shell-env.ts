@@ -9,6 +9,7 @@ const TIMEOUT = 5_000
  * and bypasses Desktop's isolated auth.json under Electron userData.
  */
 const BLOCKED_ENV_PATTERNS = [
+  /^KITO_/i,
   /^OPENCODE_/i,
   /^XDG_(DATA_HOME|CACHE_HOME|CONFIG_HOME|STATE_HOME)$/i,
   /^OPENAI_(API_KEY|BASE_URL|MODEL)$/i,
@@ -142,7 +143,8 @@ export function applyShellEnvironment(
     if (value) kept[key] = value
   }
   // Imported login-shell values must not repoint the sidecar at host OpenCode
-  // roots (XDG_*_HOME, OPENCODE_CONFIG*, OPENCODE_DB) or re-inject host AI keys.
+  // roots (XDG_*_HOME, KITO_*/OPENCODE_CONFIG*, KITO_DB/OPENCODE_DB) or
+  // re-inject host AI keys.
   const next = { ...current, ...sanitizeImportedEnv(shell), ...kept }
   for (const key of HOST_PROVIDER_ENV_KEYS) {
     if (!kept[key]) delete next[key]

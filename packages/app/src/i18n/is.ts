@@ -2,6 +2,11 @@ import { DESKTOP_NATIVE_KEYS } from "./desktop-native"
 
 const desktop = [
   "Kito",
+  "Um {{app}}",
+  "Fela {{app}}",
+  "Fela hin",
+  "Sýna öll",
+  "Hætta {{app}}",
   "Skrá",
   "Breyta",
   "Skoða",
@@ -79,8 +84,8 @@ const desktop = [
   "Uppsetning dreifingar mistókst: {{distro}}",
   "Uppsetning Kito mistókst",
   "{{distro}} hefur þegar verið bætt við",
-  "opencode er ekki uppsett í þessari dreifingu",
-  "opencode er uppsett en ekki var hægt að keyra það",
+  "Kito er ekki uppsett í þessari dreifingu",
+  "Kito er uppsett en ekki var hægt að keyra það",
   "Kito er ekki uppsett í {{distro}}",
   "Uppfærslu Kito lauk en {{distro}} tilkynnir enn {{installed}}; vænt var {{expected}}",
   "engin útgáfa",

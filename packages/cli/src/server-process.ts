@@ -4,6 +4,7 @@ import { NodeServices } from "@effect/platform-node"
 import { Service, type DiscoverOptions, type Info } from "@opencode-ai/client/effect/service"
 import { LayerNode } from "@opencode-ai/util/effect/layer-node"
 import { Global } from "@opencode-ai/util/global"
+import { kitoDataEnv, kitoEnv } from "@opencode-ai/util/kito-env"
 import { OPENCODE_CHANNEL, OPENCODE_VERSION } from "./version"
 import { AppProcess } from "@opencode-ai/util/process"
 import { randomBytes, randomUUID } from "node:crypto"
@@ -14,6 +15,7 @@ import { Env } from "./env"
 import { LegacyData } from "./services/legacy-data"
 import { ServiceConfig } from "./services/service-config"
 import { Updater } from "./services/updater"
+import { selfCommand } from "./util/process"
 import { WebUi } from "./services/web-ui"
 
 export type Mode = "default" | "service" | "stdio"
@@ -32,7 +34,7 @@ export const run = Effect.fnUntraced(function* (options: Options) {
       LayerNode.compile(LayerNode.group([Global.node, AppProcess.node]), [
         [
           Global.node,
-          Global.layerWith(process.env.OPENCODE_CONFIG_DIR ? { config: process.env.OPENCODE_CONFIG_DIR } : {}),
+          Global.layerWith(kitoDataEnv("CONFIG_DIR") ? { config: kitoDataEnv("CONFIG_DIR") } : {}),
         ],
       ]),
     ),
@@ -72,6 +74,8 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       const environmentPassword = yield* Env.password
       // Keep the lease credential out of the environment inherited by tools.
       if (options.mode === "stdio") {
+        delete process.env.KITO_PASSWORD
+        delete process.env.KITO_SERVER_PASSWORD
         delete process.env.OPENCODE_PASSWORD
         delete process.env.OPENCODE_SERVER_PASSWORD
       }
@@ -88,45 +92,43 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
         start(
           {
             app: {
-              name: process.env.OPENCODE_CLIENT ?? "cli",
+              name: kitoEnv("CLIENT") ?? "cli",
               version: OPENCODE_VERSION,
               channel: OPENCODE_CHANNEL,
             },
             hostname,
             port,
             password,
-            simulation: truthy(process.env.OPENCODE_SIMULATE),
+            simulation: truthy(kitoDataEnv("SIMULATE")),
             database: {
               path:
-                process.env.OPENCODE_DB ??
+                kitoDataEnv("DB") ??
                 (["latest", "dev", "beta", "next", "prod"].includes(OPENCODE_CHANNEL) ||
-                process.env.OPENCODE_DISABLE_CHANNEL_DB === "1" ||
-                process.env.OPENCODE_DISABLE_CHANNEL_DB === "true"
+                kitoEnv("DISABLE_CHANNEL_DB") === "1" ||
+                kitoEnv("DISABLE_CHANNEL_DB") === "true"
                   ? "opencode.db"
                   : `opencode-${OPENCODE_CHANNEL.replace(/[^a-zA-Z0-9._-]/g, "-")}.db`),
             },
             models: {
-              url: process.env.OPENCODE_MODELS_URL,
-              file: process.env.OPENCODE_MODELS_PATH,
-              fetch: !truthy(process.env.OPENCODE_DISABLE_MODELS_FETCH),
+              url: kitoEnv("MODELS_URL"),
+              file: kitoDataEnv("MODELS_PATH"),
+              fetch: !truthy(kitoEnv("DISABLE_MODELS_FETCH")),
             },
             config: {
-              directory: process.env.OPENCODE_CONFIG_DIR,
-              project: !truthy(
-                process.env.OPENCODE_CONFIG_PROJECT_DISABLE ?? process.env.OPENCODE_DISABLE_PROJECT_CONFIG,
-              ),
-              file: process.env.OPENCODE_CONFIG,
-              content: process.env.OPENCODE_CONFIG_CONTENT,
+              directory: kitoDataEnv("CONFIG_DIR"),
+              project: !truthy(kitoEnv("CONFIG_PROJECT_DISABLE") ?? kitoEnv("DISABLE_PROJECT_CONFIG")),
+              file: kitoDataEnv("CONFIG"),
+              content: kitoDataEnv("CONFIG_CONTENT"),
             },
             windows: {
-              gitbash: process.env.OPENCODE_GIT_BASH_PATH,
+              gitbash: kitoDataEnv("GIT_BASH_PATH"),
             },
             fs: {
-              filewatcher: !truthy(process.env.OPENCODE_FILEWATCHER_DISABLE ?? process.env.OPENCODE_DISABLE_FILEWATCHER),
+              filewatcher: !truthy(kitoEnv("FILEWATCHER_DISABLE") ?? kitoEnv("DISABLE_FILEWATCHER")),
               fff:
-                process.env.OPENCODE_DISABLE_FFF === undefined
+                kitoEnv("DISABLE_FFF") === undefined
                   ? process.platform !== "win32"
-                  : !truthy(process.env.OPENCODE_DISABLE_FFF),
+                  : !truthy(kitoEnv("DISABLE_FFF")),
             },
           },
           serviceOptions === undefined
@@ -154,7 +156,7 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
               return Effect.fail(
                 new Error(
                   `Managed service port ${port} on ${hostname} is already in use by another process. ` +
-                    "Configure another port with `opencode service set port <port>` and start the service again.",
+                    `Configure another port with \`${selfCommand().join(" ")} service set port <port>\` and start the service again.`,
                   { cause: error },
                 ),
               )
@@ -206,7 +208,38 @@ const register = Effect.fnUntraced(function* (
     found.url === info.url &&
     found.pid === info.pid &&
     found.password === info.password
-  yield* fs.writeFileString(temp, encoded, { mode: 0o600 }).pipe(Effect.andThen(fs.rename(temp, file)))
+  // A concurrently spawned contender must not displace a healthy incumbent:
+  // registration is last-writer-wins and the replaced service shuts down, so
+  // an unchecked write can strand consumers that already discovered the loser.
+  // Skipping our own write lets the recheck loop below retire this process.
+  const found = yield* current.pipe(Effect.option)
+  const incumbent = Option.isSome(found) && !owns(found.value) && found.value.version === OPENCODE_VERSION
+    ? found.value
+    : undefined
+  const yieldToIncumbent = incumbent !== undefined && (yield* Effect.promise(() =>
+    fetch(new URL("/api/health", incumbent.url), {
+      headers: {
+        authorization: "Basic " + Buffer.from("opencode:" + incumbent.password).toString("base64"),
+      },
+      signal: AbortSignal.timeout(3000),
+    })
+      .then(async (response) => {
+        if (!response.ok) return false
+        const body = (await response.json()) as { pid?: number; version?: string }
+        return body.pid === incumbent.pid && body.version === incumbent.version
+      })
+      .catch(() => false),
+  ))
+  if (yieldToIncumbent) {
+    yield* Effect.logInfo("managed service already healthy; yielding registration", {
+      serviceID: id,
+      servicePID: process.pid,
+      incumbentServiceID: incumbent.id,
+      incumbentURL: incumbent.url,
+    })
+  } else {
+    yield* fs.writeFileString(temp, encoded, { mode: 0o600 }).pipe(Effect.andThen(fs.rename(temp, file)))
+  }
   yield* current.pipe(
     Effect.catchCause((cause) =>
       Effect.logWarning("managed service registration check failed; shutting down", {

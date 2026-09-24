@@ -77,8 +77,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "Nepodarilo sa nainštalovať distribúciu: {{distro}}",
   "desktop.wsl.error.installOpencode": "Inštalácia Kito zlyhala",
   "desktop.wsl.error.alreadyAdded": "{{distro}} je už pridaná",
-  "desktop.wsl.error.opencodeMissing": "opencode nie je v tejto distribúcii nainštalovaný",
-  "desktop.wsl.error.opencodeCannotRun": "opencode je nainštalovaný, ale nedá sa spustiť",
+  "desktop.wsl.error.opencodeMissing": "Kito nie je v tejto distribúcii nainštalovaný",
+  "desktop.wsl.error.opencodeCannotRun": "Kito je nainštalovaný, ale nedá sa spustiť",
   "desktop.wsl.error.opencodeNotInstalled": "Kito nie je nainštalovaný v {{distro}}",
   "desktop.wsl.error.updateVersion":
     "Aktualizácia Kito bola dokončená, ale {{distro}} stále hlási {{installed}}; očakávané {{expected}}",

@@ -380,7 +380,7 @@ export const SettingsWorkspacesV2: Component<{ activeDirectory?: string }> = (pr
                           <For each={linked()}>
                             {(session) => (
                               <div class="settings-v2-workspaces-session">
-                                <span>{sessionLabel(session)}</span>
+                                <span>{sessionLabel(session, language)}</span>
                                 <Show when={sessionTime(session)}>
                                   {(time) => <span class="settings-v2-workspaces-session-time">{time()}</span>}
                                 </Show>

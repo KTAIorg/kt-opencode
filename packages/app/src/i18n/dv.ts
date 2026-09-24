@@ -78,8 +78,8 @@ export const dict = {
   "desktop.wsl.error.installDistro": "ޑިސްޓްރޯ: {{distro}} އިންސްޓޯލް ކުރަން ނާކާމިޔާބު",
   "desktop.wsl.error.installOpencode": "Kito އިންސްޓޯލް ކުރުން ނާކާމިޔާބުވެއްޖެ",
   "desktop.wsl.error.alreadyAdded": "{{distro}} މިހާރުވެސް އިތުރުކޮށްފައިވެއެވެ",
-  "desktop.wsl.error.opencodeMissing": "މި ޑިސްޓްރޯގައި opencode އިންސްޓޯލްކޮށްފައެއް ނުވެއެވެ",
-  "desktop.wsl.error.opencodeCannotRun": "opencode އިންސްޓޯލް ކޮށްފައި އޮތް ނަމަވެސް ހިންގޭ ގޮތެއް ނުވިއެވެ",
+  "desktop.wsl.error.opencodeMissing": "މި ޑިސްޓްރޯގައި Kito އިންސްޓޯލްކޮށްފައެއް ނުވެއެވެ",
+  "desktop.wsl.error.opencodeCannotRun": "Kito އިންސްޓޯލް ކޮށްފައި އޮތް ނަމަވެސް ހިންގޭ ގޮތެއް ނުވިއެވެ",
   "desktop.wsl.error.opencodeNotInstalled": "Kito އަކީ {{distro}} ގައި އިންސްޓޯލް ކުރެވިފައިވާ އެއްޗެއް ނޫނެވެ",
   "desktop.wsl.error.updateVersion":
     "Kito އަޕްޑޭޓް ނިމުނު ނަމަވެސް {{distro}} އަދިވެސް ރިޕޯޓް ކުރަނީ {{installed}}؛ ލަފާކުރެވޭ ގޮތުގައި {{expected}}",
