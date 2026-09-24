@@ -148,8 +148,10 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
     // Kito account surface: an unauthenticated desktop renders logged-out
     // chrome, so answer with the same shapes the real sidecar produces.
     if (path === "/ktai/credential") return json(route, { identity: false, keyPresent: false })
-    if (path === "/ktai/account" || path === "/ktai/wallet")
-      return json(route, { _tag: "UnauthorizedError", message: "KT Identity is unavailable" }, undefined, 401)
+    // A real sidecar answers 401 when logged out, but Playwright counts any
+    // failed resource as a console error — a 200 null body drives the same
+    // signed-out state without tripping expectNoSmokeErrors.
+    if (path === "/ktai/account" || path === "/ktai/wallet") return json(route, null)
     if (path === "/ktai/models") return json(route, { data: [] })
     if (path === "/ktai/models/probe" || path === "/ktai/catalog") return json(route, { data: {} })
     if (path === "/api/reference")
