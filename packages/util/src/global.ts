@@ -78,7 +78,9 @@ const acquire = (input: Partial<Interface>) =>
     // The data directory holds the session database, stored credentials, and
     // tool/shell output files; keep it private to the owning user. chmod is a
     // no-op on platforms without POSIX modes.
-    yield* Effect.promise(() => fs.promises.chmod(service.data, 0o700)).pipe(Effect.catch(() => Effect.void))
+    yield* Effect.promise(() => fs.promises.chmod(service.data, 0o700)).pipe(
+      Effect.catchDefect(() => Effect.void),
+    )
     const canonicalTmp = yield* Effect.promise(() => fs.promises.realpath(service.tmp))
     return Service.of({ ...service, tmp: input.tmp ?? canonicalTmp })
   })

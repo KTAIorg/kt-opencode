@@ -502,7 +502,9 @@ it.effect("preserves complete HTTP context on AI SDK call errors", () =>
     const http = "http" in error.reason ? error.reason.http : undefined
     expect(http?.request.url).toBe("https://api.example.com/chat")
     expect(http?.response?.status).toBe(404)
-    expect(http?.response?.headers["authorization"]).toBe("Bearer secret-token")
+    // Credential-shaped headers are redacted in error diagnostics even when a
+    // server echoes them back.
+    expect(http?.response?.headers["authorization"]).toBe("<redacted>")
     expect(http?.body).toBe('{"error":{"message":"","code":"not_found"}}')
   }),
 )

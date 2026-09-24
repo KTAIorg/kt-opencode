@@ -238,8 +238,8 @@ describe("OpencodePlugin", () => {
           server: Bun.serve({
             port: 0,
             fetch: async (request) => {
-              await gate.promise
               authorization.push(request.headers.get("authorization"))
+              await gate.promise
               const origin = new URL(request.url).origin
               return Response.json({
                 config: {
@@ -305,9 +305,25 @@ describe("OpencodePlugin", () => {
           })
 
           yield* addPlugin()
-          expect(authorization).toEqual(["Bearer secret"])
-
-          const provider = required(yield* catalog.provider.get(Provider.ID.make("remote")))
+          // The plugin load is forked: wait for the request to actually reach
+          // the mock before asserting on the captured header.
+          yield* eventually(
+            Effect.sync(() => authorization.length),
+            (count) => count > 0,
+          )
+          expect(authorization).toContain("Bearer secret")
+          // The plugin's catalog load is forked: release the gate so the
+          // in-flight /api/config response can complete, then wait for the
+          // remote provider to land in the catalog.
+          release()
+          // Catalog reload is debounced and plugin refreshes serialize on a
+          // semaphore behind boot-time retries, so the populated provider can
+          // take a few seconds to materialize.
+          const provider = yield* eventually(
+            catalog.provider.get(Provider.ID.make("remote")),
+            (value) => value?.integrationID === Integration.ID.make("opencode"),
+            8000,
+          ).pipe(Effect.map(required))
           expect(provider).toMatchObject({
             name: "Remote",
             integrationID: "opencode",
