@@ -8,7 +8,11 @@ import { SETTINGS_STORE } from "./keys"
 
 const cache = new Map<string, Store>()
 
-const storeNamePattern = /^[a-z0-9_.-]+$/
+// Renderer-generated names embed a sanitized directory/draft head that keeps
+// original case (e.g. "opencode.workspace.-Users-fuwuq.1a2b.dat"), so allow
+// upper-case letters while still rejecting anything that is not a flat
+// filename.
+const storeNamePattern = /^[A-Za-z0-9_.-]{1,200}$/
 
 // Store names can come from the renderer over IPC and land directly inside the
 // userData directory via join/resolve. Keep them flat filenames so a crafted

@@ -10,6 +10,8 @@ describe("store name validation", () => {
       "opencode.window.3f6d4b8e-5c9f-4e57-a3b2-1234567890ab.dat",
       "opencode.workspace.a1b2c3.d4e5f6.dat",
       "opencode.draft.a1b2c3.d4e5f6.dat",
+      "opencode.workspace.-Users-fuwuq.1a2b3c.dat",
+      "opencode.draft.My-Draft-ID.2z9x.dat",
     ]) {
       expect(() => assertStoreName(name)).not.toThrow()
     }
@@ -27,7 +29,6 @@ describe("store name validation", () => {
       "",
       ".",
       "has space",
-      "UPPERCASE",
       "name%",
       "name?",
     ]) {
