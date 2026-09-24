@@ -126,7 +126,15 @@ jobs:
           path: packages/cli/dist
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        shell: pwsh
+        run: |
+          bun install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::warning::bun install failed, clearing the bun cache and retrying once"
+            bun pm cache rm
+            bun install --frozen-lockfile
+          }
+          exit $LASTEXITCODE
 
       - name: Prepare desktop bundle
         working-directory: packages/desktop
@@ -417,10 +425,14 @@ jobs:
           const prefix = 'kt-opencode-desktop';
 
           // Nav-site contract: these keys are overwritten every release.
+          // `key` is the latest.json downloads key; pkg keeps the bare platform
+          // name for backward compatibility, dmg adds a -dmg suffix.
           const latestAliases = [
-            { platform: 'windows-x64', ext: '.exe', alias: 'windows-x64.exe' },
-            { platform: 'macos-x64', ext: '.pkg', alias: 'macos-x64.pkg' },
-            { platform: 'macos-arm64', ext: '.pkg', alias: 'macos-arm64.pkg' },
+            { platform: 'windows-x64', ext: '.exe', key: 'windows-x64', alias: 'windows-x64.exe' },
+            { platform: 'macos-x64', ext: '.pkg', key: 'macos-x64', alias: 'macos-x64.pkg' },
+            { platform: 'macos-x64', ext: '.dmg', key: 'macos-x64-dmg', alias: 'macos-x64.dmg' },
+            { platform: 'macos-arm64', ext: '.pkg', key: 'macos-arm64', alias: 'macos-arm64.pkg' },
+            { platform: 'macos-arm64', ext: '.dmg', key: 'macos-arm64-dmg', alias: 'macos-arm64.dmg' },
           ];
 
           const client = new OSS({
@@ -500,7 +512,7 @@ jobs:
 
             const downloads = {};
             const latestUploads = [];
-            for (const { platform, ext, alias } of latestAliases) {
+            for (const { platform, ext, key, alias } of latestAliases) {
               const dir = `release-assets/${platform}`;
               const file = findOneByExt(dir, ext);
               const localPath = path.join(dir, file);
@@ -512,7 +524,7 @@ jobs:
                 'Content-Disposition': `attachment; filename="${file}"`,
               });
               latestUploads.push({ ...uploaded, platform, filename: file, sha256: digest });
-              downloads[platform] = {
+              downloads[key] = {
                 url: `${baseUrl}/${latestKey}`,
                 versionedUrl: `${baseUrl}/${versionedKey}`,
                 filename: file,

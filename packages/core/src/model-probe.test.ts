@@ -261,6 +261,24 @@ describe("ModelProbe.target", () => {
   })
 })
 
+describe("ModelProbe.zen", () => {
+  test("parses live catalog ids and ignores malformed entries", () => {
+    const ids = ModelProbe.parseZenCatalog({ data: [{ id: "ling-3.0-flash-fin-free" }, { id: "" }, { name: "no-id" }] })
+    expect(ids.has("ling-3.0-flash-fin-free")).toBe(true)
+    expect(ids.size).toBe(1)
+  })
+
+  test("rejects payloads without a data array", () => {
+    expect(() => ModelProbe.parseZenCatalog({ error: "nope" })).toThrow()
+  })
+
+  test("models in the live catalog probe ok, others report not-in-live-catalog", () => {
+    const results = ModelProbe.zenProbeResults(["in-catalog", "gone"], new Set(["in-catalog"]))
+    expect(results[0]).toEqual({ modelID: "in-catalog", ok: true })
+    expect(results[1]).toEqual({ modelID: "gone", ok: false, error: "not-in-live-catalog" })
+  })
+})
+
 describe("ModelProbe.probe", () => {
   test("returns per-model ok/fail from upstream responses", async () => {
     const calls: string[] = []

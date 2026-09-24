@@ -19,6 +19,7 @@ const defaultServer = "https://opencode.ai/console"
 const clientID = "opencode-cli"
 const methodID = Integration.MethodID.make("device")
 const RemoteResponse = Schema.Struct({ config: ConfigV1.Info })
+const ZenModels = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Schema.String })) })
 const Device = Schema.Struct({
   device_code: Schema.String,
   user_code: Schema.String,
@@ -93,6 +94,9 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Scope
     const loading = Semaphore.makeUnsafe(1)
     let connected = false
     let providers: typeof ConfigV1.Info.Type.provider | undefined
+    // Live zen model IDs from the public /v1/models endpoint; empty until fetched
+    // (fetch failure leaves it empty and disables filtering, falling back to the snapshot).
+    const liveZenIDs = new Set<string>()
 
     const load = Effect.fn("OpencodePlugin.load")(function* () {
       const connection = yield* ctx.integration.connection.active("opencode")
@@ -107,6 +111,20 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Scope
             ),
           )
         : undefined
+      yield* http
+        .execute(HttpClientRequest.get("https://opencode.ai/zen/v1/models").pipe(HttpClientRequest.acceptJson))
+        .pipe(
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(ZenModels)),
+          Effect.tap((body) =>
+            Effect.sync(() => {
+              liveZenIDs.clear()
+              for (const item of body.data) liveZenIDs.add(item.id)
+            }),
+          ),
+          Effect.catch((cause) =>
+            Effect.logWarning("failed to load live zen catalog", { cause }).pipe(Effect.as(undefined)),
+          ),
+        )
     })
 
     yield* ctx.integration.transform((draft) => {
@@ -188,6 +206,13 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Scope
       })
       if (hasKey) return
       for (const model of item.models.values()) {
+        // Anonymous zen pool: the models.dev snapshot lists models the live backend no
+        // longer serves (401 "not supported" on use); drop them so the picker only shows
+        // what /v1/models actually offers. Connected accounts keep their remote config.
+        if (liveZenIDs.size > 0 && !liveZenIDs.has(model.id)) {
+          catalog.model.remove(item.provider.id, model.id)
+          continue
+        }
         if (!model.cost.some((cost) => cost.input > 0)) continue
         catalog.model.update(item.provider.id, model.id, (draft) => {
           draft.enabled = false
@@ -202,6 +227,15 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Scope
       Effect.forkScoped({ startImmediately: true }),
     )
     yield* refresh().pipe(Effect.forkScoped)
+    // Boot-time retries: a transient failure of the live zen fetch must not leave
+    // dead snapshot models listed for the whole process lifetime.
+    yield* Effect.gen(function* () {
+      for (const delay of ["5 seconds", "15 seconds", "30 seconds"] as const) {
+        if (liveZenIDs.size > 0) return
+        yield* Effect.sleep(delay)
+        yield* refresh()
+      }
+    }).pipe(Effect.forkScoped)
   }),
 })
 

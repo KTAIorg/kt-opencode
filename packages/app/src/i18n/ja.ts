@@ -232,7 +232,7 @@ export const dict = {
   "provider.connect.apiKey.placeholder": "APIキー",
   "provider.connect.apiKey.required": "APIキーが必要です",
   "provider.connect.opencodeZen.line1":
-    "OpenCode Zenは、コーディングエージェント向けに最適化された信頼性の高いモデルへのアクセスを提供します。",
+    "Zenは、コーディングエージェント向けに最適化された信頼性の高いモデルへのアクセスを提供します。",
   "provider.connect.opencodeZen.line2": "1つのAPIキーで、Claude、GPT、Gemini、GLMなどのモデルにアクセスできます。",
   "provider.connect.opencodeZen.visit.prefix": " ",
   "provider.connect.opencodeZen.visit.link": "opencode.ai/zen",
