@@ -73,8 +73,15 @@ export function configureApplication() {
   return logger
 }
 
-export function acquireApplicationLock() {
-  if (app.requestSingleInstanceLock()) return true
+// A relaunched instance starts while the previous one is still draining
+// (wsl.stop + app.quit), so the first lock attempt can fail even though the
+// old process is already on its way out. Retry briefly before giving up —
+// without this, clicking "Restart" on the recovery sheet quits everything.
+export async function acquireApplicationLock() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (app.requestSingleInstanceLock()) return true
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
   app.quit()
   return false
 }

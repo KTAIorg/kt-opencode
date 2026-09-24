@@ -25,7 +25,7 @@ import { startWsl } from "./wsl/start"
 
 const main = Effect.gen(function* () {
   const logger = configureApplication()
-  if (!acquireApplicationLock()) return
+  if (!(yield* Effect.promise(() => acquireApplicationLock()))) return
   preferApplicationEnvironment(logger)
   const lifecycle = createApplicationLifecycle(logger)
   const serverReady = Deferred.makeUnsafe<ServerReadyData, unknown>()
