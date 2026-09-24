@@ -50,6 +50,25 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
   const command = useCommand()
   const language = useLanguage()
 
+  // Hoist the JSX out of the props object: Solid compiles `modelControl` as a
+  // getter, so every read of `props.modelControl` (Show `when` checks included)
+  // would otherwise mount a fresh control and destroy the open popover.
+  const modelControl = (
+    <PromptInputV2ModelControl
+      loading={props.controller.model.loading}
+      paid={props.controller.model.paid}
+      title={language.t("command.model.choose")}
+      keybind={command.keybindParts("model.choose")}
+      model={props.controller.model.selection}
+      providerID={props.controller.model.selection.current()?.provider?.id}
+      modelName={props.controller.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
+      onClose={props.controller.restoreFocus}
+      onUnpaidClick={() =>
+        dialog.show(() => <DialogSelectModelUnpaidV2 model={props.controller.model.selection} />)
+      }
+    />
+  )
+
   return (
     <div class="flex flex-col gap-3">
       <PromptInputV2
@@ -60,21 +79,7 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
         variantControlVisible={!props.controller.model.loading}
         attachKeybind={command.keybindParts("file.attach")}
         attachShortcut={command.keybind("file.attach")}
-        modelControl={
-          <PromptInputV2ModelControl
-            loading={props.controller.model.loading}
-            paid={props.controller.model.paid}
-            title={language.t("command.model.choose")}
-            keybind={command.keybindParts("model.choose")}
-            model={props.controller.model.selection}
-            providerID={props.controller.model.selection.current()?.provider?.id}
-            modelName={props.controller.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
-            onClose={props.controller.restoreFocus}
-            onUnpaidClick={() =>
-              dialog.show(() => <DialogSelectModelUnpaidV2 model={props.controller.model.selection} />)
-            }
-          />
-        }
+        modelControl={modelControl}
       />
     </div>
   )

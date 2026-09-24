@@ -41,7 +41,7 @@ export function createPromptInputController(input: {
         paid: providers.paid().length > 0,
         loading:
           (local.agent.visible() && data.location.agent.list({ directory: sdk().directory }) === undefined) ||
-          (!providers.ready() && !providers.failed()),
+          (!providers.ready() && !providers.everLoaded() && !providers.failed()),
       },
       session: {
         id: input.sessionID(),

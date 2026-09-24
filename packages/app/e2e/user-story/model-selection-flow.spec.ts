@@ -77,10 +77,17 @@ test("creates a session in a new project and selects its model", async ({ page }
   await expect(selectFolder).toBeEnabled()
   await selectFolder.click()
 
-  await page.locator('[data-action="home-new-session"]').click()
-  await expectAppVisible(page.locator('[data-component="prompt-input-v2"]'))
-
-  const modelControl = page.locator('[data-action="prompt-model"]')
+  // With a project selected the sessions empty-state has no global
+  // home-new-session action; the per-project row button opens the draft.
+  // dispatchEvent avoids pointerdown bubbling into the row's select-toggle,
+  // which re-renders the row and detaches the button mid-click.
+  await page.locator('[data-action="home-project-new-session"]').dispatchEvent("click")
+  // prompt-input-v2 also exists on the home composer — wait for the draft
+  // route itself before clicking, or the model popover opens on a component
+  // that unmounts as soon as the draft page renders.
+  const draft = page.locator('[data-component="session-new-design"]')
+  await expectAppVisible(draft)
+  const modelControl = draft.locator('[data-action="prompt-model"]')
   await modelControl.click()
   await expect(page.locator('[data-option-key="opencode:free-model"]')).toBeVisible()
   const goModel = page.locator('[data-option-key="opencode-go:go-model-1"]')

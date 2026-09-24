@@ -6,6 +6,7 @@ import { createEffect, createMemo, createSignal, type Accessor } from "solid-js"
 import { emptyProviderCatalog } from "./provider-catalog"
 import { useIntegrations } from "./use-integrations"
 import { customerFacingProviderName } from "@/utils/kt-settlement"
+import type { ProviderListResponse } from "@/types"
 
 export const popularProviders = ["ktai", "opencode"]
 const popularProviderSet = new Set(popularProviders)
@@ -50,12 +51,26 @@ export function useProviders(directory: Accessor<string | undefined>) {
   })
   const integrations = useIntegrations(directory)
 
-  const providers = createMemo(() => {
+  // Hold the last resolved catalog while a location change re-fetches: the
+  // workspace directory can be re-resolved to a canonical form mid-session and
+  // returning an empty catalog briefly would flicker `paid`/model lists and
+  // unmount an open model popover.
+  const providers = createMemo<ProviderListResponse>((prev) => {
     const ref = location()
     const provider = data.location.provider.list(ref)
     const model = data.location.model.list(ref)
-    if (!provider || !model) return emptyProviderCatalog
+    if (!provider || !model) return prev
     return normalizeProviderList(provider, model)
+  }, emptyProviderCatalog)
+
+  // Once any catalog has loaded, keep the composer rendered while the next
+  // location's data streams in — the workspace directory can be re-resolved to
+  // a canonical form mid-session, and treating that as "loading" would unmount
+  // the controls (and close an open model popover).
+  const [everLoaded, setEverLoaded] = createSignal(false)
+  createEffect(() => {
+    if (data.location.provider.list(location()) !== undefined && data.location.model.list(location()) !== undefined)
+      setEverLoaded(true)
   })
 
   return {
@@ -63,6 +78,7 @@ export function useProviders(directory: Accessor<string | undefined>) {
       const ref = location()
       return data.location.provider.list(ref) !== undefined && data.location.model.list(ref) !== undefined
     },
+    everLoaded,
     failed: () => failure() !== undefined,
     retry,
     all: () => providers().all,

@@ -1,5 +1,5 @@
 export type KtaiAccountSummary = {
-  account: { accountNo: string; displayName?: string }
+  account?: { accountNo: string; displayName?: string } | null
   balance?: number
 }
 
@@ -21,7 +21,7 @@ export function titlebarAccountAction(input: { account?: KtaiAccountSummary; has
 }
 
 export function titlebarAccountName(account?: KtaiAccountSummary) {
-  const name = account?.account.displayName?.trim() || account?.account.accountNo
+  const name = account?.account?.displayName?.trim() || account?.account?.accountNo
   return name || undefined
 }
 

@@ -746,7 +746,9 @@ export function createData(config: CreateDataInput) {
             message.assistant(draft, index, event.data.assistantMessageID),
             event.data.id,
           )
-          if (match?.state.status !== "running") return
+          // Terminal states are still mutable: servers re-emit success when a
+          // completed tool's output or metadata changes (e.g. question answers).
+          if (!match || (match.state.status !== "running" && match.state.status !== "completed")) return
           match.state = {
             status: "completed",
             input: match.state.input,
@@ -764,7 +766,11 @@ export function createData(config: CreateDataInput) {
             message.assistant(draft, index, event.data.assistantMessageID),
             event.data.id,
           )
-          if (!match || (match.state.status !== "streaming" && match.state.status !== "running")) return
+          if (
+            !match ||
+            (match.state.status !== "streaming" && match.state.status !== "running" && match.state.status !== "error")
+          )
+            return
           match.state = {
             status: "error",
             error: event.data.error,
