@@ -50,7 +50,7 @@ try {
   })
   if (tokenOpenApi.status !== 200) throw new Error("Compiled application rejected query authentication")
   if ((await pluginIDs(info.url, headers)).includes("smoke")) throw new Error("Smoke plugin existed before creation")
-  const plugin = path.join(root, ".opencode", "plugins", "smoke.ts")
+  const plugin = path.join(root, "config", "kito", "plugins", "smoke.ts")
   await fs.mkdir(path.dirname(plugin), { recursive: true })
   await fs.writeFile(plugin, pluginSource())
   await waitForPlugin(info.url, headers)
@@ -89,7 +89,13 @@ try {
   processes.forEach((process) => process.kill())
   await Promise.all(processes.map((process) => process.exited))
   if (failure)
-    errors.push(fs.readFile(path.join(root, "data", "opencode", "log", "opencode.log"), "utf8").catch(() => ""))
+    errors.push(
+      fs
+        .readdir(path.join(root, "data", "kito", "log"))
+        .then((files) => files.filter((file) => file.endsWith(".log")).at(-1) ?? "")
+        .then((file) => (file ? fs.readFile(path.join(root, "data", "kito", "log", file), "utf8") : ""))
+        .catch(() => ""),
+    )
 }
 
 const output = await Promise.all(errors)
@@ -107,7 +113,10 @@ function spawnService() {
 }
 
 async function waitForRegistration() {
-  const directory = path.join(root, "state", "opencode")
+  // Kito's global state root resolves to the "kito" leaf (util/global.ts), so
+  // the registration lands in <XDG_STATE_HOME>/kito — not the legacy
+  // "opencode" leaf this used to watch.
+  const directory = path.join(root, "state", "kito")
   for (let attempt = 0; attempt < 400; attempt++) {
     const files = await fs.readdir(directory).catch(() => [])
     const file = files.find(
