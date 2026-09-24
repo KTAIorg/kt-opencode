@@ -50,6 +50,8 @@ export const dict = {
   "command.language.set": "Use language: {{language}}",
 
   "command.session.new": "New session",
+  "session.title.new": "New session",
+  "session.title.child": "Child session",
   "command.file.open": "Open file",
   "command.tab.close": "Close tab",
   "command.tab.reopenClosed": "Reopen closed tab",

@@ -4,6 +4,11 @@ type Keys = keyof typeof en
 
 export const dict = {
   "desktop.menu.app": "Kito",
+  "desktop.menu.aboutApp": "關於 {{app}}",
+  "desktop.menu.hideApp": "隱藏 {{app}}",
+  "desktop.menu.hideOthers": "隱藏其他",
+  "desktop.menu.unhide": "全部顯示",
+  "desktop.menu.quitApp": "結束 {{app}}",
   "desktop.menu.file": "檔案",
   "desktop.menu.edit": "編輯",
   "desktop.menu.view": "檢視",
@@ -149,6 +154,8 @@ export const dict = {
   "command.language.set": "使用語言: {{language}}",
 
   "command.session.new": "新增工作階段",
+  "session.title.new": "新增工作階段",
+  "session.title.child": "子工作階段",
   "command.file.open": "開啟檔案",
   "command.tab.close": "關閉分頁",
   "command.tab.reopenClosed": "重新開啟已關閉的分頁",

@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu } from "electron"
+import { app, BrowserWindow, Menu } from "electron"
 import type { MenuItemConstructorOptions } from "electron"
 import {
   DESKTOP_MENU,
@@ -27,9 +27,9 @@ export function createMenu(deps: Deps) {
 
   const commands = deps.commands()
   const template = DESKTOP_MENU.filter((menu) => desktopMenuVisible(menu, "macos")).map((menu) => {
-    if (menu.role) return { role: nativeRole(menu.role), label: nativeT(menu.labelKey) }
+    if (menu.role) return { role: nativeRole(menu.role), label: menu.labelKey ? nativeT(menu.labelKey, appParams()) : undefined }
     return {
-      label: nativeT(menu.labelKey),
+      label: menu.labelKey ? nativeT(menu.labelKey, appParams()) : undefined,
       submenu: menu.items
         ?.filter((entry) => desktopMenuVisible(entry, "macos"))
         .map((entry) => nativeItem(entry, deps, commands)),
@@ -49,10 +49,11 @@ function nativeItem(
   commands: ReadonlySet<string> | undefined,
 ): MenuItemConstructorOptions {
   if (entry.type === "separator") return { type: "separator" }
-  if (entry.role) return { role: nativeRole(entry.role), label: entry.labelKey ? nativeT(entry.labelKey) : undefined }
+  if (entry.role)
+    return { role: nativeRole(entry.role), label: entry.labelKey ? nativeT(entry.labelKey, appParams()) : undefined }
 
   const item: MenuItemConstructorOptions = {
-    label: entry.labelKey ? nativeT(entry.labelKey) : undefined,
+    label: entry.labelKey ? nativeT(entry.labelKey, appParams()) : undefined,
     accelerator: entry.accelerator?.macos,
     enabled: entry.command
       ? (commands?.has(entry.command) ?? false)
@@ -83,4 +84,10 @@ function nativeItem(
 
 function nativeRole(role: DesktopMenuRole) {
   return role as NonNullable<MenuItemConstructorOptions["role"]>
+}
+
+// macOS app-menu labels embed the running app name (e.g. "Hide Kito Dev"), so
+// every label gets the channel-resolved name as the `app` parameter.
+function appParams() {
+  return { app: app.getName() }
 }

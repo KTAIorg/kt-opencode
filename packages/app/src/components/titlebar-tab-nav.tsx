@@ -34,6 +34,7 @@ export function TabNavItem(props: {
   pressed?: boolean
   hidden?: boolean
 }) {
+  const language = useLanguage()
   const [editing, setEditing] = createSignal(false)
   const [titleOverflowing, setTitleOverflowing] = createSignal(false)
   let tabRoot!: HTMLDivElement
@@ -55,7 +56,7 @@ export function TabNavItem(props: {
   })
   const title = createMemo(() => {
     const session = props.session
-    return session ? sessionLabel(session) : props.fallbackTitle
+    return session ? sessionLabel(session, language) : props.fallbackTitle
   })
 
   const projectName = createMemo(() => {
