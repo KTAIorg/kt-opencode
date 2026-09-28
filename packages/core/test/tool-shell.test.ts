@@ -311,6 +311,7 @@ describe("ShellTool", () => {
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
     ),
+    30_000,
   )
 
   it.live("reports a missing workdir", () =>

@@ -226,7 +226,7 @@ describe("auth command", () => {
   })
 
   test("reports list connection failures without a stack trace", async () => {
-    using server = Bun.serve({ port: 0, fetch: () => new Response("Unavailable", { status: 503 }) })
+    using server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("Unavailable", { status: 503 }) })
     const result = await cli(["auth", "list", "--server", server.url.toString()])
     expect(result.exitCode).toBe(1)
     expect(result.stdout).toBe("")
@@ -237,6 +237,9 @@ describe("auth command", () => {
 
 function authServer(fetch: (request: Request, url: URL) => Response | Promise<Response>, requests?: string[]) {
   return Bun.serve({
+    // Bind the loopback literal: on Windows "localhost" resolves to ::1 first
+    // while the server listens on IPv4, so the spawned CLI cannot connect.
+    hostname: "127.0.0.1",
     port: 0,
     fetch(request) {
       const url = new URL(request.url)

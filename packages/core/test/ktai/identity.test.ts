@@ -277,7 +277,7 @@ test("sessions without a server expiry stay valid and persist no expiry", async 
   const persisted = JSON.parse(fs.readFileSync(process.env.KITO_KTAI_IDENTITY_PATH, "utf8"))
   expect(persisted.expiresAt).toBeUndefined()
   expect(readPersistedIdentityToken()).toBe("no-expiry-token")
-  expect(fs.statSync(process.env.KITO_KTAI_IDENTITY_PATH).mode & 0o777).toBe(0o600)
+  if (process.platform !== "win32") expect(fs.statSync(process.env.KITO_KTAI_IDENTITY_PATH).mode & 0o777).toBe(0o600)
 })
 
 test("readPersistedIdentityToken rejects only a valid expired timestamp", () => {

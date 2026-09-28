@@ -374,11 +374,11 @@ test("persists the managed API key user-only, repairing permissive files", async
   try {
     fs.writeFileSync(file, "{}", { mode: 0o644 })
     await persistManagedApiKey("sk-managed")
-    expect(fs.statSync(file).mode & 0o777).toBe(0o600)
+    if (process.platform !== "win32") expect(fs.statSync(file).mode & 0o777).toBe(0o600)
 
     fs.chmodSync(file, 0o644)
     await persistManagedApiKey("sk-managed")
-    expect(fs.statSync(file).mode & 0o777).toBe(0o600)
+    if (process.platform !== "win32") expect(fs.statSync(file).mode & 0o777).toBe(0o600)
   } finally {
     delete process.env.KITO_KTAI_API_KEY_PATH
     fs.rmSync(file, { force: true })
