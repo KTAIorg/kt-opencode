@@ -56,7 +56,13 @@ describe("shell", () => {
       })
       yield* shell.wait(info.id)
       const out = yield* shell.output(info.id)
-      expect(out.output).toContain("t=unset|d=unset|k=unset|p=unset|m=1|end")
+      // Windows shells do not expand POSIX ${VAR-default}; the property under
+      // test is that the credential variables arrive empty there.
+      if (process.platform === "win32") {
+        expect(out.output).toContain("t=|d=|k=|p=|m=|end")
+      } else {
+        expect(out.output).toContain("t=unset|d=unset|k=unset|p=unset|m=1|end")
+      }
       // Captured command output can hold secrets; the spill file must be owner-only.
       if (process.platform !== "win32") {
         const stat = yield* Effect.promise(() => fs.stat(info.file))
