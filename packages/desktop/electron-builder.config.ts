@@ -37,6 +37,12 @@ const channel = (() => {
 })()
 
 const unsigned = process.env.KTAI_UNSIGNED_BUILD === "1"
+// GlobalSign EV signing is driven by electron-builder's own signtool integration
+// through CSC_LINK/WIN_CSC_LINK. The Azure Trusted Signing hook below is only a
+// fallback for builds that do not carry a PFX payload.
+const cscLink = process.env.WIN_CSC_LINK ?? process.env.CSC_LINK
+const pfxSigning = !unsigned && Boolean(cscLink)
+const requireSigning = process.env.KTAI_REQUIRE_SIGNING === "1"
 
 const APP_IDS = {
   dev: "cc.ktapi.desktop.dev",
@@ -46,6 +52,7 @@ const APP_IDS = {
 
 const getBase = (appId: string): Configuration => ({
   artifactName: "kito-desktop-${version}-${os}-${arch}.${ext}",
+  forceCodeSigning: requireSigning,
   directories: {
     output: "dist",
     buildResources: "resources",
@@ -93,9 +100,7 @@ const getBase = (appId: string): Configuration => ({
   },
   win: {
     icon: `resources/icons/icon.ico`,
-    signtoolOptions: {
-      sign: signWindows,
-    },
+    ...(pfxSigning ? {} : { signtoolOptions: { sign: signWindows } }),
     target: ["nsis"],
     verifyUpdateCodeSignature: false,
   },
