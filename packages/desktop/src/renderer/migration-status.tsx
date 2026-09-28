@@ -1,4 +1,4 @@
-import { OpenCode, type MigrationV1StatusOutput } from "@opencode-ai/client/promise"
+import { ClientError, OpenCode, type MigrationV1StatusOutput } from "@opencode-ai/client/promise"
 import { useLanguage } from "@opencode-ai/app"
 import { Loader } from "@opencode-ai/ui/loader"
 import { showToast, toaster, Toast } from "@opencode-ai/ui/toast"
@@ -58,24 +58,34 @@ export function MigrationStatus(props: { server: ServerReadyData }) {
 
     void (async () => {
       while (true) {
-        const status = await client.migration.v1.status({ signal: abort.signal })
-        setProgress(status.status === "running" ? status.progress : undefined)
-        if (status.status === "running") show()
-        else hide()
-        if (status.status === "completed") return
-        if (status.status === "error") throw new Error(status.error)
+        try {
+          const status = await client.migration.v1.status({ signal: abort.signal })
+          setProgress(status.status === "running" ? status.progress : undefined)
+          if (status.status === "running") show()
+          else hide()
+          if (status.status === "completed") return
+          if (status.status === "error") throw new Error(status.error)
+        } catch (error) {
+          if (abort.signal.aborted) return
+          // A transport failure means the local service is unreachable, not that
+          // the migration failed. Keep polling until it answers again instead of
+          // reporting a migration error the service never raised.
+          if (error instanceof ClientError && error.reason === "Transport") {
+            await wait(1_000, abort.signal)
+            continue
+          }
+          hide()
+          showToast({
+            variant: "error",
+            title: language.t("toast.migration.failed.title"),
+            description: error instanceof Error ? error.message : String(error),
+            duration: 10_000,
+          })
+          return
+        }
         await wait(1_000, abort.signal)
       }
-    })().catch((error) => {
-      if (abort.signal.aborted) return
-      hide()
-      showToast({
-        variant: "error",
-        title: language.t("toast.migration.failed.title"),
-        description: error instanceof Error ? error.message : String(error),
-        duration: 10_000,
-      })
-    })
+    })()
   })
 
   onCleanup(() => {
