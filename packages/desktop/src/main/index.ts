@@ -1,4 +1,4 @@
-import { app } from "electron"
+import { app, BrowserWindow } from "electron"
 import { Deferred, Effect, Fiber } from "effect"
 import type { ServerReadyData } from "../shared/ipc-contract"
 import { checkAppExists, resolveAppPath } from "./files/apps"
@@ -17,8 +17,10 @@ import { exportDebugLogs, startNetworkLogging, writeLog } from "./native/logging
 import { createMenu, sendMenuCommand } from "./native/menu"
 import { setNativeTranslations } from "./native/translations"
 import { startBackgroundCli } from "./service/background-service"
+import { checkHealth } from "./service/health"
 import { forwardInitializationFailure } from "./service/initialization"
 import { getDefaultServerUrl, setDefaultServerUrl } from "./service/server-settings"
+import { superviseService } from "./service/supervision"
 import { createUpdaterIpc, setupAutoUpdater, showUpdaterDialog, startAutoUpdater } from "./updater"
 import { getLastFocusedWindow, setBackgroundColor } from "./windows"
 import { startWsl } from "./wsl/start"
@@ -29,6 +31,7 @@ const main = Effect.gen(function* () {
   preferApplicationEnvironment(logger)
   const lifecycle = createApplicationLifecycle(logger)
   const serverReady = Deferred.makeUnsafe<ServerReadyData, unknown>()
+  const currentServer: { value: ServerReadyData | undefined } = { value: undefined }
 
   yield* Effect.promise(() => app.whenReady())
   yield* prepareDesktop(logger)
@@ -55,7 +58,7 @@ const main = Effect.gen(function* () {
     awaitInitialization: Effect.fnUntraced(
       function* () {
         logger.log("awaiting server ready")
-        const result = yield* Deferred.await(serverReady)
+        const result = currentServer.value ?? (yield* Deferred.await(serverReady))
         logger.log("server ready", { url: result.url })
         return result
       },
@@ -102,15 +105,47 @@ const main = Effect.gen(function* () {
     registerWslIpcHandlers(wsl.ipc)
     wsl.start()
     lifecycle.setWslShutdown(wsl.stop)
-    yield* Deferred.succeed(serverReady, {
+    const ready: ServerReadyData = {
       url: background.url,
       username: background.username,
       password: background.password,
-    })
+    }
+    currentServer.value = ready
+    yield* Deferred.succeed(serverReady, ready)
     logger.log("loading task finished")
   }).pipe(forwardInitializationFailure(serverReady), Effect.forkChild)
 
   yield* Fiber.await(loadingTask)
+  yield* Effect.forkChild(
+    Effect.promise(() =>
+      superviseService(
+        {
+          health: (url, password) => checkHealth(url, password),
+          restart: () =>
+            startBackgroundCli(logger)
+              .then((background) => ({
+                url: background.url,
+                username: background.username,
+                password: background.password,
+              }))
+              .catch((error: unknown) => {
+                logger.error("failed to restart local service", {
+                  error: error instanceof Error ? error.message : String(error),
+                })
+                return undefined
+              }),
+          reloadWindows: () => {
+            for (const win of BrowserWindow.getAllWindows()) win.webContents.reload()
+          },
+          log: (message, meta) => logger.log(message, meta),
+          error: (message, meta) => logger.error(message, meta),
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        },
+        currentServer,
+        new AbortController().signal,
+      ),
+    ),
+  )
   if (lifecycle.restoreWindows().length) createMenu(menu)
 })
 
