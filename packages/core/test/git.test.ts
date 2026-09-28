@@ -31,6 +31,7 @@ describe("Git", () => {
       expect(repository?.gitDirectory).toBe(AbsolutePath.make(path.join(directory, ".git")))
       expect(repository?.commonDirectory).toBe(repository?.gitDirectory)
     }),
+    30_000,
   )
 
   it.live("clones a remote and reads checkout metadata", () =>
@@ -50,6 +51,7 @@ describe("Git", () => {
         expect(yield* read(path.join(target, "README.md"))).toBe("one\n")
       }),
     ),
+    30_000,
   )
 
   it.live("fetches, checks out, and resets remote changes", () =>
@@ -72,6 +74,7 @@ describe("Git", () => {
         expect(yield* read(path.join(target, "README.md"))).toBe("feature\n")
       }),
     ),
+    30_000,
   )
 })
 

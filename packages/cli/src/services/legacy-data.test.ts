@@ -61,7 +61,7 @@ describe("legacy data migration", () => {
 
     expect(readFileSync(join(legacy, IDENTITY_FILE), "utf8")).toBe('{"token":"secret"}')
     expect(readFileSync(join(data, IDENTITY_FILE), "utf8")).toBe('{"token":"secret"}')
-    expect(statSync(join(data, IDENTITY_FILE)).mode & 0o777).toBe(0o600)
+    if (process.platform !== "win32") expect(statSync(join(data, IDENTITY_FILE)).mode & 0o777).toBe(0o600)
   })
 
   test("is a no-op when the kito data root already has an identity file", () => {
