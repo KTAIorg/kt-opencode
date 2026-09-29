@@ -244,6 +244,23 @@ jobs:
           name: kito-cli-dist
           path: packages/cli/dist
 
+      # tree-sitter native deps build from source on arm64, and node-gyp then
+      # fetches headers from nodejs.org, which intermittently times out from
+      # GitHub's macOS runners (10s hard timeout, no retry). Pre-fetch the
+      # headers with curl retries and point node-gyp at the local copy so
+      # installs never depend on that flaky hop.
+      - name: Pre-fetch node headers for native builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_VERSION="$(node --version)"
+          curl --fail --retry 5 --retry-delay 5 --retry-all-errors -sSL \
+            -o /tmp/node-headers.tar.gz \
+            "https://nodejs.org/download/release/${NODE_VERSION}/node-${NODE_VERSION}-headers.tar.gz"
+          mkdir -p /tmp/node-headers
+          tar -xzf /tmp/node-headers.tar.gz -C /tmp/node-headers --strip-components=1
+          echo "npm_config_nodedir=/tmp/node-headers" >> "$GITHUB_ENV"
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
