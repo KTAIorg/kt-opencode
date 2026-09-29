@@ -199,12 +199,22 @@ jobs:
             -RequireValidStatus
           if ($exitCode -ne 0) { exit $exitCode }
 
+      # The release consumers (OSS mirror, publish job) expect a flat
+      # artifact. Uploading exe + signature from two different roots would
+      # make upload-artifact keep the workspace-relative paths, and the OSS
+      # job then tries to put() the directories. Stage one flat directory.
+      - name: Stage Windows release files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item packages/desktop/dist/*.exe staging/
+          Copy-Item artifacts/AUTHENTICODE_SIGNATURE.txt staging/
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: kito-desktop-${{ needs.resolve-version.outputs.ktai-version }}-windows-x64
-          path: |
-            packages/desktop/dist/*.exe
-            artifacts/AUTHENTICODE_SIGNATURE.txt
+          path: staging/*
           if-no-files-found: error
 
       # electron-updater manifests travel separately so the publish job can merge
