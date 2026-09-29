@@ -394,6 +394,10 @@ jobs:
               --latest
           fi
 
+      # finalize-latest-yml.ts lives in the repo; the rest of this job only
+      # consumes build artifacts, so the checkout belongs to this step alone.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
       # electron-updater reads one manifest per channel; the per-arch copies that
       # travelled as latest-yml-* artifacts are merged here and uploaded onto the
       # release that now exists.
