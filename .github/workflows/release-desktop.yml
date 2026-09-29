@@ -199,12 +199,22 @@ jobs:
             -RequireValidStatus
           if ($exitCode -ne 0) { exit $exitCode }
 
+      # The release consumers (OSS mirror, publish job) expect a flat
+      # artifact. Uploading exe + signature from two different roots would
+      # make upload-artifact keep the workspace-relative paths, and the OSS
+      # job then tries to put() the directories. Stage one flat directory.
+      - name: Stage Windows release files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item packages/desktop/dist/*.exe staging/
+          Copy-Item artifacts/AUTHENTICODE_SIGNATURE.txt staging/
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: kito-desktop-${{ needs.resolve-version.outputs.ktai-version }}-windows-x64
-          path: |
-            packages/desktop/dist/*.exe
-            artifacts/AUTHENTICODE_SIGNATURE.txt
+          path: staging/*
           if-no-files-found: error
 
       # electron-updater manifests travel separately so the publish job can merge
@@ -243,6 +253,23 @@ jobs:
         with:
           name: kito-cli-dist
           path: packages/cli/dist
+
+      # tree-sitter native deps build from source on arm64, and node-gyp then
+      # fetches headers from nodejs.org, which intermittently times out from
+      # GitHub's macOS runners (10s hard timeout, no retry). Pre-fetch the
+      # headers with curl retries and point node-gyp at the local copy so
+      # installs never depend on that flaky hop.
+      - name: Pre-fetch node headers for native builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_VERSION="$(node --version)"
+          curl --fail --retry 5 --retry-delay 5 --retry-all-errors -sSL \
+            -o /tmp/node-headers.tar.gz \
+            "https://nodejs.org/download/release/${NODE_VERSION}/node-${NODE_VERSION}-headers.tar.gz"
+          mkdir -p /tmp/node-headers
+          tar -xzf /tmp/node-headers.tar.gz -C /tmp/node-headers --strip-components=1
+          echo "npm_config_nodedir=/tmp/node-headers" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
