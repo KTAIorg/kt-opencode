@@ -13,12 +13,16 @@
 | `packages/app`：`bun run test:unit` | 791 通过，0 失败 |
 | `packages/app`：`bun run test:browser` | 175 通过，0 失败 |
 | `packages/desktop`：`bun test` | 174 通过，1 跳过，0 失败 |
+| `packages/ai`：`bun run test` | 1793 通过，28 跳过，0 失败 |
+| `packages/server`：`bun run test` | 84 通过，1 跳过，0 失败；使用隔离 HOME / XDG / KITO 环境 |
 | `packages/ui`：`bun test` | 155 通过，0 失败 |
 | `packages/util`：`bun run test` | 99 通过，0 失败 |
 | `packages/cli`：`bun test test/web-ui.test.ts` | 3 通过，90 个断言，0 失败 |
 | Protocol / Kito 契约 / 网站 OpenAPI 生成检查 | 通过 |
 | CLI `build --single --skip-install`（prod / 2.0.27） | arm64 原生二进制构建通过，`--version` 返回 `opencode v2.0.27` |
 | Desktop `build`（prod / 2.0.27 / 本地 CLI_DIST） | main、preload、renderer 构建通过 |
+| Node CLI `build-node.ts --single --skip-install` 与 `service-smoke.ts --node` | Apple Silicon 构建与完整服务生命周期通过 |
+| HTTP API codegen `bun test` | 99 通过，0 失败；覆盖具名类型和真实 binary wildcard 请求 |
 | CLI `script/service-smoke.ts` | 通过：两个服务竞争唯一注册、查询鉴权、插件热加载、内嵌网页和退出清理 |
 
 跳过项由现有测试的平台/工具条件决定。这里只验证 Apple Silicon 本机产物；Windows、Intel macOS 安装包和远端 CI 结果应以 PR 检查为准。

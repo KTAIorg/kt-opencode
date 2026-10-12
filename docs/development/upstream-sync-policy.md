@@ -66,3 +66,9 @@ kito-v<产品版本>
 - `docs/api/openapi.yaml` 是 Kito HTTP+JSON 接口契约。修改 Protocol 后依次执行 `packages/protocol` 的 `generate`、`packages/client` 的 `generate` 和根目录 `sync:kito-contract`。
 - 数据、配置、缓存、服务注册继续位于 Kito 自己的 XDG 目录；托管 NewAPI 密钥与 KT Identity OAuth 分离。
 - 合入 `main` 会自动发布安装包，合入前需完成质量门禁并取得发布授权。
+
+## 已退役的旧 Patch
+
+- 旧的全局 `http.body` 协议字段 denylist 不适用于当前框架：新版原生提供商正式使用 body overlays 覆盖部署名、生成参数、工具控制和结构化输出配置。HTTP 传输采用官方 V2 行为，参数由调用方拥有的路由/模型配置决定。保留诊断凭据脱敏、Kito 托管密钥隔离、配置路径隔离与子进程凭据过滤。
+- 旧 Promise codegen 禁止 binary / 尾部 wildcard 的断言已由新版真实二进制请求测试替代；具名类型不再要求展开成匿名类型。
+- Node SEA 资源变量与读取方统一使用 `KITO_*`，构建声明使用现有 `@types/bun` 的 `bun` 名称。

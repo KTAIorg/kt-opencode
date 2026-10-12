@@ -1,3 +1,4 @@
+import { kitoDataEnv } from "@opencode/util/kito-env"
 import { createRequire } from "node:module"
 import { isSea } from "node:sea"
 import type { spawn } from "@lydell/node-pty"
@@ -5,7 +6,7 @@ import type { Opts, Proc } from "./pty.js"
 
 export type { Disp, Exit, Opts, Proc } from "./pty.js"
 
-const pty = createRequire(import.meta.url)(process.env.OPENCODE_NODE_PTY_PATH ?? "@lydell/node-pty") as {
+const pty = createRequire(import.meta.url)(kitoDataEnv("NODE_PTY_PATH") ?? "@lydell/node-pty") as {
   spawn: typeof spawn
 }
 

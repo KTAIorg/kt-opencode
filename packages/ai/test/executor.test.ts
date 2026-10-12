@@ -466,7 +466,7 @@ describe("RequestExecutor", () => {
           headers: {
             "retry-after-ms": "0",
             "x-request-id": "req_123",
-            "x-api-key": "secret",
+            "x-api-key": "<redacted>",
           },
         },
       })
@@ -513,7 +513,7 @@ describe("RequestExecutor", () => {
       const error = yield* executor.execute(sensitive).pipe(Effect.flip)
 
       expectAIError(error)
-      expect(errorHttp(error)?.request.headers).toMatchObject({
+      expect(error.reason.http?.headers).toMatchObject({
         authorization: "<redacted>",
         "proxy-authorization": "<redacted>",
         "x-api-key": "<redacted>",
@@ -536,12 +536,19 @@ describe("RequestExecutor", () => {
       }
     }).pipe(
       Effect.provide(
-        responsesLayer([
-          new Response("unauthorized", {
-            status: 401,
-            headers: { "set-cookie": "session=response-cookie-secret" },
-          }),
-        ]),
+        fixedResponse("unauthorized", {
+          status: 401,
+          headers: {
+            authorization: "Bearer auth-secret",
+            "proxy-authorization": "Bearer proxy-secret",
+            "x-api-key": "apikey-secret",
+            "x-goog-api-key": "goog-secret",
+            "x-auth-token": "authtoken-secret",
+            cookie: "session=cookie-secret",
+            "set-cookie": "session=response-cookie-secret",
+            "x-safe": "visible",
+          },
+        }),
       ),
     ),
   )
