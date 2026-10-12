@@ -1,5 +1,5 @@
-import { Global } from "@opencode-ai/util/global"
-import { kitoDataEnv } from "@opencode-ai/util/kito-env"
+import { Global } from "@opencode/util/global"
+import { kitoDataEnv } from "@opencode/util/kito-env"
 import fs from "fs"
 import path from "path"
 import { fetchAccountMe } from "./identity"
@@ -129,11 +129,8 @@ function formatRelayKey(key: string) {
 }
 
 function cookieHeader(response: Response) {
-  const cookies =
-    typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : []
-  const pairs = cookies
-    .map((entry) => entry.split(";")[0]?.trim())
-    .filter((entry): entry is string => Boolean(entry))
+  const cookies = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : []
+  const pairs = cookies.map((entry) => entry.split(";")[0]?.trim()).filter((entry): entry is string => Boolean(entry))
   return pairs.length ? pairs.join("; ") : undefined
 }
 
@@ -246,11 +243,7 @@ async function sessionJson(
   }
 }
 
-async function ensureViaSession(
-  identityToken: string,
-  baseUrl: string,
-  fetchImpl: FetchLike,
-): Promise<ManagedToken> {
+async function ensureViaSession(identityToken: string, baseUrl: string, fetchImpl: FetchLike): Promise<ManagedToken> {
   const ensured = await sessionJson(fetchImpl, `${baseUrl}/api/iam/ensure`, {
     method: "POST",
     headers: {
@@ -319,7 +312,9 @@ async function ensureViaSession(
   })
   const key = stringField(keyResult.payload, "key")
   if (keyResult.status >= 400 || !key) {
-    throw new Error(stringField(keyResult.payload, "message", "error") ?? `NewAPI token key failed (${keyResult.status})`)
+    throw new Error(
+      stringField(keyResult.payload, "message", "error") ?? `NewAPI token key failed (${keyResult.status})`,
+    )
   }
   return { key: formatRelayKey(key), created, name: KTAI_MANAGED_TOKEN_NAME }
 }
@@ -430,10 +425,7 @@ export async function readCachedSpendable() {
   return
 }
 
-async function readSelfSpendable(
-  session: SpendableSession,
-  input: { baseUrl: string; fetchImpl: FetchLike },
-) {
+async function readSelfSpendable(session: SpendableSession, input: { baseUrl: string; fetchImpl: FetchLike }) {
   const self = await sessionJson(input.fetchImpl, `${input.baseUrl}/api/user/self`, {
     method: "GET",
     headers: {
@@ -446,10 +438,7 @@ async function readSelfSpendable(
   return userSnapshotFrom(self.payload).remainingUsd
 }
 
-async function iamEnsureUser(
-  identityToken: string,
-  input: { baseUrl?: string; fetchImpl?: FetchLike } = {},
-) {
+async function iamEnsureUser(identityToken: string, input: { baseUrl?: string; fetchImpl?: FetchLike } = {}) {
   const baseUrl = input.baseUrl ?? newapiBaseUrl()
   const fetchImpl = input.fetchImpl ?? fetch
   const ensured = await sessionJson(fetchImpl, `${baseUrl}/api/iam/ensure`, {

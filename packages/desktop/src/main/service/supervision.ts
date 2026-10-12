@@ -1,4 +1,5 @@
-import type { ServerReadyData } from "../../shared/ipc-contract"
+import type { SidecarCredentials } from "./sidecar-credentials"
+type ServerReadyData = SidecarCredentials.Data
 
 export type ServiceSupervision = {
   health(url: string, password: string | null): Promise<boolean>

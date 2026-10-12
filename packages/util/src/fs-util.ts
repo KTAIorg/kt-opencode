@@ -1,4 +1,3 @@
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import path, { dirname, isAbsolute, join, relative, sep } from "path"
 import { realpathSync } from "fs"
 import { readdir } from "fs/promises"
@@ -9,6 +8,7 @@ import { Glob } from "./glob.js"
 import { serviceUse } from "./effect/service-use.js"
 import { makeGlobalNode } from "./effect/app-node.js"
 import { filesystem } from "./effect/app-node-platform.js"
+import { sameDirectory } from "./path.js"
 
 export namespace FSUtil {
   export class FileSystemError extends Schema.TaggedError<FileSystemError>()("FileSystemError", {
@@ -33,6 +33,8 @@ export namespace FSUtil {
     readonly start: string
     readonly stop?: string
     readonly mode?: "all" | "first"
+    /** Only match regular files or directories (following symlinks). By default any existing path matches. */
+    readonly type?: "file" | "directory"
   }
 
   export interface Interface extends FileSystem.FileSystem {
@@ -70,8 +72,8 @@ export namespace FSUtil {
 
       const readFileStringSafe = Effect.fn("FileSystem.readFileStringSafe")(function* (path: string) {
         return yield* fs.readFileString(path).pipe(
-          Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(undefined)),
-          Effect.catchReason("PlatformError", "PermissionDenied", () => Effect.succeed(undefined)),
+          Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined),
+          Effect.catchReason("PlatformError", "PermissionDenied", () => Effect.undefined),
         )
       })
 
@@ -166,12 +168,18 @@ export namespace FSUtil {
         while (true) {
           for (const target of options.targets) {
             const search = join(current, target)
-            if (yield* fs.exists(search)) {
+            const found =
+              options.type === "file"
+                ? yield* isFile(search)
+                : options.type === "directory"
+                  ? yield* isDir(search)
+                  : yield* fs.exists(search)
+            if (found) {
               result.push(search)
               if (options.mode === "first") return result
             }
           }
-          if (options.stop === current) break
+          if (options.stop && sameDirectory(options.stop, current)) break
           const parent = dirname(current)
           if (parent === current) break
           current = parent
@@ -188,10 +196,10 @@ export namespace FSUtil {
         let current = start
         while (true) {
           const matches = yield* scan(pattern, { cwd: current, absolute: true, include: "file", dot: true }).pipe(
-            Effect.catch(() => Effect.succeed([] as string[])),
+            Effect.orElseSucceed(() => [] as string[]),
           )
           result.push(...matches)
-          if (stop === current) break
+          if (stop && sameDirectory(stop, current)) break
           const parent = dirname(current)
           if (parent === current) break
           current = parent
@@ -251,7 +259,7 @@ export namespace FSUtil {
     try {
       return normalizePath(realpathSync(resolved))
     } catch (e: any) {
-      if (e?.code === "ENOENT") return normalizePath(resolved)
+      if (e?.code === "ENOENT" || e?.code === "ENOTDIR") return normalizePath(resolved)
       throw e
     }
   }

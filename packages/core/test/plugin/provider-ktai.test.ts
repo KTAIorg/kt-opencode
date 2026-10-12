@@ -1,6 +1,6 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
-import { ProviderPlugins } from "@opencode-ai/core/plugin/provider"
+import { ProviderPlugins } from "@opencode/core/plugin/provider"
 import { testEffect } from "../lib/effect"
 import { PluginTestLayer } from "./fixture"
 

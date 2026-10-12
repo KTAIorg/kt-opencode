@@ -1,6 +1,6 @@
 import fs from "fs"
 import path from "path"
-import { Global } from "@opencode-ai/util/global"
+import { Global } from "@opencode/util/global"
 
 export const KTAI_PRICING_URL = "https://ktapi.cc/api/pricing"
 export const KTAI_MODELS_URL = "https://ktapi.cc/v1/models"

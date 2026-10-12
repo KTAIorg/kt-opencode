@@ -1,5 +1,5 @@
 import { createRequire } from "node:module"
-import { kitoDataEnv } from "@opencode-ai/util/kito-env"
+import { kitoDataEnv } from "@opencode/util/kito-env"
 
 const require = createRequire(import.meta.url)
 

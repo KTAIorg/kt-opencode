@@ -1,10 +1,10 @@
 import { createRequire } from "node:module"
-import { kitoDataEnv } from "@opencode-ai/util/kito-env"
+import { kitoDataEnv } from "@opencode/util/kito-env"
 import path from "node:path"
 
 const require = createRequire(import.meta.url)
 const resolve = (name: string) => {
-  const key = `@opencode-ai/ui/audio/${name}`
+  const key = `@opencode/ui/audio/${name}`
   const assets = kitoDataEnv("NODE_ASSETS_DIR")
   return assets ? path.join(assets, key) : require.resolve(key)
 }

@@ -16,7 +16,7 @@ import {
   sessionExpiresAt,
   startTelegramLogin,
   telegramAuthorizeView,
-} from "@opencode-ai/core/ktai/identity"
+} from "@opencode/core/ktai/identity"
 
 afterEach(() => {
   if (process.env.KITO_KTAI_IDENTITY_PATH) fs.rmSync(process.env.KITO_KTAI_IDENTITY_PATH, { force: true })
@@ -152,7 +152,10 @@ test("startTelegramLogin accepts nested challenge.id", async () => {
         challenge: { id: "chal-nested" },
         displayCode: "066949",
         opaqueCode: "opaque-1",
-        telegram: { botUsername: "kt_official_service_bot", qrUrl: "https://t.me/kt_official_service_bot?start=login_x" },
+        telegram: {
+          botUsername: "kt_official_service_bot",
+          qrUrl: "https://t.me/kt_official_service_bot?start=login_x",
+        },
         expiresAt: "2026-08-01T00:00:00.000Z",
       }),
       { status: 201, headers: { "content-type": "application/json" } },
@@ -183,7 +186,13 @@ test("startTelegramLogin reads opaqueCode from telegram.qrUrl when the field is 
 
 test("pollTelegramLogin accepts Identity confirmed payload without session wrapper", async () => {
   const session = await pollTelegramLogin(
-    { challengeId: "chal-2", opaqueCode: "opaque-2", baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 1_000 },
+    {
+      challengeId: "chal-2",
+      opaqueCode: "opaque-2",
+      baseUrl: "https://login.example",
+      intervalMs: 1,
+      timeoutMs: 1_000,
+    },
     async () =>
       new Response(
         JSON.stringify({
@@ -203,10 +212,10 @@ test("fetchAccountSummary keeps the profile when the ledger is unavailable", asy
   const summary = await fetchAccountSummary("identity-token", "https://login.example", async (input) => {
     const url = String(input)
     if (url.endsWith("/identity/v1/account/me")) {
-      return new Response(
-        JSON.stringify({ id: "acc-1", accountNo: "KT260001", displayName: "芒 果果" }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      )
+      return new Response(JSON.stringify({ id: "acc-1", accountNo: "KT260001", displayName: "芒 果果" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
     }
     return new Response("ledger down", { status: 503 })
   })
@@ -234,7 +243,13 @@ test("treats an already-invalid Identity session as a successful revoke", async 
 test("pollTelegramLogin tolerates transient failures then completes", async () => {
   let polls = 0
   const session = await pollTelegramLogin(
-    { challengeId: "chal-3", opaqueCode: "opaque-3", baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 1_000 },
+    {
+      challengeId: "chal-3",
+      opaqueCode: "opaque-3",
+      baseUrl: "https://login.example",
+      intervalMs: 1,
+      timeoutMs: 1_000,
+    },
     async () => {
       polls += 1
       if (polls === 1) throw new Error("socket hang up")
@@ -310,7 +325,13 @@ test("pollTelegramLogin fails fast on non-transient errors", async () => {
   let polls = 0
   await expect(
     pollTelegramLogin(
-      { challengeId: "chal-4", opaqueCode: "opaque-4", baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 1_000 },
+      {
+        challengeId: "chal-4",
+        opaqueCode: "opaque-4",
+        baseUrl: "https://login.example",
+        intervalMs: 1,
+        timeoutMs: 1_000,
+      },
       async () => {
         polls += 1
         return new Response(JSON.stringify({ message: "challenge not found" }), { status: 404 })
@@ -324,7 +345,13 @@ test("pollTelegramLogin gives up after repeated transient failures", async () =>
   let polls = 0
   await expect(
     pollTelegramLogin(
-      { challengeId: "chal-5", opaqueCode: "opaque-5", baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 10_000 },
+      {
+        challengeId: "chal-5",
+        opaqueCode: "opaque-5",
+        baseUrl: "https://login.example",
+        intervalMs: 1,
+        timeoutMs: 10_000,
+      },
       async () => {
         polls += 1
         return new Response("bad gateway", { status: 502 })

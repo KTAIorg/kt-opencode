@@ -26,10 +26,5 @@ test("masks credential-bearing flag values in argv", () => {
 })
 
 test("leaves non-sensitive args untouched", () => {
-  expect(redactArgs(["serve", "--port", "4096", "--verbose"])).toEqual([
-    "serve",
-    "--port",
-    "4096",
-    "--verbose",
-  ])
+  expect(redactArgs(["serve", "--port", "4096", "--verbose"])).toEqual(["serve", "--port", "4096", "--verbose"])
 })

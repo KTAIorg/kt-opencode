@@ -1,22 +1,24 @@
 export * as ServerProcess from "./server-process"
 
 import { NodeServices } from "@effect/platform-node"
-import { Service, type DiscoverOptions, type Info } from "@opencode-ai/client/effect/service"
-import { LayerNode } from "@opencode-ai/util/effect/layer-node"
-import { Global } from "@opencode-ai/util/global"
-import { kitoDataEnv, kitoEnv } from "@opencode-ai/util/kito-env"
-import { OPENCODE_CHANNEL, OPENCODE_VERSION } from "./version"
-import { AppProcess } from "@opencode-ai/util/process"
+import { Service } from "@opencode/client/effect/service"
+import { LayerNode } from "@opencode/util/effect/layer-node"
+import { Global } from "@opencode/util/global"
+import { OPENCODE_ARTIFACT, OPENCODE_CHANNEL, OPENCODE_VERSION } from "./version"
+import { AppProcess } from "@opencode/util/process"
 import { randomBytes, randomUUID } from "node:crypto"
-import path from "node:path"
-import { Effect, FileSystem, Option, Redacted, Schedule, Schema } from "effect"
-import { HttpServer } from "effect/unstable/http"
+import { Effect, Option, Redacted, Schema } from "effect"
+import { PersistentPty } from "@opencode/schema/persistent-pty"
+import { HttpServer } from "effect/http"
+import { NetAddress } from "effect/net"
 import { Env } from "./env"
 import { LegacyData } from "./services/legacy-data"
 import { ServiceConfig } from "./services/service-config"
-import { Updater } from "./services/updater"
-import { selfCommand } from "./util/process"
+import { RetainedImage } from "./services/retained-image"
+import { ServiceRegistration } from "./services/service-registration"
+import { RemoteTunnel } from "./services/remote-tunnel"
 import { WebUi } from "./services/web-ui"
+import { databasePath } from "./database-path"
 
 export type Mode = "default" | "service" | "stdio"
 
@@ -24,25 +26,38 @@ export type Options = {
   readonly mode: Mode
   readonly hostname?: string
   readonly port?: number
+  readonly cors?: readonly string[]
 }
 
 // The process effect lives until server shutdown; tracing it would parent every request to one process-lifetime trace.
 export const run = Effect.fnUntraced(function* (options: Options) {
   return yield* processEffect(options).pipe(
-    Effect.provide(Updater.layer),
     Effect.provide(
-      LayerNode.compile(LayerNode.group([Global.node, AppProcess.node]), [
-        [
-          Global.node,
-          Global.layerWith(kitoDataEnv("CONFIG_DIR") ? { config: kitoDataEnv("CONFIG_DIR") } : {}),
+      LayerNode.compile(LayerNode.group([Global.node, AppProcess.node]), {
+        replacements: [
+          Global.node.replace(
+            Global.layerWith(process.env.OPENCODE_CONFIG_DIR ? { config: process.env.OPENCODE_CONFIG_DIR } : {}),
+          ),
         ],
-      ]),
+      }),
     ),
     Effect.provide(NodeServices.layer),
   )
 })
 
 const processEffect = Effect.fnUntraced(function* (options: Options) {
+  const inherited = process.env.OPENCODE_PTY_HANDOFF
+  delete process.env.OPENCODE_PTY_HANDOFF
+  const handoff =
+    inherited === undefined
+      ? undefined
+      : yield* Schema.decodeUnknownEffect(Schema.fromJsonString(PersistentPty.Handoff))(inherited).pipe(
+          Effect.catch(() =>
+            Effect.logWarning("Ignoring invalid PTY restart handoff; persistent terminals will start fresh").pipe(
+              Effect.as(undefined),
+            ),
+          ),
+        )
   const global = yield* Global.Service
   // Carry Kito-owned files forward from the legacy opencode data directory the
   // first time this server boots against the isolated kito root.
@@ -65,12 +80,15 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       const config = options.mode === "service" ? yield* ServiceConfig.read() : {}
       const hostname = options.hostname ?? config.hostname ?? "127.0.0.1"
       const port = options.port ?? config.port ?? (options.mode === "service" ? ServiceConfig.defaultPort() : undefined)
-      const incumbent =
+      const findIncumbent =
         serviceOptions !== undefined && port !== undefined
-          ? yield* Service.incumbent({ ...serviceOptions, url: serviceURL(hostname, port) })
+          ? Service.incumbent({ ...serviceOptions, url: serviceURL(hostname, port) })
           : undefined
-      if (incumbent !== undefined) return
-      const { start } = yield* Effect.promise(() => import("@opencode-ai/server/process"))
+      if (findIncumbent !== undefined && (yield* findIncumbent) !== undefined) return
+      // Keep a package-manager or curl install replaceable while the service runs; Desktop updates its own copy.
+      if (options.mode === "service" && process.platform === "win32" && RetainedImage.installed(global.home))
+        yield* RetainedImage.retain(global.cache, "service")
+      const { start } = yield* Effect.promise(() => import("@opencode/server/process"))
       const environmentPassword = yield* Env.password
       // Keep the lease credential out of the environment inherited by tools.
       if (options.mode === "stdio") {
@@ -88,88 +106,110 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       if (!password) return yield* Effect.fail(new Error("Missing server password"))
       const instanceID = randomUUID()
       const transform = yield* WebUi.handler()
-      const launch = (port: number | undefined) =>
-        start(
-          {
-            app: {
-              name: kitoEnv("CLIENT") ?? "cli",
-              version: OPENCODE_VERSION,
-              channel: OPENCODE_CHANNEL,
-            },
-            hostname,
-            port,
-            password,
-            simulation: truthy(kitoDataEnv("SIMULATE")),
-            database: {
-              path:
-                kitoDataEnv("DB") ??
-                (["latest", "dev", "beta", "next", "prod"].includes(OPENCODE_CHANNEL) ||
-                kitoEnv("DISABLE_CHANNEL_DB") === "1" ||
-                kitoEnv("DISABLE_CHANNEL_DB") === "true"
-                  ? "opencode.db"
-                  : `opencode-${OPENCODE_CHANNEL.replace(/[^a-zA-Z0-9._-]/g, "-")}.db`),
-            },
-            models: {
-              url: kitoEnv("MODELS_URL"),
-              file: kitoDataEnv("MODELS_PATH"),
-              fetch: !truthy(kitoEnv("DISABLE_MODELS_FETCH")),
-            },
-            config: {
-              directory: kitoDataEnv("CONFIG_DIR"),
-              project: !truthy(kitoEnv("CONFIG_PROJECT_DISABLE") ?? kitoEnv("DISABLE_PROJECT_CONFIG")),
-              file: kitoDataEnv("CONFIG"),
-              content: kitoDataEnv("CONFIG_CONTENT"),
-            },
-            windows: {
-              gitbash: kitoDataEnv("GIT_BASH_PATH"),
-            },
-            fs: {
-              filewatcher: !truthy(kitoEnv("FILEWATCHER_DISABLE") ?? kitoEnv("DISABLE_FILEWATCHER")),
-              fff:
-                kitoEnv("DISABLE_FFF") === undefined
-                  ? process.platform !== "win32"
-                  : !truthy(kitoEnv("DISABLE_FFF")),
-            },
+      const remote = { urls: [] as ReadonlyArray<string> }
+      const launch = start(
+        {
+          app: {
+            name: process.env.OPENCODE_CLIENT ?? OPENCODE_ARTIFACT,
+            version: OPENCODE_VERSION,
+            channel: OPENCODE_CHANNEL,
           },
-          serviceOptions === undefined
-            ? undefined
-            : {
-                onListen: (address, shutdown) =>
-                  Effect.gen(function* () {
-                    if (!config.password) yield* ServiceConfig.password(password)
-                    return yield* register(address, password, instanceID, serviceOptions.file, shutdown)
-                  }),
-              },
-          transform,
-        )
-      const server = yield* launch(port).pipe(
+          hostname,
+          port,
+          cors: options.cors ?? config.cors,
+          password,
+          pty: { handoff },
+          simulation: truthy(process.env.OPENCODE_SIMULATE),
+          database: {
+            path: databasePath(global.data),
+          },
+          models: {
+            url: process.env.OPENCODE_MODELS_URL,
+            file: process.env.OPENCODE_MODELS_PATH,
+            fetch: !truthy(process.env.OPENCODE_DISABLE_MODELS_FETCH),
+          },
+          config: {
+            directory: process.env.OPENCODE_CONFIG_DIR,
+            project: !truthy(
+              process.env.OPENCODE_CONFIG_PROJECT_DISABLE ?? process.env.OPENCODE_DISABLE_PROJECT_CONFIG,
+            ),
+            file: process.env.OPENCODE_CONFIG,
+            content: process.env.OPENCODE_CONFIG_CONTENT,
+          },
+          windows: {
+            gitbash: process.env.OPENCODE_GIT_BASH_PATH,
+          },
+          fs: {
+            filewatcher: !truthy(process.env.OPENCODE_FILEWATCHER_DISABLE ?? process.env.OPENCODE_DISABLE_FILEWATCHER),
+            fff:
+              process.env.OPENCODE_DISABLE_FFF === undefined
+                ? process.platform !== "win32"
+                : !truthy(process.env.OPENCODE_DISABLE_FFF),
+          },
+        },
+        serviceOptions === undefined
+          ? undefined
+          : {
+              onListen: (address, shutdown) =>
+                Effect.gen(function* () {
+                  if (!config.password) yield* ServiceConfig.password(password)
+                  return yield* ServiceRegistration.register({
+                    address,
+                    password,
+                    id: instanceID,
+                    file: serviceOptions.file,
+                    shutdown,
+                  })
+                }),
+            },
+        transform,
+        () => remote.urls,
+      )
+      const server = yield* launch.pipe(
         Effect.catch((error) => {
-          if (serviceOptions === undefined || port === undefined || !addressInUse(error)) return Effect.fail(error)
-          return recognizeIncumbent(serviceOptions, hostname, port).pipe(
-            Effect.flatMap((found) => {
-              if (found) return Effect.void
-              // The channel-derived default port is best-effort: a stale or
-              // foreign service occupying it must not brick this boot. Falling
-              // back to an ephemeral port keeps co-installed services alive;
-              // an explicitly configured port stays a hard, actionable error.
-              if (options.port === undefined && config.port === undefined) return launch(0)
-              return Effect.fail(
-                new Error(
-                  `Managed service port ${port} on ${hostname} is already in use by another process. ` +
-                    `Configure another port with \`${selfCommand().join(" ")} service set port <port>\` and start the service again.`,
-                  { cause: error },
-                ),
-              )
-            }),
-          )
+          if (findIncumbent === undefined || !addressInUse(error)) return Effect.fail(error)
+          return Effect.gen(function* () {
+            const deadline = Date.now() + 15_000
+            while (Date.now() < deadline) {
+              const found = yield* findIncumbent.pipe(Effect.timeoutOption(deadline - Date.now()))
+              if (Option.isSome(found) && found.value !== undefined) return
+              yield* Effect.sleep("100 millis")
+              if (Date.now() >= deadline) break
+              // Failed binds close their scope; a successful bind may take longer than this window to boot.
+              const server = yield* launch.pipe(Effect.catchIf(addressInUse, () => Effect.void))
+              if (server !== undefined) return server
+            }
+            return yield* Effect.fail(
+              new Error(
+                `Managed service port ${port} on ${hostname} is already in use by another process. ` +
+                  "Configure another port with `opencode service set port <port>` and start the service again.",
+                { cause: error },
+              ),
+            )
+          })
         }),
       )
       if (server === undefined) return
+      if (serviceOptions !== undefined && config.remote !== undefined && NetAddress.isInetAddress(server.address)) {
+        const bound = NetAddress.formatIp(server.address.address)
+        // A wildcard bind also listens on loopback, which is all the tunnel needs to reach.
+        const target =
+          bound === "0.0.0.0" || bound === "::"
+            ? `127.0.0.1:${server.address.port}`
+            : NetAddress.formatInet(server.address)
+        yield* Effect.forkScoped(
+          RemoteTunnel.run({
+            route: config.remote.route,
+            target,
+            onURL: (url) => {
+              remote.urls = url === undefined ? [] : [url]
+            },
+          }),
+        )
+      }
       const url = HttpServer.formatAddress(server.address)
       console.log(options.mode === "stdio" ? JSON.stringify({ url }) : `server listening on ${url}`)
       if (foreground && !environmentPassword) console.log(`server password ${password}`)
-      const updater = yield* Updater.Service
-      yield* updater.check().pipe(Effect.schedule(Schedule.spaced("10 minutes")), Effect.forkScoped)
       return yield* options.mode === "service"
         ? server.shutdown
         : options.mode === "stdio"
@@ -177,110 +217,6 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
           : Effect.never
     }).pipe(Effect.annotateLogs({ role: "server" })),
   )
-})
-
-const infoJson = Schema.fromJsonString(Service.Info)
-const encodeInfo = Schema.encodeEffect(infoJson)
-const decodeInfo = Schema.decodeUnknownEffect(infoJson)
-
-const register = Effect.fnUntraced(function* (
-  address: HttpServer.Address,
-  password: string,
-  id: string,
-  file: string,
-  shutdown: Effect.Effect<void>,
-) {
-  const fs = yield* FileSystem.FileSystem
-  const temp = file + "." + id + ".tmp"
-  yield* fs.makeDirectory(path.dirname(file), { recursive: true })
-  const info = {
-    id,
-    version: OPENCODE_VERSION,
-    url: HttpServer.formatAddress(address),
-    pid: process.pid,
-    password,
-  }
-  const encoded = yield* encodeInfo(info)
-  const current = fs.readFileString(file).pipe(Effect.flatMap(decodeInfo))
-  const owns = (found: Info) =>
-    found.id === info.id &&
-    found.version === info.version &&
-    found.url === info.url &&
-    found.pid === info.pid &&
-    found.password === info.password
-  // A concurrently spawned contender must not displace a healthy incumbent:
-  // registration is last-writer-wins and the replaced service shuts down, so
-  // an unchecked write can strand consumers that already discovered the loser.
-  // Skipping our own write lets the recheck loop below retire this process.
-  const found = yield* current.pipe(Effect.option)
-  const incumbent = Option.isSome(found) && !owns(found.value) && found.value.version === OPENCODE_VERSION
-    ? found.value
-    : undefined
-  const yieldToIncumbent = incumbent !== undefined && (yield* Effect.promise(() =>
-    fetch(new URL("/api/health", incumbent.url), {
-      headers: {
-        authorization: "Basic " + Buffer.from("opencode:" + incumbent.password).toString("base64"),
-      },
-      signal: AbortSignal.timeout(3000),
-    })
-      .then(async (response) => {
-        if (!response.ok) return false
-        const body = (await response.json()) as { pid?: number; version?: string }
-        return body.pid === incumbent.pid && body.version === incumbent.version
-      })
-      .catch(() => false),
-  ))
-  if (yieldToIncumbent) {
-    yield* Effect.logInfo("managed service already healthy; yielding registration", {
-      serviceID: id,
-      servicePID: process.pid,
-      incumbentServiceID: incumbent.id,
-      incumbentURL: incumbent.url,
-    })
-  } else {
-    yield* fs.writeFileString(temp, encoded, { mode: 0o600 }).pipe(Effect.andThen(fs.rename(temp, file)))
-  }
-  yield* current.pipe(
-    Effect.catchCause((cause) =>
-      Effect.logWarning("managed service registration check failed; shutting down", {
-        cause,
-        serviceID: id,
-        servicePID: process.pid,
-        registration: file,
-      }).pipe(Effect.andThen(Effect.failCause(cause))),
-    ),
-    Effect.tap((found) =>
-      owns(found)
-        ? Effect.void
-        : Effect.logWarning("managed service registration replaced; shutting down", {
-            serviceID: id,
-            servicePID: process.pid,
-            registration: file,
-            observedServiceID: found.id,
-            observedServicePID: found.pid,
-            observedVersion: found.version,
-            observedURL: found.url,
-          }),
-    ),
-    Effect.filterOrFail(owns),
-    Effect.repeat(Schedule.spaced("5 seconds")),
-    Effect.ignore,
-    Effect.andThen(shutdown),
-    Effect.forkScoped,
-  )
-  return current.pipe(
-    Effect.flatMap((found) => (owns(found) ? fs.remove(file) : Effect.void)),
-    Effect.ignore,
-  )
-})
-
-const recognizeIncumbent = Effect.fnUntraced(function* (options: DiscoverOptions, hostname: string, port: number) {
-  const found = yield* Service.incumbent({ ...options, url: serviceURL(hostname, port) }).pipe(
-    Effect.filterOrFail((value) => value !== undefined),
-    Effect.retry(Schedule.spaced("100 millis")),
-    Effect.timeoutOption("15 seconds"),
-  )
-  return Option.isSome(found)
 })
 
 function serviceURL(hostname: string, port: number) {

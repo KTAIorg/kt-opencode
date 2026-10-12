@@ -17,13 +17,17 @@ function groupOptions<T>(options: T[], groupBy?: (x: T) => string): { category: 
   if (!groupBy) {
     return [{ category: "", options }]
   }
+
   const map = new Map<string, T[]>()
+
   for (const opt of options) {
     const key = groupBy(opt)
     const arr = map.get(key)
+
     if (arr) arr.push(opt)
     else map.set(key, [opt])
   }
+
   return [...map.entries()].map(([category, opts]) => ({ category, options: opts }))
 }
 
@@ -55,6 +59,8 @@ export type SelectProps<T> = Omit<
   ComponentProps<typeof Root<T, { category: string; options: T[] }>>,
   "value" | "onSelect" | "children" | "options" | "itemComponent" | "sectionComponent" | "defaultValue" | "multiple"
 > & {
+  leading?: JSX.Element
+  triggerLabel?: string
   placeholder?: string
   options: T[]
   /** Selected option (single selection). */
@@ -68,10 +74,7 @@ export type SelectProps<T> = Omit<
   numeric?: boolean
   children?: (item: T) => JSX.Element
   valueClass?: string
-  /** Element rendered before the value inside the trigger, e.g. a leading icon. */
-  leading?: JSX.Element
-  /** Accessible name for the trigger, for callers without a visible label. */
-  triggerLabel?: string
+  contentClass?: string
 }
 
 export function Select<T>(props: SelectProps<T>) {
@@ -79,6 +82,8 @@ export function Select<T>(props: SelectProps<T>) {
     "class",
     "classList",
     "placeholder",
+    "leading",
+    "triggerLabel",
     "options",
     "current",
     "value",
@@ -92,8 +97,7 @@ export function Select<T>(props: SelectProps<T>) {
     "numeric",
     "disabled",
     "valueClass",
-    "leading",
-    "triggerLabel",
+    "contentClass",
     "placement",
     "gutter",
     "sameWidth",
@@ -114,11 +118,15 @@ export function Select<T>(props: SelectProps<T>) {
 
   const move = (item: T | undefined) => {
     if (!local.onHighlight) return
+
     if (!item) {
       stop()
+
       return
     }
+
     const key = keyFor(item)
+
     if (state.key === key) return
     state.cleanup?.()
     state.cleanup = local.onHighlight(item)
@@ -182,18 +190,20 @@ export function Select<T>(props: SelectProps<T>) {
       }}
       onOpenChange={(open) => {
         local.onOpenChange?.(open)
+
         if (!open) stop()
       }}
     >
       <Trigger
         as="div"
+        aria-label={props["aria-label"] ?? local.triggerLabel}
+        aria-labelledby={props["aria-labelledby"]}
         data-component="select-v2"
         data-appearance="inline"
         data-invalid={local.invalid ? "" : undefined}
         data-numeric={local.numeric ? "" : undefined}
         disabled={local.disabled}
         data-disabled={local.disabled ? "" : undefined}
-        aria-label={local.triggerLabel}
         classList={{
           ...local.classList,
           [local.class ?? ""]: !!local.class,
@@ -208,7 +218,9 @@ export function Select<T>(props: SelectProps<T>) {
           <Value<T> data-slot="select-v2-value-text" class={local.valueClass}>
             {(st) => {
               const selected = st.selectedOption()
+
               if (local.label && selected != null) return local.label(selected)
+
               return selected != null ? (selected as string) : ""
             }}
           </Value>
@@ -218,7 +230,7 @@ export function Select<T>(props: SelectProps<T>) {
         </span>
       </Trigger>
       <Portal>
-        <Content data-component="menu-v2-content" data-slot="select-v2-content">
+        <Content class={local.contentClass} data-component="menu-v2-content" data-slot="select-v2-content">
           <Listbox data-slot="select-v2-listbox" />
         </Content>
       </Portal>

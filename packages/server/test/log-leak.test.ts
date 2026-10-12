@@ -1,7 +1,7 @@
 import { expect } from "bun:test"
 import { Effect, Logger } from "effect"
 import { CurrentLogAnnotations } from "effect/References"
-import { HttpServer } from "effect/unstable/http"
+import { HttpServer } from "effect/http"
 import { it } from "../../core/test/lib/effect"
 import { ServerProcess } from "../src/process"
 
@@ -11,15 +11,13 @@ import { ServerProcess } from "../src/process"
 it.live("auth_token credentials do not reach request logs", () =>
   Effect.gen(function* () {
     const entries: { message: string; annotations: Record<string, unknown> }[] = []
-    const server = yield* ServerProcess.start<never, never>(
-      {
-        hostname: "127.0.0.1",
-        port: 0,
-        password: "secret",
-        app: { version: "test-version" },
-        database: { path: ":memory:" },
-      },
-    ).pipe(
+    const server = yield* ServerProcess.start<never, never>({
+      hostname: "127.0.0.1",
+      port: 0,
+      password: "secret",
+      app: { version: "test-version" },
+      database: { path: ":memory:" },
+    }).pipe(
       Effect.provideService(
         Logger.CurrentLoggers,
         new Set([
@@ -54,15 +52,13 @@ it.live("auth_token credentials do not reach request logs", () =>
 it.live("requests without secrets keep their query string in logs", () =>
   Effect.gen(function* () {
     const entries: { message: string; annotations: Record<string, unknown> }[] = []
-    const server = yield* ServerProcess.start<never, never>(
-      {
-        hostname: "127.0.0.1",
-        port: 0,
-        password: "secret",
-        app: { version: "test-version" },
-        database: { path: ":memory:" },
-      },
-    ).pipe(
+    const server = yield* ServerProcess.start<never, never>({
+      hostname: "127.0.0.1",
+      port: 0,
+      password: "secret",
+      app: { version: "test-version" },
+      database: { path: ":memory:" },
+    }).pipe(
       Effect.provideService(
         Logger.CurrentLoggers,
         new Set([

@@ -1,52 +1,75 @@
-import Store from "electron-store"
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import path from "node:path"
 import electron from "electron"
-import { rmSync } from "node:fs"
-import { join } from "node:path"
 
-import { deleteStoreFileIfEmpty } from "./cleanup"
 import { SETTINGS_STORE } from "./keys"
 
-const cache = new Map<string, Store>()
-
-// Renderer-generated names embed a sanitized directory/draft head that keeps
-// original case (e.g. "opencode.workspace.-Users-fuwuq.1a2b.dat"), so allow
-// upper-case letters while still rejecting anything that is not a flat
-// filename.
+const cache = new Map<string, SettingsStore>()
 const storeNamePattern = /^[A-Za-z0-9_.-]{1,200}$/
-
-// Store names can come from the renderer over IPC and land directly inside the
-// userData directory via join/resolve. Keep them flat filenames so a crafted
-// name can never escape it.
 export function assertStoreName(name: string) {
   if (storeNamePattern.test(name) && !name.includes("..") && name !== ".") return
-  throw new Error(`Invalid store name`)
+  throw new Error("Invalid store name")
 }
 
-// We cannot instantiate the electron-store at module load time because
-// module import hoisting causes this to run before app.setPath("userData", ...)
-// in index.ts has executed, which would result in files being written to the default directory
-// (e.g. bad: %APPDATA%\@opencode-ai\desktop\opencode.settings vs good: %APPDATA%\cc.ktapi.desktop.dev\opencode.settings).
+export type SettingsStore = ReturnType<typeof createSettingsStore>
+
+// Main-process settings only (onboarding, default server, window list, appearance, extension storage).
+// These are read synchronously before the storage layer exists and written on user action, so a
+// synchronous whole-file write is acceptable here. Renderer state goes through DesktopStorage.
+//
+// The file is the tab-indented JSON object electron-store used to write, so existing profiles
+// (and older builds) read the same data.
+//
+// We cannot instantiate the store at module load time because module import hoisting causes this
+// to run before app.setPath("userData", ...) has executed, which would result in files being
+// written to the default directory (e.g. bad: %APPDATA%\@opencode\desktop\opencode.settings vs
+// good: %APPDATA%\ai.opencode.desktop.dev\opencode.settings).
 export function getStore(name = SETTINGS_STORE) {
   assertStoreName(name)
   const cached = cache.get(name)
+
   if (cached) return cached
-  const next = new Store({
-    name,
-    cwd: electron.app.getPath("userData"),
-    fileExtension: "",
-    accessPropertiesByDotNotation: false,
-  })
+  const next = createSettingsStore(path.join(electron.app.getPath("userData"), name))
   cache.set(name, next)
+
   return next
 }
 
-export async function removeStoreFileIfEmpty(name: string) {
-  assertStoreName(name)
-  if (await deleteStoreFileIfEmpty(electron.app.getPath("userData"), name)) cache.delete(name)
+export function createSettingsStore(file: string) {
+  let data = read(file)
+
+  const write = () => {
+    mkdirSync(path.dirname(file), { recursive: true })
+    writeFileSync(`${file}.tmp`, JSON.stringify(data, null, "\t"), { mode: 0o600 })
+    renameSync(`${file}.tmp`, file)
+  }
+
+  return {
+    path: file,
+    get: (key: string): unknown => data[key],
+    set: (key: string, value: unknown) => {
+      if (value === undefined) throw new TypeError(`Use \`delete()\` to clear values: ${key}`)
+      data = { ...data, [key]: value }
+      write()
+    },
+    delete: (key: string) => {
+      data = Object.fromEntries(Object.entries(data).filter(([item]) => item !== key))
+      write()
+    },
+  }
 }
 
-export function removeStoreFile(name: string) {
-  assertStoreName(name)
-  rmSync(join(electron.app.getPath("userData"), name), { force: true })
-  cache.delete(name)
+// A missing file is an empty store. An unreadable one is set aside instead of blocking startup.
+function read(file: string): Record<string, unknown> {
+  if (!existsSync(file)) return {}
+
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(file, "utf8"))
+
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
+  } catch {
+    renameSync(file, `${file}.corrupt`)
+
+    return {}
+  }
 }

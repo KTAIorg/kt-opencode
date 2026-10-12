@@ -2,17 +2,16 @@ import { describe, expect } from "bun:test"
 import { Deferred, Effect, Fiber, Layer, Stream } from "effect"
 import fs from "fs/promises"
 import path from "path"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { Bus } from "@opencode-ai/core/bus"
-import { ConfigInstructionPlugin } from "@opencode-ai/core/config/plugin/instruction"
-import { Watcher } from "@opencode-ai/core/filesystem/watcher"
-import { InstructionDiscovery } from "@opencode-ai/core/instruction-discovery"
-import { Instructions } from "@opencode-ai/core/instructions/index"
-import { Location } from "@opencode-ai/core/location"
-import { AbsolutePath } from "@opencode-ai/core/schema"
-import { FSUtil } from "@opencode-ai/util/fs-util"
-import { Global } from "@opencode-ai/util/global"
-import { LayerNode } from "@opencode-ai/util/effect/layer-node"
+import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
+import { Bus } from "@opencode/core/bus"
+import { ConfigInstructionPlugin } from "@opencode/core/config/plugin/instruction"
+import { Watcher } from "@opencode/core/filesystem/watcher"
+import { InstructionDiscovery } from "@opencode/core/instruction-discovery"
+import { Location } from "@opencode/core/location"
+import { AbsolutePath } from "@opencode/core/schema"
+import { FSUtil } from "@opencode/util/fs-util"
+import { Global } from "@opencode/util/global"
+import { LayerNode } from "@opencode/util/effect/layer-node"
 import { tempGlobalLayer } from "./fixture/global"
 import { location } from "./fixture/location"
 import { tmpdir } from "./fixture/tmpdir"
@@ -34,19 +33,18 @@ const instructionLayer = (input: {
     AppNodeBuilder.build(
       LayerNode.group([InstructionDiscovery.node, Bus.node, FSUtil.node, Global.node, Location.node, Watcher.node]),
       [
-        [InstructionDiscovery.node, InstructionDiscovery.configured({ project: input.project })],
-        [
-          Global.node,
+        InstructionDiscovery.node.replace(InstructionDiscovery.configured({ project: input.project })),
+        Global.node.replace(
           input.config || input.home
             ? Global.layerWith({
                 ...(input.config ? { config: input.config } : {}),
                 ...(input.home ? { home: input.home } : {}),
               })
             : tempGlobalLayer,
-        ],
-        [Location.node, input.locationServiceLayer],
-        [Watcher.node, watcher],
-        ...(input.filesystemLayer ? [[FSUtil.node, input.filesystemLayer] as const] : []),
+        ),
+        Location.node.replace(input.locationServiceLayer),
+        Watcher.node.replace(watcher),
+        ...(input.filesystemLayer ? [FSUtil.node.replace(input.filesystemLayer)] : []),
       ],
     ),
     watcher,
@@ -81,15 +79,15 @@ describe("InstructionDiscovery", () => {
   it.effect("stores ordered values with last-write-wins precedence", () =>
     Effect.gen(function* () {
       const discovery = yield* InstructionDiscovery.Service
-      yield* discovery.transform((draft) => {
-        draft.add(file("/repo/AGENTS.md", "first"))
-        draft.add(file("/repo/packages/AGENTS.md", "package"))
-        draft.add(file("/repo/AGENTS.md", "last"))
-        draft.update("/repo/packages/AGENTS.md", (current) => {
+      yield* discovery.transform((editor) => {
+        editor.add(file("/repo/AGENTS.md", "first"))
+        editor.add(file("/repo/packages/AGENTS.md", "package"))
+        editor.add(file("/repo/AGENTS.md", "last"))
+        editor.update("/repo/packages/AGENTS.md", (current) => {
           current.content = "updated"
           current.path = AbsolutePath.make("/ignored")
         })
-        draft.remove("/missing")
+        editor.remove("/missing")
       })
 
       expect(yield* discovery.list()).toEqual([
@@ -102,7 +100,7 @@ describe("InstructionDiscovery", () => {
   it.effect("preserves admitted values while the source is unavailable", () =>
     Effect.gen(function* () {
       const discovery = yield* InstructionDiscovery.Service
-      yield* discovery.transform((draft) => draft.unavailable())
+      yield* discovery.transform((editor) => editor.unavailable())
       expect(
         (yield* readUpdate(
           yield* discovery.load(),
@@ -115,16 +113,16 @@ describe("InstructionDiscovery", () => {
   it.effect("renders granular instruction updates", () =>
     Effect.gen(function* () {
       const discovery = yield* InstructionDiscovery.Service
-      yield* discovery.transform((draft) => {
-        draft.add(file("/global/AGENTS.md", "global"))
-        draft.add(
+      yield* discovery.transform((editor) => {
+        editor.add(file("/global/AGENTS.md", "global"))
+        editor.add(
           file("/repo/AGENTS.md", ["old", ...Array.from({ length: 20 }, (_, index) => `keep ${index}`)].join("\n")),
         )
       })
       const initial = yield* readInitial(yield* discovery.load())
 
-      yield* discovery.transform((draft) => {
-        draft.update("/repo/AGENTS.md", (current) => {
+      yield* discovery.transform((editor) => {
+        editor.update("/repo/AGENTS.md", (current) => {
           current.content = ["new", ...Array.from({ length: 20 }, (_, index) => `keep ${index}`)].join("\n")
         })
       })
@@ -136,9 +134,9 @@ describe("InstructionDiscovery", () => {
       const rewritten = state({
         "core/instructions": [{ path: "/repo/AGENTS.md", content: "old one\nold two\nold three\nold four" }],
       })
-      yield* discovery.transform((draft) => {
-        draft.remove("/global/AGENTS.md")
-        draft.update("/repo/AGENTS.md", (current) => {
+      yield* discovery.transform((editor) => {
+        editor.remove("/global/AGENTS.md")
+        editor.update("/repo/AGENTS.md", (current) => {
           current.content = "new"
         })
       })
@@ -146,8 +144,8 @@ describe("InstructionDiscovery", () => {
         "The instructions changed:\nInstructions from: /repo/AGENTS.md\nnew",
       )
 
-      yield* discovery.transform((draft) => {
-        draft.add(file("/repo/packages/AGENTS.md", "package"))
+      yield* discovery.transform((editor) => {
+        editor.add(file("/repo/packages/AGENTS.md", "package"))
       })
       const structural = (yield* readUpdate(yield* discovery.load(), initial)).text
       expect(structural).toContain("The instructions from /global/AGENTS.md no longer apply.")
@@ -366,6 +364,53 @@ describe("ConfigInstructionPlugin.Plugin", () => {
     ),
   )
 
+  // A client CWD can spell the drive `c:` while git reports the project root as `C:`.
+  ;(process.platform === "win32" ? it.live : it.live.skip)(
+    "stops at the project root when the location drive letter differs in case",
+    () =>
+      Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+      ).pipe(
+        Effect.flatMap((tmp) => {
+          const global = path.join(tmp.path, "global")
+          const home = path.join(tmp.path, "home")
+          const project = path.join(tmp.path, "repo")
+          const directory = project[0].toLowerCase() + project.slice(1)
+          return Effect.gen(function* () {
+            yield* Effect.promise(() => fs.mkdir(project, { recursive: true }))
+            yield* Effect.promise(() => fs.writeFile(path.join(project, "AGENTS.md"), "project"))
+            yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "AGENTS.md"), "outside"))
+            const discovery = yield* start()
+            const watcher = yield* Watcher.Test
+            expect(yield* watcher.subscriptions()).toEqual([
+              { path: path.join(global, "AGENTS.md"), type: "file" },
+              { path: path.join(directory, "AGENTS.md"), type: "file" },
+            ])
+            expect((yield* readInitial(yield* discovery.load())).text).toBe(
+              `Instructions from: ${path.join(directory, "AGENTS.md")}\nproject`,
+            )
+          }).pipe(
+            Effect.provide(
+              instructionLayer({
+                config: global,
+                home,
+                locationServiceLayer: Layer.succeed(
+                  Location.Service,
+                  Location.Service.of(
+                    location(
+                      { directory: AbsolutePath.make(directory) },
+                      { projectDirectory: AbsolutePath.make(project) },
+                    ),
+                  ),
+                ),
+              }),
+            ),
+          )
+        }),
+      ),
+  )
+
   it.effect("isolates source failure without failing activation", () => {
     const failingFS = Layer.effect(
       FSUtil.Service,
@@ -405,7 +450,7 @@ describe("ConfigInstructionPlugin.Plugin", () => {
           FSUtil.Service.of({
             ...fs,
             up: () => Effect.succeed([discovered]),
-            readFileStringSafe: () => Effect.succeed(undefined),
+            readFileStringSafe: () => Effect.undefined,
           }),
         ),
       ),
@@ -433,7 +478,7 @@ describe("ConfigInstructionPlugin.Plugin", () => {
 
   it.effect("canonicalizes boundaries and honors project opt-out", () =>
     Effect.gen(function* () {
-      const observed: { values: { targets: string[]; start: string; stop?: string }[] } = { values: [] }
+      const observed: { values: FSUtil.UpOptions[] } = { values: [] }
       const observingFS = Layer.effect(
         FSUtil.Service,
         FSUtil.Service.pipe(
@@ -489,7 +534,7 @@ describe("ConfigInstructionPlugin.Plugin", () => {
       )
 
       const repo = path.resolve("/repo")
-      expect(observed.values).toEqual([{ targets: ["AGENTS.md"], start: repo, stop: repo }])
+      expect(observed.values).toEqual([{ targets: ["AGENTS.md"], start: repo, stop: repo, type: "file" }])
     }),
   )
 })

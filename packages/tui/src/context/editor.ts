@@ -1,5 +1,5 @@
 import { onCleanup, onMount } from "solid-js"
-import { kitoEnv } from "@opencode-ai/util/kito-env"
+import { kitoEnv } from "@opencode/util/kito-env"
 import { createStore } from "solid-js/store"
 import { Option, Schema, SchemaGetter } from "effect"
 import { isRecord } from "../util/record"

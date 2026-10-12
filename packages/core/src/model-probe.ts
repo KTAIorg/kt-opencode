@@ -1,7 +1,6 @@
 export * as ModelProbe from "./model-probe.js"
 
 import { Effect } from "effect"
-import { Catalog } from "./catalog.js"
 import { Credential } from "./credential.js"
 import { Integration } from "./integration.js"
 import { Model } from "./model.js"
@@ -33,9 +32,9 @@ type Protocol = "openai-chat" | "openai-responses" | "anthropic-messages" | "gem
 // cohere/gitlab/sap 等非通用协议不在内——它们返回 "unsupported-protocol"，由调用方按模型汇报。
 const OPENAI_CHAT_PACKAGES = new Set([
   "@ai-sdk/openai-compatible",
-  "@opencode-ai/ai/providers/openai-compatible",
+  "@opencode/ai/providers/openai-compatible",
   "@ai-sdk/xai",
-  "@opencode-ai/ai/providers/xai",
+  "@opencode/ai/providers/xai",
   "@ai-sdk/mistral",
   "@ai-sdk/groq",
   "@ai-sdk/cerebras",
@@ -45,24 +44,24 @@ const OPENAI_CHAT_PACKAGES = new Set([
   "@ai-sdk/alibaba",
   "venice-ai-sdk-provider",
   "@openrouter/ai-sdk-provider",
-  "@opencode-ai/ai/providers/openrouter",
+  "@opencode/ai/providers/openrouter",
   "@ai-sdk/gateway",
   "ai-gateway-provider",
 ])
 
 const OPENAI_RESPONSES_PACKAGES = new Set([
   "@ai-sdk/openai",
-  "@opencode-ai/ai/providers/openai",
-  "@opencode-ai/ai/providers/openai/responses",
+  "@opencode/ai/providers/openai",
+  "@opencode/ai/providers/openai/responses",
 ])
 
 const ANTHROPIC_MESSAGES_PACKAGES = new Set([
   "@ai-sdk/anthropic",
-  "@opencode-ai/ai/providers/anthropic",
-  "@opencode-ai/ai/providers/anthropic-compatible",
+  "@opencode/ai/providers/anthropic",
+  "@opencode/ai/providers/anthropic-compatible",
 ])
 
-const GEMINI_PACKAGES = new Set(["@ai-sdk/google", "@opencode-ai/ai/providers/google"])
+const GEMINI_PACKAGES = new Set(["@ai-sdk/google", "@opencode/ai/providers/google"])
 
 // openai-chat 没有规范默认地址（自定义中转必须配 baseURL）；其余协议有官方默认端点。
 const DEFAULT_BASE_URL: Record<Exclude<Protocol, "openai-chat">, string> = {
@@ -77,11 +76,7 @@ export type ProbeTarget = {
   body: Record<string, unknown>
 }
 
-export type ProbeFailure =
-  | "unsupported-protocol"
-  | "missing-base-url"
-  | "unresolved-variables"
-  | "missing-credential"
+export type ProbeFailure = "unsupported-protocol" | "missing-base-url" | "unresolved-variables" | "missing-credential"
 
 const protocolFor = (packageName: string | undefined): Protocol | undefined => {
   if (packageName === undefined) return undefined
@@ -242,8 +237,7 @@ async function send(
     if (response.ok) {
       const errorField = payload?.error
       if (errorField) {
-        const message =
-          typeof errorField === "string" ? errorField : errorField.message || `HTTP ${response.status}`
+        const message = typeof errorField === "string" ? errorField : errorField.message || `HTTP ${response.status}`
         return { modelID, ok: false, status: response.status, error: message.slice(0, 200) }
       }
       if (payload?.success === false) {
@@ -300,7 +294,7 @@ export async function probe(
 // resolve 失败按无凭据处理，由 target() 汇报 missing-credential，而不是让上层 401。
 const PROBE_BATCH_LIMIT = 100
 export const probeProvider = Effect.fn("ModelProbe.probeProvider")(function* (
-  catalog: Catalog.Interface,
+  models: Model.Interface,
   integrations: Integration.Interface,
   provider: Provider.Info,
   modelIDs: readonly string[],
@@ -312,16 +306,14 @@ export const probeProvider = Effect.fn("ModelProbe.probeProvider")(function* (
     const live = yield* Effect.promise(() => zenCatalog())
     return { results: zenProbeResults(ids, live), probedAt: Date.now() }
   }
-  const connection = yield* integrations.connection.active(
-    provider.integrationID ?? Integration.ID.make(provider.id),
-  )
+  const connection = yield* integrations.connection.active(provider.integrationID ?? Integration.ID.make(provider.id))
   const credential = connection
     ? yield* integrations.connection.resolve(connection).pipe(Effect.catch(() => Effect.succeed(undefined)))
     : undefined
   const planned: { modelID: string; target: ProbeTarget }[] = []
   const results: ModelProbeResult[] = []
   for (const id of ids) {
-    const model = yield* catalog.model.get(provider.id, Model.ID.make(id))
+    const model = yield* models.get(provider.id, Model.ID.make(id))
     if (!model) {
       results.push({ modelID: id, ok: false, error: "unknown-model" })
       continue

@@ -1,152 +1,35 @@
-import { app, BrowserWindow } from "electron"
-import { Deferred, Effect, Fiber } from "effect"
-import type { ServerReadyData } from "../shared/ipc-contract"
-import { checkAppExists, resolveAppPath } from "./files/apps"
-import { registerIpcHandlers, registerUpdaterIpcHandlers, registerWslIpcHandlers } from "./ipc"
-import {
-  acquireApplicationLock,
-  configureApplication,
-  loadProxyEnvironment,
-  preferApplicationEnvironment,
-  prepareDesktop,
-} from "./lifecycle/environment"
-import { createApplicationLifecycle } from "./lifecycle"
-import { ensureDefaultProject } from "./lifecycle/default-project"
-import { finishFirstLaunchOnboarding, isFirstLaunchOnboardingPending } from "./lifecycle/onboarding"
-import { exportDebugLogs, startNetworkLogging, writeLog } from "./native/logging"
-import { createMenu, sendMenuCommand } from "./native/menu"
-import { setNativeTranslations } from "./native/translations"
-import { startBackgroundCli } from "./service/background-service"
-import { checkHealth } from "./service/health"
-import { forwardInitializationFailure } from "./service/initialization"
-import { getDefaultServerUrl, setDefaultServerUrl } from "./service/server-settings"
-import { superviseService } from "./service/supervision"
-import { createUpdaterIpc, setupAutoUpdater, showUpdaterDialog, startAutoUpdater } from "./updater"
-import { getLastFocusedWindow, setBackgroundColor } from "./windows"
-import { startWsl } from "./wsl/start"
+// Imported first so its evaluation stamps the moment Electron handed control to this module.
+import { marks } from "./lifecycle/marks"
+import { app } from "electron"
+import { acquireApplicationLock, configureApplication } from "./lifecycle/configure"
+import { startSidecarProbe } from "./service/sidecar-probe"
+import { registerStorageSnapshotHandler } from "./storage/snapshot"
+import { createEarlyWindow } from "./windows/early"
+import { rendererAssetsServed } from "./windows/protocol"
+import { registerRendererScheme } from "./windows/scheme"
 
-const main = Effect.gen(function* () {
-  const logger = configureApplication()
-  if (!(yield* Effect.promise(() => acquireApplicationLock()))) return
-  preferApplicationEnvironment(logger)
-  const lifecycle = createApplicationLifecycle(logger)
-  const serverReady = Deferred.makeUnsafe<ServerReadyData, unknown>()
-  const currentServer: { value: ServerReadyData | undefined } = { value: undefined }
+// This module stays small on purpose. Electron holds the ready event until the entry module has
+// finished, and the first window should be on screen before the rest of the main process — a few
+// hundred milliseconds of module evaluation and layers — loads. Configuration and the scheme must
+// precede ready; the window is created the moment ready fires; everything else is imported after.
+configureApplication()
 
-  yield* Effect.promise(() => app.whenReady())
-  yield* prepareDesktop(logger)
+if (acquireApplicationLock()) {
+  registerRendererScheme()
+  // Window first, then the bundle: starting the import before ready delays ready itself, because the
+  // module graph evaluates on the same thread Chromium needs to finish initialising.
+  void app.whenReady().then(async () => {
+    marks.ready = Date.now()
+    registerStorageSnapshotHandler()
+    createEarlyWindow()
+    marks.window = Date.now()
+    startSidecarProbe()
 
-  const updater = setupAutoUpdater(lifecycle.prepareToRestart)
-  // Enabled command ids reported by each window's renderer, keyed by webContents id.
-  // The native menu mirrors the focused window's registration state.
-  const menuCommands = new Map<number, ReadonlySet<string>>()
-  const menu = {
-    trigger: (id: string) => {
-      const win = getLastFocusedWindow()
-      if (win) sendMenuCommand(win, id)
-    },
-    commands: () => {
-      const win = getLastFocusedWindow()
-      return win ? menuCommands.get(win.webContents.id) : undefined
-    },
-    checkForUpdates: () => void showUpdaterDialog(updater),
-    relaunch: lifecycle.relaunch,
-  }
-  app.on("browser-window-focus", () => createMenu(menu))
-  registerIpcHandlers({
-    relaunch: lifecycle.relaunch,
-    awaitInitialization: Effect.fnUntraced(
-      function* () {
-        logger.log("awaiting server ready")
-        const result = currentServer.value ?? (yield* Deferred.await(serverReady))
-        logger.log("server ready", { url: result.url })
-        return result
-      },
-      (effect) => Effect.runPromise(effect),
-    ),
-    consumeInitialDeepLinks: lifecycle.consumeInitialDeepLinks,
-    getDefaultServerUrl,
-    setDefaultServerUrl,
-    isFirstLaunchOnboardingPending,
-    finishFirstLaunchOnboarding,
-    ensureDefaultProject,
-    checkAppExists,
-    resolveAppPath: async (appName) => resolveAppPath(appName),
-    showUpdater: () => showUpdaterDialog(updater),
-    setBackgroundColor,
-    exportDebugLogs,
-    recordFatalRendererError: (error) => writeLog("renderer", "fatal renderer error", { ...error }, "error"),
-    setNativeTranslations: (bundle) => {
-      if (setNativeTranslations(bundle)) createMenu(menu)
-    },
-    setMenuCommands: (sender, ids) => {
-      if (!Array.isArray(ids)) return
-      const previous = menuCommands.get(sender.id)
-      if (previous && previous.size === ids.length && ids.every((id) => previous.has(id))) return
-      menuCommands.set(sender.id, new Set(ids))
-      if (!previous) {
-        sender.once("destroyed", () => {
-          menuCommands.delete(sender.id)
-          createMenu(menu)
-        })
-      }
-      createMenu(menu)
-    },
+    // The window's renderer is already loading. Its HTML and preloaded chunks are served from this
+    // thread, so the bundle waits for that burst to be answered (or a cap) before it evaluates.
+    if (!process.env.ELECTRON_RENDERER_URL) await rendererAssetsServed({ quietMs: 40, capMs: 400 })
+    marks.served = Date.now()
+
+    return import("./desktop")
   })
-  registerUpdaterIpcHandlers(createUpdaterIpc(updater))
-  startAutoUpdater(updater)
-  yield* Effect.promise(() => startNetworkLogging())
-
-  const loadingTask = yield* Effect.gen(function* () {
-    loadProxyEnvironment(logger)
-    logger.log("starting v2 background service")
-    const background = yield* Effect.promise(() => startBackgroundCli(logger))
-    const wsl = yield* Effect.promise(() => startWsl(background, logger))
-    registerWslIpcHandlers(wsl.ipc)
-    wsl.start()
-    lifecycle.setWslShutdown(wsl.stop)
-    const ready: ServerReadyData = {
-      url: background.url,
-      username: background.username,
-      password: background.password,
-    }
-    currentServer.value = ready
-    yield* Deferred.succeed(serverReady, ready)
-    logger.log("loading task finished")
-  }).pipe(forwardInitializationFailure(serverReady), Effect.forkChild)
-
-  yield* Fiber.await(loadingTask)
-  yield* Effect.forkChild(
-    Effect.promise(() =>
-      superviseService(
-        {
-          health: (url, password) => checkHealth(url, password),
-          restart: () =>
-            startBackgroundCli(logger)
-              .then((background) => ({
-                url: background.url,
-                username: background.username,
-                password: background.password,
-              }))
-              .catch((error: unknown) => {
-                logger.error("failed to restart local service", {
-                  error: error instanceof Error ? error.message : String(error),
-                })
-                return undefined
-              }),
-          reloadWindows: () => {
-            for (const win of BrowserWindow.getAllWindows()) win.webContents.reload()
-          },
-          log: (message, meta) => logger.log(message, meta),
-          error: (message, meta) => logger.error(message, meta),
-          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-        },
-        currentServer,
-        new AbortController().signal,
-      ),
-    ),
-  )
-  if (lifecycle.restoreWindows().length) createMenu(menu)
-})
-
-Effect.runFork(main)
+}

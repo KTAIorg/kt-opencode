@@ -1,6 +1,6 @@
 export * as LegacyData from "./legacy-data"
 
-import { Global } from "@opencode-ai/util/global"
+import { Global } from "@opencode/util/global"
 import { chmodSync, copyFileSync, existsSync, mkdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 
@@ -17,7 +17,7 @@ import { dirname, join } from "node:path"
 //
 // Writers of these filenames live in packages/core/src/ktai (identity.ts,
 // newapi.ts, catalog.ts, soft-quota.ts); they are duplicated here because the
-// CLI package does not depend on @opencode-ai/core.
+// CLI package does not depend on @opencode/core.
 export const IDENTITY_FILE = "ktai-identity.json"
 export const FILES = [
   IDENTITY_FILE,

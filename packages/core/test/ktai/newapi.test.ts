@@ -15,7 +15,7 @@ import {
   normalizeDepositChain,
   persistManagedApiKey,
   pinEnsuredUserToCustomerGroup,
-} from "@opencode-ai/core/ktai/newapi"
+} from "@opencode/core/ktai/newapi"
 
 test("uses dedicated token ensure when NewAPI has the route", async () => {
   const calls: string[] = []
@@ -25,10 +25,10 @@ test("uses dedicated token ensure when NewAPI has the route", async () => {
       const url = String(input)
       calls.push(url)
       expect(url).toBe("https://newapi.test/api/iam/token/ensure")
-      return new Response(
-        JSON.stringify({ success: true, data: { name: "kito", key: "abc123", created: true } }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      )
+      return new Response(JSON.stringify({ success: true, data: { name: "kito", key: "abc123", created: true } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
     },
   })
   expect(token).toEqual({ key: "sk-abc123", created: true, name: KTAI_MANAGED_TOKEN_NAME })
@@ -215,9 +215,12 @@ test("creates one Ethereum address for ERC20 USDT and USDC when Casio has none",
     fetchImpl: async (input, init) => {
       const url = String(input)
       if (url.includes("/identity/v1/account/me")) {
-        return new Response(JSON.stringify({ account: { id: "8b5efc41-9914-4f9d-86f1-ac9e4d75d8c5", accountNo: "KT1" } }), {
-          status: 200,
-        })
+        return new Response(
+          JSON.stringify({ account: { id: "8b5efc41-9914-4f9d-86f1-ac9e4d75d8c5", accountNo: "KT1" } }),
+          {
+            status: 200,
+          },
+        )
       }
       if (url.includes("/api/iam/deposit-address") || url.includes("/wallet/v1/deposit-address")) {
         return new Response(
@@ -226,9 +229,12 @@ test("creates one Ethereum address for ERC20 USDT and USDC when Casio has none",
         )
       }
       if (url.includes("/api/v1/address/list")) {
-        return new Response(JSON.stringify({ code: 0, data: { list: [{ address: "TStaleTronAddress", chain: "tron" }] } }), {
-          status: 200,
-        })
+        return new Response(
+          JSON.stringify({ code: 0, data: { list: [{ address: "TStaleTronAddress", chain: "tron" }] } }),
+          {
+            status: 200,
+          },
+        )
       }
       expect(url).toBe("https://casio.test/api/v1/address/create")
       expect(init?.method).toBe("POST")
@@ -349,7 +355,13 @@ test("creates a KTPay cashier order through the Identity route", async () => {
       return new Response(
         JSON.stringify({
           success: true,
-          data: { order_id: "ord_1", cashier_url: "https://ktpay.test/c/1", amount: 10, requested: 10, status: "pending" },
+          data: {
+            order_id: "ord_1",
+            cashier_url: "https://ktpay.test/c/1",
+            amount: 10,
+            requested: 10,
+            status: "pending",
+          },
         }),
         { status: 200 },
       )
@@ -396,9 +408,12 @@ test("reads spendable balance from Identity-gated Ensure", async () => {
     baseUrl: "https://newapi.test",
     fetchImpl: async (input) => {
       expect(String(input)).toBe("https://newapi.test/api/iam/ensure")
-      return new Response(JSON.stringify({ success: true, data: { id: 370, quota: 5_070_855_823, group: "default" } }), {
-        status: 200,
-      })
+      return new Response(
+        JSON.stringify({ success: true, data: { id: 370, quota: 5_070_855_823, group: "default" } }),
+        {
+          status: 200,
+        },
+      )
     },
   })
   expect(spendable).toBe(10141.71)
@@ -438,15 +453,21 @@ test("reads spendable balance from /api/user/self when Ensure omits quota", asyn
       const url = String(input)
       calls.push(url)
       if (url.endsWith("/api/iam/ensure")) {
-        return new Response(JSON.stringify({ success: true, data: { id: 370, group: "default", username: "KT260520XS3ADS" } }), {
-          status: 200,
-          headers: { "set-cookie": "session=abc; Path=/" },
-        })
+        return new Response(
+          JSON.stringify({ success: true, data: { id: 370, group: "default", username: "KT260520XS3ADS" } }),
+          {
+            status: 200,
+            headers: { "set-cookie": "session=abc; Path=/" },
+          },
+        )
       }
       expect(url).toBe("https://newapi.test/api/user/self")
-      return new Response(JSON.stringify({ success: true, data: { id: 370, quota: 5_070_849_219, used_quota: 4_150_781 } }), {
-        status: 200,
-      })
+      return new Response(
+        JSON.stringify({ success: true, data: { id: 370, quota: 5_070_849_219, used_quota: 4_150_781 } }),
+        {
+          status: 200,
+        },
+      )
     },
   })
   expect(spendable).toBe(10141.7)
@@ -460,10 +481,13 @@ test("reuses the Ensure session instead of calling Ensure again", async () => {
     const url = String(input)
     calls.push(url)
     if (url.endsWith("/api/iam/ensure")) {
-      return new Response(JSON.stringify({ success: true, data: { id: 370, quota: 5_070_855_823, group: "default" } }), {
-        status: 200,
-        headers: { "set-cookie": "session=abc; Path=/" },
-      })
+      return new Response(
+        JSON.stringify({ success: true, data: { id: 370, quota: 5_070_855_823, group: "default" } }),
+        {
+          status: 200,
+          headers: { "set-cookie": "session=abc; Path=/" },
+        },
+      )
     }
     expect(url).toBe("https://newapi.test/api/user/self")
     return new Response(JSON.stringify({ success: true, data: { id: 370, quota: 5_070_849_219 } }), { status: 200 })
@@ -520,7 +544,10 @@ test("reads KTPay status from the Identity-gated NewAPI route", async () => {
     fetchImpl: async (input) => {
       expect(String(input)).toBe("https://newapi.test/api/iam/ktpay/status/ord_1")
       return new Response(
-        JSON.stringify({ success: true, data: { order_id: "ord_1", status: "paid", local_status: "success", settled: true } }),
+        JSON.stringify({
+          success: true,
+          data: { order_id: "ord_1", status: "paid", local_status: "success", settled: true },
+        }),
         { status: 200 },
       )
     },

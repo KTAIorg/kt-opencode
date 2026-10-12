@@ -16,7 +16,7 @@ import {
   toolPart,
   userMessage,
   waitForVisualSettle,
-} from "./fixture"
+} from "../../utils/timeline"
 
 const inputs = {
   read: { filePath: "src/a.ts", offset: 0, limit: 120 },

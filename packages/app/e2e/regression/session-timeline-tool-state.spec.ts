@@ -1,11 +1,5 @@
 import { expect, test } from "@playwright/test"
-import {
-  assistantMessage,
-  partUpdated,
-  setupTimeline,
-  toolPart,
-  userMessage,
-} from "../performance/timeline-stability/fixture"
+import { assistantMessage, partUpdated, setupTimeline, toolPart, userMessage } from "../utils/timeline"
 
 test("updates expanded web search links without resetting expansion", async ({ page }) => {
   const searchID = "prt_websearch_mutation"

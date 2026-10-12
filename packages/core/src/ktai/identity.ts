@@ -1,5 +1,5 @@
-import { Global } from "@opencode-ai/util/global"
-import { kitoDataEnv } from "@opencode-ai/util/kito-env"
+import { Global } from "@opencode/util/global"
+import { kitoDataEnv } from "@opencode/util/kito-env"
 import fs from "fs"
 import path from "path"
 
@@ -285,16 +285,16 @@ export async function startTelegramLogin(
 function telegramStartChallenge(payload: unknown): TelegramChallenge | undefined {
   if (!payload || typeof payload !== "object") return
   const record = payload as Record<string, unknown>
-  const nested = record.challenge && typeof record.challenge === "object" ? (record.challenge as Record<string, unknown>) : undefined
+  const nested =
+    record.challenge && typeof record.challenge === "object" ? (record.challenge as Record<string, unknown>) : undefined
   const challengeId = stringField(nested?.id) ?? stringField(nested?.challengeId) ?? stringField(record.challengeId)
   const displayCode = stringField(nested?.displayCode) ?? stringField(record.displayCode)
   const expiresAt = stringField(nested?.expiresAt) ?? stringField(record.expiresAt)
-  const telegramSource = (nested?.telegram && typeof nested.telegram === "object" ? nested.telegram : record.telegram) as
-    | { botUsername?: unknown; qrUrl?: unknown }
-    | undefined
+  const telegramSource = (
+    nested?.telegram && typeof nested.telegram === "object" ? nested.telegram : record.telegram
+  ) as { botUsername?: unknown; qrUrl?: unknown } | undefined
   const qrUrl = typeof telegramSource?.qrUrl === "string" ? telegramSource.qrUrl : undefined
-  const opaqueCode =
-    stringField(nested?.opaqueCode) ?? stringField(record.opaqueCode) ?? opaqueCodeFromQrUrl(qrUrl)
+  const opaqueCode = stringField(nested?.opaqueCode) ?? stringField(record.opaqueCode) ?? opaqueCodeFromQrUrl(qrUrl)
   if (
     !challengeId ||
     !displayCode ||
@@ -360,11 +360,13 @@ export async function pollTelegramLogin(
         signal: AbortSignal.timeout(15_000),
       },
     )
-      .then(async (response): Promise<{ ok: true; response: Response; payload: unknown }> => ({
-        ok: true,
-        response,
-        payload: await readJson(response),
-      }))
+      .then(
+        async (response): Promise<{ ok: true; response: Response; payload: unknown }> => ({
+          ok: true,
+          response,
+          payload: await readJson(response),
+        }),
+      )
       .catch((error: unknown): { ok: false; error: unknown } => ({ ok: false, error }))
     if (!polled.ok) {
       transientFailures += 1
@@ -496,11 +498,7 @@ export function clearPersistedIdentity() {
   fs.unlinkSync(identitySessionPath())
 }
 
-export async function revokeCurrentIdentitySession(
-  token: string,
-  baseUrl?: string,
-  fetchImpl: FetchLike = fetch,
-) {
+export async function revokeCurrentIdentitySession(token: string, baseUrl?: string, fetchImpl: FetchLike = fetch) {
   const response = await fetchImpl(`${baseUrl ?? identityBaseUrl()}/identity/v1/account/sessions/current/revoke`, {
     method: "POST",
     headers: {
@@ -515,9 +513,7 @@ export async function revokeCurrentIdentitySession(
   throw new Error(errorMessage(await readJson(response), `KT Identity logout failed (${response.status})`))
 }
 
-export async function signOutIdentity(
-  input: { baseUrl?: string; fetchImpl?: FetchLike } = {},
-) {
+export async function signOutIdentity(input: { baseUrl?: string; fetchImpl?: FetchLike } = {}) {
   const token = readStoredIdentityToken()
   if (token) {
     await revokeCurrentIdentitySession(token, input.baseUrl, input.fetchImpl ?? fetch).catch(() => undefined)

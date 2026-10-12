@@ -68,11 +68,7 @@ describe("ModelProbe.target", () => {
   })
 
   test("anthropic provider builds messages target with x-api-key and version header", () => {
-    const result = ModelProbe.target(
-      model({ package: "aisdk:@ai-sdk/anthropic" }),
-      provider(),
-      keyCredential("sk-ant"),
-    )
+    const result = ModelProbe.target(model({ package: "aisdk:@ai-sdk/anthropic" }), provider(), keyCredential("sk-ant"))
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.target.url).toBe("https://api.anthropic.com/v1/messages")
@@ -109,11 +105,7 @@ describe("ModelProbe.target", () => {
   })
 
   test("google provider builds generateContent target with x-goog-api-key", () => {
-    const result = ModelProbe.target(
-      model({ package: "aisdk:@ai-sdk/google" }),
-      provider(),
-      keyCredential("goog-key"),
-    )
+    const result = ModelProbe.target(model({ package: "aisdk:@ai-sdk/google" }), provider(), keyCredential("goog-key"))
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.target.url).toBe("https://generativelanguage.googleapis.com/v1beta/models/m1:generateContent")
@@ -121,11 +113,7 @@ describe("ModelProbe.target", () => {
   })
 
   test("openai provider builds responses target", () => {
-    const result = ModelProbe.target(
-      model({ package: "aisdk:@ai-sdk/openai" }),
-      provider(),
-      keyCredential("sk-openai"),
-    )
+    const result = ModelProbe.target(model({ package: "aisdk:@ai-sdk/openai" }), provider(), keyCredential("sk-openai"))
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.target.url).toBe("https://api.openai.com/v1/responses")

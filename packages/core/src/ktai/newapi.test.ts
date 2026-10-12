@@ -99,7 +99,7 @@ describe("fetchNewapiSpendable", () => {
 })
 
 describe("createKtpayOrder", () => {
-  test("surfaces the upstream reason instead of the literal \"error\"", async () => {
+  test('surfaces the upstream reason instead of the literal "error"', async () => {
     const { impl } = countingFetch(() => jsonResponse({ success: false, message: "error", data: "创建支付订单失败" }))
 
     await expect(

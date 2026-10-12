@@ -1,5 +1,5 @@
-import { Global } from "@opencode-ai/util/global"
-import { kitoDataEnv, kitoEnv } from "@opencode-ai/util/kito-env"
+import { Global } from "@opencode/util/global"
+import { kitoDataEnv, kitoEnv } from "@opencode/util/kito-env"
 import fs from "fs"
 import path from "path"
 

@@ -1,5 +1,11 @@
-import { fetchAccountSummary, externalIdentity, fetchLedgerBalance, readPersistedIdentityToken, signOutIdentity } from "@opencode-ai/core/ktai/identity"
-import { probeKtaiModels } from "@opencode-ai/core/ktai/model-probe"
+import {
+  fetchAccountSummary,
+  externalIdentity,
+  fetchLedgerBalance,
+  readPersistedIdentityToken,
+  signOutIdentity,
+} from "@opencode/core/ktai/identity"
+import { probeKtaiModels } from "@opencode/core/ktai/model-probe"
 import {
   allowNewapiSpendableRefresh,
   clearManagedApiKey,
@@ -11,16 +17,16 @@ import {
   readCachedSpendable,
   readManagedApiKey,
   syncManagedToken,
-} from "@opencode-ai/core/ktai/newapi"
-import type { KtpayStatus } from "@opencode-ai/core/ktai/newapi"
+} from "@opencode/core/ktai/newapi"
+import type { KtpayStatus } from "@opencode/core/ktai/newapi"
 import {
   BadGatewayError,
   InvalidRequestError,
   ServiceUnavailableError,
   UnauthorizedError,
-} from "@opencode-ai/protocol/errors"
+} from "@opencode/protocol/errors"
 import { Effect } from "effect"
-import { HttpApiBuilder } from "effect/unstable/httpapi"
+import { HttpApiBuilder } from "effect/http-api"
 import { Api } from "../api"
 
 const identityToken = Effect.fn("ktai.identityToken")(function* () {
@@ -51,8 +57,7 @@ const KTPAY_SETTLED_STATUS = new Set([
 function isKtpaySettled(status: KtpayStatus) {
   if (status.settled) return true
   return (
-    KTPAY_SETTLED_STATUS.has(status.status.toLowerCase()) ||
-    KTPAY_SETTLED_STATUS.has(status.localStatus.toLowerCase())
+    KTPAY_SETTLED_STATUS.has(status.status.toLowerCase()) || KTPAY_SETTLED_STATUS.has(status.localStatus.toLowerCase())
   )
 }
 
@@ -67,7 +72,8 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
             if (!(await readManagedApiKey())) await syncManagedToken(token).catch(() => undefined)
             // 顶栏只认 NewAPI 可花额度（USD）。读不到（Ensure 429/超时且无缓存）就不带 balance，
             // 客户端只显示名字，绝不降级显示 Identity ledger，也不写假 0。
-            const spendable = (await fetchNewapiSpendable(token).catch(() => undefined)) ?? (await readCachedSpendable())
+            const spendable =
+              (await fetchNewapiSpendable(token).catch(() => undefined)) ?? (await readCachedSpendable())
             return {
               account: current.account,
               ...(spendable === undefined ? {} : { balance: spendable }),
