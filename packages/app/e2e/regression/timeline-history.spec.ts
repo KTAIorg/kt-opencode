@@ -70,7 +70,9 @@ test.describe("timeline history", () => {
   })
 
   test("mounts every part once and in order while paging to the start", async ({ page }) => {
-    test.setTimeout(240_000)
+    // The Windows native pressure run takes about 3.6 minutes per case. Allow
+    // headroom when this long transcript shares a runner with the full suite.
+    test.setTimeout(process.platform === "win32" ? 360_000 : 240_000)
     const errors = trackPageErrors(page)
     const held: (() => void)[] = []
     const loads = { started: 0, ended: 0 }
