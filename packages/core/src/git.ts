@@ -561,7 +561,16 @@ const layer = Layer.effect(
     })
 
     const writeTree = Effect.fn("Git.tree.write")(function* (repository: Repository, index?: string) {
-      const tree = (yield* repositoryOperation("write_tree", repository, ["write-tree"], { index })).text.trim()
+      const result = yield* repositoryOperation("write_tree", repository, ["write-tree"], { index }).pipe(
+        // Concurrent Windows writers can briefly deny access while installing the same content-addressed object.
+        // Writing this index's tree is idempotent; persistent errors still surface after the bounded retry.
+        Effect.retry({
+          times: 3,
+          schedule: Schedule.spaced("50 millis"),
+          while: (error) => process.platform === "win32" && error.cause === undefined,
+        }),
+      )
+      const tree = result.text.trim()
       if (/^[0-9a-f]{40,64}$/.test(tree)) return TreeID.make(tree)
       return yield* new OperationError({
         operation: "write_tree",

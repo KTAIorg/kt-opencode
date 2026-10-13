@@ -115,6 +115,24 @@ describe("Git worktrees", () => {
 })
 
 describe("Git trees", () => {
+  it.live("reports a persistently unreadable index when writing a tree", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      yield* Effect.promise(() => initRepo(root.path))
+      const git = yield* Git.Service
+      const repository = yield* git.repo.discover(AbsolutePath.make(root.path))
+      if (!repository) throw new Error("Repository not found")
+      yield* Effect.promise(() => fs.writeFile(path.join(repository.gitDirectory, "index"), new Uint8Array(512)))
+      const error = yield* git.tree.write(repository).pipe(Effect.flip)
+      expect(error).toBeInstanceOf(Git.OperationError)
+      expect(error.operation).toBe("write_tree")
+      expect(error.message.length).toBeGreaterThan(0)
+    }),
+  )
+
   ;[0, 1, 128].forEach((exitCode) => {
     it.live(`refresh handles check-ignore exit ${exitCode}`, () =>
       Effect.gen(function* () {
