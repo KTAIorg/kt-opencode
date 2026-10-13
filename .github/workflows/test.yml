@@ -76,6 +76,12 @@ jobs:
             turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
             turbo-${{ runner.os }}-
 
+      - name: Verify concurrent Windows snapshots
+        if: runner.os == 'Windows'
+        timeout-minutes: 10
+        working-directory: packages/core
+        run: bun run script/test.ts --timeout=30000 test/snapshot.test.ts -t "captures concurrently from independent processes" --rerun-each=20
+
       - name: Run unit tests
         timeout-minutes: 30
         # Native parser workers, browser tests, MCP, and PowerShell subprocesses

@@ -435,7 +435,8 @@ describe("Git objects", () => {
 
         expect((yield* git.tree.files({ repository, from: trees[0]!, to: trees.at(-1)! })).length).toBe(2100 + 16)
       }),
-    { timeout: 60_000 },
+    // This creates 2100 files and 16 packs; Windows filesystem and process startup need a larger budget.
+    { timeout: process.platform === "win32" ? 120_000 : 60_000 },
   )
 })
 
