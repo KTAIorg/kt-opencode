@@ -20,6 +20,7 @@
 | Core Shell 权限与执行定向复测 | 90 通过，19 跳过，0 失败；573 个断言。本机无 PowerShell，相关场景由 CI 检查 |
 | Server 文件 / MCP 进程复用定向复测 | 3 通过，207 个断言，0 失败 |
 | Core 快照 / MCP / npm Git / 遥测集成定向复测 | 112 通过，0 失败；默认 30 秒测试预算 |
+| Linux Chromium 原生分页压力复测 | 6 / 6 通过；Playwright 1.59.1 官方 noble ARM64 镜像，4 CPU / 8 GiB、2 个浏览器并发；保留原场景与断言 |
 | TUI 全量复测 | 1463 通过，2 跳过，0 失败；108247 个断言、2 个快照 |
 | TUI 回填展开 / 精确滚动恢复重复验证 | 25 通过，0 失败；首屏正文等待原生异步解析，输入前等待绘制稳定，保留原断言 |
 | 全仓 `bun turbo test --concurrency=3` | 27 / 27 任务通过，核心 6730、CLI 336、Server 84、AI 1793、TUI 1463 均零失败 |
@@ -31,7 +32,7 @@
 | HTTP API codegen `bun test` | 99 通过，0 失败；覆盖具名类型和真实 binary wildcard 请求 |
 | CLI `script/service-smoke.ts` | 通过：两个服务竞争唯一注册、查询鉴权、插件热加载、内嵌网页和退出清理 |
 
-跳过项由现有测试的平台/工具条件决定。这里只验证 Apple Silicon 本机产物；PR 的 CLI、macOS arm64 / x64 PKG、Windows 安装包构建已全部通过（提交 4a12ee9adc）。最终提交的完整 CI 以 PR 检查为准。
+跳过项由现有测试的平台/工具条件决定。这里只验证 Apple Silicon 本机产物；PR 的 CLI、macOS arm64 / x64 PKG、Windows 安装包构建已全部通过（提交 2f0c28bf6e）。同一提交的 Windows 全仓测试 27 / 27 任务通过（Core 5647、TUI 1453、CLI 335；平台条件跳过项保留），Bun / Node 编译服务生命周期和 428 个浏览器场景全部通过。最终提交的完整 CI 以 PR 检查为准。
 
 ## 真实 HTTP 与页面
 
@@ -57,7 +58,7 @@
 - 快捷键目录按框架版本记录有效命令；Settings 刷新后仍能显示有效的会话命令，旧框架的失效命令隐藏。
 - 保留上游多语言的复数类别；更新旧测试的工具完成事件为不可变结果的重复投递。
 - CLI 配置、数据库、服务注册路径统一为 KITO 选择器与 kito 目录；显式端口冲突报错，默认端口被外部程序占用时选择空闲端口。
-- CI 显式安装 ripgrep；Linux / Windows 包测试串行执行。核心集成测试使用 30 秒预算，MCP / Shell 子进程启动等待使用独立的 15 秒预算。TUI App fixture 的 HTTP / 原生 Markdown 解析异步等待使用 80 帧预算，显式场景预算优先；直接使用 renderer 的两个首屏 Markdown 场景同样等待 80 帧；展开与滚动断言保持原值。场景在绘制稳定后发送下一次快捷键，避免布局尚未提交时读写滚动锚点。Bun 与 Node 编译服务生命周期保持独立验证。
+- CI 显式安装 ripgrep；Linux / Windows 包测试串行执行，步骤总预算 30 分钟；浏览器并发 2，给 V2 diff / syntax Worker 保留资源。核心集成测试使用 30 秒预算，MCP / Shell 子进程启动等待使用独立的 15 秒预算。TUI App fixture 的 HTTP / 原生 Markdown 解析异步等待使用 80 帧预算，显式场景预算优先；直接使用 renderer 的两个首屏 Markdown 场景同样等待 80 帧；展开与滚动断言保持原值。场景在绘制稳定后发送下一次快捷键，避免布局尚未提交时读写滚动锚点。Bun 与 Node 编译服务生命周期保持独立验证。
 
 ## 交付边界
 
