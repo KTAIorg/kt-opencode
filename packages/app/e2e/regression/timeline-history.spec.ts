@@ -118,12 +118,11 @@ test.describe("timeline history", () => {
         continue
       }
 
-      // Scroll instantly and only as far as rows the virtualizer has measured, so neither a smooth wheel
-      // animation nor estimated row heights can carry a step past an unmounted row.
-      await timelineScroller(page).evaluate((element, delta) => {
-        element.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -delta }))
-        element.scrollTop -= delta
-      }, state.mountedAbove)
+      // Scroll through the browser, only across rows already measured and recorded above.
+      // Keep the pointer in the viewport gutter so nested diff/code scrollports do not consume the wheel.
+      const scroller = timelineScroller(page)
+      await scroller.hover({ position: { x: 2, y: 2 } })
+      await page.mouse.wheel(0, -state.mountedAbove)
       await expect
         .poll(async () => {
           const next = await visibleTimeline(page)
@@ -378,11 +377,13 @@ function timelineScroller(page: Page) {
 function visibleTimeline(page: Page) {
   return timelineScroller(page).evaluate((scroller) => {
     const view = scroller.getBoundingClientRect()
+    const header = scroller.querySelector("[data-session-title] > div")?.getBoundingClientRect()
+    const contentTop = Math.max(view.top, header?.bottom ?? view.top)
 
     const inView = (element: Element) => {
       const rect = element.getBoundingClientRect()
 
-      return rect.bottom >= view.top && rect.top <= view.bottom
+      return rect.bottom >= contentTop && rect.top <= view.bottom
     }
 
     const parts = [...scroller.querySelectorAll<HTMLElement>("[data-timeline-part-id], [data-timeline-part-ids]")]
@@ -405,10 +406,10 @@ function visibleTimeline(page: Page) {
       messages: messageIDs(messages),
       visibleMessages: messageIDs(messages.filter(inView)),
       scrollTop: Math.round(scroller.scrollTop),
-      // Mounted rows reach the top edge, so the virtualizer has rendered this position. Below 200px the
-      // timeline requests the next older page instead.
-      covered: scroller.scrollTop < 200 || firstRowTop <= view.top + 1,
-      mountedAbove: Math.max(80, Math.floor(view.top - firstRowTop)),
+      // The sticky title bar occupies the top of the scrollport; coverage begins below its opaque content.
+      // Below 200px the timeline requests the next older page instead.
+      covered: scroller.scrollTop < 200 || firstRowTop <= contentTop + 1,
+      mountedAbove: Math.max(80, Math.floor(contentTop - firstRowTop)),
       errorToasts: document.querySelectorAll(".toast-v2--error").length,
       signature: JSON.stringify([
         Math.round(scroller.scrollTop),
