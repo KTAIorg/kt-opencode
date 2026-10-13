@@ -67,7 +67,9 @@ test("clicking a backfilled thought group toggles it", async () => {
     }).pipe(Effect.provide(Global.layerWith({ state: state.path })), Effect.provide(FileSystem.layerNoop({}))),
   )
   try {
-    await setup.waitForFrame((frame) => frame.includes("Turn 13 answer"))
+    // Completed Markdown waits for the native parser worker; cold Windows startup
+    // can exceed the renderer's default 20-frame budget before any input is sent.
+    await setup.waitForFrame((frame) => frame.includes("Turn 13 answer"), { maxPasses: 80 })
     // Visible text can precede committed scroll geometry and input registrations.
     await setup.waitForVisualIdle({ quietFrames: 3 })
     setup.mockInput.pressKey("g", { ctrl: true })

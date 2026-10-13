@@ -107,7 +107,8 @@ test.each([
       }).pipe(Effect.provide(Global.layerWith({ state: state.path })), Effect.provide(FileSystem.layerNoop({}))),
     )
     try {
-      await setup.waitForFrame((frame) => frame.includes("Final marker"))
+      // Completed Markdown waits for the native parser worker, independently of layout.
+      await setup.waitForFrame((frame) => frame.includes("Final marker"), { maxPasses: 80 })
       await setup.waitForVisualIdle({ quietFrames: 3 })
       expect(setup.captureCharFrame()).not.toContain("Second thought body")
       setup.mockInput.pressKey("u", { ctrl: true, shift: true })
