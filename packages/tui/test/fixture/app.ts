@@ -58,6 +58,10 @@ export async function createAppFixture(
   )
   return {
     ...setup,
+    // App fixtures also await HTTP responses and native parser workers; their
+    // completion is independent of the renderer's default 20-frame budget.
+    waitForFrame: (...args: Parameters<typeof setup.waitForFrame>) =>
+      setup.waitForFrame(args[0], { maxPasses: 80, ...args[1] }),
     events,
     ready: ready.promise,
     async [Symbol.asyncDispose]() {

@@ -59,7 +59,8 @@ it.live(
       expect(
         yield* count.pipe(
           Effect.repeat({ while: (n) => n === 0, schedule: Schedule.spaced("25 millis") }),
-          Effect.timeout("5 seconds"),
+          // This bounds native MCP process startup, not the filesystem request.
+          Effect.timeout("15 seconds"),
         ),
       ).toBe(1)
 
@@ -75,7 +76,7 @@ it.live(
       expect(yield* loaded).toEqual([{ directory: current }])
       expect(yield* count).toBe(1)
     }),
-  15_000,
+  30_000,
 )
 
 it.live(
