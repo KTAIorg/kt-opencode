@@ -392,22 +392,28 @@ function installTimelineMountProbe(page: Page) {
   return timelineScroller(page).evaluate((scroller) => {
     const state = { parts: new Set<string>(), messages: new Set<string>() }
     const selector = "[data-timeline-part-id], [data-timeline-part-ids], [data-message-id]"
+
     const record = (element: Element) => {
       const part = element.getAttribute("data-timeline-part-id")
       const parts = element.getAttribute("data-timeline-part-ids")
       const message = element.getAttribute("data-message-id")
+
       if (part) state.parts.add(part)
+
       if (parts)
         parts
           .split(",")
           .filter(Boolean)
           .forEach((id) => state.parts.add(id))
+
       if (message) state.messages.add(message)
     }
+
     const collect = (element: Element) => {
       if (element.matches(selector)) record(element)
       element.querySelectorAll(selector).forEach(record)
     }
+
     collect(scroller)
     // Measurement can mount and replace rows between Playwright samples. Observe
     // those actual mounts too, so completeness does not depend on sampling speed.
