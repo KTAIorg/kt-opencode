@@ -89,6 +89,11 @@ test.describe("timeline history", () => {
     const expectedMessages = fixture.expected.targetMessageIDs
     const seenParts = new Set<string>()
     const seenMessages = new Set<string>()
+    const scroller = timelineScroller(page)
+    await installTimelineMountProbe(page)
+    // Keep the pointer in the gutter so nested diff/code scrollports do not consume the wheel.
+    await scroller.hover({ position: { x: 2, y: 2 } })
+    await expect.poll(async () => (await visibleTimeline(page)).ready).toBe(true)
 
     for (;;) {
       const state = await visibleTimeline(page)
@@ -97,39 +102,47 @@ test.describe("timeline history", () => {
       expectOrdered(expectedMessages, state.messages, "mounted messages")
       expectOrdered(expectedMessages, state.visibleMessages, "visible messages")
       expect(state.errorToasts).toBe(0)
-      state.parts.forEach((id) => seenParts.add(id))
-      state.messages.forEach((id) => seenMessages.add(id))
+      state.mountedParts.forEach((id) => seenParts.add(id))
+      state.mountedMessages.forEach((id) => seenMessages.add(id))
 
-      if (state.scrollTop <= 1 && seenParts.size === expectedParts.length) break
+      if (state.scrollTop <= 1 && state.messages.includes(expectedMessages[0]!)) break
 
       if (held.length) {
         held.splice(0).forEach((release) => release())
         await expect.poll(() => loads.ended).toBe(loads.started)
-        let previous = ""
+        // The response callback runs before the app prepends it. Wait for that
+        // observable prepend and its measured content, not two unchanged samples.
         await expect
-          .poll(async () => {
-            const next = (await visibleTimeline(page)).signature
-            const stable = next === previous
-            previous = next
-
-            return stable
-          })
-          .toBe(true)
+          .poll(() => scroller.evaluate((element) => element.scrollHeight))
+          .toBeGreaterThan(state.geometry.scrollHeight)
+        await expect.poll(async () => (await visibleTimeline(page)).ready).toBe(true)
         continue
       }
 
       // Scroll through the browser, only across rows already measured and recorded above.
-      // Keep the pointer in the viewport gutter so nested diff/code scrollports do not consume the wheel.
-      const scroller = timelineScroller(page)
-      await scroller.hover({ position: { x: 2, y: 2 } })
       await page.mouse.wheel(0, -state.mountedAbove)
+      let observed = state
       await expect
         .poll(async () => {
-          const next = await visibleTimeline(page)
+          observed = await visibleTimeline(page)
 
-          return held.length > 0 || (next.signature !== state.signature && next.covered)
+          return held.length > 0 || (observed.signature !== state.signature && observed.covered && observed.ready)
         })
         .toBe(true)
+        .catch((cause) => {
+          console.error("timeline scroll did not reach covered content", {
+            previous: state.geometry,
+            observed: observed.geometry,
+            covered: observed.covered,
+            ready: observed.ready,
+            delta: state.mountedAbove,
+            held: held.length,
+            loads,
+            seenParts: seenParts.size,
+            expectedParts: expectedParts.length,
+          })
+          throw cause
+        })
     }
 
     expect(expectedParts.filter((id) => !seenParts.has(id))).toEqual([])
@@ -354,6 +367,7 @@ test.describe("timeline history", () => {
 
 declare global {
   interface Window {
+    __historyMountProbe?: { parts: Set<string>; messages: Set<string> }
     __historyRootProbe?: { arm(): string[]; hidden: boolean; settle(final: ProbeFinal): void; settled: boolean }
   }
 }
@@ -374,10 +388,50 @@ function timelineScroller(page: Page) {
   return page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-row]") })
 }
 
+function installTimelineMountProbe(page: Page) {
+  return timelineScroller(page).evaluate((scroller) => {
+    const state = { parts: new Set<string>(), messages: new Set<string>() }
+    const selector = "[data-timeline-part-id], [data-timeline-part-ids], [data-message-id]"
+    const record = (element: Element) => {
+      const part = element.getAttribute("data-timeline-part-id")
+      const parts = element.getAttribute("data-timeline-part-ids")
+      const message = element.getAttribute("data-message-id")
+      if (part) state.parts.add(part)
+      if (parts)
+        parts
+          .split(",")
+          .filter(Boolean)
+          .forEach((id) => state.parts.add(id))
+      if (message) state.messages.add(message)
+    }
+    const collect = (element: Element) => {
+      if (element.matches(selector)) record(element)
+      element.querySelectorAll(selector).forEach(record)
+    }
+    collect(scroller)
+    // Measurement can mount and replace rows between Playwright samples. Observe
+    // those actual mounts too, so completeness does not depend on sampling speed.
+    new MutationObserver((records) => {
+      for (const mutation of records) {
+        if (mutation.type === "attributes" && mutation.target instanceof Element) record(mutation.target)
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof Element) collect(node)
+        })
+      }
+    }).observe(scroller, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-timeline-part-id", "data-timeline-part-ids", "data-message-id"],
+    })
+    window.__historyMountProbe = state
+  })
+}
+
 function visibleTimeline(page: Page) {
   return timelineScroller(page).evaluate((scroller) => {
     const view = scroller.getBoundingClientRect()
-    const header = scroller.querySelector("[data-session-title] > div")?.getBoundingClientRect()
+    const header = scroller.querySelector("[data-session-title]")?.getBoundingClientRect()
     const contentTop = Math.max(view.top, header?.bottom ?? view.top)
 
     const inView = (element: Element) => {
@@ -405,11 +459,28 @@ function visibleTimeline(page: Page) {
       visibleParts: parts.filter(inView).flatMap(partIDs),
       messages: messageIDs(messages),
       visibleMessages: messageIDs(messages.filter(inView)),
+      mountedParts: [...(window.__historyMountProbe?.parts ?? parts.flatMap(partIDs))],
+      mountedMessages: [...(window.__historyMountProbe?.messages ?? messageIDs(messages))],
       scrollTop: Math.round(scroller.scrollTop),
-      // The sticky title bar occupies the top of the scrollport; coverage begins below its opaque content.
+      // The sticky title bar and its reserved fade inset occupy the top of the scrollport.
       // Below 200px the timeline requests the next older page instead.
       covered: scroller.scrollTop < 200 || firstRowTop <= contentTop + 1,
-      mountedAbove: Math.max(80, Math.floor(contentTop - firstRowTop)),
+      // Unknown older rows can replace estimates while native wheel input is
+      // handled. Advance at most one visible page, even beside a very tall row.
+      mountedAbove: Math.max(80, Math.min(Math.floor(contentTop - firstRowTop), Math.floor(view.bottom - contentTop))),
+      ready:
+        !scroller.querySelector('[data-component="markdown"]:not([data-markdown-ready])') &&
+        [...scroller.querySelectorAll<HTMLElement>("[data-index]")].every(
+          (row) => !row.style.minHeight && Math.abs(row.offsetHeight - row.parentElement!.offsetHeight) <= 1,
+        ),
+      geometry: {
+        scrollTop: scroller.scrollTop,
+        scrollHeight: scroller.scrollHeight,
+        firstRowTop,
+        viewportTop: view.top,
+        contentTop,
+        headerHeight: header?.height,
+      },
       errorToasts: document.querySelectorAll(".toast-v2--error").length,
       signature: JSON.stringify([
         Math.round(scroller.scrollTop),

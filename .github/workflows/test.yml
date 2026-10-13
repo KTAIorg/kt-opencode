@@ -65,7 +65,24 @@ jobs:
       - name: Install ripgrep
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install ripgrep --no-progress -y
+        run: |
+          # Match packages/core/src/ripgrep/binary.ts; avoid the Chocolatey feed
+          # silently installing no package after a gateway error.
+          $version = "15.1.0"
+          $directory = Join-Path $env:RUNNER_TEMP "kito-ripgrep"
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $archive = Join-Path $directory "ripgrep.zip"
+          $url = "https://github.com/BurntSushi/ripgrep/releases/download/$version/ripgrep-$version-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive -MaximumRetryCount 3 -RetryIntervalSec 2
+          $expected = "124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a"
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $expected) {
+            throw "Official ripgrep archive SHA256 mismatch"
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $directory -Force
+          $bin = Join-Path $directory "ripgrep-$version-x86_64-pc-windows-msvc"
+          & (Join-Path $bin "rg.exe") --version
+          if ($LASTEXITCODE -ne 0) { throw "ripgrep executable verification failed" }
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Cache Turbo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
