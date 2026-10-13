@@ -10,7 +10,7 @@ const source = {
   "ui.sessionReview.change.added": "Added",
   "ui.sessionReview.change.removed": "Removed",
   "ui.sessionReview.change.modified": "Modified",
-  "ui.sessionReview.image.loading": "Loading...",
+  "ui.sessionReview.image.loading": "Loading…",
   "ui.sessionReview.image.placeholder": "Image",
   "ui.sessionReview.largeDiff.title": "Diff too large to render",
   "ui.sessionReview.largeDiff.meta": "Limit: {{limit}} changed lines. Current: {{current}} changed lines.",
@@ -28,7 +28,7 @@ const source = {
   "ui.sessionReviewV2.empty.noGit.title": "No tracked changes",
   "ui.sessionReviewV2.empty.noGit.description": "Track, review, and undo changes in this project",
   "ui.sessionReviewV2.empty.noGit.action": "Create Git repository",
-  "ui.sessionReviewV2.empty.noGit.actionLoading": "Creating Git repository...",
+  "ui.sessionReviewV2.empty.noGit.actionLoading": "Creating Git repository…",
   "ui.sessionReviewV2.empty.changes.title": "No file changes yet",
   "ui.sessionReviewV2.empty.changes.description": "Project changes will appear here",
 
@@ -39,7 +39,7 @@ const source = {
   "ui.fileMedia.kind.image": "image",
   "ui.fileMedia.kind.audio": "audio",
   "ui.fileMedia.state.removed": "Removed {{kind}} file.",
-  "ui.fileMedia.state.loading": "Loading {{kind}}...",
+  "ui.fileMedia.state.loading": "Loading {{kind}}…",
   "ui.fileMedia.state.error": "Unable to load {{kind}}.",
   "ui.fileMedia.state.unavailable": "{{kind}} preview unavailable.",
   "ui.fileMedia.binary.title": "Binary file",
@@ -69,21 +69,19 @@ const source = {
   "ui.sessionTurn.retry.inSeconds": "in {{seconds}}s",
   "ui.sessionTurn.retry.attempt": "attempt #{{attempt}}",
   "ui.sessionTurn.retry.attemptLine": "{{line}} - attempt #{{attempt}}",
+  "ui.sessionTurn.retry.attemptLabel": "Attempt {{attempt}}",
+  "ui.sessionTurn.retry.attemptRetrying": "Attempt {{attempt}} - {{line}}",
+  "ui.sessionTurn.retry.attemptWaiting.one": "Attempt {{attempt}} - retrying in {{count}}s",
+  "ui.sessionTurn.retry.attemptWaiting.other": "Attempt {{attempt}} - retrying in {{count}}s",
+  "ui.sessionTurn.retry.attemptRetryingNow": "Attempt {{attempt}} - retrying",
   "ui.sessionTurn.retry.geminiHot": "gemini is way too hot right now",
   "ui.sessionTurn.error.freeUsageExceeded": "Free usage exceeded",
   "ui.sessionTurn.error.addCredits": "Add credits",
-  "ui.sessionTurn.error.authBilling":
-    "API key is invalid or expired. Register or sign in on KT AI (ktapi.cc), create a valid key, or top up to continue.",
-  "ui.sessionTurn.error.openKt": "Open KT AI",
 
   "dialog.usageExceeded.freeTier.title": "Free limit reached",
   "dialog.usageExceeded.freeTier.description":
     "Free model quota is used up. Top up on the KT AI platform to keep using paid models (KTAI / ktapi.cc).",
   "dialog.usageExceeded.freeTier.actionLabel": "Top up",
-  "dialog.usageExceeded.authBilling.title": "Sign in or top up required",
-  "dialog.usageExceeded.authBilling.description":
-    "API key is invalid or expired, or your balance is insufficient. Register or sign in on KT AI (ktapi.cc), create a valid key, or top up to continue.",
-  "dialog.usageExceeded.authBilling.actionLabel": "Open KT AI",
   "dialog.usageExceeded.accountRateLimit.title": "Go limit reached",
   "dialog.usageExceeded.accountRateLimit.description":
     "Usage limit reached. To continue using this model now, enable usage from your available balance",
@@ -109,14 +107,29 @@ const source = {
   "ui.messagePart.review.title": "Review your answers",
   "ui.messagePart.questions.dismissed": "Questions dismissed",
   "ui.messagePart.compaction": "Session compacted",
+  "ui.messagePart.compaction.started": "Session compaction started",
+  "ui.messagePart.compaction.queued": "Session compaction queued",
+  "ui.messagePart.compaction.running": "Compacting",
+  "ui.messagePart.compaction.failed": "Session compaction failed",
+  "ui.messagePart.compaction.cancelled": "Session compaction cancelled",
+  "ui.messagePart.compaction.interrupted": "Session compaction interrupted",
+  "ui.messagePart.providerCompaction": "Session compacted by provider",
+  "ui.messagePart.compaction.usage": "{{input}} in · {{output}} out",
+  "ui.messagePart.context.updates": "Updates",
   "ui.messagePart.context.read.one": "{{count}} read",
   "ui.messagePart.context.read.other": "{{count}} reads",
   "ui.messagePart.context.search.one": "{{count}} search",
   "ui.messagePart.context.search.other": "{{count}} searches",
   "ui.messagePart.context.list.one": "{{count}} list",
   "ui.messagePart.context.list.other": "{{count}} lists",
+  "ui.messagePart.context.notice.one": "{{count}} Notice",
+  "ui.messagePart.context.notice.other": "{{count}} Notices",
+  "ui.messagePart.context.thought.one": "Thought",
+  "ui.messagePart.context.thought.other": "Thoughts",
   "ui.messagePart.context.match.one": "({{count}} match)",
   "ui.messagePart.context.match.other": "({{count}} matches)",
+  "ui.messagePart.tools.used.one": "Used {{count}} {{tools}}",
+  "ui.messagePart.tools.used.other": "Used {{count}} {{tools}}",
 
   "ui.list.loading": "Loading",
   "ui.list.empty": "No results",
@@ -133,11 +146,17 @@ const source = {
 
   "ui.promptInput.noMatchingItems": "No matching items",
   "ui.promptInput.commands": "Commands",
-  "ui.promptInput.dropFiles": "Drop files to attach",
+  "ui.promptInput.dropFiles": "Drop files to add",
+  "ui.promptInput.dropFiles.image": "Drop images or files to add",
+  "ui.promptInput.dropFiles.pdf": "Drop PDFs or files to add",
+  "ui.promptInput.dropFiles.imagePdf": "Drop images, PDFs, or files to add",
   "ui.promptInput.removeAttachment": "Remove attachment",
+  "ui.promptInput.cancelUpload": "Cancel upload",
+  "ui.promptInput.uploading": "{{percent}}%",
   "ui.promptInput.label": "Prompt",
-  "ui.promptInput.placeholder.shell": "Enter shell command...",
-  "ui.promptInput.placeholder.normal": "Ask anything, {{slash}} for commands, {{at}} for context...",
+  "ui.promptInput.placeholder.shell": "Enter shell command…",
+  "ui.promptInput.placeholder.normal": "Ask anything, {{slash}} for commands, {{at}} for context…",
+  "ui.promptInput.placeholder.followUp": "Add follow-up, {{slash}} for commands, {{at}} for context…",
   "ui.promptInput.add": "Add images and files",
   "ui.promptInput.attachments": "Images and files",
   "ui.promptInput.context": "Context",
@@ -147,6 +166,10 @@ const source = {
   "ui.promptInput.chooseVariant": "Choose model variant",
   "ui.promptInput.send": "Send",
   "ui.promptInput.stop": "Stop",
+  "ui.promptInput.exitShell": "Exit",
+  "ui.promptInput.steer": "Steer",
+  "ui.promptInput.queue": "Queue",
+  "ui.promptInput.steerHint": "Send without interrupting",
 
   "ui.tabs.close": "Close tab",
 
@@ -159,20 +182,30 @@ const source = {
 
   "ui.tool.read": "Read",
   "ui.tool.loaded": "Loaded",
+  "ui.tool.loadedFile": "Loaded {{path}}",
+  "ui.tool.loadedSkill": "Loaded {{name}} skill",
+  "ui.tool.loadedSkills.one": "Loaded {{name}} skill",
+  "ui.tool.loadedSkills.other": "Loaded {{name}} skills",
   "ui.tool.list": "List",
   "ui.tool.glob": "Glob",
   "ui.tool.grep": "Grep",
   "ui.tool.task": "Task",
+  "ui.tool.browser": "Browser",
   "ui.tool.webfetch": "Webfetch",
   "ui.tool.websearch": "Web Search",
   "ui.tool.websearch.provider": "{{provider}} Web Search",
   "ui.tool.shell": "Shell",
+  "ui.tool.shell.writingCommand": "Writing command…",
+  "ui.tool.shell.exit": "Command exited with code {{code}}",
+  "ui.tool.shell.timeout": "Command timed out",
+  "ui.tool.shell.cancelled": "Command cancelled",
   "ui.tool.execute": "Execute",
   "ui.tool.patch": "Patch",
   "ui.tool.questions": "Questions",
   "ui.tool.questions.numbered": "Questions {{number}}",
   "ui.tool.agent": "{{type}} Agent",
   "ui.tool.agent.default": "Agent",
+  "ui.tool.agent.delegating": "Delegating agent…",
   "ui.tool.skill": "Skill",
 
   "ui.basicTool.called": "Called `{{tool}}`",
@@ -181,6 +214,8 @@ const source = {
 
   "ui.common.file.one": "file",
   "ui.common.file.other": "files",
+  "ui.common.fileCount.one": "{{count}} file",
+  "ui.common.fileCount.other": "{{count}} files",
   "ui.common.question.one": "question",
   "ui.common.question.other": "questions",
 
@@ -195,6 +230,8 @@ const source = {
   "ui.common.next": "Next",
   "ui.common.submit": "Submit",
   "ui.common.showMore": "Show more",
+  "ui.common.moreCount.one": "+{{count}} more",
+  "ui.common.moreCount.other": "+{{count}} more",
 
   "ui.permission.deny": "Deny",
   "ui.permission.allowAlways": "Allow always",
@@ -206,11 +243,26 @@ const source = {
   "ui.message.copyMessage": "Copy message",
   "ui.message.forkMessage": "Fork to new session",
   "ui.message.revertMessage": "Revert message",
+  "ui.message.moveToQueue": "Move to queue",
+  "ui.message.pending": "Pending",
+  "ui.message.deletePending": "Delete",
   "ui.message.copyResponse": "Copy response",
   "ui.message.copied": "Copied",
+  "ui.message.thought": "Thought",
   "ui.message.duration.seconds": "{{count}}s",
   "ui.message.duration.minutesSeconds": "{{minutes}}m {{seconds}}s",
   "ui.message.interrupted": "Interrupted",
+  "ui.message.modelVariant": "{{model}} ({{variant}})",
+  "ui.sessionTimeline.notice.model": "Model",
+  "ui.sessionTimeline.notice.modelSwitched": "Switched to {{model}}",
+  "ui.sessionTimeline.notice.agentChanged": "Agent changed",
+  "ui.sessionTimeline.notice.movedTo": "Moved to",
+  "ui.sessionTimeline.notice.movedTooltip": "Session working directory changed",
+  "ui.sessionTimeline.notice.failed": "{{actor}} failed",
+  "ui.sessionTimeline.notice.cancelled": "{{actor}} cancelled",
+  "ui.sessionTimeline.notice.finished": "{{actor}} finished",
+  "ui.sessionTimeline.notice.instructionsUpdated": "Instructions updated",
+  "ui.sessionTimeline.notice.restart": "Continuing after restart",
   "ui.message.queued": "Queued",
   "ui.message.attachment.alt": "attachment",
 
@@ -224,14 +276,26 @@ const source = {
   "ui.question.review.notAnswered": "(not answered)",
   "ui.question.multiHint": "Select all answers that apply",
   "ui.question.singleHint": "Select one answer",
-  "ui.question.custom.placeholder": "Type your answer...",
+  "ui.question.custom.placeholder": "Type your answer…",
+  "ui.sessionTurn.error.authBilling":
+    "API key is invalid or expired. Register or sign in on KT AI (ktapi.cc), create a valid key, or top up to continue.",
+  "ui.sessionTurn.error.openKt": "Open KT AI",
+  "dialog.usageExceeded.authBilling.title": "Sign in or top up required",
+  "dialog.usageExceeded.authBilling.description":
+    "API key is invalid or expired, or your balance is insufficient. Register or sign in on KT AI (ktapi.cc), create a valid key, or top up to continue.",
+  "dialog.usageExceeded.authBilling.actionLabel": "Open KT AI",
 } satisfies Record<string, string>
 
 export type Key = keyof typeof source
+
 export type PluralCategory = "zero" | "one" | "two" | "few" | "many" | "other"
+
 export type PluralKey = {
   [Entry in Key]: Entry extends `${infer Base}.other` ? (`${Base}.one` extends Key ? Base : never) : never
 }[Key]
+
 export type PluralLookupKey = `${PluralKey}.${PluralCategory}`
+
 export type LocaleKey = Key | PluralLookupKey
+
 export const dict: typeof source & Record<string, string> = source

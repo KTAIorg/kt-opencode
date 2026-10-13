@@ -5,7 +5,7 @@ import { homedir } from "node:os"
 import { join, parse, resolve } from "node:path"
 import { promisify } from "node:util"
 import { app } from "electron"
-import { writeLog } from "../native/logging"
+import { Effect } from "effect"
 
 const execFileAsync = promisify(execFile)
 const DEFAULT_PROJECT_DIR = "Kito"
@@ -24,10 +24,10 @@ export async function ensureDefaultProject(override?: string) {
   try {
     await mkdir(directory, { recursive: true })
     await initializeRepository(directory)
-    writeLog("default-project", "default project ready", { directory })
+    Effect.runSync(Effect.logInfo("default project ready", { directory }))
     return directory
   } catch (error) {
-    writeLog("default-project", "could not prepare default project", { directory, error: String(error) }, "error")
+    Effect.runSync(Effect.logError("could not prepare default project", { directory, error: String(error) }))
     return null
   }
 }
@@ -50,6 +50,6 @@ async function initializeRepository(directory: string) {
   try {
     await execFileAsync("git", ["init"], { cwd: directory, timeout: INIT_TIMEOUT_MS })
   } catch (error) {
-    writeLog("default-project", "git init failed", { directory, error: String(error) }, "warn")
+    Effect.runSync(Effect.logWarning("default project git init failed", { directory, error: String(error) }))
   }
 }

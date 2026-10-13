@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
-import { sessionNotFoundError } from "@/utils/server-errors"
+import { sessionNotFoundError } from "@/runtime/server/errors"
 
 type LineageStore<T> = { peek: (id: string) => T | undefined; resolve: (id: string) => Promise<unknown> }
 

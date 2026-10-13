@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { createTwoFilesPatch } from "diff"
 import {
   defineVisualRegions,
   reportVisualStability,
@@ -15,7 +16,7 @@ import {
   toolPart,
   userMessage,
   waitForVisualSettle,
-} from "./fixture"
+} from "../../utils/timeline"
 
 test("expands and collapses a long completed shell without overlap", async ({ page }, testInfo) => {
   const shellID = "prt_interaction_01_shell"
@@ -34,6 +35,7 @@ test("expands and collapses a long completed shell without overlap", async ({ pa
     `[data-timeline-part-id="${renderedPartID(shellID)}"]`,
     `[data-timeline-part-id="${renderedPartID(followingID)}"]`,
   ])
+
   const regions = defineVisualRegions({
     shell: {
       selector: `[data-timeline-part-id="${renderedPartID(shellID)}"]`,
@@ -44,6 +46,7 @@ test("expands and collapses a long completed shell without overlap", async ({ pa
       closest: '[data-timeline-row="AssistantPart"]',
     },
   })
+
   const plan = visualPlan(regions, [
     { type: "required", regions: ["shell", "following"] },
     { type: "unique", regions: ["shell", "following"] },
@@ -55,17 +58,18 @@ test("expands and collapses a long completed shell without overlap", async ({ pa
     { type: "preserve-bottom-anchor" },
     { type: "flow", regions: ["shell", "following"] },
   ])
+
   await startVisualProbe(page, regions)
   await trigger.click()
   await expect(trigger).toHaveAttribute("aria-expanded", "true")
-  await page.waitForTimeout(500)
+  await waitForVisualSettle(page, [regions.shell.selector, regions.following.selector])
   const expanded = await stopVisualProbe<keyof typeof regions>(page)
   await reportVisualStability(testInfo, "shell-expand", expanded, plan)
 
   await startVisualProbe(page, regions)
   await trigger.click()
   await expect(trigger).toHaveAttribute("aria-expanded", "false")
-  await page.waitForTimeout(500)
+  await waitForVisualSettle(page, [regions.shell.selector, regions.following.selector])
   const collapsed = await stopVisualProbe<keyof typeof regions>(page)
   await reportVisualStability(testInfo, "shell-collapse", collapsed, plan)
 })
@@ -77,13 +81,14 @@ test("expands and collapses a completed context group without overlap", async ({
     "prt_interaction_03_grep",
     "prt_interaction_04_list",
   ]
+
   const group = `[data-timeline-part-ids="${ids.join(",")}"]`
   const followingID = "prt_interaction_context_following"
   await setupTimeline(page, {
     messages: [
       userMessage(),
       assistantMessage([
-        toolPart(ids[0]!, "read", "completed", { filePath: "src/a.ts" }),
+        toolPart(ids[0]!, "read", "completed", { path: "src/a.ts" }),
         toolPart(ids[1]!, "glob", "completed", { path: ".", pattern: "**/*.ts" }),
         toolPart(ids[2]!, "grep", "completed", { path: ".", pattern: "stable" }),
         toolPart(ids[3]!, "list", "completed", { path: "src" }),
@@ -95,6 +100,7 @@ test("expands and collapses a completed context group without overlap", async ({
   })
   const trigger = page.locator(`${group} [data-slot="collapsible-trigger"]`)
   await waitForVisualSettle(page, [group, `[data-timeline-part-id="${renderedPartID(followingID)}"]`])
+
   for (const [name, expanded] of [
     ["context-expand", true],
     ["context-collapse", false],
@@ -107,10 +113,11 @@ test("expands and collapses a completed context group without overlap", async ({
         closest: '[data-timeline-row="AssistantPart"]',
       },
     })
+
     await startVisualProbe(page, regions)
     await trigger.click()
     await expect(trigger).toHaveAttribute("aria-expanded", String(expanded))
-    await page.waitForTimeout(500)
+    await waitForVisualSettle(page, [regions.context.selector, regions.following.selector])
     const trace = await stopVisualProbe<keyof typeof regions>(page)
     await reportVisualStability(
       testInfo,
@@ -142,16 +149,23 @@ test("expands and collapses an edit diff without moving twice", async ({ page },
           editID,
           "edit",
           "completed",
-          { filePath: "src/edit.ts" },
+          { path: "src/edit.ts", oldString: "export const value = 1", newString: "export const value = 2" },
           {
             metadata: {
-              filediff: {
-                file: "src/edit.ts",
-                additions: 40,
-                deletions: 40,
-                before: source(40, false),
-                after: source(40, true),
-              },
+              files: [
+                {
+                  file: "src/edit.ts",
+                  patch: createTwoFilesPatch(
+                    "a/src/edit.ts",
+                    "b/src/edit.ts",
+                    source(40, false),
+                    source(40, true),
+                  ),
+                  additions: 40,
+                  deletions: 40,
+                  status: "modified",
+                },
+              ],
             },
           },
         ),
@@ -162,13 +176,16 @@ test("expands and collapses an edit diff without moving twice", async ({ page },
     cpuRate: 4,
     seedHistory: true,
   })
+
   const trigger = page
     .locator(`[data-timeline-part-id="${renderedPartID(editID)}"] [data-slot="collapsible-trigger"]`)
     .first()
+
   await waitForVisualSettle(page, [
     `[data-timeline-part-id="${renderedPartID(editID)}"]`,
     `[data-timeline-part-id="${renderedPartID(followingID)}"]`,
   ])
+
   const regions = defineVisualRegions({
     edit: {
       selector: `[data-timeline-part-id="${renderedPartID(editID)}"]`,
@@ -179,10 +196,11 @@ test("expands and collapses an edit diff without moving twice", async ({ page },
       closest: '[data-timeline-row="AssistantPart"]',
     },
   })
+
   await startVisualProbe(page, regions)
   await trigger.click()
   await expect(trigger).toHaveAttribute("aria-expanded", "true")
-  await page.waitForTimeout(900)
+  await waitForVisualSettle(page, [regions.edit.selector, regions.following.selector])
   const trace = await stopVisualProbe<keyof typeof regions>(page)
   await reportVisualStability(
     testInfo,

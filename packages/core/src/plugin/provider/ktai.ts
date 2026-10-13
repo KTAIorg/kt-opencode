@@ -1,16 +1,11 @@
-import type { IntegrationOAuthMethodRegistration } from "@opencode-ai/plugin/effect/integration"
-import { define } from "@opencode-ai/plugin/effect/plugin"
-import { Money } from "@opencode-ai/schema/money"
-import { Effect, Stream } from "effect"
+import type { IntegrationOAuthMethodRegistration } from "@opencode/plugin/effect/integration"
+import { define } from "@opencode/plugin/effect/plugin"
+import { Money } from "@opencode/schema/money"
+import { Effect, Stream, type Types } from "effect"
 import { Bus } from "../../bus.js"
 import { Credential } from "../../credential.js"
 import { Integration } from "../../integration.js"
-import {
-  HIDDEN_RELEASE_DATE,
-  KTAI_API_URL,
-  loadKtaiModels,
-  type RawModel,
-} from "../../ktai/catalog.js"
+import { HIDDEN_RELEASE_DATE, KTAI_API_URL, loadKtaiModels, type RawModel } from "../../ktai/catalog.js"
 import {
   clearPersistedIdentity,
   InvalidIdentityRefreshError,
@@ -23,7 +18,7 @@ import {
   startDeviceLogin,
 } from "../../ktai/identity.js"
 import { readManagedApiKey, syncManagedToken } from "../../ktai/newapi.js"
-import { Model } from "../../model.js"
+import { Model } from "@opencode/schema/model"
 import { Provider } from "../../provider.js"
 import type { PluginInternal } from "../internal.js"
 
@@ -42,7 +37,7 @@ function capabilities(tags: string) {
   }
 }
 
-function applyModel(model: RawModel, draft: Model.MutableInfo) {
+function applyModel(model: RawModel, draft: Types.DeepMutable<Model.Info>) {
   const tags = model.tags ?? ""
   const visible = model.defaultVisible !== false
   draft.modelID = Model.ID.make(model.id)
@@ -92,9 +87,7 @@ const telegram = (): IntegrationOAuthMethodRegistration => ({
           try: () => {
             // 轮询窗口对齐 challenge 服务端过期时间（+30s 宽限），解析失败回落默认 180s。
             const deadline = Date.parse(challenge.expiresAt)
-            const timeoutMs = Number.isFinite(deadline)
-              ? Math.max(deadline + 30_000 - Date.now(), 60_000)
-              : 180_000
+            const timeoutMs = Number.isFinite(deadline) ? Math.max(deadline + 30_000 - Date.now(), 60_000) : 180_000
             return pollDeviceLogin({ sessionId: challenge.sessionId, opaqueCode: challenge.opaqueCode, timeoutMs })
           },
           catch: (cause) => (cause instanceof Error ? cause : new Error("KT Identity device login failed")),
@@ -172,19 +165,18 @@ export const KtaiPlugin = define({
           // `credential.expires` can be an estimate, so persist only the
           // server-provided expiresAt stored in metadata. Omitting it keeps a
           // token without server expiry valid instead of inventing a logout.
-          expiresAt:
-            typeof credential.metadata?.expiresAt === "string" ? credential.metadata.expiresAt : undefined,
+          expiresAt: typeof credential.metadata?.expiresAt === "string" ? credential.metadata.expiresAt : undefined,
           refreshToken: credential.refresh,
           refreshExpiresAt:
-            typeof credential.metadata?.refreshExpiresAt === "string" ? credential.metadata.refreshExpiresAt : undefined,
+            typeof credential.metadata?.refreshExpiresAt === "string"
+              ? credential.metadata.refreshExpiresAt
+              : undefined,
           deviceSessionId:
             typeof credential.metadata?.deviceSessionId === "string" ? credential.metadata.deviceSessionId : undefined,
         })
       const managed = yield* Effect.promise(() => readManagedApiKey())
       const apiKey =
-        managed ??
-        process.env.KTAI_API_KEY?.trim() ??
-        (credential?.type === "key" ? credential.key : undefined)
+        managed ?? process.env.KTAI_API_KEY?.trim() ?? (credential?.type === "key" ? credential.key : undefined)
       loaded.apiKey = apiKey
       loaded.models = yield* Effect.promise(() => loadKtaiModels(apiKey)).pipe(
         Effect.catch((cause) =>
@@ -204,11 +196,11 @@ export const KtaiPlugin = define({
       })
     })
 
-    yield* ctx.catalog.transform((catalog) => {
-      catalog.provider.update(providerID, (provider) => {
+    yield* ctx.provider.transform((providers) => {
+      providers.update(providerID, (provider) => {
         provider.name = "Kito"
         provider.activation = "enabled"
-        provider.package = Provider.aisdk("@ai-sdk/openai-compatible")
+        provider.package = "@opencode/ai/providers/openai-compatible"
         provider.integrationID = integrationID
         provider.settings = {
           baseURL: KTAI_API_URL,
@@ -218,21 +210,23 @@ export const KtaiPlugin = define({
         }
       })
       const seen = new Set(loaded.models.map((model) => model.id))
-      const existing = catalog.provider.get(providerID)
+      const existing = providers.get(providerID)
       if (existing) {
         for (const id of existing.models.keys()) {
-          if (!seen.has(id)) catalog.model.remove(providerID, id)
+          if (!seen.has(id)) providers.models.remove(providerID, id)
         }
       }
       for (const item of loaded.models) {
-        catalog.model.update(providerID, item.id, (model) => applyModel(item, model))
+        providers.models.update(providerID, item.id, (model) => applyModel(item, model))
       }
+    })
+    yield* ctx.model.transform((models) => {
       const first = loaded.models.find((model) => model.defaultVisible !== false)
-      if (first) catalog.model.default.set(providerID, first.id)
+      if (first) models.default.set(providerID, first.id)
     })
 
-    const refresh = () => load().pipe(Effect.andThen(ctx.catalog.reload()))
-    yield* bus.subscribe(Integration.Event.ConnectionUpdated).pipe(
+    const refresh = () => load().pipe(Effect.andThen(ctx.provider.reload()))
+    yield* bus.subscribe(Credential.Event.Switched).pipe(
       Stream.filter((event) => event.data.integrationID === integrationID),
       Stream.runForEach(refresh),
       Effect.forkScoped({ startImmediately: true }),

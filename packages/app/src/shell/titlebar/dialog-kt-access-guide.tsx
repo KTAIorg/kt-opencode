@@ -1,0 +1,113 @@
+import { Show } from "solid-js"
+import { Button } from "@opencode/ui/button"
+import { useDialog } from "@opencode/ui/context/dialog"
+import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
+import { useLanguage } from "@/runtime/i18n/language"
+import { openKtWallet } from "@/shell/titlebar/dialog-kt-wallet"
+import { openKtIdentityLogin } from "@/shell/titlebar/dialog-kt-identity-login"
+import { useKtaiSignedIn } from "@/runtime/server/kt-signed-in"
+
+export type DialogKtAccessGuideProps = {
+  kind?: "auth" | "billing"
+  onClose?: (dontShowAgain?: boolean) => void
+}
+
+export function DialogKtAccessGuide(props: DialogKtAccessGuideProps) {
+  const dialog = useDialog()
+  const language = useLanguage()
+  const kind = () => props.kind ?? "auth"
+  const signedIn = useKtaiSignedIn()
+  const billingSignedIn = () => kind() === "billing" && signedIn() === true
+
+  const close = (dontShowAgain?: boolean) => {
+    props.onClose?.(dontShowAgain)
+    dialog.close()
+  }
+
+  const openWallet = () => {
+    openKtWallet({ dialog, onClose: () => props.onClose?.(false) })
+  }
+
+  const startTelegramLogin = () => {
+    openKtIdentityLogin({ dialog, onClose: () => props.onClose?.(false) })
+  }
+
+  const openAllModels = () => {
+    close(false)
+    void import("@/providers/models/manage").then((module) => module.openManageModels({ dialog }))
+  }
+
+  return (
+    <Dialog fit>
+      <DialogHeader>
+        <DialogTitleGroup
+          title={
+            billingSignedIn()
+              ? language.t("dialog.ktAccess.switch.title")
+              : kind() === "billing"
+                ? language.t("dialog.ktAccess.billing.title")
+                : language.t("dialog.ktAccess.auth.title")
+          }
+          description={
+            billingSignedIn()
+              ? language.t("dialog.ktAccess.switch.lead")
+              : kind() === "billing"
+                ? language.t("dialog.ktAccess.billing.lead")
+                : language.t("dialog.ktAccess.auth.lead")
+          }
+        />
+      </DialogHeader>
+      <DialogBody>
+        <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
+          <ol class="list-decimal pl-5 flex flex-col gap-2 text-14-regular text-text-base">
+            <li>{language.t("dialog.ktAccess.step1")}</li>
+            <li>{language.t("dialog.ktAccess.step2")}</li>
+            <li>{language.t("dialog.ktAccess.step3")}</li>
+          </ol>
+          <p class="text-12-regular text-text-weak">{language.t("dialog.ktAccess.hint")}</p>
+          <div class="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" size="large" type="button" onClick={() => close(kind() !== "billing")}>
+              {kind() === "billing" ? language.t("dialog.ktAccess.snooze") : language.t("dialog.ktAccess.dismiss")}
+            </Button>
+            <Show when={billingSignedIn()}>
+              <Button variant="ghost" size="large" type="button" onClick={openAllModels}>
+                {language.t("dialog.ktAccess.switch.browseAll")}
+              </Button>
+              <Button variant="outline" size="large" type="button" onClick={openWallet}>
+                {language.t("dialog.ktAccess.openWallet")}
+              </Button>
+            </Show>
+            <Show when={kind() === "billing" && signedIn() === false}>
+              <Button variant="contrast" size="large" type="button" onClick={startTelegramLogin}>
+                {language.t("dialog.ktAccess.telegram")}
+              </Button>
+            </Show>
+            <Show when={kind() !== "billing"}>
+              <Button variant="outline" size="large" type="button" onClick={openWallet}>
+                {language.t("dialog.ktAccess.openWallet")}
+              </Button>
+              <Button variant="contrast" size="large" type="button" onClick={startTelegramLogin}>
+                {language.t("dialog.ktAccess.telegram")}
+              </Button>
+            </Show>
+          </div>
+        </div>
+      </DialogBody>
+    </Dialog>
+  )
+}
+
+export function openKtAccessGuide(input: {
+  dialog: ReturnType<typeof useDialog>
+  kind?: "auth" | "billing"
+  onClose?: (dontShowAgain?: boolean) => void
+}) {
+  if ((input.kind ?? "auth") === "auth") {
+    openKtIdentityLogin({ dialog: input.dialog, onClose: () => input.onClose?.(false) })
+    return
+  }
+  void input.dialog.show(
+    () => <DialogKtAccessGuide kind={input.kind} onClose={input.onClose} />,
+    () => input.onClose?.(false),
+  )
+}

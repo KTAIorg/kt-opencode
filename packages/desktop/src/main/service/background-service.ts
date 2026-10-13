@@ -1,150 +1,134 @@
-import { Service } from "@opencode-ai/client/service"
-import { execFile } from "node:child_process"
-import { existsSync } from "node:fs"
-import { chmod, copyFile, mkdir, readdir, rename, rm } from "node:fs/promises"
-import { dirname, join } from "node:path"
-import { promisify } from "node:util"
-import { app } from "electron"
+import { superviseService } from "./supervision"
 import { CHANNEL } from "../constants"
-import { parseCliVersion } from "./cli-version"
-import { developmentResourcesRoot } from "../paths"
 import { registrationFileName } from "./registration-file"
+import { app, BrowserWindow } from "electron"
+import { Context, Effect, FileSystem, Layer, Path } from "effect"
+import { BackgroundServiceState } from "./background-service-state"
+import { cleanStages } from "./cli-stages"
+import { DesktopCli } from "./desktop-cli"
+import { SidecarCredentials } from "./sidecar-credentials"
+import { sidecarProbe } from "./sidecar-probe"
 
-const execFileAsync = promisify(execFile)
-type Logger = {
-  log(message: string, meta?: Record<string, unknown>): void
-  error(message: string, meta?: Record<string, unknown>): void
+export * as BackgroundService from "./background-service"
+
+export interface Interface {
+  readonly connection: Effect.Effect<SidecarCredentials.Data>
+  readonly reconnect: Effect.Effect<SidecarCredentials.Data>
 }
 
-export async function startBackgroundCli(logger: Logger) {
-  const isolated =
-    !app.isPackaged && (process.env.KITO_DESKTOP_ISOLATED_SERVER ?? process.env.OPENCODE_DESKTOP_ISOLATED_SERVER) === "1"
-  const development = !app.isPackaged && (process.env.KITO_DESKTOP_CLI_DEV ?? process.env.OPENCODE_DESKTOP_CLI_DEV)
-  const developmentVersion = process.env.KITO_VERSION ?? process.env.OPENCODE_VERSION ?? "local"
-  const cli = development
-    ? {
-        version: developmentVersion,
-        command: [
-          "bun",
-          "run",
-          "--cwd",
-          development,
-          `--define=OPENCODE_VERSION=${JSON.stringify(developmentVersion)}`,
-          "src/index.ts",
-        ],
-        binary: undefined,
-      }
-    : await resolveBundledCli(isolated, logger)
-  if (isolated) process.env.XDG_STATE_HOME = app.getPath("userData")
-  const service = await Service.ensure({
-    file:
-      isolated && (process.env.KITO_DESKTOP_SERVER_CHANNEL ?? process.env.OPENCODE_DESKTOP_SERVER_CHANNEL) === "local"
-        ? join(app.getPath("userData"), "kito", "service-local.json")
-        : packagedRegistrationFile(),
-    version: cli.version,
-    command: [...cli.command, "serve", "--service", ...(isolated ? ["--port", "0"] : [])],
-    onStart: (reason, previousVersion) => logger.log("v2 CLI background service starting", { reason, previousVersion }),
-  })
-  if (service.auth?.type !== "basic") throw new Error("V2 CLI background service did not provide authentication")
-  logger.log("v2 CLI background service ready", {
-    username: service.auth.username,
-    version: cli.version,
-    ...endpoint(service.url),
-  })
-  if (isolated && cli.binary) await cleanCliStages(cli.binary, logger)
-  const wslScript = process.env.KITO_DESKTOP_WSL_CLI_BUILD ?? process.env.OPENCODE_DESKTOP_WSL_CLI_BUILD
-  const wslOutput = process.env.KITO_DESKTOP_WSL_CLI_OUTPUT ?? process.env.OPENCODE_DESKTOP_WSL_CLI_OUTPUT
-  return {
-    url: service.url,
-    username: service.auth.username,
-    password: service.auth.password,
-    version: cli.version,
-    wslBuild: app.isPackaged || !wslScript || !wslOutput ? undefined : { script: wslScript, output: wslOutput },
-  }
-}
+export class Service extends Context.Service<Service, Interface>()("opencode/desktop/BackgroundService") {}
 
-// The bundled prod CLI registers itself in service-prod.json, so packaged
-// builds must poll the same file; see registration-file.ts.
-function packagedRegistrationFile() {
-  return registrationFileName(CHANNEL, app.isPackaged)
-}
+export const layer = Layer.effect(
+  Service,
+  Effect.gen(function* () {
+    const context = yield* Effect.context<FileSystem.FileSystem | Path.Path | DesktopCli.Service>()
 
-async function resolveBundledCli(isolated: boolean, logger: Logger) {
-  const bundled = app.isPackaged
-    ? join(process.resourcesPath, executableName())
-    : join(developmentResourcesRoot, isolated ? developmentExecutableName() : executableName())
-  logger.log("v2 CLI executable resolved", { bundled, packaged: app.isPackaged })
-  const version = parseCliVersion(await run(bundled, ["--version"], logger))
-  const binary = app.isPackaged || isolated ? await installCli(bundled, version, logger) : bundled
-  return { version, binary, command: [binary] }
-}
-
-async function cleanCliStages(binary: string, logger: Logger) {
-  const current = dirname(binary)
-  const root = dirname(current)
-  await Promise.all(
-    (await readdir(root, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory() && join(root, entry.name) !== current)
-      .map((entry) =>
-        rm(join(root, entry.name), { recursive: true, force: true }).catch((error) =>
-          logger.error("failed to clean staged v2 CLI", { path: join(root, entry.name), error }),
+    const state = yield* BackgroundServiceState.make({
+      initial: connect("initial").pipe(Effect.provide(context)),
+      reconnect: connect("reconnect").pipe(Effect.provide(context), Effect.orDie),
+    })
+    const runPromise = Effect.runPromiseWith(context)
+    yield* state.connection.pipe(
+      Effect.flatMap((ready) =>
+        Effect.promise((signal) =>
+          superviseService(
+            {
+              health: async (url, password) =>
+                fetch(`${url}/api/info`, {
+                  headers: password
+                    ? { authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}` }
+                    : undefined,
+                  signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]),
+                }).then(
+                  (response) => response.ok,
+                  () => false,
+                ),
+              restart: () => runPromise(state.reconnect).catch(() => undefined),
+              reloadWindows: () =>
+                BrowserWindow.getAllWindows().forEach((win) => {
+                  if (!win.isDestroyed()) win.webContents.reload()
+                }),
+              log: (message, meta) => Effect.runSync(Effect.logInfo(message, meta)),
+              error: (message, meta) => Effect.runSync(Effect.logError(message, meta)),
+              sleep: (ms) => Effect.runPromise(Effect.sleep(ms), { signal }).catch(() => undefined),
+            },
+            { value: ready },
+            signal,
+          ),
         ),
       ),
-  )
-}
+      Effect.catchCause((cause) => Effect.logError("local service supervision stopped", { cause })),
+      Effect.forkScoped,
+    )
+    return Service.of(state)
+  }),
+)
 
-async function installCli(source: string, version: string, logger: Logger) {
-  const directory = join(app.getPath("userData"), "cli", version.replace(/[^a-zA-Z0-9._-]/g, "-"))
-  const destination = join(directory, executableName())
-  if (existsSync(destination)) {
-    logger.log("v2 CLI staged executable reused", { path: destination, version })
-    return destination
-  }
+const connect = Effect.fn("BackgroundService.connect")(function* (mode: "initial" | "reconnect") {
+  yield* Effect.logInfo("starting v2 background service")
+  const path = yield* Path.Path
+  const desktopCli = yield* DesktopCli.Service
+  const runFork = Effect.runForkWith(yield* Effect.context<FileSystem.FileSystem | Path.Path>())
+  const isolated = !app.isPackaged && process.env.OPENCODE_DESKTOP_ISOLATED_SERVER === "1"
+  const cli = yield* desktopCli.resolve
+  const version = mode === "initial" ? cli.version : undefined
 
-  const temp = destination + `.${process.pid}.tmp`
-  await mkdir(directory, { recursive: true })
-  await copyFile(source, temp)
-  if (process.platform !== "win32") await chmod(temp, 0o755)
-  await rename(temp, destination).catch(async (error) => {
-    await rm(temp, { force: true })
-    throw error
+  if (isolated) process.env.XDG_STATE_HOME = app.getPath("userData")
+  const client = yield* Effect.promise(() => import("@opencode/client/service"))
+
+  const ensure = () =>
+    client.Service.ensure({
+      file:
+        isolated && process.env.OPENCODE_DESKTOP_SERVER_CHANNEL === "local"
+          ? path.join(app.getPath("userData"), "kito", "service-local.json")
+          : registrationFileName(CHANNEL, app.isPackaged),
+      version,
+      // A fixed port makes a second contender fail to bind and back off; port 0 never collides, so two
+      // services could boot against the same database.
+      command: [
+        ...cli.command,
+        "serve",
+        "--service",
+        ...(isolated ? ["--hostname", "0.0.0.0", "--port", String(0x0c0c)] : []),
+      ],
+      onStart: (reason, previousVersion) =>
+        runFork(Effect.logInfo("v2 CLI background service starting", { reason, previousVersion })),
+    })
+
+  // A compatible service the entry module already found is adopted at once; ensure() still runs
+  // afterwards for its side effects (terminal handoff completion), off the renderer's path.
+  const early = mode === "initial" && !isolated ? yield* Effect.promise(sidecarProbe) : undefined
+
+  if (early) yield* Effect.sync(() => void ensure().catch(() => undefined))
+  const service = early ?? (yield* Effect.tryPromise(ensure))
+
+  if (service.auth?.type !== "basic") throw new Error("V2 CLI background service did not provide authentication")
+  const url = new URL(service.url)
+
+  if (url.hostname === "0.0.0.0") url.hostname = "127.0.0.1"
+  yield* Effect.logInfo("v2 CLI background service ready", {
+    version,
+    probed: !!early,
+    ...endpoint(url.origin),
   })
-  logger.log("v2 CLI executable staged", { source, path: destination, version })
-  return destination
-}
 
-async function run(binary: string, args: string[], logger: Logger) {
-  logger.log("v2 CLI command started", { binary, args })
-  return execFileAsync(binary, args, { windowsHide: true }).then(
-    (result) => {
-      const stdout = result.stdout.trim()
-      const stderr = result.stderr.trim()
-      logger.log("v2 CLI command completed", { args, stdout, stderr })
-      return stdout
-    },
-    (error: unknown) => {
-      const output = error as { stdout?: string; stderr?: string }
-      logger.error("v2 CLI command failed", {
-        args,
-        error: error instanceof Error ? error.message : String(error),
-        stdout: output.stdout?.trim() ?? "",
-        stderr: output.stderr?.trim() ?? "",
-      })
-      throw error
-    },
-  )
-}
+  // Only packaged and isolated builds run a staged copy; any other binary sits in the source tree.
+  // The service now runs the current version, so an older copy at most belongs to a process still exiting.
+  if (mode === "initial" && (app.isPackaged || isolated) && cli.binary)
+    runFork(
+      cleanStages(cli.binary).pipe(
+        Effect.catch((error) => Effect.logError("failed to clean staged v2 CLIs", { error })),
+      ),
+    )
+  const ready = { url: url.origin, password: service.auth.password } satisfies SidecarCredentials.Data
+  SidecarCredentials.set(ready)
+
+  return ready
+})
 
 function endpoint(url: string | undefined) {
   if (!url || !URL.canParse(url)) return {}
   const parsed = new URL(url)
+
   return { url, hostname: parsed.hostname, port: parsed.port }
-}
-
-function executableName() {
-  return process.platform === "win32" ? "opencode-cli.exe" : "opencode-cli"
-}
-
-function developmentExecutableName() {
-  return process.platform === "win32" ? "opencode-cli-dev.exe" : "opencode-cli-dev"
 }

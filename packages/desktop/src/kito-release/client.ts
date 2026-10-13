@@ -98,8 +98,10 @@ function errorCode(payload: unknown) {
 
 function errorMessage(payload: unknown, status: number, request: ReleaseRequest) {
   const error = isRecord(payload) ? payload.error : undefined
-  if (isRecord(error) && typeof error.message === "string") return `${request.method} ${request.path} failed: ${status} ${error.message}`
-  if (isRecord(payload) && typeof payload.message === "string") return `${request.method} ${request.path} failed: ${status} ${payload.message}`
+  if (isRecord(error) && typeof error.message === "string")
+    return `${request.method} ${request.path} failed: ${status} ${error.message}`
+  if (isRecord(payload) && typeof payload.message === "string")
+    return `${request.method} ${request.path} failed: ${status} ${payload.message}`
   return `${request.method} ${request.path} failed: ${status}`
 }
 

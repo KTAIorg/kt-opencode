@@ -1,5 +1,5 @@
 import { Database } from "#zed-sqlite"
-import { kitoDataEnv } from "@opencode-ai/util/kito-env"
+import { kitoDataEnv } from "@opencode/util/kito-env"
 import { statSync } from "node:fs"
 import { readFile as readFileAsync } from "node:fs/promises"
 import os from "node:os"

@@ -1,23 +1,24 @@
 export * as ConfigNormalize from "./normalize.js"
 
 import { isDeepStrictEqual } from "node:util"
+import { isRecord } from "@opencode/ai/utils/record"
 import { Option, Schema } from "effect"
-import { Info } from "@opencode-ai/schema/config"
-import { ConfigAgent } from "@opencode-ai/schema/config/agent"
-import { ConfigCommand } from "@opencode-ai/schema/config/command"
-import { ConfigCompaction } from "@opencode-ai/schema/config/compaction"
-import { ConfigFormatter } from "@opencode-ai/schema/config/formatter"
-import { ConfigLSP } from "@opencode-ai/schema/config/lsp"
-import { ConfigMedia } from "@opencode-ai/schema/config/media"
-import { ConfigMCP } from "@opencode-ai/schema/config/mcp"
-import { ConfigPlugin } from "@opencode-ai/schema/config/plugin"
-import { ConfigPolicy } from "@opencode-ai/schema/config/policy"
-import { ConfigProvider } from "@opencode-ai/schema/config/provider"
-import { ConfigReference } from "@opencode-ai/schema/config/reference"
-import { ConfigExperimental } from "@opencode-ai/schema/config/experimental"
-import { Permission } from "@opencode-ai/schema/permission"
+import { Info } from "@opencode/schema/config"
+import { ConfigAgent } from "@opencode/schema/config/agent"
+import { ConfigCommand } from "@opencode/schema/config/command"
+import { ConfigCompaction } from "@opencode/schema/config/compaction"
+import { ConfigFormatter } from "@opencode/schema/config/formatter"
+import { ConfigLSP } from "@opencode/schema/config/lsp"
+import { ConfigMedia } from "@opencode/schema/config/media"
+import { ConfigModel } from "@opencode/schema/config/model"
+import { ConfigMCP } from "@opencode/schema/config/mcp"
+import { ConfigPlugin } from "@opencode/schema/config/plugin"
+import { ConfigPolicy } from "@opencode/schema/config/policy"
+import { ConfigProvider } from "@opencode/schema/config/provider"
+import { ConfigReference } from "@opencode/schema/config/reference"
+import { ConfigExperimental } from "@opencode/schema/config/experimental"
+import { Permission } from "@opencode/schema/permission"
 import { ConfigAgentV1 } from "../v1/config/agent.js"
-import { ConfigAttachmentV1 } from "../v1/config/attachment.js"
 import { ConfigCommandV1 } from "../v1/config/command.js"
 import { ConfigMCPV1 } from "../v1/config/mcp.js"
 import { ConfigPermissionV1 } from "../v1/config/permission.js"
@@ -40,7 +41,7 @@ export type Result =
     }
   | { readonly type: "rejected"; readonly diagnostics: readonly Diagnostic[] }
 
-const options = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
+const options = { errors: "all", onExcessProperty: "ignore" } as const
 const unsupportedTopLevel = ["logLevel", "server", "subagent_depth", "layout"] as const
 const unsupportedExperimental = [
   "disable_paste_summary",
@@ -51,6 +52,7 @@ const unsupportedExperimental = [
 ] as const
 const unsupportedProvider = ["id", "whitelist", "blacklist"] as const
 const unsupportedModel = ["release_date", "attachment", "reasoning", "temperature", "experimental"] as const
+const LegacyAutoupdate = Schema.Literals([true, false, "notify"])
 
 export function normalize(input: unknown): Result {
   if (!isRecord(input))
@@ -68,19 +70,32 @@ export function normalize(input: unknown): Result {
   const legacySnapshots = own(input, "snapshot")
     ? decodeEncoded(Schema.Boolean, input.snapshot, ["snapshot"], diagnostics)
     : undefined
+  const legacyUpdate = own(input, "autoupdate")
+    ? decodeValue(LegacyAutoupdate, input.autoupdate, ["autoupdate"], diagnostics)
+    : undefined
+  const nativeUpdate = own(input, "update")
+    ? decodeEncoded(Info.fields.update, input.update, ["update"], diagnostics)
+    : undefined
   const legacyShare = own(input, "autoshare")
     ? decodeValue(Schema.Boolean, input.autoshare, ["autoshare"], diagnostics) === true
       ? "auto"
       : undefined
     : undefined
   const legacyMedia = own(input, "attachment")
-    ? decodeValue(ConfigAttachmentV1.Info, input.attachment, ["attachment"], diagnostics)
+    ? decodeEncoded(ConfigMedia.Info, input.attachment, ["attachment"], diagnostics)
     : undefined
-  if (legacyMedia !== undefined) {
-    const migrated = ConfigMigrateV1.migrate({ attachment: legacyMedia }).media
-    if (migrated !== undefined) encoded.media = canonical(ConfigMedia.Info, migrated)
-  }
+  if (legacyMedia !== undefined) encoded.media = legacyMedia
   if (legacySnapshots !== undefined) encoded.snapshots = legacySnapshots
+  const migratedUpdate =
+    legacyUpdate === false
+      ? "disable"
+      : legacyUpdate === "notify"
+        ? "notify"
+        : legacyUpdate === true
+          ? "auto"
+          : undefined
+  const update = prefer(migratedUpdate, nativeUpdate, ["update"], diagnostics)
+  if (update !== undefined) encoded.update = update
   if (legacyShare !== undefined) encoded.share = legacyShare
 
   const legacyReferences = decodeMap(input.reference, ConfigReference.Entry, ["reference"], diagnostics, decodeEncoded)
@@ -102,10 +117,9 @@ export function normalize(input: unknown): Result {
 
   const legacyCommands = decodeMap(input.command, ConfigCommandV1.Info, ["command"], diagnostics, decodeValue)
   diagnoseSelectionMap(input.command, ["command"], diagnostics)
-  const migratedCommands = mapValues(legacyCommands, (value) => {
-    const migrated = ConfigMigrateV1.commands({ value })?.value
-    return migrated === undefined ? undefined : canonical(ConfigCommand.Info, migrated)
-  })
+  const migratedCommands = mapValues(legacyCommands, (value) =>
+    canonical(ConfigCommand.Info, ConfigMigrateV1.migrateCommand(value)),
+  )
   const nativeCommands = decodeMap(input.commands, ConfigCommand.Info, ["commands"], diagnostics, decodeEncoded)
   mergeMap(
     encoded,
@@ -123,9 +137,7 @@ export function normalize(input: unknown): Result {
   const legacySmallModel = own(input, "small_model")
     ? decodeValue(Schema.String, input.small_model, ["small_model"], diagnostics)
     : undefined
-  const migratedSmallModel = legacySmallModel
-    ? ConfigMigrateV1.migrate({ small_model: legacySmallModel }).agents?.title?.model
-    : undefined
+  const migratedSmallModel = ConfigMigrateV1.modelSelection(legacySmallModel)
   if (legacySmallModel && !migratedSmallModel)
     diagnostics.push({
       kind: "unsupported",
@@ -185,12 +197,15 @@ export function normalize(input: unknown): Result {
   normalizeFormatter(input, encoded, diagnostics)
   normalizeLsp(input, encoded, diagnostics)
 
+  const model = own(input, "model")
+    ? decodeValue(ConfigModel.Selection, input.model, ["model"], diagnostics)
+    : undefined
+  if (model) encoded.model = { ...model, providerID: ConfigMigrateV1.providerID(model.providerID) }
+
   const nativeAtomic = {
     $schema: Info.fields.$schema,
     shell: Info.fields.shell,
-    model: Info.fields.model,
     default_agent: Info.fields.default_agent,
-    autoupdate: Info.fields.autoupdate,
     share: Info.fields.share,
     enterprise: Info.fields.enterprise,
     username: Info.fields.username,
@@ -198,6 +213,7 @@ export function normalize(input: unknown): Result {
     media: Info.fields.media,
     tool_output: Info.fields.tool_output,
     websearch: Info.fields.websearch,
+    worktree: Info.fields.worktree,
     warming: Info.fields.warming,
   }
   Object.entries(nativeAtomic).forEach(([key, schema]) => {
@@ -291,18 +307,13 @@ function normalizeMcpTimeout(
     invalid(path, diagnostics)
     return
   }
-  const recognized = ["startup", "catalog", "execution"].filter((key) => own(value, key))
+  const recognized = Object.entries(ConfigMCP.Timeout.fields).filter(([key]) => own(value, key))
   if (Object.keys(value).length && !recognized.length) {
     invalid(path, diagnostics)
     return
   }
-  recognized.forEach((key) => {
-    const leaf = decodeEncoded(
-      ConfigMCP.Timeout.fields[key as keyof typeof ConfigMCP.Timeout.fields],
-      value[key],
-      [...path, key],
-      diagnostics,
-    )
+  recognized.forEach(([key, field]) => {
+    const leaf = decodeEncoded(field, value[key], [...path, key], diagnostics)
     if (leaf === undefined) return
     overlay(timeout, key, leaf, [...path, key], diagnostics)
   })
@@ -782,10 +793,6 @@ function isEnabledOnlyMcp(value: unknown) {
   return isRecord(value) && !own(value, "type") && typeof value.enabled === "boolean"
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value)) return false
   const prototype = Object.getPrototypeOf(value)
@@ -793,7 +800,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function own(value: Record<string, unknown>, key: string) {
-  return Object.prototype.hasOwnProperty.call(value, key)
+  return Object.hasOwn(value, key)
 }
 
 function setOwn(value: Record<string, unknown>, key: string, item: unknown) {

@@ -46,7 +46,8 @@ async function main() {
 }
 
 function parseArgs(argv: string[]) {
-  const command = argv[0] === "ensure-app" || argv[0] === "publish-zero" || argv[0] === "register" ? argv[0] : "register"
+  const command =
+    argv[0] === "ensure-app" || argv[0] === "publish-zero" || argv[0] === "register" ? argv[0] : "register"
   const rest = command === argv[0] ? argv.slice(1) : argv
   const flags = new Map<string, string>()
   rest.forEach((value, index, values) => {
@@ -74,11 +75,7 @@ function collectArtifacts(dir: string) {
 }
 
 function requiredAdminUrl(dryRun: boolean) {
-  const value = (
-    process.env.KT_RELEASE_SERVICE_ADMIN_BASE_URL ??
-    process.env.KT_RELEASE_SERVICE_BASE_URL ??
-    ""
-  ).trim()
+  const value = (process.env.KT_RELEASE_SERVICE_ADMIN_BASE_URL ?? process.env.KT_RELEASE_SERVICE_BASE_URL ?? "").trim()
   if (value) return value
   if (dryRun) return "https://release-admin.ktyun.cc"
   throw new Error("Missing KT_RELEASE_SERVICE_ADMIN_BASE_URL")

@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
+import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api"
 import { BadGatewayError, InvalidRequestError, ServiceUnavailableError, UnauthorizedError } from "../errors.js"
 
 export const KtaiAccount = Schema.Struct({

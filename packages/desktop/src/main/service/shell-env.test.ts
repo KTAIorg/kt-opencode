@@ -1,44 +1,16 @@
 import { describe, expect, test } from "bun:test"
+import { NodePath } from "@effect/platform-node"
+import { Effect } from "effect"
 
-import {
-  applyShellEnvironment,
-  isNushell,
-  mergeShellEnv,
-  parseShellEnv,
-  resolveUserShell,
-  sanitizeImportedEnv,
-} from "./shell-env"
+import { applyShellEnvironment, sanitizeImportedEnv, isNushell, parseShellEnv, resolveUserShell } from "./shell-env"
 
 describe("shell env", () => {
-  test("parseShellEnv supports null-delimited pairs", () => {
-    const env = parseShellEnv(Buffer.from("PATH=/usr/bin:/bin\0FOO=bar=baz\0\0"))
-
-    expect(env.PATH).toBe("/usr/bin:/bin")
-    expect(env.FOO).toBe("bar=baz")
-  })
-
-  test("parseShellEnv ignores invalid entries", () => {
-    const env = parseShellEnv(Buffer.from("INVALID\0=empty\0OK=1\0"))
-
-    expect(Object.keys(env).length).toBe(1)
-    expect(env.OK).toBe("1")
-  })
-
-  test("mergeShellEnv keeps explicit overrides", () => {
-    const env = mergeShellEnv(
-      {
-        PATH: "/shell/path",
-        HOME: "/tmp/home",
-      },
-      {
-        PATH: "/desktop/path",
-        OPENCODE_CLIENT: "desktop",
-      },
-    )
-
-    expect(env.PATH).toBe("/desktop/path")
-    expect(env.HOME).toBe("/tmp/home")
-    expect(env.OPENCODE_CLIENT).toBe("desktop")
+  test("parseShellEnv reads null-delimited pairs and ignores invalid entries", () => {
+    expect(parseShellEnv(Buffer.from("PATH=/usr/bin:/bin\0FOO=bar=baz\0\0INVALID\0=empty\0OK=1\0"))).toEqual({
+      PATH: "/usr/bin:/bin",
+      FOO: "bar=baz",
+      OK: "1",
+    })
   })
 
   test("sanitizeImportedEnv drops host OpenCode, XDG roots, and AI API keys", () => {
@@ -78,7 +50,8 @@ describe("shell env", () => {
   })
 
   test("mergeShellEnv desktop XDG wins over shell XDG", () => {
-    const env = mergeShellEnv(
+    const env = applyShellEnvironment(
+      {},
       {
         XDG_CONFIG_HOME: "/Users/me/.config",
         OPENCODE_CONFIG: "/Users/me/.config/opencode/config.json",
@@ -160,9 +133,10 @@ describe("shell env", () => {
   })
 
   test("isNushell handles path and binary name", () => {
-    expect(isNushell("nu")).toBe(true)
-    expect(isNushell("/opt/homebrew/bin/nu")).toBe(true)
-    expect(isNushell("C:\\Program Files\\nu.exe")).toBe(true)
-    expect(isNushell("/bin/zsh")).toBe(false)
+    const check = (shell: string) => Effect.runSync(isNushell(shell).pipe(Effect.provide(NodePath.layer)))
+    expect(check("nu")).toBe(true)
+    expect(check("/opt/homebrew/bin/nu")).toBe(true)
+    expect(check("C:\\Program Files\\nu.exe")).toBe(true)
+    expect(check("/bin/zsh")).toBe(false)
   })
 })

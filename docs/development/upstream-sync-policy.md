@@ -5,12 +5,12 @@
 - `origin`：`KTAIorg/kt-opencode`
 - `upstream`：`anomalyco/opencode`
 - 稳定主线：`main`
-- 当前上游基线：`upstream/beta`（OpenCode V2）
+- 当前上游基线：`v2.0.27`（OpenCode V2 稳定版，commit `1f4d07a4a519185955ae8ab2ea3607805509e386`，2026-10-13 核实）
 - 不要使用过期的 `origin/beta`（可能仍是 1.x）
 
 `main` 必须始终保留与 OpenCode 官方仓库的共同祖先。禁止通过 ZIP、删除 `.git`、Squash 全量导入或覆盖目录的方式更新上游代码。
 
-Kito 产品线已切到 OpenCode V2 beta。同步时从 `upstream/beta` 拉取，再把 Kito 页面和定制功能重新应用到 V2 包结构（`packages/core`、`packages/server`、`packages/protocol`、`packages/app`、`packages/cli`）。`packages/opencode` 在 V2 中已移除。
+Kito 产品线基于 OpenCode V2 稳定版。同步时选取官方 `v2.*` 稳定标签，在当前 `main` 上合并完整上游历史，并适配 Kito 页面和定制功能到 V2 包结构（`packages/core`、`packages/server`、`packages/protocol`、`packages/app`、`packages/cli`）。`packages/opencode` 在 V2 中已移除。
 
 ## Kito 定制白名单
 
@@ -27,18 +27,19 @@ Kito 产品线已切到 OpenCode V2 beta。同步时从 `upstream/beta` 拉取�
 
 ## 同步流程
 
-1. 获取官方分支：`git fetch upstream beta`。
-2. 从最新 `upstream/beta` 开工作分支，不要把 `upstream/beta` 直接 merge 进旧的 1.x 工作区。
-3. 将白名单定制移植到 V2 API（Plugin Effect、Protocol HttpApi、Client generate）。
-4. 冲突处理优先级：安全修复以上游为准、已上游化的 Patch 删除、Kito 白名单定制重新应用、纯格式变化以上游为准。
-5. 运行 `packages/core` / `packages/app` 的 Kito 测试和 `bun typecheck`。
-6. 通过 PR 合入 `main`，禁止直接推送。
+1. 查询 `@opencode/cli` 的 npm `latest` 并核对官方 `v2.*` 标签；不选 `dev` / `beta` 分发标签。
+2. 获取已核实标签：`git fetch upstream tag v2.0.27 --no-tags`。
+3. 从最新 `origin/main` 创建隔离工作分支，执行 `git merge --no-ff <官方标签>`。保留 merge commit 的两个父提交；禁止 squash 丢弃上游祖先。
+4. 将白名单定制移植到 V2 API（Plugin Effect、Protocol HttpApi、Client generate）。
+5. 冲突处理优先级：安全修复以上游为准、已上游化的 Patch 删除、Kito 白名单定制重新应用、纯格式变化以上游为准。
+6. 运行 `packages/core` / `packages/app` 的 Kito 测试和 `bun typecheck`。
+7. 通过 PR 合入 `main`，禁止直接推送。
 
 ## 版本与 Release
 
-- `KTAI_VERSION` 保存 Kito 产品的 `major.minor` 基线。切到 V2 beta 是上游线切换，不自动抬这个号。
+- `KTAI_VERSION` 保存 Kito 产品的 `major.minor` 基线。同步 V2 稳定版是上游框架升级，不自动抬这个号。
 - PR 构建使用 `0.0.<workflow run number>`，只上传 Actions Artifact，不创建 GitHub Release。
-- `main` 每次成功构建使用 `<major>.<minor>.<workflow run number>`，并自动创建 GitHub 正式 Release 且标记为 Latest。
+- `main` 每次成功构建使用 `<major>.<minor>.<已发布版本计数>`，并自动创建 GitHub 正式 Release 且标记为 Latest。
 - 安装包文件名必须包含 Kito 产品版本。
 - Release 必须包含 Windows x64、macOS Intel、macOS Apple Silicon 安装包和 `SHA256SUMS`。
 - Release 创建成功后，自动创建或更新同版本测试需求 Issue，关联合并 PR、Closing Issues、安装包和 `KT主系统 Issue 看板` 的 `KT测试组` 模块。
@@ -54,5 +55,20 @@ kito-v<产品版本>
 ## 同步频率
 
 - 安全修复：立即评估并同步。
-- 官方 `beta` 推进：按产品需要拉取并重放白名单定制。
+- 官方 `v2.*` 稳定版发布：按产品需要拉取并重放白名单定制。
 - 最低要求：每月完成一次上游差异审计。
+
+## V2 2.0.27 的接缝
+
+- 工作区 npm 包名为 `@opencode/*`，框架要求 Bun `1.4.2`；不要把仍由官方发布的 `@opencode-ai/pty` 改名。
+- Kito Provider 使用 `ctx.provider.transform` 与 `ctx.model.transform`；原 `ctx.catalog` 已由上游移除。
+- Kito 账户按钮通过 `TitlebarRight` 注册；默认项目调用使用上游 typed Electron IPC。
+- `docs/api/openapi.yaml` 是 Kito HTTP+JSON 接口契约。修改 Protocol 后依次执行 `packages/protocol` 的 `generate`、`packages/client` 的 `generate` 和根目录 `sync:kito-contract`。
+- 数据、配置、缓存、服务注册继续位于 Kito 自己的 XDG 目录；托管 NewAPI 密钥与 KT Identity OAuth 分离。
+- 合入 `main` 会自动发布安装包，合入前需完成质量门禁并取得发布授权。
+
+## 已退役的旧 Patch
+
+- 旧的全局 `http.body` 协议字段 denylist 不适用于当前框架：新版原生提供商正式使用 body overlays 覆盖部署名、生成参数、工具控制和结构化输出配置。HTTP 传输采用官方 V2 行为，参数由调用方拥有的路由/模型配置决定。保留诊断凭据脱敏、Kito 托管密钥隔离、配置路径隔离与子进程凭据过滤。
+- 旧 Promise codegen 禁止 binary / 尾部 wildcard 的断言已由新版真实二进制请求测试替代；具名类型不再要求展开成匿名类型。
+- Node SEA 资源变量与读取方统一使用 `KITO_*`，构建声明使用现有 `@types/bun` 的 `bun` 名称。

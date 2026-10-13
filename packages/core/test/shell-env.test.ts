@@ -1,19 +1,19 @@
 import { describe, expect } from "bun:test"
 import fs from "node:fs/promises"
 import { Effect } from "effect"
-import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
-import { LayerNode } from "@opencode-ai/util/effect/layer-node"
-import { Global } from "@opencode-ai/util/global"
-import { Location } from "@opencode-ai/core/location"
-import { Shell } from "@opencode-ai/core/shell"
+import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
+import { LayerNode } from "@opencode/util/effect/layer-node"
+import { Global } from "@opencode/util/global"
+import { Location } from "@opencode/core/location"
+import { Shell } from "@opencode/core/shell"
 import { tempGlobalLayer } from "./fixture/global"
 import { tempLocationLayer } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([Shell.node]), [
-    [Location.node, tempLocationLayer],
-    [Global.node, tempGlobalLayer],
+    Location.node.replace(tempLocationLayer),
+    Global.node.replace(tempGlobalLayer),
   ]),
 )
 

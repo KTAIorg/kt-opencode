@@ -1,5 +1,5 @@
-import type { Platform } from "@opencode-ai/app"
-import type { ElectronAPI } from "../../preload/types"
+import type { Platform } from "@opencode/app/desktop"
+import type { ElectronAPI } from "../api-types"
 import { resetZoom, zoomIn, zoomOut } from "../window/zoom"
 
 let trigger: ((id: string) => void) | null = null
@@ -17,14 +17,18 @@ export function createDesktopMenuAction(api: ElectronAPI): NonNullable<Platform[
     switch (action) {
       case "view.resetZoom":
         resetZoom()
+
         return
       case "view.zoomIn":
         zoomIn()
+
         return
       case "view.zoomOut":
         zoomOut()
+
         return
     }
+
     return api.runDesktopMenuAction(action)
   }
 }

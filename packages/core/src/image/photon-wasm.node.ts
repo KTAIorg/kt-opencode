@@ -1,5 +1,5 @@
 import { createRequire } from "node:module"
-import { kitoDataEnv } from "@opencode-ai/util/kito-env"
+import { kitoDataEnv } from "@opencode/util/kito-env"
 
 export default kitoDataEnv("PHOTON_WASM_PATH") ??
   createRequire(import.meta.url).resolve("@silvia-odwyer/photon-node/photon_rs_bg.wasm")

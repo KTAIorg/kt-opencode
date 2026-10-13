@@ -1,7 +1,7 @@
 import path from "path"
 import { fileURLToPath } from "url"
 import { Schema } from "effect"
-import { kitoEnv } from "@opencode-ai/util/kito-env"
+import { kitoEnv } from "@opencode/util/kito-env"
 
 type BaseReference = {
   readonly host: string
@@ -146,8 +146,9 @@ function parts(input: string) {
     .filter(Boolean)
 }
 
+// cachePath makes each `:`-separated host part a directory.
 function safeHost(input: string) {
-  return Boolean(input) && !input.startsWith("-") && !/[\s/\\]/.test(input)
+  return Boolean(input) && !input.startsWith("-") && input.split(":").every(safeSegment)
 }
 
 function safeSegment(input: string) {

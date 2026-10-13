@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
-import { createKeybindSettingsController } from "../src/components/settings-keybinds"
+import { createKeybindSettingsController } from "../src/settings/keybinds/keybinds"
 
 function setup(overrides: Record<string, string> = {}) {
   const changes: [string, string][] = []
@@ -17,11 +17,13 @@ function setup(overrides: Record<string, string> = {}) {
             { id: "session.alpha", title: "Alpha", keybind: "mod+a" },
             { id: "session.beta", title: "Beta", keybind: "mod+b" },
             { id: "session.stale", title: "Stale", keybind: "mod+s" },
+            { id: "session.inactive", title: "Old translation", keybind: "mod+g" },
           ],
           options: [
             { id: "session.alpha", title: "Alpha", keybind: "mod+a" },
             { id: "session.beta", title: "Beta", keybind: "mod+b" },
           ],
+          known: new Map([["session.inactive", { title: "Dormant" }]]),
           keybinds: (enabled) => suppression.push(enabled),
         },
         settings: {
@@ -43,11 +45,14 @@ function setup(overrides: Record<string, string> = {}) {
         locale: () => "en",
         t: (key, params) => {
           if (params) return `${key}:${Object.values(params).join("|")}`
+
           if (key === "common.key.alt") return "Alt"
+
           return String(key)
         },
       },
     )
+
     return dispose
   })
 
@@ -63,6 +68,7 @@ function setup(overrides: Record<string, string> = {}) {
 
 function modKey(key: string) {
   const mac = /(Mac|iPod|iPhone|iPad)/.test(navigator.platform)
+
   return new KeyboardEvent("keydown", { key, ctrlKey: !mac, metaKey: mac, bubbles: true, cancelable: true })
 }
 
@@ -73,6 +79,7 @@ describe("keybind settings controller", () => {
     expect(state.controller.catalog.title("session.alpha")).toBe("Alpha")
     expect(state.controller.catalog.keybind("session.beta")).toBe("Alt+K")
     expect(state.controller.catalog.filtered("alt k").get("Session")).toEqual(["session.beta"])
+    expect(state.controller.catalog.title("session.inactive")).toBe("Dormant")
     expect(state.controller.catalog.title("session.stale")).toBe("")
     expect(state.controller.catalog.filtered("stale").get("Session") ?? []).toEqual([])
     expect(state.controller.settings.hasOverrides()).toBe(true)

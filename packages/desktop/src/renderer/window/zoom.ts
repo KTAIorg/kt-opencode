@@ -3,17 +3,24 @@
 // SPDX-License-Identifier: MIT
 
 import { createSignal } from "solid-js"
+import { api } from "../api"
 
 const OS_NAME = (() => {
   if (navigator.userAgent.includes("Mac")) return "macos"
+
   if (navigator.userAgent.includes("Windows")) return "windows"
+
   if (navigator.userAgent.includes("Linux")) return "linux"
+
   return "unknown"
 })()
 
 const [webviewZoom, setWebviewZoom] = createSignal(1)
+
 let requestedZoom = 1
+
 let pinchZoomEnabled = false
+
 let wheelPinch = undefined as
   | {
       active: boolean
@@ -24,16 +31,20 @@ let wheelPinch = undefined as
   | undefined
 
 const MAX_ZOOM_LEVEL = 10
+
 const MIN_ZOOM_LEVEL = 0.2
+
 const WHEEL_PINCH_THRESHOLD = 20
+
 const WHEEL_PINCH_STEP = 0.2
+
 const WHEEL_PINCH_END_DELAY = 160
 
 const clamp = (value: number) => Math.min(Math.max(value, MIN_ZOOM_LEVEL), MAX_ZOOM_LEVEL)
 
 const applyZoom = (next: number) => {
   requestedZoom = next
-  void window.api
+  void api
     .setZoomFactor(next)
     .then(() => {
       if (requestedZoom !== next) return
@@ -45,16 +56,23 @@ const applyZoom = (next: number) => {
     })
 }
 
-window.api.onZoomFactorChanged((factor) => {
+// A renderer reload keeps the window's zoom, so seed the signal from main.
+void api.getZoomFactor().then((factor) => {
+  if (requestedZoom !== 1) return
   requestedZoom = clamp(factor)
   setWebviewZoom(requestedZoom)
 })
 
-void window.api.getPinchZoomEnabled().then((enabled) => {
+api.onZoomFactorChanged((factor) => {
+  requestedZoom = clamp(factor)
+  setWebviewZoom(requestedZoom)
+})
+
+void api.getPinchZoomEnabled().then((enabled) => {
   pinchZoomEnabled = enabled
 })
 
-window.api.onPinchZoomEnabledChanged((enabled) => {
+api.onPinchZoomEnabledChanged((enabled) => {
   pinchZoomEnabled = enabled
   resetWheelPinch()
 })
@@ -62,11 +80,14 @@ window.api.onPinchZoomEnabledChanged((enabled) => {
 const setPinchZoomEnabled = (enabled: boolean) => {
   pinchZoomEnabled = enabled
   resetWheelPinch()
-  return window.api.setPinchZoomEnabled(enabled)
+
+  return api.setPinchZoomEnabled(enabled)
 }
 
 const resetZoom = () => applyZoom(1)
+
 const zoomIn = () => applyZoom(clamp(requestedZoom + 0.2))
+
 const zoomOut = () => applyZoom(clamp(requestedZoom - 0.2))
 
 const resetWheelPinch = () => {
@@ -76,7 +97,9 @@ const resetWheelPinch = () => {
 
 const normalizeWheelDelta = (event: WheelEvent) => {
   if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16
+
   if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * window.innerHeight
+
   return event.deltaY
 }
 
@@ -93,10 +116,12 @@ const updateWheelPinch = (event: WheelEvent) => {
   wheelPinch.totalDelta += normalizeWheelDelta(event)
 
   if (!wheelPinch.active && Math.abs(wheelPinch.totalDelta) < WHEEL_PINCH_THRESHOLD) return
+
   if (!wheelPinch.active) {
     wheelPinch.active = true
     wheelPinch.startZoom = requestedZoom
     wheelPinch.totalDelta = 0
+
     return
   }
 
@@ -108,6 +133,7 @@ window.addEventListener(
   "wheel",
   (event) => {
     if (!pinchZoomEnabled) return
+
     if (!event.ctrlKey) return
 
     event.preventDefault()
@@ -122,13 +148,17 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "-") {
     event.preventDefault()
     zoomOut()
+
     return
   }
+
   if (event.key === "=" || event.key === "+") {
     event.preventDefault()
     zoomIn()
+
     return
   }
+
   if (event.key === "0") {
     event.preventDefault()
     resetZoom()

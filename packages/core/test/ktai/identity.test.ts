@@ -19,7 +19,7 @@ import {
   revokeCurrentIdentitySession,
   sessionExpiresAt,
   startDeviceLogin,
-} from "@opencode-ai/core/ktai/identity"
+} from "@opencode/core/ktai/identity"
 
 afterEach(() => {
   if (process.env.KITO_KTAI_IDENTITY_PATH) fs.rmSync(process.env.KITO_KTAI_IDENTITY_PATH, { force: true })
@@ -134,14 +134,23 @@ test("startDeviceLogin and pollDeviceLogin complete a device session", async () 
     if (url.endsWith("/identity/v1/device/sessions/dev-1")) {
       polls += 1
       return new Response(
-        JSON.stringify({ session_id: "dev-1", user_code: "AB12", status: polls >= 2 ? "approved" : "pending", expires_at: "2026-08-01T00:05:00.000Z", interval: 5 }),
+        JSON.stringify({
+          session_id: "dev-1",
+          user_code: "AB12",
+          status: polls >= 2 ? "approved" : "pending",
+          expires_at: "2026-08-01T00:05:00.000Z",
+          interval: 5,
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       )
     }
     throw new Error(`unexpected url ${url}`)
   }
 
-  const challenge = await startDeviceLogin({ baseUrl: "https://login.example", deviceName: "Kito on test-host" }, fetchImpl)
+  const challenge = await startDeviceLogin(
+    { baseUrl: "https://login.example", deviceName: "Kito on test-host" },
+    fetchImpl,
+  )
   expect(challenge.sessionId).toBe("dev-1")
   expect(challenge.userCode).toBe("AB12")
   expect(challenge.opaqueCode).toBe("opaque-ab12")
@@ -158,7 +167,14 @@ test("startDeviceLogin and pollDeviceLogin complete a device session", async () 
   })
 
   const session = await pollDeviceLogin(
-    { sessionId: challenge.sessionId, opaqueCode: challenge.opaqueCode, baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 1_000, deviceName: "Kito on test-host" },
+    {
+      sessionId: challenge.sessionId,
+      opaqueCode: challenge.opaqueCode,
+      baseUrl: "https://login.example",
+      intervalMs: 1,
+      timeoutMs: 1_000,
+      deviceName: "Kito on test-host",
+    },
     fetchImpl,
   )
   expect(session.token).toBe("device-access")
@@ -182,7 +198,13 @@ test("startDeviceLogin and pollDeviceLogin complete a device session", async () 
 test("pollDeviceLogin fails fast when the challenge is denied", async () => {
   await expect(
     pollDeviceLogin(
-      { sessionId: "dev-denied", opaqueCode: "opaque-x", baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 1_000 },
+      {
+        sessionId: "dev-denied",
+        opaqueCode: "opaque-x",
+        baseUrl: "https://login.example",
+        intervalMs: 1,
+        timeoutMs: 1_000,
+      },
       async () => new Response(JSON.stringify({ status: "denied" }), { status: 200 }),
     ),
   ).rejects.toThrow("KT Identity device login denied")
@@ -211,10 +233,10 @@ test("fetchAccountSummary keeps the profile when the ledger is unavailable", asy
   const summary = await fetchAccountSummary("identity-token", "https://login.example", async (input) => {
     const url = String(input)
     if (url.endsWith("/identity/v1/account/me")) {
-      return new Response(
-        JSON.stringify({ id: "acc-1", accountNo: "KT260001", displayName: "芒 果果" }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      )
+      return new Response(JSON.stringify({ id: "acc-1", accountNo: "KT260001", displayName: "芒 果果" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
     }
     return new Response("ledger down", { status: 503 })
   })
@@ -333,7 +355,13 @@ test("pollDeviceLogin gives up after repeated transient failures", async () => {
   let polls = 0
   await expect(
     pollDeviceLogin(
-      { sessionId: "dev-5", opaqueCode: "opaque-5", baseUrl: "https://login.example", intervalMs: 1, timeoutMs: 10_000 },
+      {
+        sessionId: "dev-5",
+        opaqueCode: "opaque-5",
+        baseUrl: "https://login.example",
+        intervalMs: 1,
+        timeoutMs: 10_000,
+      },
       async () => {
         polls += 1
         return new Response("bad gateway", { status: 502 })
@@ -413,7 +441,12 @@ test("ensureFreshIdentityToken returns a valid stored token without HTTP", async
   const file = identityFilePath()
   fs.writeFileSync(
     file,
-    JSON.stringify({ token: "still-valid", accountId: "acc-2", expiresAt: "2999-01-01T00:00:00.000Z", refreshToken: "refresh-1" }),
+    JSON.stringify({
+      token: "still-valid",
+      accountId: "acc-2",
+      expiresAt: "2999-01-01T00:00:00.000Z",
+      refreshToken: "refresh-1",
+    }),
   )
   const token = await ensureFreshIdentityToken(async () => {
     throw new Error("no HTTP expected")

@@ -1,8 +1,9 @@
 export * as ConfigInstructionPlugin from "./instruction.js"
 
-import { define } from "@opencode-ai/plugin/effect/plugin"
-import { FSUtil } from "@opencode-ai/util/fs-util"
-import { Global } from "@opencode-ai/util/global"
+import { define } from "@opencode/plugin/effect/plugin"
+import { FSUtil } from "@opencode/util/fs-util"
+import { Global } from "@opencode/util/global"
+import { sameDirectory } from "@opencode/util/path"
 import { dirname, join } from "path"
 import { Effect, PubSub, Semaphore, Stream } from "effect"
 import { Watcher } from "../../filesystem/watcher.js"
@@ -19,6 +20,9 @@ export const Plugin = define({
   id: "opencode.config.instruction",
   effect: Effect.fn(function* () {
     const discovery = yield* InstructionDiscovery.Service
+    // Nothing this plugin watches or loads can contribute when both scopes
+    // are disabled; skip the resolves, the watcher fiber, and the transform.
+    if (!discovery.project && !discovery.global) return
     yield* Effect.gen(function* () {
       const fs = yield* FSUtil.Service
       const global = yield* Global.Service
@@ -35,9 +39,15 @@ export const Plugin = define({
       const loaded: { current: Loaded } = { current: { type: "available", files: [] } }
 
       const publish = (update: Watcher.Update) => PubSub.publish(changes, update.path).pipe(Effect.asVoid)
+      // The ancestor walk can reach the global file when the location sits
+      // beneath the global config dir; global: false excludes it there too.
       const candidates = [
-        globalFile,
-        ...(project ? ancestorDirectories(start, stop).map((directory) => join(directory, "AGENTS.md")) : []),
+        ...(discovery.global ? [globalFile] : []),
+        ...(project
+          ? ancestorDirectories(start, stop)
+              .map((directory) => join(directory, "AGENTS.md"))
+              .filter((file) => discovery.global || file !== globalFile)
+          : []),
       ]
       for (const path of new Set(candidates)) {
         const updates = yield* watcher.subscribe({ path, type: "file" })
@@ -51,15 +61,18 @@ export const Plugin = define({
       })
 
       const globalSource = Effect.fn("ConfigInstructionPlugin.globalSource")(function* () {
+        if (!discovery.global || !(yield* fs.isFile(globalFile))) return []
         const file = yield* read(globalFile)
         return file ? [file] : []
       })
 
       const projectSource = Effect.fn("ConfigInstructionPlugin.projectSource")(function* () {
         if (!project) return []
-        const discovered = new Set(
-          yield* Effect.forEach(yield* fs.up({ targets: ["AGENTS.md"], start, stop }), fs.resolve),
+        const walked = yield* Effect.forEach(
+          yield* fs.up({ targets: ["AGENTS.md"], start, stop, type: "file" }),
+          fs.resolve,
         )
+        const discovered = new Set(walked.filter((file) => discovery.global || file !== globalFile))
         const files = yield* Effect.forEach(discovered, read, { concurrency: "unbounded" })
         if (files.some((file) => file === undefined)) return Instructions.unavailable
         return files.filter((file): file is InstructionDiscovery.File => file !== undefined)
@@ -74,43 +87,46 @@ export const Plugin = define({
           ),
         )
 
-      const refresh = Effect.fn("ConfigInstructionPlugin.refresh")(function* (file?: string) {
-        yield* lock.withPermit(
-          Effect.gen(function* () {
-            const sources = yield* Effect.all({
-              global: isolate("global", globalSource()),
-              project: isolate("project", projectSource()),
-            })
-            loaded.current =
-              Array.isArray(sources.global) && Array.isArray(sources.project)
-                ? { type: "available", files: [...sources.global, ...sources.project] }
-                : { type: "unavailable" }
-            if (!file) return
-            yield* Effect.logDebug("instructions rescanned", {
-              file,
-              instructions:
-                loaded.current.type === "available" ? loaded.current.files.map((item) => item.path) : "unavailable",
-            })
-          }),
-        )
-      })
+      const refresh = Effect.fn("ConfigInstructionPlugin.refresh")(
+        function* (file?: string) {
+          const sources = yield* Effect.all({
+            global: isolate("global", globalSource()),
+            project: isolate("project", projectSource()),
+          })
+          loaded.current =
+            Array.isArray(sources.global) && Array.isArray(sources.project)
+              ? { type: "available", files: [...sources.global, ...sources.project] }
+              : { type: "unavailable" }
+          if (!file) return
+          yield* Effect.logDebug("instructions rescanned", {
+            file,
+            instructions:
+              loaded.current.type === "available" ? loaded.current.files.map((item) => item.path) : "unavailable",
+          })
+        },
+        (effect, ..._args: [file?: string]) => lock.withPermit(effect),
+      )
 
-      yield* Stream.fromPubSub(changes).pipe(
+      // Editor saves arrive as bursts of watcher events; settle before rescanning once. Subscribe
+      // before debouncing so no update slips through while the debounce starts its pull.
+      const updates = yield* PubSub.subscribe(changes)
+      yield* Stream.fromSubscription(updates).pipe(
+        Stream.debounce("100 millis"),
         Stream.runForEach((file) => refresh(file).pipe(Effect.andThen(discovery.reload()))),
         Effect.forkScoped({ startImmediately: true }),
       )
       yield* refresh()
-      yield* discovery.transform((draft) => {
+      yield* discovery.transform((editor) => {
         if (loaded.current.type === "unavailable") {
-          draft.unavailable()
+          editor.unavailable()
           return
         }
-        for (const file of loaded.current.files) draft.add(file)
+        for (const file of loaded.current.files) editor.add(file)
       })
     }).pipe(
       Effect.catchCause((cause) =>
         Effect.logWarning("failed to activate instruction source", { cause }).pipe(
-          Effect.andThen(discovery.transform((draft) => draft.unavailable())),
+          Effect.andThen(discovery.transform((editor) => editor.unavailable())),
           Effect.asVoid,
         ),
       ),
@@ -118,7 +134,10 @@ export const Plugin = define({
   }),
 })
 
+// `start` keeps the client's spelling while `stop` may come from git, so a Windows drive
+// letter can differ only in case (`c:\repo` vs `C:\repo`). Compare the way FSUtil.contains
+// admitted `start` beneath `stop`, or the walk passes `stop` and recurses at the drive root.
 function ancestorDirectories(start: string, stop: string): string[] {
-  if (start === stop) return [start]
+  if (sameDirectory(start, stop)) return [start]
   return [start, ...ancestorDirectories(dirname(start), stop)]
 }

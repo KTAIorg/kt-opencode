@@ -1,12 +1,8 @@
-import type {
-  InitializeResponse,
-  NewSessionResponse,
-  SessionConfigOption,
-  SessionConfigSelectOption,
-} from "@agentclientprotocol/sdk"
+import type { InitializeResponse, NewSessionResponse } from "@agentclientprotocol/sdk"
 import fs from "node:fs/promises"
-import os from "node:os"
 import path from "node:path"
+import { tmpdir } from "../../../core/test/fixture/tmpdir"
+import { isolatedEnv } from "../fixture/environment"
 
 type JsonRpcRequest = {
   readonly jsonrpc: "2.0"
@@ -15,23 +11,17 @@ type JsonRpcRequest = {
   readonly params?: unknown
 }
 
-export type JsonRpcError = {
+type JsonRpcError = {
   readonly code: number
   readonly message?: string
   readonly data?: unknown
 }
 
-export type JsonRpcResponse<T> = {
+type JsonRpcResponse<T> = {
   readonly jsonrpc: "2.0"
   readonly id: number
   readonly result?: T
   readonly error?: JsonRpcError
-}
-
-type JsonRpcNotification<T> = {
-  readonly jsonrpc: "2.0"
-  readonly method: string
-  readonly params: T
 }
 
 type JsonRpcMessage = Record<string, unknown>
@@ -43,36 +33,26 @@ type Waiter = {
   readonly timer: ReturnType<typeof setTimeout>
 }
 
-export type AcpProcess = {
+type AcpProcess = {
+  readonly pid: number
+  readonly exited: Promise<number>
   readonly request: <T>(method: string, params?: unknown) => Promise<JsonRpcResponse<T>>
-  readonly waitForNotification: <T>(
-    method: string,
-    predicate: (params: T) => boolean,
-    timeoutMs?: number,
-  ) => Promise<JsonRpcNotification<T>>
   readonly close: () => Promise<number>
   readonly stderr: () => string
   readonly [Symbol.asyncDispose]: () => Promise<void>
 }
 
-export const verifierSkill = `---
-name: verifier-skill
-description: Verifier compatibility skill.
----
-
-# Verifier Skill
-`
-
-export async function createAcpFixture(options: { readonly skill?: string } = {}) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-cli-acp-"))
+export async function createAcpFixture(
+  options: {
+    readonly respond?: (request: unknown) => string | Response | Promise<string | Response>
+  } = {},
+) {
+  const temporary = await tmpdir("opencode-cli-acp-")
+  const root = temporary.path
   const home = path.join(root, "workspace")
   const config = path.join(root, "config")
-  const skills = path.join(root, "skills")
+  const models = path.join(root, "models.json")
   await Promise.all([fs.mkdir(home, { recursive: true }), fs.mkdir(config, { recursive: true })])
-  if (options.skill) {
-    await fs.mkdir(path.join(skills, "verifier-skill"), { recursive: true })
-    await Bun.write(path.join(skills, "verifier-skill", "SKILL.md"), options.skill)
-  }
 
   const requests: unknown[] = []
   const llm = Bun.serve({
@@ -82,51 +62,48 @@ export async function createAcpFixture(options: { readonly skill?: string } = {}
       if (request.method !== "POST" || new URL(request.url).pathname !== "/v1/chat/completions") {
         return new Response("Not found", { status: 404 })
       }
-      requests.push(await request.json().catch(() => undefined))
-      return new Response(completion("accepted"), {
+      const body: unknown = await request.json().catch(() => undefined)
+      requests.push(body)
+      const result = await (options.respond?.(body) ?? "accepted")
+      if (result instanceof Response) return result
+      return new Response(completion(result), {
         headers: { "content-type": "text/event-stream" },
       })
     },
   })
-  await Bun.write(
-    path.join(config, "opencode.json"),
-    JSON.stringify(verifierConfig(`http://127.0.0.1:${llm.port}/v1`, options.skill ? skills : undefined)),
-  )
+  await Bun.write(path.join(config, "opencode.json"), JSON.stringify(verifierConfig(`http://127.0.0.1:${llm.port}/v1`)))
+  await Bun.write(models, "{}")
 
   const processes = new Set<AcpProcess>()
   return {
     root,
     home,
     llm: { requests },
-    spawn(extraEnv: Record<string, string | undefined> = {}) {
+    spawn() {
       const acp = spawnAcp({
-        env: {
-          ...process.env,
-          HOME: root,
+        env: isolatedEnv(root, {
           USERPROFILE: root,
           KITO_CONFIG: undefined,
           KITO_CONFIG_CONTENT: undefined,
-          KITO_CONFIG_DIR: config,
-          KITO_DB: path.join(root, "opencode.db"),
           OPENCODE_DISABLE_AUTOUPDATE: "true",
-          OPENCODE_DISABLE_FILEWATCHER: "true",
-          OPENCODE_DISABLE_MODELS_FETCH: "true",
-          KITO_MODELS_PATH: undefined,
-          KITO_TEST_HOME: root,
-          XDG_CACHE_HOME: path.join(root, "cache"),
-          XDG_CONFIG_HOME: path.join(root, "xdg-config"),
-          XDG_DATA_HOME: path.join(root, "data"),
-          XDG_STATE_HOME: path.join(root, "state"),
-          ...extraEnv,
-        },
+          KITO_MODELS_PATH: models,
+        }),
       })
       processes.add(acp)
       return acp
     },
     async [Symbol.asyncDispose]() {
-      await Promise.all([...processes].map((process) => process[Symbol.asyncDispose]()))
-      await llm.stop(true)
-      await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+      const processResults = await Promise.allSettled(
+        [...processes].map((process) => process.close().catch(() => process[Symbol.asyncDispose]())),
+      )
+      const serverResults = await Promise.allSettled([llm.stop(true)])
+      // The leased private server can still release its working directory after
+      // ACP exits. Reuse core's bounded EBUSY cleanup for Windows/Bun.
+      const directoryResults = await Promise.allSettled([temporary[Symbol.asyncDispose]()])
+      const failure = [...processResults, ...serverResults, ...directoryResults].find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      )
+      if (failure) throw failure.reason
     },
   }
 }
@@ -151,39 +128,42 @@ export function expectOk<T>(response: JsonRpcResponse<T>) {
   return response.result
 }
 
-export function selectConfigOption(options: SessionConfigOption[] | null | undefined, id: string) {
-  return options?.find(
-    (option): option is Extract<SessionConfigOption, { type: "select" }> =>
-      option.id === id && option.type === "select",
-  )
+/** A streamed completion that calls one tool. */
+export function toolCallStream(id: string, name: string, input: unknown) {
+  const chunks = [
+    {
+      choices: [
+        {
+          delta: {
+            role: "assistant",
+            tool_calls: [{ index: 0, id, type: "function", function: { name, arguments: "" } }],
+          },
+          finish_reason: null,
+        },
+      ],
+      usage: null,
+    },
+    {
+      choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify(input) } }] } }],
+      usage: null,
+    },
+    { choices: [{ delta: {}, finish_reason: "tool_calls" }], usage: null },
+    { choices: [], usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 } },
+  ]
+  return new Response(`${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`, {
+    headers: { "content-type": "text/event-stream" },
+  })
 }
 
-export function requireSelectOption(options: SessionConfigOption[] | null | undefined, id: string) {
-  const option = selectConfigOption(options, id)
-  if (!option) throw new Error(`Missing ACP config option: ${id}`)
-  return option
-}
-
-export function flattenSelectOptions(option: Extract<SessionConfigOption, { type: "select" }>) {
-  return option.options.flatMap((item): SessionConfigSelectOption[] => ("value" in item ? [item] : item.options))
-}
-
-export function alternateValue(option: Extract<SessionConfigOption, { type: "select" }>) {
-  const value = flattenSelectOptions(option).find((item) => item.value !== option.currentValue)?.value
-  if (!value) throw new Error(`ACP config option ${option.id} has no alternate value`)
-  return value
-}
-
-function verifierConfig(llmUrl: string, skills?: string) {
+function verifierConfig(llmUrl: string) {
   const model = {
     capabilities: { tools: true, input: ["text", "image"], output: ["text"] },
     cost: { input: 0, output: 0 },
     limit: { context: 100_000, output: 10_000 },
   }
   return {
-    autoupdate: false,
+    update: "disable",
     model: "test/test-model",
-    ...(skills ? { skills: [skills] } : {}),
     providers: {
       test: {
         name: "Test",
@@ -294,29 +274,27 @@ function spawnAcp(input: { readonly env: Record<string, string | undefined> }): 
     })
   }
 
-  return {
-    async request<T>(method: string, params?: unknown) {
-      if (inputClosed) throw new Error("ACP stdin is closed")
-      const id = nextID++
-      const request: JsonRpcRequest =
-        params === undefined ? { jsonrpc: "2.0", id, method } : { jsonrpc: "2.0", id, method, params }
-      await child.stdin.write(encoder.encode(`${JSON.stringify(request)}\n`))
-      await child.stdin.flush()
+  const write = async (message: JsonRpcRequest) => {
+    if (inputClosed) throw new Error("ACP stdin is closed")
+    await child.stdin.write(encoder.encode(`${JSON.stringify(message)}\n`))
+    await child.stdin.flush()
+  }
+
+  const request = <T>(method: string, params?: unknown) => {
+    const id = nextID++
+    const message: JsonRpcRequest =
+      params === undefined ? { jsonrpc: "2.0", id, method } : { jsonrpc: "2.0", id, method, params }
+    return write(message).then(async () => {
       const response = await take((message) => isResponse(message) && message.id === id, 20_000, `${method} response`)
       if (!isResponse<T>(response)) throw new Error(`Invalid ACP response: ${JSON.stringify(response)}`)
       return response
-    },
-    async waitForNotification<T>(method: string, predicate: (params: T) => boolean, timeoutMs = 20_000) {
-      const notification = await take(
-        (message) => isNotification<T>(message) && message.method === method && predicate(message.params),
-        timeoutMs,
-        `${method} notification`,
-      )
-      if (!isNotification<T>(notification)) {
-        throw new Error(`Invalid ACP notification: ${JSON.stringify(notification)}`)
-      }
-      return notification
-    },
+    })
+  }
+
+  return {
+    pid: child.pid,
+    exited: child.exited,
+    request,
     async close() {
       if (!inputClosed) {
         inputClosed = true
@@ -350,10 +328,6 @@ function isJsonRpcMessage(message: unknown): message is JsonRpcMessage {
 
 function isResponse<T>(message: JsonRpcMessage): message is JsonRpcMessage & JsonRpcResponse<T> {
   return message.jsonrpc === "2.0" && typeof message.id === "number" && !("method" in message)
-}
-
-function isNotification<T>(message: JsonRpcMessage): message is JsonRpcMessage & JsonRpcNotification<T> {
-  return message.jsonrpc === "2.0" && typeof message.method === "string" && !("id" in message)
 }
 
 function asError(error: unknown) {

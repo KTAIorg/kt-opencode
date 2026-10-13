@@ -68,7 +68,7 @@ Casio **只认** `tron` / `eth`。把 `ethereum` 原样发给 Casio 会失败或
 
 - ERC20：USDT / USDC 两张卡 + **一张**二维码 + **一条** `0x` + 复制。
 - 对话框 body 必须能滚动；二维码不要把地址裁出视口。
-- App 不要 import `@opencode-ai/core`；网络形态校验在对话框里自备一份。
+- App 不要 import `@opencode/core`；网络形态校验在对话框里自备一份。
 
 ## 常见误区
 

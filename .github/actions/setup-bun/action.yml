@@ -1,3 +1,4 @@
+# Action baseline verified 2026-10-13 from official GitHub releases.
 name: "Setup Bun"
 description: "Setup Bun with caching and install dependencies"
 inputs:
@@ -15,7 +16,7 @@ runs:
     # node-gyp@latest (invoked via bunx for native install scripts) requires Node >=22;
     # some runner images ship an older system Node on PATH
     - name: Setup Node
-      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: "24"
 
@@ -49,7 +50,7 @@ runs:
 
     - name: Restore Bun dependencies
       id: bun-cache
-      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.cache.outputs.dir }}
         key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
@@ -80,7 +81,7 @@ runs:
 
     - name: Save Bun dependencies
       if: steps.bun-cache.outputs.cache-hit != 'true' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
-      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.cache.outputs.dir }}
         key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}

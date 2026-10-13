@@ -346,7 +346,7 @@ opencode.db 不可见（新库全新）；运行中的旧版守护进程保留�
   中陈旧 OpenCode 译文删除走英文兜底（符合本仓本地化约定）。
 - WSL 安装器：`wslCliInstallCommand` 改指 fork 仓库
   `ktaiorg/kt-opencode/main/install`；无 bundled binary 时显式抛错，
-  不再从上游 npm 拉 `@opencode-ai/cli`（修自我替换风险；代价是打包版
+  不再从上游 npm 拉 `@opencode/cli`（修自我替换风险；代价是打包版
   桌面在 WSL 安装按钮会失败，待 Kito 自带 CLI feed 或随包 Linux 二进制）。
 
 **不改（有意保留）**：`opencode.db` 文件名、`auth.json`、`opencode.json`
@@ -370,7 +370,7 @@ OPENCODE_DRIVE/STORY 等 dev 工具 env、simulation `opencode-drive` state 目�
 ### 未完成/后续
 - Kito 无自有 CLI/desktop 更新 feed：CLI 更新器整段跳过、app release
   highlights 停用、打包版 WSL 安装会显式失败——待 feed 落地后逐项恢复。
-- `install` 脚本本体仍是上游内容（下载 `@opencode-ai/cli` npm 包），
+- `install` 脚本本体仍是上游内容（下载 `@opencode/cli` npm 包），
   仅 `--binary` 路径安全；接入 Kito 分发渠道前勿用于版本安装。
 - OPENCODE_DRIVE/STORY dev env 保留原名（文档既有接口），未加 KITO_ 别名。
 
@@ -383,7 +383,7 @@ OPENCODE_DRIVE/STORY 等 dev 工具 env、simulation `opencode-drive` state 目�
 ### A/P0 CLI updater 禁用
 - `packages/cli/src/services/updater.ts`：Kito 构建（`OPENCODE_CLI_NAME` 未定义或
   `opencode2*`）在 `check()` 入口直接返回，不再触达
-  `update.opencode.ai`、`@opencode-ai/cli` 或 `opencode.ai/v2/install`。
+  `update.opencode.ai`、`@opencode/cli` 或 `opencode.ai/v2/install`。
   TODO 注明重开前需接 Kito 自有 feed。
 - `packages/desktop/src/main/wsl/runtime.ts`：无内置二进制时拒绝版本安装
   （原会从 anomalyco/opencode 拉上游包）；安装脚本指向 ktaiorg/kt-opencode。
@@ -477,7 +477,7 @@ OPENCODE_DRIVE/STORY 等 dev 工具 env、simulation `opencode-drive` state 目�
   bugtracker/vcs-browser → `KTAIorg/kt-opencode`；删除指向上游
   anomalyco/opencode 截图的 `<screenshots>` 字段。
 
-**不改**：`@opencode-ai/*` 包名、`ai.opencode.desktop` appId、`oc-*` CSS
+**不改**：`@opencode/*` 包名、`ai.opencode.desktop` appId、`oc-*` CSS
 变量名、`opencode.ts` provider 及 HTTP-Referer 等上游真实服务引用。
 metainfo `<developer>` 仍为 "Anomaly Innovations Inc."（上架主体身份，
 未动，待产品决策）。
@@ -495,7 +495,7 @@ copy-metainfo.ts 打包通过。
    描述/诊断标签）+ `plugin/skill/report.md` + `tool/plugin/websearch.ts`（权限提示）
    + `tool/plugin/webfetch.ts`（UA `Kito-User/1.0; +https://kito.ktai.im`）
    + `plugin/command/initialize.txt` + desktop `renderer/i18n/`60+ locale 的 updater 文案。
-   **保留**：`opencode.json`/`.opencode/` 真实文件名、`@opencode-ai/*` 包名、
+   **保留**：`opencode.json`/`.opencode/` 真实文件名、`@opencode/*` 包名、
    `opencode2` CLI 二进制、opencode.ai 上游文档 URL、provider 集成标识
    （X-Title/originator/HTTP-Referer——上游注册 attribution 不能动）、
    OpenCode Zen（上游真实产品名）。
@@ -646,7 +646,7 @@ session.timeline.notice / dialog.ktWallet.crypto* 等——按 AGENTS「翻译�
    描述/诊断标签）+ `plugin/skill/report.md` + `tool/plugin/websearch.ts`（权限提示）
    + `tool/plugin/webfetch.ts`（UA `Kito-User/1.0; +https://kito.ktai.im`）
    + `plugin/command/initialize.txt` + desktop `renderer/i18n/`60+ locale 的 updater 文案。
-   **保留**：`opencode.json`/`.opencode/` 真实文件名、`@opencode-ai/*` 包名、
+   **保留**：`opencode.json`/`.opencode/` 真实文件名、`@opencode/*` 包名、
    `opencode2` CLI 二进制、opencode.ai 上游文档 URL、provider 集成标识
    （X-Title/originator/HTTP-Referer——上游注册 attribution 不能动）、
    OpenCode Zen（上游真实产品名）。
@@ -814,7 +814,7 @@ fiber 异步通道接不住，类型化失败注入要用 `modelResolveHook`
   bugtracker/vcs-browser → `KTAIorg/kt-opencode`；删除指向上游
   anomalyco/opencode 截图的 `<screenshots>` 字段。
 
-**不改**：`@opencode-ai/*` 包名、`ai.opencode.desktop` appId、`oc-*` CSS
+**不改**：`@opencode/*` 包名、`ai.opencode.desktop` appId、`oc-*` CSS
 变量名、`opencode.ts` provider 及 HTTP-Referer 等上游真实服务引用。
 metainfo `<developer>` 仍为 "Anomaly Innovations Inc."（上架主体身份，
 未动，待产品决策）。

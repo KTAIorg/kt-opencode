@@ -1,5 +1,5 @@
-import { Global } from "@opencode-ai/util/global"
-import { kitoDataEnv } from "@opencode-ai/util/kito-env"
+import { Global } from "@opencode/util/global"
+import { kitoDataEnv } from "@opencode/util/kito-env"
 import fs from "fs"
 import os from "os"
 import path from "path"
@@ -356,11 +356,13 @@ export async function pollDeviceLogin(
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(15_000),
     })
-      .then(async (response): Promise<{ ok: true; response: Response; payload: unknown }> => ({
-        ok: true,
-        response,
-        payload: await readJson(response),
-      }))
+      .then(
+        async (response): Promise<{ ok: true; response: Response; payload: unknown }> => ({
+          ok: true,
+          response,
+          payload: await readJson(response),
+        }),
+      )
       .catch((error: unknown): { ok: false; error: unknown } => ({ ok: false, error }))
     if (!polled.ok) {
       transientFailures += 1
@@ -521,12 +523,10 @@ export async function ensureFreshIdentityToken(fetchImpl: FetchLike = fetch) {
   // Refresh 面失效（401/403）：清空本地登录态（托管 NewAPI key 保留），
   // UI 正确回到「请登录」而不是永久的半登录假死。网络类瞬态失败不清
   // 文件，留待下次进入时重试。
-  const session = await refreshDeviceTokens({ refreshToken: raw.refreshToken }, fetchImpl).catch(
-    (cause: unknown) => {
-      if (cause instanceof InvalidIdentityRefreshError) clearPersistedIdentity()
-      return undefined
-    },
-  )
+  const session = await refreshDeviceTokens({ refreshToken: raw.refreshToken }, fetchImpl).catch((cause: unknown) => {
+    if (cause instanceof InvalidIdentityRefreshError) clearPersistedIdentity()
+    return undefined
+  })
   if (!session) return
   persistIdentitySession(session)
   return session.token
@@ -649,11 +649,7 @@ export function clearPersistedIdentity() {
   fs.unlinkSync(identitySessionPath())
 }
 
-export async function revokeCurrentIdentitySession(
-  token: string,
-  baseUrl?: string,
-  fetchImpl: FetchLike = fetch,
-) {
+export async function revokeCurrentIdentitySession(token: string, baseUrl?: string, fetchImpl: FetchLike = fetch) {
   const response = await fetchImpl(`${baseUrl ?? identityBaseUrl()}/identity/v1/account/sessions/current/revoke`, {
     method: "POST",
     headers: {
@@ -668,9 +664,7 @@ export async function revokeCurrentIdentitySession(
   throw new Error(errorMessage(await readJson(response), `KT Identity logout failed (${response.status})`))
 }
 
-export async function signOutIdentity(
-  input: { baseUrl?: string; fetchImpl?: FetchLike } = {},
-) {
+export async function signOutIdentity(input: { baseUrl?: string; fetchImpl?: FetchLike } = {}) {
   const fetchImpl = input.fetchImpl ?? fetch
   const raw = readIdentitySessionFile()
   // access 过期时先用 refresh 面换新（ensureFreshIdentityToken 在 refresh

@@ -1,6 +1,6 @@
 import { AwsClient } from "aws4fetch"
-import { lazy } from "@opencode-ai/core/util/lazy"
-import { kitoEnv } from "@opencode-ai/util/kito-env"
+import { lazy } from "@opencode/core/util/lazy"
+import { kitoEnv } from "@opencode/util/kito-env"
 
 export namespace Storage {
   export interface Adapter {

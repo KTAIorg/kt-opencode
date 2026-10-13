@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
-import type { ServerReadyData } from "../../shared/ipc-contract"
+import type { SidecarCredentials } from "./sidecar-credentials"
+type ServerReadyData = SidecarCredentials.Data
 import {
   SERVICE_FAILURES_BEFORE_RESTART,
   SERVICE_HEALTH_INTERVAL,
@@ -8,7 +9,7 @@ import {
   superviseService,
 } from "./supervision"
 
-const ready = (url: string, password: string | null): ServerReadyData => ({ url, username: "opencode", password })
+const ready = (url: string, password: string | null): ServerReadyData => ({ url, password })
 
 type Harness = {
   current: { value: ServerReadyData | undefined }

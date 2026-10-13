@@ -1,18 +1,30 @@
-import { base64Encode } from "@opencode-ai/util/encode"
-import type { JsonValue, OpenCodeEvent, SessionMessageAssistant, SessionMessageInfo } from "@opencode-ai/client/promise"
+import { base64Encode } from "@opencode/util/encode"
+import type { JsonValue, OpenCodeEvent, SessionMessageAssistant, SessionMessageInfo } from "@opencode/client/promise"
 import type { Page } from "@playwright/test"
 import { mockOpenCodeServer } from "../../utils/mock-server"
 import { expectAppVisible, expectSessionTitle } from "../../utils/waits"
 import { expect } from "../benchmark"
+import { createTwoFilesPatch } from "diff"
 
 const directory = "C:/OpenCode/TimelineStateRegression"
+
 const projectID = "proj_timeline_state_regression"
+
+/** The workspace a benchmark response names, in the shape the server's location-scoped routes return. */
+export const benchmarkLocation = { directory, project: { id: projectID, directory, canonical: directory } }
+
 const sessionID = "ses_timeline_state_regression"
+
 const userMessageID = "msg_user_regression"
+
 const assistantMessageID = "msg_assistant_regression"
+
 const editPartID = "prt_0001_edit"
+
 export const textPartID = `${assistantMessageID}:text:0`
+
 const title = "Timeline collapse state regression"
+
 const model = { providerID: "opencode", modelID: "claude-opus-4-6", variant: "max" }
 
 type EventPayload = OpenCodeEvent
@@ -26,28 +38,23 @@ const userMessage = {
 
 const editPart: ToolSeed = {
   id: editPartID,
-  sessionID,
-  messageID: assistantMessageID,
   type: "tool",
-  callID: "call_edit_regression",
-  tool: "edit",
+  name: "edit",
   state: {
     status: "completed",
-    input: { filePath: "src/regression.ts" },
-    output: "Edited src/regression.ts",
-    title: "src/regression.ts",
-    metadata: {
-      filediff: {
-        file: "src/regression.ts",
-        additions: 1,
-        deletions: 1,
-        before: "export const value = 'before'\n",
-        after: "export const value = 'after'\n",
-      },
-      diff: "diff --git a/src/regression.ts b/src/regression.ts\n-export const value = 'before'\n+export const value = 'after'\n",
+    input: {
+      path: "src/regression.ts",
+      oldString: "export const value = 'before'",
+      newString: "export const value = 'after'",
     },
-    time: { start: 1700000001000, end: 1700000002000 },
+    content: [{ type: "text", text: "Edited src/regression.ts" }],
+    metadata: {
+      files: [
+        currentFile("src/regression.ts", "export const value = 'before'\n", "export const value = 'after'\n", 1, 1),
+      ],
+    },
   },
+  time: { created: 1700000001000, ran: 1700000001000, completed: 1700000002000 },
 }
 
 const assistantMessage = {
@@ -68,26 +75,60 @@ export async function setupTimelineBenchmark(
     eventBatch: number
     vcsDiff?: unknown[]
     turnDiffs?: unknown[]
+    busy?: boolean
+    historyShape?: "mixed" | "tool-heavy"
   },
 ) {
   const events: EventPayload[] = []
   let eventBatch = options.eventBatch
+
   const currentUserMessage = options.turnDiffs
     ? { ...userMessage, metadata: { diffs: options.turnDiffs as JsonValue } }
     : userMessage
+
+  const messages = [
+    ...Array.from({ length: options.historyTurns }, (_, index) => performanceTurn(index))
+      .flat()
+      .map((message) => {
+        if (options.historyShape !== "tool-heavy" || message.type !== "assistant") return message
+
+        return {
+          ...message,
+          content: [
+            ...Array.from({ length: 6 }, (_, index) =>
+              toolContent({
+                id: `${message.id}:read:${index}`,
+                type: "tool",
+                name: "read",
+                state: {
+                  status: "completed",
+                  input: { path: `src/session/module-${index}.ts` },
+                  content: [{ type: "text", text: historicalSource(index, false) }],
+                  metadata: {},
+                },
+                time: {
+                  created: message.time.created,
+                  ran: message.time.created,
+                  completed: message.time.created + 100,
+                },
+              }),
+            ),
+            ...message.content,
+          ],
+        }
+      }),
+    currentUserMessage,
+    assistantMessage,
+  ]
+
   await mockOpenCodeServer(page, {
     directory,
     project: project(),
     provider: provider(),
     sessions: [session()],
     vcsDiff: options.vcsDiff,
-    pageMessages: () => ({
-      items: [
-        ...Array.from({ length: options.historyTurns }, (_, index) => performanceTurn(index)).flat(),
-        currentUserMessage,
-        assistantMessage,
-      ],
-    }),
+    sessionStatus: options.busy ? { [sessionID]: { type: "busy" } } : undefined,
+    pageMessages: () => ({ items: messages }),
     events: () => events.splice(0, eventBatch),
     eventRetry: 16,
   })
@@ -114,7 +155,13 @@ export async function setupTimelineBenchmark(
   await page.goto(`/server/${base64Encode(server)}/session/${sessionID}`)
   await expectSessionTitle(page, title)
   await expectAppVisible(scroller)
+
   return {
+    workload: {
+      messages: messages.length,
+      parts: messages.reduce((sum, message) => sum + (message.type === "assistant" ? message.content.length : 0), 0),
+      historyBytes: Buffer.byteLength(JSON.stringify(messages)),
+    },
     scroller,
     text,
     transport: {
@@ -141,7 +188,9 @@ export async function setupTimelineBenchmark(
         const root = [...document.querySelectorAll<HTMLElement>(".scroll-view__viewport")].find((element) =>
           element.querySelector(`[data-timeline-part-id="${partID}"]`),
         )
+
         if (!root) return false
+
         return new Promise<boolean>((resolve) => {
           const height = root.scrollHeight
           requestAnimationFrame(() =>
@@ -184,6 +233,7 @@ function performanceTurn(index: number) {
   const assistantID = `msg_0000_${suffix}_b_assistant`
   const before = historicalSource(index, false)
   const after = historicalSource(index, true)
+
   const parts = [
     ...(index % 5 === 0
       ? [
@@ -208,20 +258,20 @@ function performanceTurn(index: number) {
       ? [
           {
             id: `prt_0000_${suffix}_edit`,
-            sessionID,
-            messageID: assistantID,
             type: "tool",
-            callID: `call_0000_${suffix}_edit`,
-            tool: "edit",
+            name: "edit",
             state: {
               status: "completed",
-              input: { filePath: `src/history-${index}.ts` },
-              output: `Edited src/history-${index}.ts`,
-              title: `src/history-${index}.ts`,
+              input: { path: `src/history-${index}.ts`, oldString: before, newString: after },
+              content: [{ type: "text", text: `Edited src/history-${index}.ts` }],
               metadata: {
-                filediff: { file: `src/history-${index}.ts`, additions: 48, deletions: 48, before, after },
+                files: [currentFile(`src/history-${index}.ts`, before, after, 48, 48)],
               },
-              time: { start: 1690000001200 + index * 2_000, end: 1690000001400 + index * 2_000 },
+            },
+            time: {
+              created: 1690000001200 + index * 2_000,
+              ran: 1690000001200 + index * 2_000,
+              completed: 1690000001400 + index * 2_000,
             },
           },
         ]
@@ -230,20 +280,18 @@ function performanceTurn(index: number) {
       ? [
           {
             id: `prt_0000_${suffix}_write`,
-            sessionID,
-            messageID: assistantID,
             type: "tool",
-            callID: `call_0000_${suffix}_write`,
-            tool: "write",
+            name: "write",
             state: {
               status: "completed",
-              input: { filePath: `src/generated-${index}.tsx`, content: after },
-              output: `Wrote src/generated-${index}.tsx`,
-              title: `src/generated-${index}.tsx`,
-              metadata: {
-                filediff: { file: `src/generated-${index}.tsx`, additions: 32, deletions: 0, before: "", after },
-              },
-              time: { start: 1690000001400 + index * 2_000, end: 1690000001500 + index * 2_000 },
+              input: { path: `src/generated-${index}.tsx`, content: after },
+              content: [{ type: "text", text: `Wrote src/generated-${index}.tsx` }],
+              metadata: { files: [currentFile(`src/generated-${index}.tsx`, "", after, 32, 0)] },
+            },
+            time: {
+              created: 1690000001400 + index * 2_000,
+              ran: 1690000001400 + index * 2_000,
+              completed: 1690000001500 + index * 2_000,
             },
           },
         ]
@@ -252,36 +300,30 @@ function performanceTurn(index: number) {
       ? [
           {
             id: `prt_0000_${suffix}_patch`,
-            sessionID,
-            messageID: assistantID,
             type: "tool",
-            callID: `call_0000_${suffix}_patch`,
-            tool: "apply_patch",
+            name: "patch",
             state: {
               status: "completed",
               input: { patchText: realisticPatch(index) },
-              output: "Success. Updated src/components/SessionCard.tsx",
-              title: "src/components/SessionCard.tsx",
+              content: [{ type: "text", text: "Success. Updated src/components/SessionCard.tsx" }],
               metadata: {
                 files: [
                   {
-                    filePath: "src/components/SessionCard.tsx",
-                    relativePath: "src/components/SessionCard.tsx",
-                    type: "update",
-                    additions: 8,
-                    deletions: 3,
-                    patch: realisticPatch(index),
-                    before,
-                    after,
+                    ...currentFile("src/components/SessionCard.tsx", before, after, 8, 3),
                   },
                 ],
               },
-              time: { start: 1690000001500 + index * 2_000, end: 1690000001700 + index * 2_000 },
+            },
+            time: {
+              created: 1690000001500 + index * 2_000,
+              ran: 1690000001500 + index * 2_000,
+              completed: 1690000001700 + index * 2_000,
             },
           },
         ]
       : []),
   ] as unknown as ContentSeed[]
+
   return [
     {
       id: userID,
@@ -300,12 +342,14 @@ function performanceTurn(index: number) {
       finish: "stop",
       content: parts.map((part) => {
         if (part.type === "text") return { type: "text" as const, text: part.text }
+
         if (part.type === "reasoning")
           return {
             type: "reasoning" as const,
             text: part.text,
             time: { created: part.time.start, completed: part.time.end },
           }
+
         return toolContent(part)
       }),
     },
@@ -313,20 +357,16 @@ function performanceTurn(index: number) {
 }
 
 type ToolSeed = {
-  id?: string
-  sessionID?: string
-  messageID?: string
+  id: string
   type: "tool"
-  callID: string
-  tool: string
+  name: string
   state: {
-    status: string
+    status: "completed"
     input: Record<string, unknown>
-    output: string
-    title?: string
+    content: [{ type: "text"; text: string }]
     metadata: Record<string, unknown>
-    time: { start: number; end: number }
   }
+  time: { created: number; ran: number; completed: number }
 }
 
 type ContentSeedBase = { id?: string; sessionID?: string; messageID?: string }
@@ -339,13 +379,13 @@ type ContentSeed =
 function toolContent(part: ToolSeed): SessionMessageAssistant["content"][number] {
   return {
     type: "tool",
-    id: part.callID,
-    name: part.tool,
-    time: { created: part.state.time.start, ran: part.state.time.start, completed: part.state.time.end },
+    id: part.id,
+    name: part.name,
+    time: part.time,
     state: {
       status: "completed",
       input: part.state.input as Record<string, JsonValue>,
-      content: [{ type: "text", text: part.state.output }],
+      content: part.state.content,
       metadata: part.state.metadata as Record<string, JsonValue>,
     },
   }
@@ -359,6 +399,7 @@ function timelineEvent<Type extends "session.text.started" | "session.text.delta
   durable = false,
 ): Extract<OpenCodeEvent, { type: Type }> {
   eventSequence++
+
   return {
     id: `evt_timeline_benchmark_${eventSequence}`,
     created: 1700000002000 + eventSequence,
@@ -386,6 +427,7 @@ export function SessionList(props: { rows: SessionRow[] }) {
     </section>
   )
 }`
+
   return `## Session renderer review ${index}
 
 The active session keeps **semantic row identity** while reconciling measured content. See [Solid documentation](https://docs.solidjs.com/) and the inline \`measureElement(node)\` call.
@@ -404,6 +446,7 @@ ${index % 4 === 0 ? `\`\`\`tsx\n${code}\n\`\`\`\n\n\`\`\`bash\nbun typecheck\nbu
 function historicalSource(index: number, updated: boolean) {
   const method = updated ? "toLocaleUpperCase(props.locale)" : "toUpperCase()"
   const limit = updated ? 24 : 20
+
   return `import { createMemo, For } from "solid-js"
 
 type Message = {
@@ -426,6 +469,16 @@ export function MessageSummary(props: { messages: Message[]; locale: string }) {
 `
 }
 
+function currentFile(file: string, before: string, after: string, additions: number, deletions: number) {
+  return {
+    file,
+    patch: createTwoFilesPatch(`a/${file}`, `b/${file}`, before, after),
+    additions,
+    deletions,
+    status: before ? (after ? "modified" : "deleted") : "added",
+  }
+}
+
 function realisticPatch(index: number) {
   return `*** Begin Patch
 *** Update File: src/components/SessionCard.tsx
@@ -444,10 +497,12 @@ function realisticPatch(index: number) {
 
 export function streamChunk(index: number, count: number) {
   if (index === 0) return `\n\n## Implementation plan\n\nStreaming **bold analysis`
+
   if (index === count - 1)
     return `\n\`\`\`\n\n## Verification\n\n- **Typecheck:** passed\n- **Timeline geometry:** stable\n- **Streaming output:** benchmark-complete <!-- stream-${index} -->`
 
   const section = Math.floor(index / 18) + 1
+
   const fragments = [
     ` continues across three`,
     ` or four word`,
@@ -468,6 +523,7 @@ export function streamChunk(index: number, count: number) {
     ` activeID()) // stream-${index}\n`,
     `// stream-${index}\n\`\`\`\n\n### Iteration ${section}\n\nStreaming **bold analysis`,
   ]
+
   return fragments[(index - 1) % fragments.length]!
 }
 

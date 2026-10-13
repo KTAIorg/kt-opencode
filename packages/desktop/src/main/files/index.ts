@@ -1,112 +1,186 @@
-import { execFile } from "node:child_process"
-import { stat } from "node:fs/promises"
-import { basename } from "node:path"
-import { clipboard, dialog, shell } from "electron"
-import type { DirectoryPickerOptions, FilePickerOptions, SaveFilePickerOptions } from "../../shared/ipc-contract"
-import { writeLog } from "../native/logging"
-import { nativeT } from "../native/translations"
-import { assertAttachmentBudget, createPickedFileAuthorizations } from "./attachment-picker"
-import { resolveExternalURL, resolveLocalFilePath } from "./external-url"
-import { isAllowedOpenApp, isExecutablePath } from "./open-target"
+export * as DesktopFiles from "./index"
 
-export function createFileCapabilities() {
-  const pickedFiles = createPickedFileAuthorizations()
+import { execFile } from "node:child_process"
+import { clipboard, dialog, nativeImage, shell } from "electron"
+import { Context, Effect, FileSystem, Layer, Path } from "effect"
+import type { DirectoryPickerOptions, FilePickerOptions, SaveFilePickerOptions } from "../../shared/ipc-contract"
+import { scoped } from "../native/logging"
+import { nativeT } from "../native/translations"
+import { assertAttachmentBudget, createPickedFileAuthorizations, readAttachment } from "./attachment-picker"
+import { isAllowedOpenApp, isExecutablePath } from "./open-target"
+import { resolveExternalURL, resolveLocalFilePath } from "./external-url"
+
+export type Interface = ReturnType<typeof make>
+
+export class Service extends Context.Service<Service, Interface>()("opencode/desktop/DesktopFiles") {}
+
+export const layer = Layer.effect(
+  Service,
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+
+    return Service.of(make(fs, path))
+  }),
+)
+
+function make(fs: FileSystem.FileSystem, path: Path.Path) {
+  const pickedFiles = createPickedFileAuthorizations((file, maxBytes) =>
+    readAttachment(file, maxBytes).pipe(Effect.provideService(FileSystem.FileSystem, fs)),
+  )
 
   return {
-    async openDirectoryPicker(options?: DirectoryPickerOptions) {
-      const result = await dialog.showOpenDialog({
-        properties: ["openDirectory", ...(options?.multiple ? ["multiSelections" as const] : []), "createDirectory"],
-        title: options?.title ?? nativeT("desktop.dialog.chooseFolder"),
-        defaultPath: options?.defaultPath,
-      })
-      if (result.canceled) return null
-      return options?.multiple ? result.filePaths : result.filePaths[0]
-    },
-    async openFilePicker(sender: number, options?: FilePickerOptions) {
-      const result = await dialog.showOpenDialog({
-        properties: ["openFile", ...(options?.multiple ? ["multiSelections" as const] : [])],
-        title: options?.title ?? nativeT("desktop.dialog.chooseFile"),
-        defaultPath: options?.defaultPath,
-        filters: pickerFilters(options?.extensions),
-      })
-      if (result.canceled) return null
-      const files = await Promise.all(
-        result.filePaths.map(async (path) => ({ path, name: basename(path), size: (await stat(path)).size })),
+    openDirectoryPicker: Effect.fn("DesktopFiles.openDirectoryPicker")(function* (options?: DirectoryPickerOptions) {
+      const result = yield* Effect.promise(() =>
+        dialog.showOpenDialog({
+          properties: ["openDirectory", ...(options?.multiple ? ["multiSelections" as const] : []), "createDirectory"],
+          title: options?.title ?? nativeT("desktop.dialog.chooseFolder"),
+          defaultPath: options?.defaultPath,
+        }),
       )
-      assertAttachmentBudget(files)
-      return { token: pickedFiles.add(sender, result.filePaths), files }
-    },
-    readPickedFile: (sender: number, token: string, path: string) => pickedFiles.read(sender, token, path),
-    releasePickedFiles: (sender: number, token: string) => pickedFiles.release(sender, token),
-    async saveFilePicker(options?: SaveFilePickerOptions) {
-      const result = await dialog.showSaveDialog({
-        title: options?.title ?? nativeT("desktop.dialog.saveFile"),
-        defaultPath: options?.defaultPath,
-      })
+
       if (result.canceled) return null
-      return result.filePath ?? null
-    },
-    async openPath(path: string, application?: string) {
-      // Opening an executable hands control to the OS; reveal it instead.
-      if (isExecutablePath(path)) {
-        shell.showItemInFolder(path)
+
+      return options?.multiple ? result.filePaths : result.filePaths[0]
+    }),
+    openFilePicker: Effect.fn("DesktopFiles.openFilePicker")(function* (sender: number, options?: FilePickerOptions) {
+      const result = yield* Effect.promise(() =>
+        dialog.showOpenDialog({
+          properties: ["openFile", ...(options?.multiple ? ["multiSelections" as const] : [])],
+          title: options?.title ?? nativeT("desktop.dialog.chooseFile"),
+          defaultPath: options?.defaultPath,
+          filters: pickerFilters(options?.extensions),
+        }),
+      )
+
+      if (result.canceled) return null
+
+      const files = yield* Effect.forEach(
+        result.filePaths,
+        Effect.fnUntraced(function* (file) {
+          const info = yield* fs.stat(file)
+
+          return { path: file, name: path.basename(file), size: Number(info.size) }
+        }),
+        { concurrency: "unbounded" },
+      )
+
+      assertAttachmentBudget(files)
+
+      return { token: pickedFiles.add(sender, result.filePaths), files }
+    }),
+    readPickedFile: pickedFiles.read,
+    releasePickedFiles: pickedFiles.release,
+    saveFile: Effect.fn("DesktopFiles.saveFile")(function* (options: SaveFilePickerOptions, content: string) {
+      const result = yield* Effect.promise(() =>
+        dialog.showSaveDialog({
+          title: options?.title ?? nativeT("desktop.dialog.saveFile"),
+          defaultPath: options?.defaultPath,
+        }),
+      )
+
+      if (result.canceled) return false
+
+      if (!result.filePath) return false
+      yield* fs.writeFile(result.filePath, new TextEncoder().encode(content))
+
+      return true
+    }),
+    openPath: Effect.fn("DesktopFiles.openPath")(function* (target: string, application?: string) {
+      if (isExecutablePath(target)) {
+        shell.showItemInFolder(target)
         return ""
       }
-      if (!application) return shell.openPath(path)
-      // `application` is renderer-controlled; only allow the known "open in"
-      // app names or an installed editor binary, never an arbitrary executable.
-      if (!isAllowedOpenApp(application)) throw new Error(`Unsupported application: ${application}`)
-      await new Promise<void>((resolve, reject) => {
-        const command =
-          process.platform === "darwin"
-            ? { file: "open", arguments: ["-a", application, path] }
-            : { file: application, arguments: [path] }
-        execFile(command.file, command.arguments, (error) => (error ? reject(error) : resolve()))
-      })
-    },
-    async revealPath(path: string) {
-      const exists = await stat(path).then(
-        () => true,
-        () => false,
+      if (application && !isAllowedOpenApp(application))
+        return yield* Effect.fail(new Error(`Unsupported application: ${application}`))
+      if (!application) return yield* Effect.promise(() => shell.openPath(target))
+      yield* Effect.tryPromise(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            const command =
+              process.platform === "darwin"
+                ? { file: "open", arguments: ["-a", application, target] }
+                : { file: application, arguments: [target] }
+
+            execFile(command.file, command.arguments, (error) => (error ? reject(error) : resolve()))
+          }),
       )
+    }),
+    revealPath: Effect.fn("DesktopFiles.revealPath")(function* (target: string) {
+      const exists = yield* fs.exists(target).pipe(Effect.orElseSucceed(() => false))
+
       if (!exists) return false
-      shell.showItemInFolder(path)
+      shell.showItemInFolder(target)
+
       return true
-    },
-    readClipboardImage() {
-      const image = clipboard.readImage()
+    }),
+    readClipboardImage: Effect.fn("DesktopFiles.readClipboardImage")(function* () {
+      const items = yield* Effect.promise(() => clipboard.read())
+
+      const found = clipboardImageTypes
+        .flatMap((mime) => items.filter((item) => item.types.includes(mime)).map((item) => ({ item, mime })))
+        .at(0)
+
+      if (!found) return null
+      // getType() is typed as Blob | ClipboardBookmark; only the bookmark format yields the latter.
+      const payload = yield* Effect.promise(async () => found.item.getType(found.mime))
+
+      if (!(payload instanceof Blob)) return null
+      const bytes = yield* Effect.promise(() => payload.arrayBuffer())
+      // Re-encode through nativeImage so the renderer always receives PNG and the image dimensions.
+      const image = nativeImage.createFromBuffer(Buffer.from(bytes))
+
       if (image.isEmpty()) return null
       const size = image.getSize()
-      return { buffer: new Uint8Array(image.toPNG()).buffer, width: size.width, height: size.height }
-    },
+
+      return { buffer: new Uint8Array(image.toPNG()), width: size.width, height: size.height }
+    }),
+    writeClipboardText: Effect.fn("DesktopFiles.writeClipboardText")(function* (text: string) {
+      yield* Effect.promise(() => clipboard.writeText(text))
+    }),
   }
 }
 
-export function openExternalURL(value: string) {
+// Chromium exposes copied bitmaps as image/png; JPEG only appears when an app placed one explicitly.
+const clipboardImageTypes = ["image/png", "image/jpeg"]
+
+export const openExternalURL = Effect.fn("DesktopFiles.openExternalURL")(function* (value: string) {
   const url = resolveExternalURL(value)
-  if (!url) {
-    writeLog("window", "blocked external target", { url: value }, "warn")
-    return
-  }
-  void shell.openExternal(url)
-}
 
-export function openLocalFileURL(value: string) {
+  if (!url) {
+    yield* scoped("window", Effect.logWarning("blocked external target", { url: value }))
+
+    return false
+  }
+
+  return yield* Effect.tryPromise(() => shell.openExternal(url)).pipe(
+    Effect.as(true),
+    Effect.catch((error) =>
+      scoped("window", Effect.logError("failed to open external target", { url, error })).pipe(Effect.as(false)),
+    ),
+  )
+})
+
+export const openLocalFileURL = Effect.fn("DesktopFiles.openLocalFileURL")(function* (value: string) {
   const path = resolveLocalFilePath(value)
+
   if (!path) {
-    writeLog("window", "blocked local file target", { url: value }, "warn")
+    yield* scoped("window", Effect.logWarning("blocked local file target", { url: value }))
+
     return
   }
+
   if (isExecutablePath(path)) {
     shell.showItemInFolder(path)
     return
   }
-  void shell.openPath(path).then((error) => {
-    if (error) writeLog("window", "failed to open local file", { path, error }, "error")
-  })
-}
+  const error = yield* Effect.promise(() => shell.openPath(path))
+
+  if (error) yield* scoped("window", Effect.logError("failed to open local file", { path, error }))
+})
 
 function pickerFilters(extensions?: string[]) {
   if (!extensions?.length) return undefined
+
   return [{ name: nativeT("desktop.dialog.files"), extensions }]
 }

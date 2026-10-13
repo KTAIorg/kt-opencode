@@ -34,5 +34,5 @@ test("opens persisted drafts on the new-session page regardless of legacy layout
   await page.goto(`/new-session?draftId=${draftID}`)
 
   await expect(page).toHaveURL(`/new-session?draftId=${draftID}`)
-  await expect(page.locator('[data-component="prompt-input"]')).toBeVisible()
+  await expect(page.locator('[data-component="composer-editor"]')).toBeVisible()
 })

@@ -6,7 +6,7 @@
     "outDir": "dist",
     "noEmit": false,
     "declaration": true,
-    "types": ["bun-types"]
+    "types": ["bun"]
   },
   "include": ["src"]
 }
