@@ -219,7 +219,11 @@ async function serveChangelog(page: Page, body: typeof changelog | typeof cliOnl
 async function start(page: Page, seed: SeedInput) {
   await mockWorkspace(page, { name: "Whats New", sessions: [], seed })
   await page.goto("/")
-  await expectAppVisible(page.getByRole("button", { name: "Settings", exact: true }))
+  // The automatic dialog can already hide the background from the accessibility
+  // tree. This only checks the shell mount; each scenario asserts its own dialog.
+  await expectAppVisible(
+    page.getByRole("button", { name: "Settings", exact: true, includeHidden: true }).filter({ visible: true }),
+  )
 }
 
 function stored(page: Page, key: string) {

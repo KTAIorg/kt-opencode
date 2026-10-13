@@ -107,6 +107,10 @@ test.describe("timeline history", () => {
 
       if (state.scrollTop <= 1 && state.messages.includes(expectedMessages[0]!)) break
 
+      // At a page boundary an upward wheel cannot move the viewport. Wait for
+      // the older-page request already triggered by reaching that boundary.
+      if (state.scrollTop <= 1 && !held.length) await expect.poll(() => held.length).toBeGreaterThan(0)
+
       if (held.length) {
         held.splice(0).forEach((release) => release())
         await expect.poll(() => loads.ended).toBe(loads.started)
@@ -120,7 +124,21 @@ test.describe("timeline history", () => {
       }
 
       // Scroll through the browser, only across rows already measured and recorded above.
+      // mouse.wheel returns before native scrolling ends; arm the event first
+      // so another gesture cannot accumulate while the preceding one is moving.
+      await scroller.evaluate((element) => {
+        const probe = window.__historyMountProbe!
+        probe.scrollEnded = false
+        element.addEventListener(
+          "scrollend",
+          () => {
+            probe.scrollEnded = true
+          },
+          { once: true },
+        )
+      })
       await page.mouse.wheel(0, -state.mountedAbove)
+      await expect.poll(() => page.evaluate(() => window.__historyMountProbe!.scrollEnded)).toBe(true)
       let observed = state
       await expect
         .poll(async () => {
@@ -367,7 +385,7 @@ test.describe("timeline history", () => {
 
 declare global {
   interface Window {
-    __historyMountProbe?: { parts: Set<string>; messages: Set<string> }
+    __historyMountProbe?: { parts: Set<string>; messages: Set<string>; scrollEnded: boolean }
     __historyRootProbe?: { arm(): string[]; hidden: boolean; settle(final: ProbeFinal): void; settled: boolean }
   }
 }
@@ -385,12 +403,12 @@ async function openStressTarget(page: Page, input: Parameters<typeof mockStressT
 }
 
 function timelineScroller(page: Page) {
-  return page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-row]") })
+  return page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-virtual-content]") })
 }
 
 function installTimelineMountProbe(page: Page) {
   return timelineScroller(page).evaluate((scroller) => {
-    const state = { parts: new Set<string>(), messages: new Set<string>() }
+    const state = { parts: new Set<string>(), messages: new Set<string>(), scrollEnded: true }
     const selector = "[data-timeline-part-id], [data-timeline-part-ids], [data-message-id]"
 
     const record = (element: Element) => {
