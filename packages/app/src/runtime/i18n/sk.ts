@@ -847,4 +847,22 @@ export const dict = {
   "settings.general.row.appearance.description": "Prispôsobte vzhľad Kito na svojom zariadení",
   "settings.updates.row.startup.description": "Automaticky kontrolovať aktualizácie pri spustení Kito",
   "settings.updates.toast.latest.description": "Používate najnovšiu verziu Kito.",
+  "session.queue.attachments.few": "Plus {{count}} prílohy",
+  "session.queue.attachments.many": "Plus {{count}} prílohy",
+  "settings.workspaces.sessions.filtered.few": "{{count}} relácie",
+  "settings.workspaces.sessions.filtered.many": "{{count}} relácie",
+  "settings.workspaces.deleteAll.confirm.few": "Týmto sa natrvalo odstránia {{count}} vybrané pracovné stromy.",
+  "settings.workspaces.deleteAll.confirm.many": "Týmto sa natrvalo odstráni {{count}} vybraného pracovného stromu.",
+  "settings.workspaces.deleteWithoutSessions.confirm.few":
+    "Týmto sa natrvalo odstránia {{count}} pracovné stromy bez prepojených relácií.",
+  "settings.workspaces.deleteWithoutSessions.confirm.many":
+    "Týmto sa natrvalo odstráni {{count}} pracovného stromu bez prepojených relácií.",
+  "settings.workspaces.count.few": "{{count}} pracovné miesta",
+  "settings.workspaces.count.many": "{{count}} pracovných miest",
+  "settings.workspaces.sessions.few": "{{count}} relácie v {{project}}",
+  "settings.workspaces.sessions.many": "{{count}} relácií v {{project}}",
+  "session.queue.count.few": "{{count}} položky vo fronte",
+  "session.queue.count.many": "{{count}} položky vo fronte",
+  "settings.about.otherContributor.few": "{{count}} ďalší",
+  "settings.about.otherContributor.many": "{{count}} ďalšieho",
 }

@@ -1,9 +1,10 @@
+import { kitoDataEnv } from "@opencode/util/kito-env"
 import path from "node:path"
 import { OPENCODE_CHANNEL } from "./version"
 
 export function databasePath(data: string) {
   const filename =
-    process.env.OPENCODE_DB ??
+    kitoDataEnv("DB") ??
     (["latest", "dev", "beta", "next", "prod"].includes(OPENCODE_CHANNEL) ||
     process.env.OPENCODE_DISABLE_CHANNEL_DB === "1" ||
     process.env.OPENCODE_DISABLE_CHANNEL_DB === "true"

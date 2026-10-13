@@ -17,11 +17,13 @@ function setup(overrides: Record<string, string> = {}) {
             { id: "session.alpha", title: "Alpha", keybind: "mod+a" },
             { id: "session.beta", title: "Beta", keybind: "mod+b" },
             { id: "session.stale", title: "Stale", keybind: "mod+s" },
+            { id: "session.inactive", title: "Old translation", keybind: "mod+g" },
           ],
           options: [
             { id: "session.alpha", title: "Alpha", keybind: "mod+a" },
             { id: "session.beta", title: "Beta", keybind: "mod+b" },
           ],
+          known: new Map([["session.inactive", { title: "Dormant" }]]),
           keybinds: (enabled) => suppression.push(enabled),
         },
         settings: {
@@ -77,6 +79,7 @@ describe("keybind settings controller", () => {
     expect(state.controller.catalog.title("session.alpha")).toBe("Alpha")
     expect(state.controller.catalog.keybind("session.beta")).toBe("Alt+K")
     expect(state.controller.catalog.filtered("alt k").get("Session")).toEqual(["session.beta"])
+    expect(state.controller.catalog.title("session.inactive")).toBe("Dormant")
     expect(state.controller.catalog.title("session.stale")).toBe("")
     expect(state.controller.catalog.filtered("stale").get("Session") ?? []).toEqual([])
     expect(state.controller.settings.hasOverrides()).toBe(true)

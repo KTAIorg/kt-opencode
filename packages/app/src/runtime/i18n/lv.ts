@@ -851,4 +851,13 @@ export const dict = {
   "settings.general.row.appearance.description": "Pielāgojiet, kā Kito izskatās jūsu ierīcē",
   "settings.updates.row.startup.description": "Automātiski pārbaudīt atjauninājumus, palaižot Kito",
   "settings.updates.toast.latest.description": "Jūs izmantojat jaunāko Kito versiju.",
+  "settings.workspaces.count.zero": "{{count}} darbvietu",
+  "settings.workspaces.sessions.zero": "{{count}} sesiju projektā {{project}}",
+  "session.queue.count.zero": "Rindā: {{count}}",
+  "settings.about.otherContributor.zero": "{{count}} citu",
+  "session.queue.attachments.zero": "Plus {{count}} stiprinājumi",
+  "settings.workspaces.sessions.filtered.zero": "{{count}} sesijas",
+  "settings.workspaces.deleteAll.confirm.zero": "Tas neatgriezeniski dzēsīs {{count}} atlasītos darbkokus.",
+  "settings.workspaces.deleteWithoutSessions.confirm.zero":
+    "Tādējādi tiks neatgriezeniski dzēsti {{count}} darbkoki bez saistītām sesijām.",
 }

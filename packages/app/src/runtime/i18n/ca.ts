@@ -861,4 +861,14 @@ export const dict = {
   "settings.general.row.appearance.description": "Personalitza com es veu Kito al teu dispositiu",
   "settings.updates.row.startup.description": "Comprova automàticament si hi ha actualitzacions quan s'iniciï Kito.",
   "settings.updates.toast.latest.description": "Esteu executant la darrera versió de Kito.",
+  "settings.workspaces.count.many": "{{count}} d'espais de treball",
+  "settings.workspaces.sessions.many": "{{count}} de sessions a {{project}}",
+  "session.queue.count.many": "{{count}} a la cua",
+  "settings.about.otherContributor.many": "{{count}} altres",
+  "session.queue.attachments.many": "Més fitxers adjunts {{count}}",
+  "settings.workspaces.sessions.filtered.many": "{{count}} sessions",
+  "settings.workspaces.deleteAll.confirm.many":
+    "Això suprimirà permanentment els arbres de treball seleccionats de {{count}}.",
+  "settings.workspaces.deleteWithoutSessions.confirm.many":
+    "Això suprimirà permanentment els arbres de treball {{count}} sense sessions enllaçades.",
 }

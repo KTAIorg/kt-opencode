@@ -911,4 +911,22 @@ export const dict = {
   "settings.general.row.appearance.description": "Налаштуйте вигляд Kito на вашому пристрої",
   "settings.updates.row.startup.description": "Автоматично перевіряти наявність оновлень під час запуску Kito",
   "settings.updates.toast.latest.description": "Ви використовуєте останню версію Kito.",
+  "session.queue.attachments.few": "Ще {{count}} вкладення",
+  "session.queue.attachments.many": "Ще {{count}} вкладень",
+  "settings.workspaces.sessions.filtered.few": "{{count}} сесії",
+  "settings.workspaces.sessions.filtered.many": "{{count}} сесій",
+  "settings.workspaces.deleteAll.confirm.few": "Це назавжди видалить {{count}} вибрані робочі дерева.",
+  "settings.workspaces.deleteAll.confirm.many": "Це назавжди видалить {{count}} вибраних робочих дерев.",
+  "settings.workspaces.deleteWithoutSessions.confirm.few":
+    "Це назавжди видалить {{count}} робочі дерева без пов’язаних сесій.",
+  "settings.workspaces.deleteWithoutSessions.confirm.many":
+    "Це назавжди видалить {{count}} робочих дерев без пов’язаних сесій.",
+  "settings.workspaces.count.few": "{{count}} робочих місця",
+  "settings.workspaces.count.many": "{{count}} робочих місць",
+  "settings.workspaces.sessions.few": "{{count}} сесії в {{project}}",
+  "settings.workspaces.sessions.many": "{{count}} сеансів у {{project}}",
+  "session.queue.count.few": "{{count}} елементи в черзі",
+  "session.queue.count.many": "{{count}} елементів у черзі",
+  "settings.about.otherContributor.few": "{{count}} інші",
+  "settings.about.otherContributor.many": "{{count}} інших",
 }

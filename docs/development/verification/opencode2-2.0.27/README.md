@@ -9,14 +9,15 @@
 | 检查 | 结果 |
 | --- | --- |
 | 全仓 `bun turbo typecheck --concurrency=3` | 36/36 包通过 |
-| `packages/core`：`bun run test` | 6696 通过，43 跳过，0 失败 |
-| `packages/app`：`bun run test:unit` | 791 通过，0 失败 |
+| `packages/core`：`bun run test` | 6730 通过，43 跳过，0 失败 |
+| `packages/app`：`bun run test:unit` | 792 通过，0 失败 |
 | `packages/app`：`bun run test:browser` | 175 通过，0 失败 |
 | `packages/desktop`：`bun test` | 174 通过，1 跳过，0 失败 |
 | `packages/ai`：`bun run test` | 1793 通过，28 跳过，0 失败 |
 | `packages/server`：`bun run test` | 84 通过，1 跳过，0 失败；使用隔离 HOME / XDG / KITO 环境 |
 | `packages/ui`：`bun test` | 155 通过，0 失败 |
 | `packages/util`：`bun run test` | 99 通过，0 失败 |
+| 全仓 `bun turbo test --concurrency=3` | 27 / 27 任务通过，核心 6730、CLI 336、Server 84、AI 1793、TUI 1463 均零失败 |
 | `packages/cli`：`bun test test/web-ui.test.ts` | 3 通过，90 个断言，0 失败 |
 | Protocol / Kito 契约 / 网站 OpenAPI 生成检查 | 通过 |
 | CLI `build --single --skip-install`（prod / 2.0.27） | arm64 原生二进制构建通过，`--version` 返回 `opencode v2.0.27` |
@@ -25,7 +26,7 @@
 | HTTP API codegen `bun test` | 99 通过，0 失败；覆盖具名类型和真实 binary wildcard 请求 |
 | CLI `script/service-smoke.ts` | 通过：两个服务竞争唯一注册、查询鉴权、插件热加载、内嵌网页和退出清理 |
 
-跳过项由现有测试的平台/工具条件决定。这里只验证 Apple Silicon 本机产物；Windows、Intel macOS 安装包和远端 CI 结果应以 PR 检查为准。
+跳过项由现有测试的平台/工具条件决定。这里只验证 Apple Silicon 本机产物；PR 的 CLI、macOS arm64 / x64 PKG、Windows 安装包构建已全部通过（提交 628cbd1933）。最终提交的完整 CI 以 PR 检查为准。
 
 ## 真实 HTTP 与页面
 
@@ -34,6 +35,7 @@
 - 网页标题为 Kito；`/api/info` 返回版本 2.0.27。未鉴权返回 401。
 - `/ktai/credential` 未鉴权返回 401；鉴权后返回 JSON `{identity:false,keyPresent:false}`，不会被网页回退路由拦截。
 - 未登录访问 `/ktai/account` 返回 401 与明确的 Identity 错误。
+- 浏览器新增回归确认：首页草稿保存后刷新保持，提交前没有可见空标签页，提交后打开新会话并只投递一次提示词。
 - 打开项目后首页可输入提示词；模型从 Exo Free 切换为 gpt-5.5 后持久显示。
 - 管理模型显示 Zen / Kito 分组、默认/显示偏好、探测进度与不可用过滤。
 - 顶栏登录生成 Telegram 登录挑战与二维码；关闭弹窗会取消挑战。未完成 Telegram 授权。
@@ -43,6 +45,14 @@
 ![首页输入框与 Kito 模型](home.png)
 
 ![模型管理](models.png)
+
+## 升级回归修复
+
+- 首页输入框使用自己的持久化草稿，隔离页面切换与输入焦点；隐藏未提交的首页草稿标签，提交后使用原生会话晋升流程。
+- 快捷键目录按框架版本记录有效命令；Settings 刷新后仍能显示有效的会话命令，旧框架的失效命令隐藏。
+- 保留上游多语言的复数类别；更新旧测试的工具完成事件为不可变结果的重复投递。
+- CLI 配置、数据库、服务注册路径统一为 KITO 选择器与 kito 目录；显式端口冲突报错，默认端口被外部程序占用时选择空闲端口。
+- CI 显式安装 ripgrep，限制测试并发；Bun 与 Node 编译服务生命周期保持独立验证。
 
 ## 交付边界
 

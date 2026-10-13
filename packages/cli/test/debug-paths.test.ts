@@ -19,6 +19,7 @@ describe("debug paths command", () => {
 
     try {
       const result = await cli(["debug", "paths"], {
+        KITO_CONFIG_DIR: undefined,
         XDG_DATA_HOME: path.join(root, "data"),
         XDG_CONFIG_HOME: path.join(root, "config"),
         XDG_CACHE_HOME: path.join(root, "cache"),
@@ -34,23 +35,23 @@ describe("debug paths command", () => {
       expect({ exitCode: result.exitCode, stderr: result.stderr }).toEqual({ exitCode: 0, stderr: "" })
       expect(paths).toMatchObject({
         home: os.homedir(),
-        data: path.join(root, "data", "opencode"),
-        config: path.join(root, "config", "opencode"),
-        cache: path.join(root, "cache", "opencode"),
-        state: path.join(root, "state", "opencode"),
-        bin: path.join(root, "cache", "opencode", "bin"),
-        log: path.join(root, "data", "opencode", "log"),
-        repos: path.join(root, "data", "opencode", "repos"),
+        data: path.join(root, "data", "kito"),
+        config: path.join(root, "config", "kito"),
+        cache: path.join(root, "cache", "kito"),
+        state: path.join(root, "state", "kito"),
+        bin: path.join(root, "cache", "kito", "bin"),
+        log: path.join(root, "data", "kito", "log"),
+        repos: path.join(root, "data", "kito", "repos"),
       })
       expect(paths.tmp).toBeTruthy()
-      expect(await Bun.file(path.join(root, "state", "opencode", "service-local.json")).exists()).toBe(false)
+      expect(await Bun.file(path.join(root, "state", "kito", "service-local.json")).exists()).toBe(false)
     } finally {
       await fs.rm(root, { recursive: true, force: true })
     }
   })
 })
 
-async function cli(args: string[], env?: Record<string, string>) {
+async function cli(args: string[], env?: Record<string, string | undefined>) {
   const child = Bun.spawn([process.execPath, "run", path.join(import.meta.dir, "../src/index.ts"), ...args], {
     cwd: path.join(import.meta.dir, ".."),
     env: { ...process.env, ...env },

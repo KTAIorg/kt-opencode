@@ -859,4 +859,22 @@ export const dict = {
   "settings.general.row.appearance.description": "Dostosuj wygląd Kito na swoim urządzeniu",
   "settings.updates.row.startup.description": "Automatycznie sprawdzaj aktualizacje podczas uruchamiania Kito",
   "settings.updates.toast.latest.description": "Korzystasz z najnowszej wersji Kito.",
+  "settings.workspaces.count.few": "{{count}} obszary robocze",
+  "settings.workspaces.count.many": "{{count}} obszarów roboczych",
+  "settings.workspaces.sessions.few": "{{count}} sesje w {{project}}",
+  "settings.workspaces.sessions.many": "{{count}} sesji w {{project}}",
+  "session.queue.count.few": "{{count}} elementy w kolejce",
+  "session.queue.count.many": "{{count}} elementów w kolejce",
+  "settings.about.otherContributor.few": "{{count}} innych",
+  "settings.about.otherContributor.many": "{{count}} innych",
+  "session.queue.attachments.few": "Jeszcze {{count}} załączniki",
+  "session.queue.attachments.many": "Jeszcze {{count}} załączników",
+  "settings.workspaces.sessions.filtered.few": "{{count}} sesje",
+  "settings.workspaces.sessions.filtered.many": "{{count}} sesji",
+  "settings.workspaces.deleteAll.confirm.few": "Spowoduje to trwałe usunięcie {{count}} wybranych drzew roboczych.",
+  "settings.workspaces.deleteAll.confirm.many": "Spowoduje to trwałe usunięcie {{count}} wybranych drzew roboczych.",
+  "settings.workspaces.deleteWithoutSessions.confirm.few":
+    "Spowoduje to trwałe usunięcie {{count}} drzew roboczych bez powiązanych sesji.",
+  "settings.workspaces.deleteWithoutSessions.confirm.many":
+    "Spowoduje to trwałe usunięcie {{count}} drzew roboczych bez powiązanych sesji.",
 }

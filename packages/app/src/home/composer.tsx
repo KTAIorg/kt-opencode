@@ -1,4 +1,4 @@
-import { createResource, Show } from "solid-js"
+import { createResource, Show, Suspense } from "solid-js"
 import { CommentsProvider } from "@/composer/comments"
 import { ComposerPersistenceProvider } from "@/composer/persistence"
 import { FileProvider } from "@/workspaces/files/model"
@@ -17,7 +17,10 @@ export function HomeComposer(props: { conn: ServerConnection.Any; directory: str
     () =>
       tabs.store.find(
         (tab): tab is DraftTab =>
-          tab.type === "draft" && tab.server === ServerConnection.key(props.conn) && tab.directory === props.directory,
+          tab.type === "draft" &&
+          tab.home === true &&
+          tab.server === ServerConnection.key(props.conn) &&
+          tab.directory === props.directory,
       ) ??
       tabs.newDraft(
         { server: ServerConnection.key(props.conn), directory: props.directory },
@@ -27,24 +30,26 @@ export function HomeComposer(props: { conn: ServerConnection.Any; directory: str
       ),
   )
   return (
-    <Show when={draft()} keyed>
-      {(draft) => (
-        <ServerProvider conn={props.conn}>
-          <ModelsProvider directory={props.directory}>
-            <LocationProvider directory={props.directory}>
-              <SessionUIProvider directory={props.directory} server={draft.server}>
-                <FileProvider>
-                  <ComposerPersistenceProvider>
-                    <CommentsProvider>
-                      <NewSession draftId={draft.draftID} />
-                    </CommentsProvider>
-                  </ComposerPersistenceProvider>
-                </FileProvider>
-              </SessionUIProvider>
-            </LocationProvider>
-          </ModelsProvider>
-        </ServerProvider>
-      )}
-    </Show>
+    <Suspense>
+      <Show when={draft()} keyed>
+        {(draft) => (
+          <ServerProvider conn={props.conn}>
+            <ModelsProvider directory={props.directory}>
+              <LocationProvider directory={props.directory}>
+                <SessionUIProvider directory={props.directory} server={draft.server}>
+                  <FileProvider>
+                    <ComposerPersistenceProvider draftID={draft.draftID}>
+                      <CommentsProvider>
+                        <NewSession draftId={draft.draftID} autoFocus={false} />
+                      </CommentsProvider>
+                    </ComposerPersistenceProvider>
+                  </FileProvider>
+                </SessionUIProvider>
+              </LocationProvider>
+            </ModelsProvider>
+          </ServerProvider>
+        )}
+      </Show>
+    </Suspense>
   )
 }

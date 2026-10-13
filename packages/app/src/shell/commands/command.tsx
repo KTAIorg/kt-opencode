@@ -1,3 +1,5 @@
+import { version as COMMAND_RUNTIME } from "../../../package.json"
+export { COMMAND_RUNTIME }
 import { createSimpleContext } from "@opencode/ui/context"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { type Accessor, batch, createEffect, createMemo, onCleanup, onMount, untrack } from "solid-js"
@@ -141,6 +143,7 @@ type CommandSource = "palette" | "keybind" | "slash"
 
 export const CommandCatalogItem = Persistence.struct({
   title: Schema.String,
+  runtime: Schema.optional(Schema.String),
   description: Schema.optional(Schema.String),
   category: Schema.optional(Schema.String),
   section: Persistence.optional(CommandSection),
@@ -353,6 +356,7 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
     })
 
     const warnedDuplicates = new Set<string>()
+    const known = new Map<string, CommandCatalogItem>()
 
     const [catalog, setCatalog, _, catalogReady] = persisted(Persist.global("command.catalog.v1"), CommandCatalog, {})
 
@@ -388,6 +392,15 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
       return placeAfterSlash(all)
     })
 
+    // Keep current-runtime commands available in Settings after their route unmounts.
+    // Persisted commands from older runtimes are not treated as known.
+    createEffect(() => {
+      registered().forEach((opt) => {
+        if (!opt.title) return
+        known.set(actionId(opt.id), { title: opt.title, section: opt.section })
+      })
+    })
+
     createEffect(() => {
       if (!catalogReady()) return
 
@@ -398,6 +411,7 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
             actionId(opt.id),
             reconcile({
               title: opt.title,
+              runtime: COMMAND_RUNTIME,
               description: opt.description,
               category: opt.category,
               section: opt.section,
@@ -583,6 +597,9 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
         setStore("suspendCount", (count) => Math.max(0, count + (enabled ? -1 : 1)))
       },
       suspended,
+      get known() {
+        return known
+      },
       get catalog() {
         return catalogOptions()
       },

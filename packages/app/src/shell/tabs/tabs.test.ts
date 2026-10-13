@@ -30,6 +30,7 @@ describe("tab migration", () => {
     const draft: Tab = {
       ...legacy,
       draftID: "mcp-draft",
+      home: true,
       worktree: "create",
       mcp: { target: "new-worktree", states: { first: true, second: false } },
     }
@@ -268,6 +269,13 @@ describe("closed tab stack", () => {
     ]
 
     expect(removeClosedTabs(stack, server, ["a"])).toEqual([{ tab: sessionTab("b"), index: 1 }])
+  })
+
+  test("closing a session skips the persisted Home composer draft", () => {
+    const home: Tab = { type: "draft", draftID: "home", server, directory: "/project", home: true }
+    expect(nextTabAfterClose([sessionTab("a"), home, sessionTab("b")], 0, true)).toEqual(sessionTab("b"))
+    expect(nextTabAfterClose([sessionTab("a"), home], 0, true)).toBeNull()
+    expect(nextTabAfterClose([home, sessionTab("a")], 1, true)).toBeNull()
   })
 
   test("does not navigate when a background tab closes", () => {

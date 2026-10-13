@@ -554,6 +554,33 @@ export function partUpdated(part: PartSeed<"assistant">): readonly OpenCodeEvent
   return toolEvents(part, messageID)
 }
 
+// Terminal results are immutable in OpenCode 2. Replay the current result to exercise duplicate delivery.
+export function replayTool(part: ToolSeed): readonly OpenCodeEvent[] {
+  const common = {
+    sessionID,
+    assistantMessageID: part.messageID ?? assistantID,
+    id: part.id,
+    metadata: jsonRecord(part.state.metadata),
+    executed: part.executed ?? true,
+    resultState: jsonRecord(part.providerResultState),
+  }
+  if (part.state.status === "error")
+    return [
+      makeEvent("session.tool.failed", {
+        ...common,
+        error: { type: "ToolError", message: part.state.error },
+      }),
+    ]
+  if (part.state.status === "completed")
+    return [
+      makeEvent("session.tool.success", {
+        ...common,
+        content: [{ type: "text", text: part.state.output }],
+      }),
+    ]
+  throw new Error("Only terminal tool results can be replayed")
+}
+
 export function renderedPartID(partID: string) {
   const ref = scenario().partRefs.get(partID)
 

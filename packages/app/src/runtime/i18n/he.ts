@@ -833,4 +833,13 @@ export const dict = {
   "settings.general.row.appearance.description": "התאם אישית איך Kito נראה במכשיר שלך",
   "settings.updates.row.startup.description": "בדוק באופן אוטומטי אם יש עדכונים כאשר Kito מופעל",
   "settings.updates.toast.latest.description": "אתה מפעיל את הגרסה האחרונה של Kito.",
+  "settings.workspaces.count.two": "{{count}} סביבות עבודה",
+  "settings.workspaces.sessions.two": "{{count}} הפעלות ב-{{project}}",
+  "session.queue.count.two": "{{count}} פריטים בתור",
+  "settings.about.otherContributor.two": "עוד {{count}}",
+  "session.queue.attachments.two": "בנוסף ל-{{count}} קבצים מצורפים",
+  "settings.workspaces.sessions.filtered.two": "{{count}} הפעלות",
+  "settings.workspaces.deleteAll.confirm.two": "פעולה זו תמחק לצמיתות {{count}} עצי עבודה נבחרים.",
+  "settings.workspaces.deleteWithoutSessions.confirm.two":
+    "פעולה זו תמחק לצמיתות {{count}} עצי עבודה ללא הפעלות מקושרות.",
 }

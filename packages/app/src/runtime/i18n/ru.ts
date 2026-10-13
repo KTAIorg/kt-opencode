@@ -915,4 +915,22 @@ export const dict = {
   "settings.general.row.appearance.description": "Настройте внешний вид Kito на вашем устройстве",
   "settings.updates.row.startup.description": "Автоматически проверять обновления при запуске Kito",
   "settings.updates.toast.latest.description": "Вы используете последнюю версию Kito.",
+  "settings.workspaces.count.few": "{{count}} рабочих места",
+  "settings.workspaces.count.many": "{{count}} рабочих мест",
+  "settings.workspaces.sessions.few": "{{count}} сеанса в {{project}}",
+  "settings.workspaces.sessions.many": "{{count}} сеансов в {{project}}",
+  "session.queue.count.few": "{{count}} элемента в очереди",
+  "session.queue.count.many": "{{count}} элементов в очереди",
+  "settings.about.otherContributor.few": "{{count}} других",
+  "settings.about.otherContributor.many": "{{count}} других",
+  "session.queue.attachments.few": "Плюс {{count}} вложения",
+  "session.queue.attachments.many": "Плюс {{count}} вложений",
+  "settings.workspaces.sessions.filtered.few": "{{count}} сессии",
+  "settings.workspaces.sessions.filtered.many": "{{count}} сессий",
+  "settings.workspaces.deleteAll.confirm.few": "Это навсегда удалит {{count}} выбранных рабочих дерева.",
+  "settings.workspaces.deleteAll.confirm.many": "Это навсегда удалит {{count}} выбранных рабочих деревьев.",
+  "settings.workspaces.deleteWithoutSessions.confirm.few":
+    "Это навсегда удалит {{count}} рабочих дерева без связанных сессий.",
+  "settings.workspaces.deleteWithoutSessions.confirm.many":
+    "Это навсегда удалит {{count}} рабочих деревьев без связанных сессий.",
 }

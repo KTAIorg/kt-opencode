@@ -13,7 +13,7 @@ import { useNewSessionCommands } from "./commands"
 import { createDraftMcpControls } from "./mcp"
 
 /** The draft-only Session page. Submitting promotes the draft into a real Session. */
-export default function NewSessionPage(props: { draftId: string }) {
+export default function NewSessionPage(props: { draftId: string; autoFocus?: boolean }) {
   const [search, setSearch] = useSearchParams<{ draftId?: string; prompt?: string }>()
   const tabs = useTabs()
   const servers = useSettingsServers()
@@ -80,7 +80,7 @@ export default function NewSessionPage(props: { draftId: string }) {
   // a stale cursor a frame after every key-up and yank the caret from a key pressed in that frame.
   createEffect(
     on(composer.ready, (ready) => {
-      if (ready) model.restoreFocus()
+      if (ready && props.autoFocus !== false) model.restoreFocus()
     }),
   )
   createEffect(() => {

@@ -851,4 +851,13 @@ export const dict = {
   "settings.general.row.appearance.description": "Personalizează aspectul Kito pe dispozitivul tău",
   "settings.updates.row.startup.description": "Verifică automat actualizările la lansarea Kito",
   "settings.updates.toast.latest.description": "Folosești cea mai recentă versiune Kito.",
+  "settings.workspaces.count.few": "{{count}} spații de lucru",
+  "settings.workspaces.sessions.few": "{{count}} sesiuni în {{project}}",
+  "session.queue.count.few": "{{count}} în coadă",
+  "settings.about.otherContributor.few": "{{count}} alți colaboratori",
+  "session.queue.attachments.few": "Plus {{count}} atașamente",
+  "settings.workspaces.sessions.filtered.few": "{{count}} sesiuni",
+  "settings.workspaces.deleteAll.confirm.few": "Aceasta va șterge definitiv {{count}} arbori de lucru selectați.",
+  "settings.workspaces.deleteWithoutSessions.confirm.few":
+    "Aceasta va șterge definitiv arborele de lucru {{count}} fără sesiuni conectate.",
 }

@@ -254,6 +254,21 @@ export function TabNavItem(props: {
         aria-expanded={menu.open}
         data-slot="tab-link"
         data-titlebar-tab-link
+        onKeyDown={(event) => {
+          if (editing() || props.dragging) return
+          if (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey)) return
+          event.preventDefault()
+          const rect = event.currentTarget.getBoundingClientRect()
+          event.currentTarget.dispatchEvent(
+            new MouseEvent("contextmenu", {
+              bubbles: true,
+              cancelable: true,
+              button: 2,
+              clientX: rect.left,
+              clientY: rect.bottom,
+            }),
+          )
+        }}
         href={props.href}
         draggable={false}
         onDragStart={(event) => {

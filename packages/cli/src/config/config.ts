@@ -1,3 +1,4 @@
+import { kitoDataEnv } from "@opencode/util/kito-env"
 export * as Config from "./config"
 
 import { Global } from "@opencode/util/global"
@@ -29,9 +30,8 @@ export const layer = Layer.effect(
     const fs = yield* FileSystem.FileSystem
     const global = yield* Global.Service
     const file = path.join(global.config, "cli.json")
-    const content = process.env.OPENCODE_CLI_CONFIG_CONTENT
-      ? Option.getOrUndefined(decode(parseRecord(process.env.OPENCODE_CLI_CONFIG_CONTENT)))
-      : undefined
+    const inline = kitoDataEnv("CLI_CONFIG_CONTENT")
+    const content = inline ? Option.getOrUndefined(decode(parseRecord(inline))) : undefined
 
     const readJson = Effect.fnUntraced(function* () {
       const text = yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => undefined))

@@ -922,4 +922,13 @@ export const dict = {
   "settings.general.row.appearance.description": "Prilagodite kako Kito izgleda na vašem uređaju",
   "settings.updates.row.startup.description": "Automatski provjeri ima li ažuriranja kada se Kito pokrene",
   "settings.updates.toast.latest.description": "Imate najnoviju verziju Kito.",
+  "settings.workspaces.count.few": "{{count}} radna prostora",
+  "settings.workspaces.sessions.few": "{{count}} sesije u {{project}}",
+  "session.queue.count.few": "{{count}} stavke u redu čekanja",
+  "settings.about.otherContributor.few": "{{count}} druga",
+  "session.queue.attachments.few": "Još {{count}} priloga",
+  "settings.workspaces.sessions.filtered.few": "{{count}} sesije",
+  "settings.workspaces.deleteAll.confirm.few": "Ovim ćete trajno izbrisati {{count}} odabrana radna stabla.",
+  "settings.workspaces.deleteWithoutSessions.confirm.few":
+    "Ovim ćete trajno izbrisati {{count}} radna stabla bez povezanih sesija.",
 }

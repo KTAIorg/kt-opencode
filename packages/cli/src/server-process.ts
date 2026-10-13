@@ -4,6 +4,7 @@ import { NodeServices } from "@effect/platform-node"
 import { Service } from "@opencode/client/effect/service"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Global } from "@opencode/util/global"
+import { kitoDataEnv } from "@opencode/util/kito-env"
 import { OPENCODE_ARTIFACT, OPENCODE_CHANNEL, OPENCODE_VERSION } from "./version"
 import { AppProcess } from "@opencode/util/process"
 import { randomBytes, randomUUID } from "node:crypto"
@@ -35,9 +36,7 @@ export const run = Effect.fnUntraced(function* (options: Options) {
     Effect.provide(
       LayerNode.compile(LayerNode.group([Global.node, AppProcess.node]), {
         replacements: [
-          Global.node.replace(
-            Global.layerWith(process.env.OPENCODE_CONFIG_DIR ? { config: process.env.OPENCODE_CONFIG_DIR } : {}),
-          ),
+          Global.node.replace(Global.layerWith(kitoDataEnv("CONFIG_DIR") ? { config: kitoDataEnv("CONFIG_DIR") } : {})),
         ],
       }),
     ),
@@ -107,65 +106,68 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       const instanceID = randomUUID()
       const transform = yield* WebUi.handler()
       const remote = { urls: [] as ReadonlyArray<string> }
-      const launch = start(
-        {
-          app: {
-            name: process.env.OPENCODE_CLIENT ?? OPENCODE_ARTIFACT,
-            version: OPENCODE_VERSION,
-            channel: OPENCODE_CHANNEL,
-          },
-          hostname,
-          port,
-          cors: options.cors ?? config.cors,
-          password,
-          pty: { handoff },
-          simulation: truthy(process.env.OPENCODE_SIMULATE),
-          database: {
-            path: databasePath(global.data),
-          },
-          models: {
-            url: process.env.OPENCODE_MODELS_URL,
-            file: process.env.OPENCODE_MODELS_PATH,
-            fetch: !truthy(process.env.OPENCODE_DISABLE_MODELS_FETCH),
-          },
-          config: {
-            directory: process.env.OPENCODE_CONFIG_DIR,
-            project: !truthy(
-              process.env.OPENCODE_CONFIG_PROJECT_DISABLE ?? process.env.OPENCODE_DISABLE_PROJECT_CONFIG,
-            ),
-            file: process.env.OPENCODE_CONFIG,
-            content: process.env.OPENCODE_CONFIG_CONTENT,
-          },
-          windows: {
-            gitbash: process.env.OPENCODE_GIT_BASH_PATH,
-          },
-          fs: {
-            filewatcher: !truthy(process.env.OPENCODE_FILEWATCHER_DISABLE ?? process.env.OPENCODE_DISABLE_FILEWATCHER),
-            fff:
-              process.env.OPENCODE_DISABLE_FFF === undefined
-                ? process.platform !== "win32"
-                : !truthy(process.env.OPENCODE_DISABLE_FFF),
-          },
-        },
-        serviceOptions === undefined
-          ? undefined
-          : {
-              onListen: (address, shutdown) =>
-                Effect.gen(function* () {
-                  if (!config.password) yield* ServiceConfig.password(password)
-                  return yield* ServiceRegistration.register({
-                    address,
-                    password,
-                    id: instanceID,
-                    file: serviceOptions.file,
-                    shutdown,
-                  })
-                }),
+      const launch = (listenPort = port) =>
+        start(
+          {
+            app: {
+              name: process.env.OPENCODE_CLIENT ?? OPENCODE_ARTIFACT,
+              version: OPENCODE_VERSION,
+              channel: OPENCODE_CHANNEL,
             },
-        transform,
-        () => remote.urls,
-      )
-      const server = yield* launch.pipe(
+            hostname,
+            port: listenPort,
+            cors: options.cors ?? config.cors,
+            password,
+            pty: { handoff },
+            simulation: truthy(process.env.OPENCODE_SIMULATE),
+            database: {
+              path: databasePath(global.data),
+            },
+            models: {
+              url: process.env.OPENCODE_MODELS_URL,
+              file: kitoDataEnv("MODELS_PATH"),
+              fetch: !truthy(process.env.OPENCODE_DISABLE_MODELS_FETCH),
+            },
+            config: {
+              directory: kitoDataEnv("CONFIG_DIR"),
+              project: !truthy(
+                process.env.OPENCODE_CONFIG_PROJECT_DISABLE ?? process.env.OPENCODE_DISABLE_PROJECT_CONFIG,
+              ),
+              file: kitoDataEnv("CONFIG"),
+              content: kitoDataEnv("CONFIG_CONTENT"),
+            },
+            windows: {
+              gitbash: kitoDataEnv("GIT_BASH_PATH"),
+            },
+            fs: {
+              filewatcher: !truthy(
+                process.env.OPENCODE_FILEWATCHER_DISABLE ?? process.env.OPENCODE_DISABLE_FILEWATCHER,
+              ),
+              fff:
+                process.env.OPENCODE_DISABLE_FFF === undefined
+                  ? process.platform !== "win32"
+                  : !truthy(process.env.OPENCODE_DISABLE_FFF),
+            },
+          },
+          serviceOptions === undefined
+            ? undefined
+            : {
+                onListen: (address, shutdown) =>
+                  Effect.gen(function* () {
+                    if (!config.password) yield* ServiceConfig.password(password)
+                    return yield* ServiceRegistration.register({
+                      address,
+                      password,
+                      id: instanceID,
+                      file: serviceOptions.file,
+                      shutdown,
+                    })
+                  }),
+              },
+          transform,
+          () => remote.urls,
+        )
+      const server = yield* launch().pipe(
         Effect.catch((error) => {
           if (findIncumbent === undefined || !addressInUse(error)) return Effect.fail(error)
           return Effect.gen(function* () {
@@ -176,9 +178,11 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
               yield* Effect.sleep("100 millis")
               if (Date.now() >= deadline) break
               // Failed binds close their scope; a successful bind may take longer than this window to boot.
-              const server = yield* launch.pipe(Effect.catchIf(addressInUse, () => Effect.void))
+              const server = yield* launch().pipe(Effect.catchIf(addressInUse, () => Effect.void))
               if (server !== undefined) return server
             }
+            // A co-installed service can own the default port. Explicit user ports remain strict.
+            if (options.port === undefined && config.port === undefined) return yield* launch(0)
             return yield* Effect.fail(
               new Error(
                 `Managed service port ${port} on ${hostname} is already in use by another process. ` +

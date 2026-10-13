@@ -848,4 +848,22 @@ export const dict = {
   "settings.general.row.appearance.description": "Přizpůsobte si vzhled Kito na vašem zařízení",
   "settings.updates.row.startup.description": "Automaticky kontrolovat aktualizace při spuštění Kito",
   "settings.updates.toast.latest.description": "Používáte nejnovější verzi Kito.",
+  "settings.workspaces.count.few": "{{count}} pracovní plochy",
+  "settings.workspaces.count.many": "{{count}} pracovních míst",
+  "settings.workspaces.sessions.few": "{{count}} sezení v {{project}}",
+  "settings.workspaces.sessions.many": "{{count}} relací v {{project}}",
+  "session.queue.count.few": "{{count}} položky ve frontě",
+  "session.queue.count.many": "{{count}} položky ve frontě",
+  "settings.about.otherContributor.few": "{{count}} další",
+  "settings.about.otherContributor.many": "{{count}} dalšího",
+  "session.queue.attachments.few": "A {{count}} přílohy",
+  "session.queue.attachments.many": "A {{count}} přílohy",
+  "settings.workspaces.sessions.filtered.few": "{{count}} relace",
+  "settings.workspaces.sessions.filtered.many": "{{count}} relace",
+  "settings.workspaces.deleteAll.confirm.few": "Tímto trvale odstraníte {{count}} vybrané pracovní stromy.",
+  "settings.workspaces.deleteAll.confirm.many": "Tímto trvale odstraníte {{count}} vybraného pracovního stromu.",
+  "settings.workspaces.deleteWithoutSessions.confirm.few":
+    "Tímto trvale odstraníte {{count}} pracovní stromy bez propojených relací.",
+  "settings.workspaces.deleteWithoutSessions.confirm.many":
+    "Tímto trvale odstraníte {{count}} pracovního stromu bez propojených relací.",
 }

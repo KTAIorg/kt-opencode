@@ -848,4 +848,22 @@ export const dict = {
   "settings.general.row.appearance.description": "Prilagodite, kako Kito izgleda na vaši napravi",
   "settings.updates.row.startup.description": "Samodejno preveri posodobitve, ko se zažene Kito",
   "settings.updates.toast.latest.description": "Uporabljate najnovejšo različico Kito.",
+  "session.queue.attachments.two": "Še {{count}} priponki",
+  "session.queue.attachments.few": "Še {{count}} priponke",
+  "settings.workspaces.sessions.filtered.two": "{{count}} seji",
+  "settings.workspaces.sessions.filtered.few": "{{count}} seje",
+  "settings.workspaces.deleteAll.confirm.two": "S tem boste trajno izbrisali {{count}} izbrani delovni drevesi.",
+  "settings.workspaces.deleteAll.confirm.few": "S tem boste trajno izbrisali {{count}} izbrana delovna drevesa.",
+  "settings.workspaces.deleteWithoutSessions.confirm.two":
+    "S tem boste trajno izbrisali {{count}} delovni drevesi brez povezanih sej.",
+  "settings.workspaces.deleteWithoutSessions.confirm.few":
+    "S tem boste trajno izbrisali {{count}} delovna drevesa brez povezanih sej.",
+  "settings.workspaces.count.two": "{{count}} delovna prostora",
+  "settings.workspaces.count.few": "{{count}} delovni prostori",
+  "settings.workspaces.sessions.two": "{{count}} seji v {{project}}",
+  "settings.workspaces.sessions.few": "{{count}} seje v {{project}}",
+  "session.queue.count.two": "{{count}} elementa v čakalni vrsti",
+  "session.queue.count.few": "{{count}} elementi v čakalni vrsti",
+  "settings.about.otherContributor.two": "{{count}} druga",
+  "settings.about.otherContributor.few": "{{count}} drugi",
 }

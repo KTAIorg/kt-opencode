@@ -609,7 +609,9 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                         <span data-slot="mobile-tab-title" dir="auto" class="min-w-0 flex-1 truncate text-start">
                           {currentTitle()}
                         </span>
-                        <span class="shrink-0 text-v2-text-text-muted">{tabsStore.length}</span>
+                        <span class="shrink-0 text-v2-text-text-muted">
+                          {tabsStore.filter((tab) => tab.type !== "draft" || !tab.home).length}
+                        </span>
                       </MobileDrawerTrigger>
                       <MobileDrawerContent>
                         <MobileDrawerLabel class="sr-only">{language.t("titlebar.tabs")}</MobileDrawerLabel>
@@ -617,7 +619,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                           <div data-slot="mobile-tabs-drawer-list">
                             <TitlebarTabStrip
                               orientation="vertical"
-                              tabs={tabsStore}
+                              tabs={tabsStore.filter((tab) => tab.type !== "draft" || !tab.home)}
                               currentTab={currentTab()}
                               onNavigate={(tab) => {
                                 tabs.select(tab)
@@ -692,7 +694,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                     fallback={
                       <>
                         <TitlebarTabStrip
-                          tabs={tabsStore}
+                          tabs={tabsStore.filter((tab) => tab.type !== "draft" || !tab.home)}
                           currentTab={currentTab()}
                           onNavigate={(tab, el) => {
                             tabs.select(tab)
@@ -744,7 +746,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                             <div class="flex min-h-0 flex-1 flex-col gap-1">
                               <TitlebarTabStrip
                                 orientation="vertical"
-                                tabs={tabsStore}
+                                tabs={tabsStore.filter((tab) => tab.type !== "draft" || !tab.home)}
                                 currentTab={currentTab()}
                                 onNavigate={(tab, el) => {
                                   tabs.select(tab)

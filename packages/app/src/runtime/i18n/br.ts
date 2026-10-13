@@ -865,4 +865,14 @@ export const dict = {
   "settings.general.row.appearance.description": "Personalize como o Kito aparece no seu dispositivo",
   "settings.updates.row.startup.description": "Verificar atualizações automaticamente quando o Kito iniciar",
   "settings.updates.toast.latest.description": "Você está usando a versão mais recente do Kito.",
+  "session.queue.attachments.many": "Mais acessórios {{count}}",
+  "settings.workspaces.sessions.filtered.many": "Sessões {{count}}",
+  "settings.workspaces.deleteAll.confirm.many":
+    "Isso excluirá permanentemente as espaços de trabalho selecionadas do {{count}}.",
+  "settings.workspaces.deleteWithoutSessions.confirm.many":
+    "Isso excluirá permanentemente as espaços de trabalho {{count}} sem sessões vinculadas.",
+  "settings.about.otherContributor.many": "{{count}} outros",
+  "session.queue.count.many": "{{count}} na fila",
+  "settings.workspaces.count.many": "{{count}} espaços de trabalho",
+  "settings.workspaces.sessions.many": "{{count}} sessões em {{project}}",
 }

@@ -64,7 +64,8 @@ export function removeClosedTabs(stack: ClosedTab[], server: SessionTab["server"
 export function nextTabAfterClose(tabs: Tab[], index: number, active: boolean) {
   if (!active) return undefined
 
-  return tabs[index + 1] ?? tabs[index - 1] ?? null
+  const visible = (tab: Tab) => tab.type !== "draft" || !tab.home
+  return tabs.slice(index + 1).find(visible) ?? tabs.slice(0, index).findLast(visible) ?? null
 }
 
 function isOpen(tabs: Tab[], tab: SessionTab) {

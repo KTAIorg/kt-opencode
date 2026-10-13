@@ -1,6 +1,6 @@
 import { useCommand, type CommandOption } from "@/shell/commands/command"
 import { useLanguage } from "@/runtime/i18n/language"
-import { openManageModels } from "@/providers/models/manage"
+import { DialogSelectModel } from "@/providers/models/select-dialog"
 import { useLocal, type ModelSelection } from "@/providers/models/selection"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { getCursorPosition, setCursorPosition } from "./editor/dom"
@@ -56,7 +56,7 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
     }
 
     owner.run(() => {
-      openManageModels({ dialog, onClose: restoreComposer })
+      void dialog.show(() => <DialogSelectModel model={model} />, restoreComposer)
     })
   }
 

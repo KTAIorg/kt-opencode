@@ -6,6 +6,7 @@ import { Button } from "@opencode/ui/button"
 import { showToast } from "@/shell/notifications/toast"
 import fuzzysort from "fuzzysort"
 import {
+  COMMAND_RUNTIME,
   DEFAULT_PALETTE_KEYBIND,
   formatKeybind,
   keyFromKeyboardEvent,
@@ -148,7 +149,11 @@ function keybinds(value: unknown): KeybindMap {
   return value as KeybindMap
 }
 
-function listFor(command: Pick<CommandContext, "catalog" | "options">, map: KeybindMap, palette: string) {
+function listFor(
+  command: Pick<CommandContext, "catalog" | "options"> & Partial<Pick<CommandContext, "known">>,
+  map: KeybindMap,
+  palette: string,
+) {
   const out = new Map<string, KeybindMeta>()
   out.set(PALETTE_ID, { title: palette, group: "General" })
 
@@ -159,8 +164,13 @@ function listFor(command: Pick<CommandContext, "catalog" | "options">, map: Keyb
     const active = command.options.find((item) => item.id === opt.id)
     const key = `command.${opt.id}`
     const fallback = Object.hasOwn(en, key) ? en[key as keyof typeof en] : undefined
-    const title = active?.title ?? (typeof fallback === "string" ? fallback : undefined)
-    if (!title || active?.hidden) continue
+    const known = command.known?.get(opt.id)
+    const title =
+      active?.title ??
+      known?.title ??
+      (opt.runtime === COMMAND_RUNTIME ? opt.title : undefined) ??
+      (typeof fallback === "string" ? fallback : undefined)
+    if (!title) continue
     out.set(opt.id, { title, group: groupFor(opt.id, opt.section) })
   }
 
@@ -241,7 +251,7 @@ function filteredFor(
 
 export function createKeybindSettingsController(
   input: {
-    command: Pick<CommandContext, "catalog" | "options" | "keybinds">
+    command: Pick<CommandContext, "catalog" | "options" | "keybinds"> & Partial<Pick<CommandContext, "known">>
     settings: {
       current: { keybinds: unknown }
       keybinds: Pick<SettingsContext["keybinds"], "get" | "set" | "resetAll">

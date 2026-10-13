@@ -846,4 +846,13 @@ export const dict = {
   "settings.general.row.appearance.description": "Прилагодите како Kito изгледа на вашем уређају",
   "settings.updates.row.startup.description": "Аутоматски провери да ли постоје ажурирања када се Kito покрене",
   "settings.updates.toast.latest.description": "Користите најновију верзију Kito.",
+  "session.queue.attachments.few": "Још {{count}} прилога",
+  "settings.workspaces.sessions.filtered.few": "{{count}} сесије",
+  "settings.workspaces.deleteAll.confirm.few": "Овим ћете трајно избрисати {{count}} изабрана радна стабла.",
+  "settings.workspaces.deleteWithoutSessions.confirm.few":
+    "Овим ћете трајно избрисати {{count}} радна стабла без повезаних сесија.",
+  "settings.workspaces.count.few": "{{count}} радна простора",
+  "settings.workspaces.sessions.few": "{{count}} сесије у {{project}}",
+  "session.queue.count.few": "{{count}} ставке у реду чекања",
+  "settings.about.otherContributor.few": "{{count}} друга",
 }

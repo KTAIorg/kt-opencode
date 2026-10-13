@@ -924,4 +924,22 @@ export const dict = {
   "settings.general.row.appearance.description": "Tinkinkite, kaip Kito atrodo jūsų įrenginyje",
   "settings.updates.row.startup.description": "Automatiškai patikrinkite, ar nėra naujinimų, kai paleidžiamas Kito",
   "settings.updates.toast.latest.description": "Naudojate naujausią Kito versiją.",
+  "settings.workspaces.count.few": "{{count}} darbo sritys",
+  "settings.workspaces.count.many": "{{count}} darbo sričių",
+  "settings.workspaces.sessions.few": "{{count}} seansai projekte {{project}}",
+  "settings.workspaces.sessions.many": "{{count}} seansų projekte {{project}}",
+  "session.queue.count.few": "Eilėje: {{count}}",
+  "session.queue.count.many": "Eilėje: {{count}}",
+  "settings.about.otherContributor.few": "{{count}} kiti",
+  "settings.about.otherContributor.many": "{{count}} kitų",
+  "session.queue.attachments.few": "Plus {{count}} priedai",
+  "session.queue.attachments.many": "Plus {{count}} priedai",
+  "settings.workspaces.sessions.filtered.few": "{{count}} sesijos",
+  "settings.workspaces.sessions.filtered.many": "{{count}} sesijos",
+  "settings.workspaces.deleteAll.confirm.few": "Taip visam laikui bus ištrinti {{count}} pasirinkti darbo medžiai.",
+  "settings.workspaces.deleteAll.confirm.many": "Taip visam laikui bus ištrinti {{count}} pasirinkti darbo medžiai.",
+  "settings.workspaces.deleteWithoutSessions.confirm.few":
+    "Taip visam laikui bus ištrinti {{count}} darbo medžiai be susietų seansų.",
+  "settings.workspaces.deleteWithoutSessions.confirm.many":
+    "Taip visam laikui bus ištrinti {{count}} darbo medžiai be susietų seansų.",
 }

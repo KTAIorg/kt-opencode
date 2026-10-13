@@ -56,11 +56,11 @@ jobs:
           git config --global user.email "bot@opencode.ai"
           git config --global user.name "opencode"
 
-      - name: Install ffmpeg
+      - name: Install ffmpeg and ripgrep
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes ffmpeg
+          sudo apt-get install --yes ffmpeg ripgrep
 
       - name: Install ripgrep
         if: runner.os == 'Windows'
@@ -78,7 +78,7 @@ jobs:
 
       - name: Run unit tests
         timeout-minutes: 20
-        run: GITHUB_ACTIONS=false bun turbo test
+        run: GITHUB_ACTIONS=false bun turbo test --concurrency=3
         env:
           OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: ${{ runner.os == 'Windows' && 'true' || 'false' }}
 
@@ -177,6 +177,7 @@ jobs:
         run: bun --cwd packages/app test:e2e:local
         env:
           CI: true
+          PLAYWRIGHT_WORKERS: 3
         timeout-minutes: 30
 
       - name: Upload Playwright artifacts

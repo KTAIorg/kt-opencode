@@ -350,7 +350,7 @@ test("concurrent service processes elect one server", async () => {
       pid: info.pid,
       urls: [info.url],
       // The server reports the canonical tmp directory; Windows os.tmpdir() can be an 8.3 short name.
-      paths: { tmp: await fs.realpath(path.join(os.tmpdir(), "opencode")) },
+      paths: { tmp: await fs.realpath(path.join(os.tmpdir(), "kito")) },
       capabilities: { persistentPty: process.platform !== "win32" },
     })
     const contender = Bun.spawn(command, { env, stderr: "pipe", stdout: "ignore" })
@@ -414,7 +414,7 @@ test.each([
   async ({ args, origins }) => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-service-cors-"))
     const config = path.join(root, "config", ServiceConfig.filename())
-    const registration = path.join(root, "state", "opencode", ServiceConfig.filename())
+    const registration = path.join(root, "state", "kito", ServiceConfig.filename())
     const cors = ["http://192.0.2.10:3001", "https://configured.example.com"]
     await fs.mkdir(path.dirname(config), { recursive: true })
     await fs.writeFile(config, JSON.stringify({ cors }))
@@ -460,7 +460,7 @@ test("the original managed service contender binds when the occupied port is rel
   })
   const port = listener.port
   if (port === undefined) throw new Error("Server did not bind a port")
-  const registration = path.join(root, "state", "opencode", "service-local.json")
+  const registration = path.join(root, "state", "kito", "service-local.json")
   await fs.mkdir(path.join(root, "config"), { recursive: true })
   await fs.mkdir(path.dirname(registration), { recursive: true })
   await fs.writeFile(path.join(root, "config", "service-local.json"), JSON.stringify({ port }))
@@ -621,7 +621,7 @@ test("port contender recognizes an incumbent registered during the bind race", a
 
 test("service registration replaces a stale owner with the bound address", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-service-stale-"))
-  const registration = path.join(root, "state", "opencode", "service-local.json")
+  const registration = path.join(root, "state", "kito", "service-local.json")
   await fs.mkdir(path.dirname(registration), { recursive: true })
   await fs.writeFile(
     registration,
@@ -683,9 +683,9 @@ test("a failed service stays registered and owns the selected port until stopped
   const port = await availablePort()
   const database = path.join(root, "database")
   await fs.mkdir(database)
-  await fs.mkdir(path.join(root, "config", "opencode"), { recursive: true })
-  await fs.writeFile(path.join(root, "config", "opencode", "service-local.json"), JSON.stringify({ port }))
-  const env = { ...serviceEnv(root), OPENCODE_DB: database }
+  await fs.mkdir(path.join(root, "config", "kito"), { recursive: true })
+  await fs.writeFile(path.join(root, "config", "kito", "service-local.json"), JSON.stringify({ port }))
+  const env = { ...serviceEnv(root), KITO_DB: database }
   const command = [process.execPath, path.join(import.meta.dir, "../src/index.ts"), "serve", "--service"]
   const registration = path.join(root, "state", "kito", "service-local.json")
   const owner = Bun.spawn(command, { env, stderr: "pipe", stdout: "ignore" })
@@ -779,6 +779,9 @@ function serviceEnv(root: string) {
     HOME: root,
     KITO_DB: path.join(root, "opencode.db"),
     KITO_TEST_HOME: root,
+    KITO_CONFIG_DIR: path.join(root, "config", "kito"),
+    KITO_CONFIG: undefined,
+    KITO_CONFIG_CONTENT: "{}",
     XDG_CACHE_HOME: path.join(root, "cache"),
     XDG_CONFIG_HOME: path.join(root, "config"),
     XDG_DATA_HOME: path.join(root, "data"),

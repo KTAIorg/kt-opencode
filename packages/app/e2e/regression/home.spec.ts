@@ -19,6 +19,57 @@ async function openHome(page: Page, input: Parameters<typeof mockStressTimeline>
   await page.goto("/")
 }
 
+test("the Home composer persists its draft without a tab and opens the submitted session", async ({ page }) => {
+  let created = ""
+  const admitted: string[] = []
+  await openHome(page, {
+    createdSessionTitle: "Created from Home",
+    onSessionCreate: (body) => {
+      if (typeof body.id === "string") created = body.id
+    },
+    onPrompt: ({ body }) => {
+      admitted.push(JSON.stringify(body))
+    },
+  })
+  const editor = page.locator('[data-component="composer-editor"]')
+  await expect(editor).toBeEditable()
+  await expect(page.locator("[data-titlebar-tab]")).toHaveCount(0)
+  await editor.fill("Hello from Home")
+  // Draft saves are batched and asynchronous. Reload after the browser has committed the document.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<boolean>((resolve, reject) => {
+            const request = indexedDB.open("opencode-drafts", 1)
+            request.onerror = () => reject(request.error)
+            request.onsuccess = () => {
+              const database = request.result
+              const documents = database.transaction("documents", "readonly").objectStore("documents").getAll()
+              documents.onsuccess = () => {
+                database.close()
+                resolve(documents.result.some((value) => String(value).includes("Hello from Home")))
+              }
+              documents.onerror = () => {
+                database.close()
+                reject(documents.error)
+              }
+            }
+          }),
+      ),
+    )
+    .toBe(true)
+  await page.reload()
+  await expect(editor).toHaveText("Hello from Home")
+  await expect(page.locator("[data-titlebar-tab]")).toHaveCount(0)
+  await page.locator('[data-action="composer-submit"]').click()
+  await expect.poll(() => created).not.toBe("")
+  await expectPath(page, sessionHref(created))
+  await expect.poll(() => admitted.length).toBe(1)
+  expect(admitted[0]).toContain("Hello from Home")
+  await expect(page.locator('[data-titlebar-tab][data-active="true"]')).toContainText("Created from Home")
+})
+
 test("the session context menu renames, exports, and deletes a Home session", async ({ page }) => {
   await openHome(page)
   const target = row(page, fixture.expected.targetTitle)
@@ -89,14 +140,15 @@ test("the Home shortcut focuses session search, and the Home button leaves focus
   await expect(editor).toBeEditable({ timeout: APP_READY_TIMEOUT })
   await editor.click()
 
-  await page.keyboard.press("ControlOrMeta+b")
+  const shortcut = await page.evaluate(() => (/Mac|iPhone|iPad|iPod/.test(navigator.platform) ? "Meta+b" : "Control+b"))
+  await page.keyboard.press(shortcut)
   const search = page.getByRole("textbox", { name: /Search sessions/ })
   await expect(search).toBeFocused()
   await page.keyboard.type("jump")
   await expect(page.getByRole("option")).toHaveCount(1)
   await expect(page.getByRole("option")).toContainText(fixture.expected.targetTitle)
 
-  await page.keyboard.press("ControlOrMeta+b")
+  await page.keyboard.press(shortcut)
   await expectPath(page, sessionHref(fixture.sourceID))
 
   await page.getByRole("button", { name: "Home", exact: true }).click()

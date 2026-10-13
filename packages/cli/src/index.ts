@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { kitoDataEnv } from "@opencode/util/kito-env"
 
 import { ensurePluginRuntime } from "@opencode/plugin/runtime"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
@@ -120,9 +121,7 @@ Effect.gen(function* () {
   Effect.provide(
     LayerNode.compile(LayerNode.group([Global.node, AppProcess.node, Npm.node, EffectFlock.node]), {
       replacements: [
-        Global.node.replace(
-          Global.layerWith(process.env.OPENCODE_CONFIG_DIR ? { config: process.env.OPENCODE_CONFIG_DIR } : {}),
-        ),
+        Global.node.replace(Global.layerWith(kitoDataEnv("CONFIG_DIR") ? { config: kitoDataEnv("CONFIG_DIR") } : {})),
       ],
     }),
   ),
