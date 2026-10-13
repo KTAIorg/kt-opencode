@@ -112,6 +112,9 @@ test.describe("timeline history", () => {
       if (state.scrollTop <= 1 && !held.length) await expect.poll(() => held.length).toBeGreaterThan(0)
 
       if (held.length) {
+        const anchorParts = state.visibleParts.slice(0, 3)
+        const before = await timelinePartPositions(page, anchorParts)
+        expect(before.every((position) => position !== undefined)).toBe(true)
         held.splice(0).forEach((release) => release())
         await expect.poll(() => loads.ended).toBe(loads.started)
         // The response callback runs before the app prepends it. Wait for that
@@ -120,22 +123,27 @@ test.describe("timeline history", () => {
           .poll(() => scroller.evaluate((element) => element.scrollHeight))
           .toBeGreaterThan(state.geometry.scrollHeight)
         await expect.poll(async () => (await visibleTimeline(page)).ready).toBe(true)
+        // New rows may finish their own measurements after the response lands.
+        // Do not send another gesture until the old visible content is anchored.
+        await expect.poll(() => timelinePartPositions(page, anchorParts)).toEqual(before)
         continue
       }
 
       // Scroll through the browser, only across rows already measured and recorded above.
       // mouse.wheel returns before native scrolling ends; arm the event first
       // so another gesture cannot accumulate while the preceding one is moving.
+      await scroller.hover({ position: { x: 2, y: 2 } })
       await scroller.evaluate((element) => {
         const probe = window.__historyMountProbe!
         probe.scrollEnded = false
-        element.addEventListener(
-          "scrollend",
-          () => {
-            probe.scrollEnded = true
-          },
-          { once: true },
-        )
+
+        const finished = (event: Event) => {
+          if (event.target !== element) return
+          probe.scrollEnded = true
+          element.removeEventListener("scrollend", finished)
+        }
+
+        element.addEventListener("scrollend", finished)
       })
       await page.mouse.wheel(0, -state.mountedAbove)
       await expect.poll(() => page.evaluate(() => window.__historyMountProbe!.scrollEnded)).toBe(true)
@@ -404,6 +412,23 @@ async function openStressTarget(page: Page, input: Parameters<typeof mockStressT
 
 function timelineScroller(page: Page) {
   return page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-virtual-content]") })
+}
+
+function timelinePartPositions(page: Page, ids: string[]) {
+  return timelineScroller(page).evaluate((scroller, ids) => {
+    const top = scroller.getBoundingClientRect().top
+    const parts = [...scroller.querySelectorAll<HTMLElement>("[data-timeline-part-id], [data-timeline-part-ids]")]
+
+    return ids.map((id) => {
+      const part = parts.find((element) =>
+        [element.dataset.timelinePartId, ...(element.dataset.timelinePartIds?.split(",") ?? [])].includes(id),
+      )
+
+      if (!part) return undefined
+
+      return Math.round((part.getBoundingClientRect().top - top) * devicePixelRatio) / devicePixelRatio
+    })
+  }, ids)
 }
 
 function installTimelineMountProbe(page: Page) {

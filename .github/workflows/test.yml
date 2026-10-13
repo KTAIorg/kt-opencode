@@ -143,6 +143,68 @@ jobs:
         working-directory: services/www
         run: bun run check:generated
 
+  native-regressions:
+    name: native regressions (windows)
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Verify ACP EOF cleanup
+        timeout-minutes: 10
+        working-directory: packages/cli
+        run: bun run test test/acp/lifecycle.subprocess.test.ts -t "stdin EOF exits cleanly" --rerun-each=20
+
+      - name: Setup browser build runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.15"
+
+      - name: Read Playwright version
+        id: playwright-version
+        run: |
+          version=$(node -e 'console.log(require("./package.json").workspaces.catalog["@playwright/test"])')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.playwright-browsers
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright-version.outputs.version }}-chromium
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: packages/app
+        run: bunx playwright install chromium
+
+      - name: Verify native timeline pagination
+        timeout-minutes: 12
+        working-directory: packages/app
+        env:
+          CI: true
+        run: bunx playwright test e2e/regression/timeline-history.spec.ts --grep "mounts every part once and in order while paging to the start" --repeat-each=4 --workers=2 --retries=0
+
+      - name: Upload native regression artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-regressions-windows-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            packages/app/e2e/test-results
+            packages/app/e2e/playwright-report
+
   e2e:
     name: e2e (${{ matrix.settings.name }})
     if: github.ref_name != 'v2' && github.head_ref != 'v2'
