@@ -209,7 +209,21 @@ async function cli(home: Home, ...args: string[]) {
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ])
-  if (code !== 0) throw new Error(`opencode ${args.join(" ")} exited ${code}: ${stderr.trim()}`)
+  if (code !== 0) {
+    const logDir = path.join(home.root, "data", "kito", "log")
+    const files = await fs.readdir(logDir).catch(() => [])
+    const logs = await Promise.all(
+      files.flatMap((file) =>
+        file.endsWith(".log") ? [fs.readFile(path.join(logDir, file), "utf8").catch(() => "")] : [],
+      ),
+    )
+    const failure = logs
+      .flatMap((log) => log.split("\n"))
+      .filter((line) => line.includes("background service boot failed"))
+      .at(-1)
+      ?.slice(-8 * 1024)
+    throw new Error(`opencode ${args.join(" ")} exited ${code}: ${stderr.trim()}${failure ? `\n${failure}` : ""}`)
+  }
   return stdout.trim()
 }
 

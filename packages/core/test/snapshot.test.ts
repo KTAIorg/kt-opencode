@@ -2,7 +2,7 @@ import { $ } from "bun"
 import { describe, expect } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
-import { Deferred, Effect, Fiber, Layer } from "effect"
+import { Deferred, Effect, Fiber, Layer, Logger } from "effect"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Git } from "@opencode/core/git"
 import { Global } from "@opencode/util/global"
@@ -187,7 +187,15 @@ describe("Snapshot", () => {
                     ),
                 )
               }).pipe(Effect.provide(snapshotLayer(tmp.path, project)))
-            const results = yield* Effect.all([writer(0), writer(1), writer(2)], { concurrency: "unbounded" })
+            const failures: string[] = []
+            const diagnostic = Logger.make((options) => {
+              const output = Logger.formatStructured.log(options)
+              if (String(output.message).includes("failed to capture snapshot")) failures.push(JSON.stringify(output))
+            })
+            const results = yield* Effect.all([writer(0), writer(1), writer(2)], { concurrency: "unbounded" }).pipe(
+              Effect.provide(Logger.layer([Logger.defaultLogger, diagnostic])),
+            )
+            if (results.flat().includes(undefined)) console.error("Snapshot capture failures", failures)
             expect(results.flat().every((tree) => tree !== undefined)).toBe(true)
           }),
         (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
