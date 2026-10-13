@@ -287,7 +287,11 @@ const runPermissionCommand = (
     expect(yield* permission.list()).toEqual([])
     expect(yield* Queue.size(queue)).toBe(0)
     return { exit, requests }
-  }).pipe(Effect.scoped, Effect.timeout(Duration.seconds(5)))
+  }).pipe(
+    Effect.scoped,
+    // Includes native shell startup and shutdown (notably cold PowerShell on CI).
+    Effect.timeout(Duration.seconds(15)),
+  )
 
 // Directory cases still document inherited limitations; fixed scanner cases require matching behavior.
 describe("ShellTool scanner permissions", () => {
