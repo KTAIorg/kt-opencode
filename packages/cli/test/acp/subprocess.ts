@@ -1,7 +1,7 @@
 import type { InitializeResponse, NewSessionResponse } from "@agentclientprotocol/sdk"
 import fs from "node:fs/promises"
-import os from "node:os"
 import path from "node:path"
+import { tmpdir } from "../../../core/test/fixture/tmpdir"
 import { isolatedEnv } from "../fixture/environment"
 
 type JsonRpcRequest = {
@@ -47,7 +47,8 @@ export async function createAcpFixture(
     readonly respond?: (request: unknown) => string | Response | Promise<string | Response>
   } = {},
 ) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-cli-acp-"))
+  const temporary = await tmpdir("opencode-cli-acp-")
+  const root = temporary.path
   const home = path.join(root, "workspace")
   const config = path.join(root, "config")
   const models = path.join(root, "models.json")
@@ -96,9 +97,9 @@ export async function createAcpFixture(
         [...processes].map((process) => process.close().catch(() => process[Symbol.asyncDispose]())),
       )
       const serverResults = await Promise.allSettled([llm.stop(true)])
-      const directoryResults = await Promise.allSettled([
-        fs.rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }),
-      ])
+      // The leased private server can still release its working directory after
+      // ACP exits. Reuse core's bounded EBUSY cleanup for Windows/Bun.
+      const directoryResults = await Promise.allSettled([temporary[Symbol.asyncDispose]()])
       const failure = [...processResults, ...serverResults, ...directoryResults].find(
         (result): result is PromiseRejectedResult => result.status === "rejected",
       )
