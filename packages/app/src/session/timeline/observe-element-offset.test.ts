@@ -3,6 +3,67 @@ import { type Virtualizer } from "@tanstack/solid-virtual"
 import { Node, Window } from "happy-dom"
 import { observeElementOffsetReconnectAware } from "./observe-element-offset"
 
+test("a delayed scroll reset reads the native offset after a prepend adjustment", async () => {
+  const targetWindow = new Window()
+  const viewport = targetWindow.document.createElement("div")
+  targetWindow.document.body.append(viewport)
+  let reset: (() => void) | undefined
+  const originalSetTimeout = targetWindow.setTimeout
+  const originalClearTimeout = targetWindow.clearTimeout
+  Object.defineProperty(targetWindow, "setTimeout", {
+    configurable: true,
+    value: (callback: () => void) => {
+      reset = callback
+
+      return 1
+    },
+  })
+  Object.defineProperty(targetWindow, "clearTimeout", {
+    configurable: true,
+    value: () => {
+      reset = undefined
+    },
+  })
+
+  // SAFETY: The offset observer only reads these instance fields; DOM events
+  // and the stale debounce callback run through the real TanStack implementation.
+  // oxlint-disable-next-line anti-slop/no-chained-type-assertions -- A controlled partial observer fixture needs the intentional TypeScript boundary.
+  const instance = {
+    scrollElement: viewport,
+    targetWindow,
+    scrollOffset: 120,
+    options: { horizontal: false, isRtl: false, isScrollingResetDelay: 20, useScrollendEvent: false },
+  } as unknown as Virtualizer<HTMLDivElement, HTMLDivElement>
+
+  const calls: [number, boolean][] = []
+
+  const cleanup = observeElementOffsetReconnectAware(instance, (offset, isScrolling) => {
+    calls.push([offset, isScrolling])
+    instance.scrollOffset = offset
+  })
+
+  try {
+    viewport.scrollTop = 120
+    viewport.dispatchEvent(new targetWindow.Event("scroll"))
+    // Prepending updates the native position before the browser delivers its
+    // scroll event. The earlier wheel's reset timer is still ready to run.
+    viewport.scrollTop = 640
+    instance.scrollOffset = 640
+    expect(reset).toBeDefined()
+    reset!()
+    expect(calls).toEqual([
+      [120, true],
+      [640, false],
+    ])
+    expect(instance.scrollOffset).toBe(640)
+  } finally {
+    cleanup()
+    Object.defineProperty(targetWindow, "setTimeout", { configurable: true, value: originalSetTimeout })
+    Object.defineProperty(targetWindow, "clearTimeout", { configurable: true, value: originalClearTimeout })
+    await targetWindow.happyDOM.close()
+  }
+})
+
 test("restores a view observed before its first attachment", async () => {
   const targetWindow = new Window()
   const mutations = controlledMutations(targetWindow)

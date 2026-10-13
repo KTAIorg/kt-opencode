@@ -9,6 +9,21 @@ export function observeElementOffsetReconnectAware<TScrollElement extends Elemen
 
   const deliver = (offset: number, isScrolling: boolean) => {
     if (!active) return
+    const element = instance.scrollElement
+
+    // The reset timer retains the last scroll event's offset. A prepend may
+    // have adjusted the native position before its new event arrives; replaying
+    // the cached offset here would discard that reading anchor.
+    if (!isScrolling && element?.isConnected) {
+      const current = instance.options.horizontal
+        ? element.scrollLeft * (instance.options.isRtl ? -1 : 1)
+        : element.scrollTop
+
+      callback(current, false)
+
+      return
+    }
+
     callback(offset, isScrolling)
   }
 
