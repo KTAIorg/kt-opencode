@@ -68,6 +68,8 @@ test("clicking a backfilled thought group toggles it", async () => {
   )
   try {
     await setup.waitForFrame((frame) => frame.includes("Turn 13 answer"))
+    // Visible text can precede committed scroll geometry and input registrations.
+    await setup.waitForVisualIdle({ quietFrames: 3 })
     setup.mockInput.pressKey("g", { ctrl: true })
     await setup.waitForFrame((frame) => frame.includes("Turn 00 prompt"))
     await setup.waitForVisualIdle({ quietFrames: 3 })

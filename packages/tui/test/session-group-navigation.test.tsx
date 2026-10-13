@@ -108,6 +108,7 @@ test.each([
     )
     try {
       await setup.waitForFrame((frame) => frame.includes("Final marker"))
+      await setup.waitForVisualIdle({ quietFrames: 3 })
       expect(setup.captureCharFrame()).not.toContain("Second thought body")
       setup.mockInput.pressKey("u", { ctrl: true, shift: true })
       await setup.waitForFrame((frame) => frame.includes("Thought:"))
@@ -132,6 +133,7 @@ test.each([
       if (lines > 0) expect(summaryOffset).toBe(0)
       setup.mockInput.pressKey("2", { ctrl: true })
       await setup.waitForFrame((frame) => frame.includes("Other session content"))
+      await setup.waitForVisualIdle({ quietFrames: 3 })
       setup.mockInput.pressKey("1", { ctrl: true })
       await setup.waitForFrame((frame) => {
         const viewport = find(setup.renderer.root)
@@ -184,6 +186,7 @@ test.each([
       expect(scroll.scrollTop).toBeGreaterThan(0)
       setup.mockInput.pressKey("2", { ctrl: true })
       await setup.waitForFrame((frame) => frame.includes("Other session content"))
+      await setup.waitForVisualIdle({ quietFrames: 3 })
       setup.mockInput.pressKey("1", { ctrl: true })
       await setup.waitForFrame((frame) => {
         const viewport = find(setup.renderer.root)
@@ -221,6 +224,7 @@ test.each([
       expect(bodyOffset).toBe(0)
       setup.mockInput.pressKey("2", { ctrl: true })
       await setup.waitForFrame((frame) => frame.includes("Other session content"))
+      await setup.waitForVisualIdle({ quietFrames: 3 })
       setup.mockInput.pressKey("1", { ctrl: true })
       await setup.waitForFrame((frame) => {
         const viewport = find(setup.renderer.root)
