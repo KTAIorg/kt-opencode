@@ -85,7 +85,7 @@ export async function createAcpFixture(
           KITO_CONFIG: undefined,
           KITO_CONFIG_CONTENT: undefined,
           OPENCODE_DISABLE_AUTOUPDATE: "true",
-          OPENCODE_MODELS_PATH: models,
+          KITO_MODELS_PATH: models,
         }),
       })
       processes.add(acp)
