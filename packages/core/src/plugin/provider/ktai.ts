@@ -7,12 +7,15 @@ import { Credential } from "../../credential.js"
 import { Integration } from "../../integration.js"
 import { HIDDEN_RELEASE_DATE, KTAI_API_URL, loadKtaiModels, type RawModel } from "../../ktai/catalog.js"
 import {
-  KT_IDENTITY_REFRESH_MARKER,
+  clearPersistedIdentity,
+  InvalidIdentityRefreshError,
+  type IdentityBearerSession,
   persistIdentitySession,
   persistIdentityToken,
-  pollTelegramLogin,
+  pollDeviceLogin,
+  refreshDeviceTokens,
   sessionExpiresAt,
-  startTelegramLogin,
+  startDeviceLogin,
 } from "../../ktai/identity.js"
 import { readManagedApiKey, syncManagedToken } from "../../ktai/newapi.js"
 import { Model } from "@opencode/schema/model"
@@ -72,25 +75,22 @@ const telegram = (): IntegrationOAuthMethodRegistration => ({
   authorize: () =>
     Effect.gen(function* () {
       const challenge = yield* Effect.tryPromise({
-        try: () => startTelegramLogin(),
-        catch: (cause) => (cause instanceof Error ? cause : new Error("KT Identity Telegram start failed")),
+        try: () => startDeviceLogin(),
+        catch: (cause) => (cause instanceof Error ? cause : new Error("KT Identity device login start failed")),
       })
       return {
         mode: "auto" as const,
-        url: challenge.telegram.qrUrl,
-        instructions: `Confirm Kito login in Telegram @${challenge.telegram.botUsername}. Code: ${challenge.displayCode}`,
+        url: challenge.loginUrl,
+        // instructions 格式是 app 端 parseTelegramAuthorization 的解析契约。
+        instructions: `Confirm Kito login in Telegram @${telegramBotFromUrl(challenge.loginUrl)}. Code: ${challenge.userCode}`,
         callback: Effect.tryPromise({
           try: () => {
             // 轮询窗口对齐 challenge 服务端过期时间（+30s 宽限），解析失败回落默认 180s。
             const deadline = Date.parse(challenge.expiresAt)
             const timeoutMs = Number.isFinite(deadline) ? Math.max(deadline + 30_000 - Date.now(), 60_000) : 180_000
-            return pollTelegramLogin({
-              challengeId: challenge.challengeId,
-              opaqueCode: challenge.opaqueCode,
-              timeoutMs,
-            })
+            return pollDeviceLogin({ sessionId: challenge.sessionId, opaqueCode: challenge.opaqueCode, timeoutMs })
           },
-          catch: (cause) => (cause instanceof Error ? cause : new Error("KT Identity Telegram login failed")),
+          catch: (cause) => (cause instanceof Error ? cause : new Error("KT Identity device login failed")),
         }).pipe(
           Effect.tap((session) =>
             Effect.sync(() => persistIdentitySession(session)).pipe(
@@ -102,26 +102,51 @@ const telegram = (): IntegrationOAuthMethodRegistration => ({
               ),
             ),
           ),
-          Effect.map((session) =>
-            Credential.OAuth.make({
-              type: "oauth",
-              methodID,
-              refresh: KT_IDENTITY_REFRESH_MARKER,
-              access: session.token,
-              expires: sessionExpiresAt(session),
-              // Keep the server-provided expiry in metadata: `expires` may be a
-              // runtime estimate when Identity omits expiresAt, and only the
-              // real value may be written back to ktai-identity.json.
-              metadata: {
-                accountId: session.account.id,
-                ...(session.session.expiresAt ? { expiresAt: session.session.expiresAt } : {}),
-              },
-            }),
-          ),
+          Effect.map((session) => identityCredential(session)),
         ),
       }
     }),
+  // OpenCode core 在 access 临期 5 分钟内带锁调用：换新 access 并落盘
+  // ktai-identity.json（UI 的登录态来源），托管 NewAPI key 的 ensure 有
+  // 自身节流，此处直接触发即可。refresh 面失效时清空本地登录态（托管
+  // key 保留），下一次 load 自然回落到 key 模式。
+  refresh: (credential) =>
+    Effect.tryPromise({
+      try: async () => {
+        const session = await refreshDeviceTokens({ refreshToken: credential.refresh }).catch((cause: unknown) => {
+          if (cause instanceof InvalidIdentityRefreshError) clearPersistedIdentity()
+          throw cause
+        })
+        persistIdentitySession(session)
+        void syncManagedToken(session.token).catch(() => undefined)
+        return identityCredential(session)
+      },
+      catch: (cause) => (cause instanceof Error ? cause : new Error("KT Identity refresh failed")),
+    }),
 })
+
+function identityCredential(session: IdentityBearerSession) {
+  return Credential.OAuth.make({
+    type: "oauth",
+    methodID,
+    refresh: session.device?.refreshToken ?? session.token,
+    access: session.token,
+    expires: sessionExpiresAt(session),
+    // Keep the server-provided expiry in metadata: `expires` may be a
+    // runtime estimate when Identity omits expiresAt, and only the
+    // real value may be written back to ktai-identity.json.
+    metadata: {
+      accountId: session.account.id,
+      ...(session.session.expiresAt ? { expiresAt: session.session.expiresAt } : {}),
+      ...(session.device?.refreshExpiresAt ? { refreshExpiresAt: session.device.refreshExpiresAt } : {}),
+      ...(session.device?.deviceSessionId ? { deviceSessionId: session.device.deviceSessionId } : {}),
+    },
+  })
+}
+
+function telegramBotFromUrl(url: string) {
+  return /t\.me\/([^/?#]+)/.exec(url)?.[1] ?? "bot"
+}
 
 export const KtaiPlugin = define({
   id: "opencode.provider.ktai",
@@ -141,6 +166,13 @@ export const KtaiPlugin = define({
           // server-provided expiresAt stored in metadata. Omitting it keeps a
           // token without server expiry valid instead of inventing a logout.
           expiresAt: typeof credential.metadata?.expiresAt === "string" ? credential.metadata.expiresAt : undefined,
+          refreshToken: credential.refresh,
+          refreshExpiresAt:
+            typeof credential.metadata?.refreshExpiresAt === "string"
+              ? credential.metadata.refreshExpiresAt
+              : undefined,
+          deviceSessionId:
+            typeof credential.metadata?.deviceSessionId === "string" ? credential.metadata.deviceSessionId : undefined,
         })
       const managed = yield* Effect.promise(() => readManagedApiKey())
       const apiKey =
