@@ -1,4 +1,9 @@
-import { fetchAccountSummary, externalIdentity, fetchLedgerBalance, readPersistedIdentityToken, signOutIdentity } from "@opencode-ai/core/ktai/identity"
+import {
+  ensureFreshIdentityToken,
+  fetchAccountSummary,
+  fetchLedgerBalance,
+  signOutIdentity,
+} from "@opencode-ai/core/ktai/identity"
 import { probeKtaiModels } from "@opencode-ai/core/ktai/model-probe"
 import {
   allowNewapiSpendableRefresh,
@@ -24,7 +29,9 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
 
 const identityToken = Effect.fn("ktai.identityToken")(function* () {
-  const token = externalIdentity()?.token ?? readPersistedIdentityToken()
+  // 设备会话：access 过期时先用 refresh 面换新（并落盘 ktai-identity.json），
+  // refresh 面也失效才视为未登录。外注入（嵌入模式）直接透传。
+  const token = yield* Effect.promise(() => ensureFreshIdentityToken())
   if (token) return token
   return yield* new UnauthorizedError({ message: "KT Identity is unavailable" })
 })
@@ -101,7 +108,9 @@ export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =
     )
     .handle("ktai.credential.get", () =>
       Effect.gen(function* () {
-        const token = externalIdentity()?.token ?? readPersistedIdentityToken()
+        // identity 走 ensureFresh：access 过期但 refresh 面仍有效时，用户
+        // 实际仍处于登录态（这正是 181 的分裂根源），不应报成未登录。
+        const token = yield* Effect.promise(() => ensureFreshIdentityToken())
         const key = yield* Effect.promise(() => readManagedApiKey())
         return {
           identity: Boolean(token),

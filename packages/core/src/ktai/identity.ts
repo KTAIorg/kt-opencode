@@ -1,10 +1,14 @@
 import { Global } from "@opencode-ai/util/global"
 import { kitoDataEnv } from "@opencode-ai/util/kito-env"
 import fs from "fs"
+import os from "os"
 import path from "path"
 
 export const DEFAULT_IDENTITY_BASE_URL = "https://login.ktyun.cc"
-export const KT_IDENTITY_REFRESH_MARKER = "kt-identity"
+// 设备会话契约（kt-identity 决策 0024）：Kito 以 kito_desktop 设备客户端身份
+// 登录，换取 access（默认 1h）+ refresh（默认 30d 滚动续期）双令牌。
+export const KITO_DEVICE_CLIENT_TYPE = "kito_desktop"
+export const KITO_DEVICE_CLIENT_ID = "kito-desktop"
 export const IDENTITY_SESSION_FILE = "ktai-identity.json"
 
 export type IdentityAccount = {
@@ -26,6 +30,14 @@ export type IdentityAccountSummary = {
   joinedDays?: number
 }
 
+export type IdentityDeviceSession = {
+  // 设备会话的 refresh 面是非轮换的；仅当服务端响应省略 refresh_token
+  // （刷新场景）时缺省，调用方回落到已存的值或 access 本身。
+  refreshToken?: string
+  refreshExpiresAt?: string
+  deviceSessionId?: string
+}
+
 export type IdentityBearerSession = {
   account: IdentityAccount
   token: string
@@ -37,18 +49,17 @@ export type IdentityBearerSession = {
     // fabricated expiry into a spurious logout.
     expiresAt?: string
   }
+  device?: IdentityDeviceSession
   loginHint?: string
 }
 
-export type TelegramChallenge = {
-  challengeId: string
-  displayCode: string
+export type DeviceLoginChallenge = {
+  sessionId: string
+  userCode: string
   opaqueCode: string
-  telegram: {
-    botUsername: string
-    qrUrl: string
-  }
+  loginUrl: string
   expiresAt: string
+  interval: number
 }
 
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
@@ -264,66 +275,53 @@ export async function passwordLogin(
   return session
 }
 
-export async function startTelegramLogin(
-  input: { baseUrl?: string } = {},
+export async function startDeviceLogin(
+  input: { baseUrl?: string; deviceName?: string } = {},
   fetchImpl: FetchLike = fetch,
-): Promise<TelegramChallenge> {
-  const response = await fetchImpl(`${input.baseUrl ?? identityBaseUrl()}/identity/v1/auth/telegram/start`, {
+): Promise<DeviceLoginChallenge> {
+  const response = await fetchImpl(`${input.baseUrl ?? identityBaseUrl()}/identity/v1/device/sessions`, {
     method: "POST",
-    headers: { accept: "application/json" },
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({
+      client_type: KITO_DEVICE_CLIENT_TYPE,
+      client_id: KITO_DEVICE_CLIENT_ID,
+      device_name: input.deviceName ?? defaultDeviceName(),
+    }),
     signal: AbortSignal.timeout(15_000),
   })
   const payload = await readJson(response)
   if (!response.ok) {
-    throw new Error(errorMessage(payload, `KT Identity Telegram start failed (${response.status})`))
+    throw new Error(errorMessage(payload, `KT Identity device login start failed (${response.status})`))
   }
-  const challenge = telegramStartChallenge(payload)
-  if (!challenge) throw new Error("KT Identity Telegram start returned an unexpected payload")
+  const challenge = deviceLoginChallenge(payload)
+  if (!challenge) throw new Error("KT Identity device login start returned an unexpected payload")
   return challenge
 }
 
-function telegramStartChallenge(payload: unknown): TelegramChallenge | undefined {
-  if (!payload || typeof payload !== "object") return
-  const record = payload as Record<string, unknown>
-  const nested = record.challenge && typeof record.challenge === "object" ? (record.challenge as Record<string, unknown>) : undefined
-  const challengeId = stringField(nested?.id) ?? stringField(nested?.challengeId) ?? stringField(record.challengeId)
-  const displayCode = stringField(nested?.displayCode) ?? stringField(record.displayCode)
-  const expiresAt = stringField(nested?.expiresAt) ?? stringField(record.expiresAt)
-  const telegramSource = (nested?.telegram && typeof nested.telegram === "object" ? nested.telegram : record.telegram) as
-    | { botUsername?: unknown; qrUrl?: unknown }
-    | undefined
-  const qrUrl = typeof telegramSource?.qrUrl === "string" ? telegramSource.qrUrl : undefined
-  const opaqueCode =
-    stringField(nested?.opaqueCode) ?? stringField(record.opaqueCode) ?? opaqueCodeFromQrUrl(qrUrl)
-  if (
-    !challengeId ||
-    !displayCode ||
-    !expiresAt ||
-    !opaqueCode ||
-    typeof telegramSource?.botUsername !== "string" ||
-    !qrUrl
-  ) {
-    return
-  }
-  return {
-    challengeId,
-    displayCode,
-    opaqueCode,
-    telegram: {
-      botUsername: telegramSource.botUsername,
-      qrUrl,
-    },
-    expiresAt,
-  }
+export function defaultDeviceName() {
+  const host = os.hostname().trim()
+  return host ? `Kito on ${host}` : "Kito"
 }
 
-function opaqueCodeFromQrUrl(url?: string) {
-  if (!url) return
-  try {
-    const start = new URL(url).searchParams.get("start")?.trim()
-    if (start?.startsWith("login_") && start.length > "login_".length) return start.slice("login_".length)
-  } catch {
-    return
+function deviceLoginChallenge(payload: unknown): DeviceLoginChallenge | undefined {
+  if (!payload || typeof payload !== "object") return
+  const record = payload as Record<string, unknown>
+  const source =
+    record.challenge && typeof record.challenge === "object" ? (record.challenge as Record<string, unknown>) : record
+  const sessionId = stringField(source.session_id) ?? stringField(source.sessionId)
+  const userCode = stringField(source.user_code) ?? stringField(source.userCode)
+  const opaqueCode = stringField(source.opaque_code) ?? stringField(source.opaqueCode)
+  const loginUrl = stringField(source.login_url) ?? stringField(source.loginUrl)
+  const expiresAt = stringField(source.expires_at) ?? stringField(source.expiresAt)
+  const interval = source.interval
+  if (!sessionId || !userCode || !opaqueCode || !loginUrl || !expiresAt) return
+  return {
+    sessionId,
+    userCode,
+    opaqueCode,
+    loginUrl,
+    expiresAt,
+    interval: typeof interval === "number" && interval > 0 ? interval : 5,
   }
 }
 
@@ -331,13 +329,14 @@ function stringField(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined
 }
 
-export async function pollTelegramLogin(
+export async function pollDeviceLogin(
   input: {
-    challengeId: string
+    sessionId: string
     opaqueCode: string
     baseUrl?: string
     timeoutMs?: number
     intervalMs?: number
+    deviceName?: string
   },
   fetchImpl: FetchLike = fetch,
 ): Promise<IdentityBearerSession> {
@@ -346,20 +345,17 @@ export async function pollTelegramLogin(
   const started = Date.now()
   const base = input.baseUrl ?? identityBaseUrl()
   const opaqueCode = input.opaqueCode.trim()
-  if (!opaqueCode) throw new Error("KT Identity Telegram poll requires opaqueCode")
+  if (!opaqueCode) throw new Error("KT Identity device login requires opaqueCode")
 
   // 网络抖动、网关 5xx、限流 429 是瞬态错误：连续偶发不判死，最多容忍
   // 5 次连续失败，4xx 仍旧立即失败。总时长仍由 timeoutMs 兜底。
   let transientFailures = 0
   while (Date.now() - started < timeoutMs) {
-    const polled = await fetchImpl(
-      `${base}/identity/v1/auth/telegram/poll/${encodeURIComponent(input.challengeId)}?opaqueCode=${encodeURIComponent(opaqueCode)}`,
-      {
-        method: "GET",
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(15_000),
-      },
-    )
+    const polled = await fetchImpl(`${base}/identity/v1/device/sessions/${encodeURIComponent(input.sessionId)}`, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    })
       .then(async (response): Promise<{ ok: true; response: Response; payload: unknown }> => ({
         ok: true,
         response,
@@ -369,7 +365,7 @@ export async function pollTelegramLogin(
     if (!polled.ok) {
       transientFailures += 1
       if (transientFailures >= 5) {
-        throw polled.error instanceof Error ? polled.error : new Error("KT Identity Telegram poll failed")
+        throw polled.error instanceof Error ? polled.error : new Error("KT Identity device login poll failed")
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs))
       continue
@@ -380,48 +376,183 @@ export async function pollTelegramLogin(
       if (transient) {
         transientFailures += 1
         if (transientFailures >= 5) {
-          throw new Error(errorMessage(payload, `KT Identity Telegram poll failed (${polled.response.status})`))
+          throw new Error(errorMessage(payload, `KT Identity device login poll failed (${polled.response.status})`))
         }
         await new Promise((resolve) => setTimeout(resolve, intervalMs))
         continue
       }
-      throw new Error(errorMessage(payload, `KT Identity Telegram poll failed (${polled.response.status})`))
+      throw new Error(errorMessage(payload, `KT Identity device login poll failed (${polled.response.status})`))
     }
     transientFailures = 0
-
-    const session = asSession(payload)
-    if (session) return session
 
     const status =
       payload && typeof payload === "object" && typeof (payload as { status?: unknown }).status === "string"
         ? (payload as { status: string }).status
         : "pending"
 
+    // 用户在 Telegram 确认后挑战变为 approved，随即用一次性 opaque_code 换双令牌。
+    if (status === "approved") return exchangeDeviceTokens(input, fetchImpl)
     if (status === "denied" || status === "expired" || status === "consumed") {
-      throw new Error(`KT Identity Telegram login ${status}`)
+      throw new Error(`KT Identity device login ${status}`)
     }
 
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 
-  throw new Error("KT Identity Telegram login timed out")
+  throw new Error("KT Identity device login timed out")
+}
+
+export async function exchangeDeviceTokens(
+  input: { sessionId: string; opaqueCode: string; baseUrl?: string; deviceName?: string },
+  fetchImpl: FetchLike = fetch,
+): Promise<IdentityBearerSession> {
+  const response = await fetchImpl(
+    `${input.baseUrl ?? identityBaseUrl()}/identity/v1/device/sessions/${encodeURIComponent(input.sessionId)}/token`,
+    {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({
+        opaque_code: input.opaqueCode.trim(),
+        client_id: KITO_DEVICE_CLIENT_ID,
+        device_name: input.deviceName ?? defaultDeviceName(),
+      }),
+      signal: AbortSignal.timeout(15_000),
+    },
+  )
+  const payload = await readJson(response)
+  if (!response.ok) {
+    throw new Error(errorMessage(payload, `KT Identity device token exchange failed (${response.status})`))
+  }
+  const session = asDeviceSession(payload)
+  if (!session) throw new Error("KT Identity device token exchange returned an unexpected payload")
+  return session
+}
+
+function asDeviceSession(payload: unknown): IdentityBearerSession | undefined {
+  if (!payload || typeof payload !== "object") return
+  const record = payload as Record<string, unknown>
+  const source = record.data && typeof record.data === "object" ? (record.data as Record<string, unknown>) : record
+  const accessToken = stringField(source.access_token) ?? stringField(source.accessToken)
+  const accountId = stringField(source.subject) ?? stringField(source.account_id)
+  const username = stringField(source.username)
+  const refreshToken = stringField(source.refresh_token) ?? stringField(source.refreshToken)
+  const expiresAt = stringField(source.expires_at) ?? stringField(source.expiresAt)
+  const refreshExpiresAt = stringField(source.refresh_expires_at) ?? stringField(source.refreshExpiresAt)
+  const deviceSessionId = stringField(source.device_session_id) ?? stringField(source.deviceSessionId)
+  if (!accessToken || !accountId) return
+  return {
+    account: { id: accountId, accountNo: username ?? accountId },
+    token: accessToken,
+    session: {
+      id: deviceSessionId ?? "identity",
+      tokenType: stringField(source.token_type) ?? stringField(source.tokenType) ?? "Bearer",
+      ...(expiresAt ? { expiresAt } : {}),
+    },
+    ...(refreshToken || refreshExpiresAt || deviceSessionId
+      ? {
+          device: {
+            ...(refreshToken ? { refreshToken } : {}),
+            ...(refreshExpiresAt ? { refreshExpiresAt } : {}),
+            ...(deviceSessionId ? { deviceSessionId } : {}),
+          },
+        }
+      : {}),
+  }
+}
+
+export class InvalidIdentityRefreshError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+export async function refreshDeviceTokens(
+  input: { refreshToken: string; baseUrl?: string },
+  fetchImpl: FetchLike = fetch,
+): Promise<IdentityBearerSession> {
+  const refreshToken = input.refreshToken.trim()
+  if (!refreshToken) throw new Error("KT Identity refresh requires refreshToken")
+  const response = await fetchImpl(`${input.baseUrl ?? identityBaseUrl()}/identity/v1/device/token/refresh`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  const payload = await readJson(response)
+  if (response.status === 401 || response.status === 403) {
+    // Refresh token 已失效（30 天滚动窗口耗尽 / 设备会话被吊销 / 账号停用）。
+    throw new InvalidIdentityRefreshError(
+      errorMessage(payload, `KT Identity refresh token is no longer valid (${response.status})`),
+      response.status,
+    )
+  }
+  if (!response.ok) {
+    throw new Error(errorMessage(payload, `KT Identity refresh failed (${response.status})`))
+  }
+  const session = asDeviceSession(payload)
+  if (!session) throw new Error("KT Identity refresh returned an unexpected payload")
+  // Refresh 响应不回传 refresh_token（非轮换语义）：沿用入参，只有
+  // refresh_expires_at 每次滚动前移。若后端未来改为轮换式，服务端下发
+  // 的新 token 优先。
+  if (session.device?.refreshToken && session.device.refreshToken !== refreshToken) return session
+  return {
+    ...session,
+    device: {
+      refreshToken,
+      ...(session.device?.refreshExpiresAt ? { refreshExpiresAt: session.device.refreshExpiresAt } : {}),
+      ...(session.device?.deviceSessionId ? { deviceSessionId: session.device.deviceSessionId } : {}),
+    },
+  }
+}
+
+export async function ensureFreshIdentityToken(fetchImpl: FetchLike = fetch) {
+  const injected = externalIdentity()
+  if (injected?.token) return injected.token
+  const raw = readIdentitySessionFile()
+  if (!raw) return
+  const expires = typeof raw.expiresAt === "string" ? Date.parse(raw.expiresAt) : Number.NaN
+  if (typeof raw.token === "string" && raw.token.trim() && !(Number.isFinite(expires) && expires <= Date.now())) {
+    return raw.token.trim()
+  }
+  if (typeof raw.refreshToken !== "string" || !raw.refreshToken.trim()) return
+  // Refresh 面失效（401/403）：清空本地登录态（托管 NewAPI key 保留），
+  // UI 正确回到「请登录」而不是永久的半登录假死。网络类瞬态失败不清
+  // 文件，留待下次进入时重试。
+  const session = await refreshDeviceTokens({ refreshToken: raw.refreshToken }, fetchImpl).catch(
+    (cause: unknown) => {
+      if (cause instanceof InvalidIdentityRefreshError) clearPersistedIdentity()
+      return undefined
+    },
+  )
+  if (!session) return
+  persistIdentitySession(session)
+  return session.token
 }
 
 export function sessionExpiresAt(session: IdentityBearerSession) {
   const parsed = session.session.expiresAt ? Date.parse(session.session.expiresAt) : Number.NaN
   // Credential.OAuth.expires is a required timestamp, so an absent/invalid
-  // server expiry still yields a short-lived estimate. The estimate stays
-  // runtime-only: ktai registers no credential refresh handler, and persisted
-  // identity files only ever store the server-provided expiresAt.
+  // server expiry still yields a short-lived estimate. A device-flow session
+  // refreshes via refreshDeviceTokens before this estimate matters, and
+  // persisted identity files only ever store the server-provided expiresAt.
   return Number.isFinite(parsed) ? parsed : Date.now() + 60 * 60 * 1000
 }
 
-export function telegramAuthorizeView(challenge: TelegramChallenge) {
+export function deviceAuthorizeView(challenge: DeviceLoginChallenge) {
+  // instructions 的格式是 app 端 parseTelegramAuthorization 的解析契约：
+  // 「Code: <user_code>」供复制，bot 名从 t.me 链接提取。
   return {
-    url: challenge.telegram.qrUrl,
-    instructions: `Confirm Kito login in Telegram @${challenge.telegram.botUsername}. Code: ${challenge.displayCode}`,
+    url: challenge.loginUrl,
+    instructions: `Confirm Kito login in Telegram @${telegramBotFromUrl(challenge.loginUrl)}. Code: ${challenge.userCode}`,
     method: "auto" as const,
   }
+}
+
+function telegramBotFromUrl(url: string) {
+  return /t\.me\/([^/?#]+)/.exec(url)?.[1] ?? "bot"
 }
 
 export function parseTelegramAuthorization(input: { url: string; instructions: string }) {
@@ -443,13 +574,33 @@ export function identitySessionPath() {
   return kitoDataEnv("KTAI_IDENTITY_PATH")?.trim() || path.join(Global.Path.data, IDENTITY_SESSION_FILE)
 }
 
-export function persistIdentityToken(token: string, extra?: { accountId?: string; expiresAt?: string }) {
+export function persistIdentityToken(
+  token: string,
+  extra?: {
+    accountId?: string
+    expiresAt?: string
+    refreshToken?: string
+    refreshExpiresAt?: string
+    deviceSessionId?: string
+  },
+) {
   const current = token.trim()
   if (!current) return
   fs.mkdirSync(path.dirname(identitySessionPath()), { recursive: true })
   fs.writeFileSync(
     identitySessionPath(),
-    JSON.stringify({ token: current, accountId: extra?.accountId, expiresAt: extra?.expiresAt }, null, 2) + "\n",
+    JSON.stringify(
+      {
+        token: current,
+        accountId: extra?.accountId,
+        expiresAt: extra?.expiresAt,
+        refreshToken: extra?.refreshToken,
+        refreshExpiresAt: extra?.refreshExpiresAt,
+        deviceSessionId: extra?.deviceSessionId,
+      },
+      null,
+      2,
+    ) + "\n",
     { mode: 0o600 },
   )
   // The mode option only applies to newly created files; keep an existing
@@ -461,6 +612,9 @@ export function persistIdentitySession(session: IdentityBearerSession) {
   persistIdentityToken(session.token, {
     accountId: session.account.id,
     expiresAt: session.session.expiresAt,
+    refreshToken: session.device?.refreshToken,
+    refreshExpiresAt: session.device?.refreshExpiresAt,
+    deviceSessionId: session.device?.deviceSessionId,
   })
 }
 
@@ -469,16 +623,15 @@ function readIdentitySessionFile() {
   try {
     return JSON.parse(fs.readFileSync(identitySessionPath(), "utf8")) as {
       token?: unknown
+      accountId?: unknown
       expiresAt?: unknown
+      refreshToken?: unknown
+      refreshExpiresAt?: unknown
+      deviceSessionId?: unknown
     }
   } catch {
     return
   }
-}
-
-export function readStoredIdentityToken() {
-  const token = readIdentitySessionFile()?.token
-  if (typeof token === "string" && token.trim()) return token.trim()
 }
 
 export function readPersistedIdentityToken() {
@@ -518,9 +671,37 @@ export async function revokeCurrentIdentitySession(
 export async function signOutIdentity(
   input: { baseUrl?: string; fetchImpl?: FetchLike } = {},
 ) {
-  const token = readStoredIdentityToken()
+  const fetchImpl = input.fetchImpl ?? fetch
+  const raw = readIdentitySessionFile()
+  // access 过期时先用 refresh 面换新（ensureFreshIdentityToken 在 refresh
+  // 失效时已顺带清文件），否则旧 token 会 401 而设备会话残留到自然过期。
+  const token =
+    (await ensureFreshIdentityToken(fetchImpl).catch(() => undefined)) ??
+    (typeof raw?.token === "string" ? raw.token.trim() : "")
   if (token) {
-    await revokeCurrentIdentitySession(token, input.baseUrl, input.fetchImpl ?? fetch).catch(() => undefined)
+    if (typeof raw?.deviceSessionId === "string" && raw.deviceSessionId) {
+      await revokeDeviceSession(token, raw.deviceSessionId, input.baseUrl, fetchImpl).catch(() => undefined)
+    } else {
+      await revokeCurrentIdentitySession(token, input.baseUrl, fetchImpl).catch(() => undefined)
+    }
   }
   clearPersistedIdentity()
+}
+
+export async function revokeDeviceSession(
+  token: string,
+  deviceSessionId: string,
+  baseUrl?: string,
+  fetchImpl: FetchLike = fetch,
+) {
+  const response = await fetchImpl(
+    `${baseUrl ?? identityBaseUrl()}/identity/v1/device/device-sessions/${encodeURIComponent(deviceSessionId)}`,
+    {
+      method: "DELETE",
+      headers: { accept: "application/json", authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    },
+  )
+  if (response.ok || response.status === 401 || response.status === 404) return
+  throw new Error(errorMessage(await readJson(response), `KT Identity device logout failed (${response.status})`))
 }
