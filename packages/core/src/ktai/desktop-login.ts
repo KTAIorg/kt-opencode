@@ -102,9 +102,13 @@ const runDesktopLogin = Effect.fn("Ktai.desktopLogin")(function* (input: Desktop
   const previous =
     credential?.type === "oauth" && typeof credential.metadata?.accountId === "string"
       ? credential.metadata.accountId
-      : readPersistedIdentityAccountId()
-  if (previous && previous !== source.accountId && !source.allowSwitch)
-    return yield* report({ status: "account_conflict", accountId: previous })
+      : credential && credential.type !== "oauth"
+        ? undefined
+        : readPersistedIdentityAccountId()
+  // A manually configured key has no verified owner. Do not associate it with
+  // an old Identity sidecar or silently replace it on the first Desktop click.
+  if (((previous && previous !== source.accountId) || (credential && !previous)) && !source.allowSwitch)
+    return yield* report({ status: "account_conflict", accountId: previous ?? "unknown" })
   const current =
     previous === source.accountId ? yield* Effect.promise(() => reusableToken(source.accountId)) : undefined
   if (current && active?.type === "credential") {

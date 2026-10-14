@@ -199,6 +199,26 @@ const seed = Effect.fn(function* (expired = false) {
 })
 
 it.live(
+  "a manually configured key needs consent even if an older Identity file matches Desktop",
+  () =>
+    Effect.gen(function* () {
+      yield* seed()
+      const credentials = yield* Credential.Service
+      const saved = yield* credentials.create({
+        integrationID: Integration.ID.make("ktai"),
+        value: Credential.Key.make({ type: "key", key: "sk-legacy" }),
+      })
+      state.source = "A"
+      const result = yield* desktopLogin({ port: server.port!, request: nonce })
+      expect(result.status).toBe("account_conflict")
+      expect(result.accountId).toBe("unknown")
+      expect(yield* credentials.get(saved.id)).toEqual(saved)
+      expect(state.challenges).toBe(0)
+    }),
+  15_000,
+)
+
+it.live(
   "cross-account requests preserve both the original credential and on-disk data without consent",
   () =>
     Effect.gen(function* () {
