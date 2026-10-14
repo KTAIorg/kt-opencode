@@ -96,14 +96,13 @@ export const make = Effect.fn("Updater.make")(function* (dependencies: Dependenc
     Effect.gen(function* () {
       const next = yield* platform.checkForUpdate
 
-      if (next?.mode === "hold") {
+      if (!next || next.mode === "hold") {
         target = undefined
         yield* dependencies.persistence.clear
 
         return transition({ status: "up-to-date" })
       }
 
-      if (!next) return state
       target = next
 
       if (next.mode === "external") {
@@ -137,19 +136,26 @@ export const make = Effect.fn("Updater.make")(function* (dependencies: Dependenc
     Effect.gen(function* () {
       const next = yield* platform.checkForUpdate
 
-      if (next?.mode === "hold") {
+      if (!next || next.mode === "hold") {
         target = undefined
         yield* dependencies.persistence.clear
 
         return transition({ status: "up-to-date" })
       }
 
-      if (!next || next.mode !== "external") return state
       target = next
+
+      if (next.mode === "restart") {
+        yield* dependencies.persistence.clear
+        transition({ status: "downloading", version: next.version })
+        yield* stage(platform, next.version)
+
+        return transition({ status: "ready", version: next.version })
+      }
 
       if (state.status === "download-required" && state.version === next.version) return state
 
-      return transition({ status: "download-required", version: next.version })
+      return transition({ status: installing ? "installing" : "download-required", version: next.version })
     }).pipe(
       Effect.catch((error) => {
         if (intent === "install") return Effect.fail(error)
@@ -169,7 +175,7 @@ export const make = Effect.fn("Updater.make")(function* (dependencies: Dependenc
   const check = Effect.suspend(() => {
     const platform = dependencies.platform
 
-    if (!platform || state.status === "installing") return Effect.succeed(state)
+    if (!platform || installing) return Effect.succeed(state)
 
     if (pending) return Deferred.await(pending)
     const deferred = Deferred.makeUnsafe<UpdaterState>()
@@ -195,6 +201,7 @@ export const make = Effect.fn("Updater.make")(function* (dependencies: Dependenc
 
     if (state.status === "download-required") {
       const staged = state.version
+      transition({ status: "installing", version: staged })
       const deferred = Deferred.makeUnsafe<void, unknown>()
       installing = deferred
 

@@ -48,7 +48,7 @@ export const make = Effect.fn("Updater.platform")(function* (channel: string, de
         updateClient.setFeedURL({ provider: "generic", url: source.baseUrl })
         const result = await updateClient.checkForUpdates()
 
-        if (!result?.isUpdateAvailable) return undefined
+        if (!result?.isUpdateAvailable) return { mode: "hold" } as const
 
         if (result.updateInfo.version !== source.version)
           throw new Error("Kito update manifest does not match the assigned version")
