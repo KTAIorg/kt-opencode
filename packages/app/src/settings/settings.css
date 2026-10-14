@@ -2050,3 +2050,90 @@
   [data-slot="tabs-v2-trigger"] {
   padding-inline: 8px;
 }
+
+/* 模型管理弹窗（v2 迁移时 settings-v2.css 未随行，这里补回它仍在使用的规则，勿再删）。 */
+.settings-v2-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  user-select: none;
+}
+
+.settings-v2-panel :is(input, textarea, [contenteditable="true"]) {
+  user-select: text;
+}
+
+.settings-v2-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.settings-v2-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-v2-section-title {
+  padding-bottom: 8px;
+  font-size: 15px;
+  font-weight: 640;
+  line-height: 1;
+  color: var(--v2-text-text-base);
+}
+
+.settings-v2-models {
+  gap: 12px;
+}
+
+.settings-v2-models .settings-v2-section {
+  gap: 12px;
+}
+
+.settings-v2-models .settings-v2-section[data-expanded] {
+  padding-bottom: 12px;
+}
+
+.settings-v2-models-group-header {
+  display: flex;
+  align-items: center;
+  height: 28px;
+}
+
+.settings-v2-models .settings-v2-section-title {
+  padding-bottom: 0;
+  font-size: 13px;
+  font-weight: 530;
+  line-height: 16px;
+}
+
+.settings-v2-models [data-component="provider-icon"] {
+  color: var(--v2-icon-icon-base);
+}
+
+.settings-v2-models-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding-block: 48px;
+  font-size: 13px;
+  font-weight: 440;
+  line-height: 1;
+  color: var(--v2-text-text-muted);
+  text-align: center;
+}
+
+.settings-v2-models-status-filter {
+  color: var(--v2-text-text-base);
+}
+
+.settings-v2-tab-search-clear {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: 6px;
+  z-index: 1;
+  transform: translateY(-50%);
+}

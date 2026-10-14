@@ -59,12 +59,15 @@ function SelectorStory(props: { plan: boolean }) {
           </Button>
         )}
         models={(search) => models.filter((model) => model.name.toLowerCase().includes(search.toLowerCase()))}
-        groups={(items) => [{ category: "openai", items }]}
+        groups={(items) => [{ category: "openai", items, total: items.length, ok: 0, probed: 0 }]}
         current={`openai:${current()}`}
         chatgptPlan={props.plan}
         select={(item) => setCurrent(item.id)}
         onManage={() => undefined}
         onClose={() => undefined}
+        probe={{ autoRun: () => undefined, running: () => false, progress: () => ({ done: 0, total: 0 }) }}
+        hiddenUnavailable={() => 0}
+        hiddenByUser={() => 0}
       />
     </div>
   )

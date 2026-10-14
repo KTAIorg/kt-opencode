@@ -1,8 +1,21 @@
 import { Popover } from "@kobalte/core/popover"
-import { Component, ComponentProps, createEffect, createMemo, For, JSX, Show, Suspense, lazy, on } from "solid-js"
+import {
+  Component,
+  ComponentProps,
+  createEffect,
+  createMemo,
+  For,
+  JSX,
+  onMount,
+  Show,
+  Suspense,
+  lazy,
+  on,
+} from "solid-js"
 import { createStore } from "solid-js/store"
 import { createMediaQuery } from "@solid-primitives/media"
 import { useLocal, type ModelSelection } from "@/providers/models/selection"
+import { useModels } from "@/providers/models/models"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { popularProviders } from "@/providers/catalog/providers"
 import { Button } from "@opencode/ui/button"
@@ -10,6 +23,7 @@ import { Badge } from "@opencode/ui/badge"
 import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { Icon } from "@opencode/ui/icon"
 import { ScrollView } from "@opencode/ui/scroll-view"
+import { Spinner } from "@opencode/ui/spinner"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { Menu } from "@opencode/ui/menu"
 import { TextInput } from "@opencode/ui/text-input"
@@ -17,6 +31,8 @@ import { ModelTooltip } from "./tooltip"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ExternalLink } from "@/runtime/platform/external-link"
 import { useData } from "@/runtime/server/current"
+import { customerFacingProviderName } from "@/runtime/server/kt-settlement"
+import { ModelProbeBadge } from "@/shell/titlebar/model-probe-badge"
 import { useWorkspaceLocation } from "@/workspaces/location"
 import { decode64 } from "@/runtime/persistence/base64"
 import { handleDocumentSearchKeydown } from "@/shell/commands/search-keydown"
@@ -49,6 +65,33 @@ type ModelItem = ReturnType<ModelState["list"]>[number]
 const modelKey = (model: ModelItem) => `${model.provider.id}:${model.id}`
 
 const manageKey = "action:manage"
+
+const moreKey = (category: string) => `action:more:${category}`
+
+type ModelGroup = { category: string; items: ModelItem[]; total: number; ok: number; probed: number }
+
+// 分组计数：有探测结果后展示「可用 x / 总量 y」，没探测过先给总量，避免读成「0 可用」。
+function GroupCount(props: { group: ModelGroup }) {
+  const language = useLanguage()
+
+  return (
+    <Show
+      when={props.group.probed > 0}
+      fallback={
+        <span class="shrink-0 text-[11px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-faint">
+          {language.plural("dialog.model.group.count", props.group.total)}
+        </span>
+      }
+    >
+      <span
+        class="shrink-0 text-[11px] font-[440] leading-4 tracking-[-0.04px] text-v2-state-fg-success"
+        classList={{ "text-v2-text-text-faint": props.group.ok === 0 }}
+      >
+        {language.plural("dialog.model.group.available", props.group.ok, { total: props.group.total })}
+      </span>
+    </Show>
+  )
+}
 
 const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { category: string; items: ModelItem[] }) => {
   const aIndex = popularProviders.indexOf(a.category)
@@ -85,6 +128,9 @@ const ModelList: Component<{
     active: props.mobile ? (controller.current() ?? "") : "",
     collapsed: {},
   })
+
+  // 打开即自动探测（结果新鲜则跳过），分组计数和行内圆点都依赖它。
+  onMount(() => controller.probe.autoRun())
 
   createEffect(
     on(
@@ -162,6 +208,7 @@ const ModelList: Component<{
                   >
                     <span class="min-w-0 truncate">{item.name}</span>
                   </Tooltip>
+                  <ModelProbeBadge providerID={item.provider.id} modelID={item.id} />
                   <Show when={isFree(item.provider.id, item.cost)}>
                     <Badge class="shrink-0">{language.t("model.tag.free")}</Badge>
                   </Show>
@@ -243,6 +290,11 @@ const ModelList: Component<{
               disabled={store.search.length > 0}
               onExpandedChange={(key, value) => setStore("collapsed", key, !value)}
               rows={(items) => <ModelRows items={items} mobile={props.mobile} />}
+              action={(group) => (
+                <Show when={modelGroups().find((entry) => entry.category === group.category)}>
+                  {(entry) => <GroupCount group={entry()} />}
+                </Show>
+              )}
             />
           </Show>
         </div>
@@ -283,9 +335,9 @@ export function ModelSelectorPopover(props: {
     return connection?.type === "credential" && connection.method === "oauth"
   }
 
-  const manage = async () => {
+  const manage = async (search?: string) => {
     const { DialogManageModels } = await import("./manage")
-    void dialog.show(() => <DialogManageModels />)
+    void dialog.show(() => <DialogManageModels initialSearch={search} />)
   }
 
   const connect = async () => {
@@ -304,8 +356,15 @@ export function ModelSelectorPopover(props: {
           current={controller.current()}
           chatgptPlan={chatgptPlan()}
           select={controller.select}
-          onManage={manage}
+          onManage={(search) => void manage(search)}
           onClose={() => props.onClose?.()}
+          probe={{
+            autoRun: controller.probe.autoRun,
+            running: controller.probe.running,
+            progress: controller.probe.progress,
+          }}
+          hiddenUnavailable={controller.hiddenUnavailable}
+          hiddenByUser={controller.hiddenByUser}
         />
       }
     >
@@ -452,33 +511,68 @@ function createModelSelectorController(input: {
   onSelect: () => void
 }) {
   const model = input.model ?? useLocal().model
+  const manager = useModels()
 
-  const allModels = createMemo(() =>
+  const scoped = createMemo(() =>
     model
       .list()
-      .filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id }))
       .filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
   )
+  const visible = createMemo(() =>
+    scoped().filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id })),
+  )
+  const bySearch = (items: ModelItem[], search: string) => {
+    const query = search.trim()
+
+    return query
+      ? items.filter((item) => matchesModelSearch(query, [item.name, item.id, item.provider.name]))
+      : items
+  }
+  const unavailable = (item: ModelItem) =>
+    manager.probe.unavailable({ providerID: item.provider.id, modelID: item.id })
 
   return {
-    all: () => model.list().filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
+    all: () => scoped(),
     models: (search: string) => {
-      const query = search.trim()
+      // hideUnavailable 开着时滤掉探测失败的模型；限流（429）是暂时状态，不算不可用。
+      const items = manager.probe.state().hideUnavailable
+        ? bySearch(visible(), search).filter((item) => !unavailable(item))
+        : bySearch(visible(), search)
 
-      const filtered = query
-        ? allModels().filter((item) => matchesModelSearch(query, [item.name, item.id, item.provider.name]))
-        : allModels()
-
-      return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+      return [...items].sort((a, b) => a.name.localeCompare(b.name))
     },
-    groups: (models: ModelItem[]) => {
-      const byProvider = new Map<string, ModelItem[]>()
+    hiddenUnavailable: (search: string) =>
+      manager.probe.state().hideUnavailable ? bySearch(visible(), search).filter(unavailable).length : 0,
+    hiddenByUser: (search: string) =>
+      bySearch(
+        scoped().filter((item) => !model.visible({ modelID: item.id, providerID: item.provider.id })),
+        search,
+      ).length,
+    probe: {
+      autoRun: () => manager.probe.autoRun(),
+      running: () => manager.probe.running(),
+      progress: () => manager.probe.progress(),
+    },
+    groups: (list: ModelItem[]): ModelGroup[] => {
+      const byProvider = new Map<string, { items: ModelItem[]; total: number; ok: number; probed: number }>()
 
-      for (const item of models) {
-        byProvider.set(item.provider.id, [...(byProvider.get(item.provider.id) ?? []), item])
+      for (const item of visible()) {
+        const entry = byProvider.get(item.provider.id) ?? { items: [], total: 0, ok: 0, probed: 0 }
+
+        entry.total++
+        const result = manager.probe.result({ providerID: item.provider.id, modelID: item.id })
+
+        if (result) {
+          entry.probed++
+          if (result.ok) entry.ok++
+        }
+
+        byProvider.set(item.provider.id, entry)
       }
 
-      return Array.from(byProvider, ([category, items]) => ({ category, items })).sort(sortModelGroups)
+      for (const item of list) byProvider.get(item.provider.id)?.items.push(item)
+
+      return Array.from(byProvider, ([category, entry]) => ({ category, ...entry })).sort(sortModelGroups)
     },
     current: () => {
       const value = model.current()
@@ -495,12 +589,15 @@ function createModelSelectorController(input: {
 export function ModelSelectorPopoverView(props: {
   trigger: ModelSelectorTrigger
   models: (search: string) => ModelItem[]
-  groups: (models: ModelItem[]) => { category: string; items: ModelItem[] }[]
+  groups: (models: ModelItem[]) => ModelGroup[]
   current: string | undefined
   chatgptPlan?: boolean
   select: (item: ModelItem) => void
-  onManage: () => void
+  onManage: (search?: string) => void
   onClose: () => void
+  probe: { autoRun: () => void; running: () => boolean; progress: () => { done: number; total: number } }
+  hiddenUnavailable: (search: string) => number
+  hiddenByUser: (search: string) => number
 }) {
   const language = useLanguage()
   const [store, setStore] = createStore({ open: false, search: "", active: "" })
@@ -510,7 +607,13 @@ export function ModelSelectorPopoverView(props: {
 
   const models = createMemo(() => props.models(store.search))
   const groups = createMemo(() => props.groups(models()))
-  const keys = () => [...groups().flatMap((group) => group.items.map(modelKey)), manageKey]
+  // 「查看全部 N」只在非搜索时出现，作为被隐藏模型的入口；键盘导航把它算作组尾选项。
+  const groupExtras = (group: ModelGroup) =>
+    group.total > group.items.length && !store.search.trim() ? [moreKey(group.category)] : []
+  const keys = () => [
+    ...groups().flatMap((group) => [...group.items.map(modelKey), ...groupExtras(group)]),
+    manageKey,
+  ]
 
   const initialActive = () => {
     const selected = props.current
@@ -528,6 +631,8 @@ export function ModelSelectorPopoverView(props: {
     if (open) {
       dismiss.allowTriggerRestore()
       setStore({ open: true, active: initialActive() })
+      // 打开即探测（结果新鲜则跳过），让分组计数和行内圆点尽快出现。
+      props.probe.autoRun()
       setTimeout(() =>
         requestAnimationFrame(() => {
           searchRef?.focus()
@@ -541,16 +646,16 @@ export function ModelSelectorPopoverView(props: {
     setStore({ open: false, search: "", active: "" })
   }
 
+  const openManage = (search?: string) => {
+    dismiss.preventTriggerRestore()
+    setOpen(false)
+    dismiss.afterClose(() => props.onManage(search))
+  }
+
   const selectModel = (item: ModelItem) => {
     dismiss.preventTriggerRestore()
     setOpen(false)
     dismiss.afterClose(() => props.select(item))
-  }
-
-  const manage = () => {
-    dismiss.preventTriggerRestore()
-    setOpen(false)
-    dismiss.afterClose(props.onManage)
   }
 
   const selectActive = () => {
@@ -562,7 +667,13 @@ export function ModelSelectorPopoverView(props: {
       return
     }
 
-    if (store.active === manageKey) manage()
+    if (store.active === manageKey) {
+      openManage()
+
+      return
+    }
+
+    if (store.active.startsWith("action:more:")) openManage(store.active.slice("action:more:".length))
   }
 
   const moveActive = (delta: number) => {
@@ -666,6 +777,26 @@ export function ModelSelectorPopoverView(props: {
           <div class="h-px bg-v2-border-border-muted" />
           <ScrollView data-slot="model-selector-scroll" class="max-h-[220px] min-h-0">
             <div class="flex flex-col p-0.5 pt-0">
+              <Show when={props.probe.running()}>
+                <div class="flex items-center gap-2 px-3 py-1.5 text-[11px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-faint">
+                  <Spinner class="h-3 w-3 text-v2-icon-icon-muted" />
+                  {language.t("dialog.model.probe.progress", props.probe.progress())}
+                </div>
+              </Show>
+              <Show when={props.hiddenUnavailable(store.search)}>
+                {(count) => (
+                  <div class="px-3 py-1.5 text-[11px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-faint">
+                    {language.plural("dialog.model.probe.hidden", count())}
+                  </div>
+                )}
+              </Show>
+              <Show when={props.hiddenByUser(store.search)}>
+                {(count) => (
+                  <div class="px-3 py-1.5 text-[11px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-faint">
+                    {language.plural("dialog.model.hiddenByUser", count())}
+                  </div>
+                )}
+              </Show>
               <Show
                 when={models().length > 0}
                 fallback={
@@ -678,7 +809,11 @@ export function ModelSelectorPopoverView(props: {
                   {(group) => (
                     <Menu.Group>
                       <Menu.GroupLabel class="gap-2 px-3">
-                        <span class="min-w-0 truncate">{group.items[0].provider.name}</span>
+                        <ProviderModelIcon provider={group.items[0].provider} class="shrink-0" />
+                        <span class="min-w-0 truncate">
+                          {customerFacingProviderName(group.category, group.items[0].provider.name)}
+                        </span>
+                        <GroupCount group={group} />
                       </Menu.GroupLabel>
                       <Menu.RadioGroup value={props.current}>
                         <For each={group.items}>
@@ -710,6 +845,7 @@ export function ModelSelectorPopoverView(props: {
                                 onSelect={() => selectModel(item)}
                               >
                                 <span class="min-w-0 truncate leading-5">{item.name}</span>
+                                <ModelProbeBadge providerID={item.provider.id} modelID={item.id} />
                                 <Show when={isFree(item.provider.id, item.cost)}>
                                   <Badge class="shrink-0">{language.t("model.tag.free")}</Badge>
                                 </Show>
@@ -721,6 +857,24 @@ export function ModelSelectorPopoverView(props: {
                           )}
                         </For>
                       </Menu.RadioGroup>
+                      <For each={groupExtras(group)}>
+                        {(key) => (
+                          <Menu.Item
+                            data-option-key={key}
+                            classList={{ "!bg-v2-overlay-simple-overlay-hover": store.active === key }}
+                            onMouseEnter={() => {
+                              setStore("active", key)
+                              setTimeout(() => searchRef?.focus())
+                            }}
+                            onSelect={() => openManage(group.category)}
+                          >
+                            <Icon name="chevron-right" size="small" class="text-v2-icon-icon-muted" />
+                            <span class="min-w-0 flex-1 truncate leading-5">
+                              {language.plural("dialog.model.group.more", group.total)}
+                            </span>
+                          </Menu.Item>
+                        )}
+                      </For>
                     </Menu.Group>
                   )}
                 </For>
@@ -736,7 +890,7 @@ export function ModelSelectorPopoverView(props: {
                 setStore("active", manageKey)
                 setTimeout(() => searchRef?.focus())
               }}
-              onSelect={manage}
+              onSelect={() => openManage()}
             >
               <Icon name="outline-sliders" size="small" />
               <span class="min-w-0 flex-1 truncate leading-5">{language.t("dialog.model.manage")}</span>
