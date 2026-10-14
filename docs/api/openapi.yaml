@@ -6,6 +6,63 @@ info:
   version: 0.0.1
   description: Experimental HttpApi surface for selected instance routes.
 paths:
+  /ktai/desktop-login:
+    post:
+      tags:
+        - ktai
+      operationId: v2.ktai.desktop.login
+      parameters:
+        []
+      security:
+        []
+      responses:
+        "200":
+          description: KtaiDesktopLogin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KtaiDesktopLogin"
+        "400":
+          description: InvalidRequestError
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvalidRequestErrorEncoded"
+        "401":
+          description: UnauthorizedError
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedErrorEncoded"
+        "503":
+          description: ServiceUnavailableError
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceUnavailableErrorEncoded"
+      description: Authenticated local sidecar only. No source or target token crosses the loopback callback.
+      summary: Sign in from KT Desktop over a one-time local rendezvous
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                port:
+                  anyOf:
+                    - type: number
+                    - type: string
+                      enum:
+                        - Infinity
+                        - "-Infinity"
+                        - NaN
+                request:
+                  type: string
+              required:
+                - port
+                - request
+              additionalProperties: false
+        required: true
   /ktai/account:
     get:
       tags:
@@ -2748,6 +2805,25 @@ components:
         - chain
         - asset
         - address
+      additionalProperties: false
+    KtaiDesktopLogin:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - signed_in
+            - reused
+            - account_conflict
+        accountId:
+          type: string
+        accountName:
+          anyOf:
+            - type: string
+            - type: "null"
+      required:
+        - status
+        - accountId
       additionalProperties: false
     KtaiEnsure:
       type: object

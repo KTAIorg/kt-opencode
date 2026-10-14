@@ -1,4 +1,6 @@
 import type {
+  ServerKtaiDesktopLoginInput,
+  ServerKtaiDesktopLoginOutput,
   ServerKtaiAccountGetOutput,
   ServerKtaiEnsureOutput,
   ServerKtaiCredentialGetOutput,
@@ -438,6 +440,20 @@ export function make(options: ClientOptions) {
 
   return {
     "server.ktai": {
+      desktop: {
+        login: (input: ServerKtaiDesktopLoginInput, requestOptions?: RequestOptions) =>
+          request<ServerKtaiDesktopLoginOutput>(
+            {
+              method: "POST",
+              path: `/ktai/desktop-login`,
+              body: { port: input["port"], request: input["request"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 503],
+              empty: false,
+            },
+            requestOptions,
+          ),
+      },
       account: {
         get: (requestOptions?: RequestOptions) =>
           request<ServerKtaiAccountGetOutput>(

@@ -644,6 +644,11 @@ export function readPersistedIdentityToken() {
   return raw.token.trim()
 }
 
+export function readPersistedIdentityAccountId() {
+  const raw = readIdentitySessionFile()
+  return typeof raw?.accountId === "string" ? raw.accountId : undefined
+}
+
 export function clearPersistedIdentity() {
   if (!fs.existsSync(identitySessionPath())) return
   fs.unlinkSync(identitySessionPath())

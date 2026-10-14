@@ -7,6 +7,7 @@ import { registerStorageSnapshotHandler } from "./storage/snapshot"
 import { createEarlyWindow } from "./windows/early"
 import { rendererAssetsServed } from "./windows/protocol"
 import { registerRendererScheme } from "./windows/scheme"
+import { receiveDesktopLogin } from "./lifecycle/desktop-login"
 
 // This module stays small on purpose. Electron holds the ready event until the entry module has
 // finished, and the first window should be on screen before the rest of the main process — a few
@@ -15,6 +16,10 @@ import { registerRendererScheme } from "./windows/scheme"
 configureApplication()
 
 if (acquireApplicationLock()) {
+  process.argv.forEach(receiveDesktopLogin)
+  app.on("open-url", (event, url) => {
+    if (receiveDesktopLogin(url)) event.preventDefault()
+  })
   registerRendererScheme()
   // Window first, then the bundle: starting the import before ready delays ready itself, because the
   // module graph evaluates on the same thread Chromium needs to finish initialising.
