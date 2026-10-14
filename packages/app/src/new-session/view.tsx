@@ -38,6 +38,8 @@ export function NewSessionView(props: {
   composer: ComposerModel
   project: PromptProjectController
   workspace: NewSessionWorkspaceController
+  /** 主页底部的常驻输入框空间有限，关掉大水印改成垂直居中的紧凑布局。 */
+  wordmark?: boolean
 }) {
   const [onboarding, setOnboarding, , onboardingReady] = persisted(
     Persist.global("workspace-onboarding"),
@@ -61,10 +63,17 @@ export function NewSessionView(props: {
           active={props.composer.state.drag === "active"}
           input={props.composer.model.selection.current()?.capabilities.input}
         />
-        <div class="absolute inset-x-0 top-[25.375%] flex justify-center px-6">
+        <div
+          classList={{
+            "absolute inset-x-0 top-[25.375%] flex justify-center px-6": props.wordmark !== false,
+            "flex h-full flex-col items-center justify-center px-6": props.wordmark === false,
+          }}
+        >
           <div class={NEW_SESSION_CONTENT_WIDTH}>
-            <NewSessionWordmark />
-            <div class="mt-8 flex flex-col gap-8">
+            <Show when={props.wordmark !== false}>
+              <NewSessionWordmark />
+            </Show>
+            <div class="flex flex-col gap-8" classList={{ "mt-8": props.wordmark !== false }}>
               <Composer model={props.composer} />
               <Show when={props.project.empty()}>
                 <PromptProjectAddButton controller={props.project} />

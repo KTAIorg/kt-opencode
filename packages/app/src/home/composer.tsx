@@ -40,7 +40,8 @@ export function HomeComposer(props: { conn: ServerConnection.Any; directory: str
                   <FileProvider>
                     <ComposerPersistenceProvider draftID={draft.draftID}>
                       <CommentsProvider>
-                        <NewSession draftId={draft.draftID} autoFocus={false} />
+                        {/* 主页底部条空间有限：关掉大水印，改用紧凑居中布局，避免挤出底部的附件/模型按钮。 */}
+                        <NewSession draftId={draft.draftID} autoFocus={false} wordmark={false} />
                       </CommentsProvider>
                     </ComposerPersistenceProvider>
                   </FileProvider>

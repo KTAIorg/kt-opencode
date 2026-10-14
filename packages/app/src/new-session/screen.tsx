@@ -13,7 +13,7 @@ import { useNewSessionCommands } from "./commands"
 import { createDraftMcpControls } from "./mcp"
 
 /** The draft-only Session page. Submitting promotes the draft into a real Session. */
-export default function NewSessionPage(props: { draftId: string; autoFocus?: boolean }) {
+export default function NewSessionPage(props: { draftId: string; autoFocus?: boolean; wordmark?: boolean }) {
   const [search, setSearch] = useSearchParams<{ draftId?: string; prompt?: string }>()
   const tabs = useTabs()
   const servers = useSettingsServers()
@@ -104,7 +104,7 @@ export default function NewSessionPage(props: { draftId: string; autoFocus?: boo
     <div class="relative size-full overflow-hidden flex flex-col">
       {suspendUntilPromptReady()}
       <div class="flex-1 min-h-0 flex flex-col gap-2 px-[var(--shell-inline-inset,8px)] pb-[var(--shell-bottom-inset,8px)] pt-[var(--shell-top-inset,8px)]">
-        <NewSessionView composer={model} project={project} workspace={workspace} />
+        <NewSessionView composer={model} project={project} workspace={workspace} wordmark={props.wordmark} />
       </div>
     </div>
   )
