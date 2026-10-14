@@ -14,6 +14,7 @@ export default {
   "installer.title": "安装 Kito 更新",
   "installer.description": "请下载 {{version}} 版本，然后从磁盘映像安装 Kito。",
   "section.title": "更新",
+  "releaseNotes.version": "Kito {{version}}",
   "releaseNotes.title": "发行说明",
   "releaseNotes.description": "更新后显示“新功能”弹窗",
   "check.title": "检查更新",
