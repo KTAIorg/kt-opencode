@@ -6,6 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import type { Configuration } from "electron-builder"
+import { Schema } from "effect"
 
 // Use electron-builder's matcher so the tests also cover its glob and directory traversal semantics.
 const { FileMatcher } = createRequire(import.meta.resolve("electron-builder"))("app-builder-lib/out/fileMatcher")
@@ -39,6 +40,7 @@ async function load(channel: string) {
   process.env.OPENCODE_CHANNEL = channel
 
   try {
+    // SAFETY: the query changes only module caching; this is the typed electron-builder configuration module.
     return (await import(`./electron-builder.config.ts?${channel}`)).default as Configuration
   } finally {
     delete process.env.OPENCODE_CHANNEL
@@ -51,14 +53,19 @@ function trimFilter(dir: string, config: Configuration) {
   return new FileMatcher(dir, "", (value: string) => value, [
     "**/*",
     ...(Array.isArray(config.files) ? config.files : []).filter(
-      (value): value is string => typeof value === "string" && value.startsWith("!"),
+      (value): value is string => Schema.is(Schema.String)(value) && value.startsWith("!"),
     ),
   ]).createFilter()
 }
 
-test.each(channels)("channel identity for $channel", async ({ channel, appId }) => {
+test.each(channels)("channel identity for $channel", async ({ channel, appId, productName, protocolName, schemes }) => {
   const config = await load(channel)
   expect(config.appId).toBe(appId)
+  expect(config.productName).toBe(productName)
+  expect(config.protocols).toEqual({ name: protocolName, schemes: [...schemes] })
+
+  if (channel !== "dev")
+    expect(config.publish).toEqual({ provider: "github", owner: "KTAIorg", repo: "kt-opencode", channel: "latest" })
   expect(config.extraMetadata?.desktopName).toBe(`${appId}.desktop`)
   expect(config.linux?.executableName).toBe(appId)
   expect(config.linux?.desktop?.entry?.StartupWMClass).toBe(appId)

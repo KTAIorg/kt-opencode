@@ -17,6 +17,7 @@ async function setup(input?: {
   ready?: { version: string }
   /** The release each platform check finds, in order; the last one repeats. "offline" fails the check. */
   checks?: readonly string[]
+  check?: (index: number) => Promise<void>
   stage?: () => Promise<void>
   install?: () => Promise<void>
   external?: boolean
@@ -31,12 +32,19 @@ async function setup(input?: {
   const dependencies: Dependencies = {
     currentVersion: input?.currentVersion ?? "1.0.0",
     platform: {
-      checkForUpdate: Effect.try({
-        try: () => {
+      checkForUpdate: Effect.tryPromise({
+        try: async () => {
           calls.push("check")
+          await input?.check?.(cursor.check)
           const version = checks[Math.min(cursor.check++, checks.length - 1)] ?? "2.0.0"
 
           if (version === "offline") throw new Error("offline")
+
+          if (version === "hold") return { mode: "hold" as const }
+
+          if (version === "none") return undefined
+
+          if (version.startsWith("restart:")) return { mode: "restart" as const, version: version.slice(8) }
 
           return input?.external
             ? { mode: "external" as const, version, url: `https://files.test/${version}.dmg` }
@@ -45,9 +53,12 @@ async function setup(input?: {
         catch: (error) => error,
       }),
       stageUpdate: (options) =>
-        Effect.tryPromise(async () => {
-          calls.push(options.differential ? "download" : "download:full")
-          await input?.stage?.()
+        Effect.tryPromise({
+          try: async () => {
+            calls.push(options.differential ? "download" : "download:full")
+            await input?.stage?.()
+          },
+          catch: (error) => error,
         }),
       installAndRestart: Effect.suspend(() => {
         calls.push(`install:${store.ready?.version}`)
@@ -206,13 +217,6 @@ describe("updater", () => {
       calls: ["check", "download", "check", "download:full", "prepare", "install:3.0.0"],
       state: { status: "installing", version: "3.0.0" },
     },
-    {
-      name: "clicking install uses the staged release when the final check fails",
-      checks: ["2.0.0", "offline"],
-      then: undefined,
-      calls: ["check", "download", "check", "prepare", "install:2.0.0"],
-      state: { status: "installing", version: "2.0.0" },
-    },
   ])("$name", async (row) => {
     const app = await setup({ checks: row.checks })
     await app.start()
@@ -227,6 +231,81 @@ describe("updater", () => {
 
     expect(app.calls).toEqual([...row.calls])
     expect(app.state()).toEqual(row.state)
+  })
+
+  test.each(["hold", "none", "offline"])("does not install a staged release after %s", async (decision) => {
+    const app = await setup({ checks: ["2.0.0", decision] })
+    await app.start()
+
+    await expect(app.install()).rejects.toThrow(decision === "offline" ? "offline" : "withdrawn")
+    expect(app.calls).toEqual(["check", "download", "check"])
+    expect(app.state()).toEqual(
+      decision === "offline" ? { status: "ready", version: "2.0.0" } : { status: "up-to-date" },
+    )
+
+    if (decision !== "offline") expect(app.getReady()).toBeUndefined()
+  })
+
+  test.each(["hold", "none", "offline"])(
+    "does not open a withdrawn or unvalidated external installer after %s",
+    async (decision) => {
+      const app = await setup({ external: true, checks: ["2.0.0", decision] })
+      await app.start()
+
+      await expect(app.install()).rejects.toThrow(decision === "offline" ? "offline" : "unavailable")
+      expect(app.calls).toEqual(["check", "check"])
+    },
+  )
+
+  test("replaces an external installer when a native update is assigned", async () => {
+    const app = await setup({ external: true, checks: ["2.0.0", "restart:3.0.0"] })
+    await app.start()
+    await expect(app.install()).rejects.toThrow("unavailable")
+    expect(app.calls).toEqual(["check", "check", "download"])
+    expect(app.state()).toEqual({ status: "ready", version: "3.0.0" })
+    expect(app.getReady()).toEqual({ version: "3.0.0" })
+  })
+
+  test.each(["check", "install"])(
+    "native download failure after a manual target leaves a retryable state for %s",
+    async (action) => {
+      const app = await setup({
+        external: true,
+        checks: ["2.0.0", "restart:3.0.0"],
+        stage: () => Promise.reject(new Error("download failed")),
+      })
+
+      await app.start()
+
+      if (action === "install") await expect(app.install()).rejects.toThrow("download failed")
+
+      if (action === "check") await app.check()
+      expect(app.state()).toEqual({ status: "error", message: "download failed" })
+      expect(app.getReady()).toBeUndefined()
+      expect(app.calls).toEqual(["check", "check", "download"])
+    },
+  )
+
+  test("serializes a manual install check with background checks", async () => {
+    const response = Promise.withResolvers<void>()
+
+    const app = await setup({
+      external: true,
+      checks: ["2.0.0", "2.0.0", "hold"],
+      check: (index) => (index === 1 ? response.promise : Promise.resolve()),
+    })
+
+    await app.start()
+    const install = app.install()
+    await tick()
+    expect(app.state()).toEqual({ status: "installing", version: "2.0.0" })
+    expect(await app.check()).toEqual({ status: "installing", version: "2.0.0" })
+    expect(app.calls).toEqual(["check", "check"])
+    response.resolve()
+    await install
+    expect(app.calls).toEqual(["check", "check", "external:https://files.test/2.0.0.dmg"])
+    await app.check()
+    expect(app.state()).toEqual({ status: "up-to-date" })
   })
 
   test("offers an external installer without staging or preparing to restart", async () => {
@@ -284,7 +363,7 @@ describe("updater", () => {
     await refresh
     expect(app.state()).toEqual({ status: "installing", version: "3.0.0" })
     await tick()
-    expect(app.calls).toEqual(["check", "download", "check", "download:full", "prepare", "install:3.0.0"])
+    expect(app.calls).toEqual(["check", "download", "check", "download:full", "check", "prepare", "install:3.0.0"])
   })
 
   test("returns to ready after a failed installation and allows a retry", async () => {

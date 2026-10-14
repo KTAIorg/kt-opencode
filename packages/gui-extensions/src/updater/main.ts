@@ -15,10 +15,13 @@ const setup: MainSetup<typeof definition> = async (ctx) => {
   const runPromise = Effect.runPromiseWith(context)
   const runFork = Effect.runForkWith(context)
   const ready = ctx.stores.ready
+  const deviceId = ctx.stores.deviceId.value ?? crypto.randomUUID()
+
+  if (!ctx.stores.deviceId.value) ctx.stores.deviceId.set(deviceId)
 
   // electron-updater loads only in packaged builds that update, after the first window is up.
   const platform = enabled
-    ? await import("./platform").then((module) => runPromise(module.make(build.channel)))
+    ? await import("./platform").then((module) => runPromise(module.make(build.channel, deviceId)))
     : undefined
 
   if (ctx.scope.signal.aborted) return
@@ -105,8 +108,8 @@ const setup: MainSetup<typeof definition> = async (ctx) => {
       after: "about",
       enabled: () => enabled,
       run(window) {
-        // Beta builds check in the focused window, which can offer the stable installer.
-        if (build.channel !== "beta") return void runFork(show)
+        // macOS can offer a manual installer until signed builds are available.
+        if (build.channel !== "beta" && process.platform !== "darwin") return void runFork(show)
 
         if (window) provider.emit("check", null, window.id)
       },

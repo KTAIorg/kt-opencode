@@ -2,6 +2,7 @@ import { Button } from "@opencode/ui/button"
 import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { Icon } from "@opencode/ui/icon"
 import { showToast } from "@opencode/ui/toast"
+import { Schema } from "effect"
 import type { DialogHandle, IpcClient, SetupContext } from "../sdk"
 import type { Updater } from "./contract"
 import type definition from "./index"
@@ -12,7 +13,10 @@ type Context = SetupContext<typeof definition>
 
 /** Restarts into the staged update. A beta build moving to stable confirms the installer download first. */
 export function install(ctx: Context, client: Client) {
-  const download = () => client.install().catch((cause: unknown) => requestFailed(ctx, cause))
+  const download = () =>
+    client
+      .install()
+      .catch((cause: unknown) => requestFailed(ctx, Schema.is(Schema.instanceOf(Error))(cause) ? cause : undefined))
 
   const state = client.state()
 
@@ -31,7 +35,7 @@ export function install(ctx: Context, client: Client) {
 export async function check(ctx: Context, client: Client) {
   const state = await client
     .check({ signal: ctx.signal })
-    .catch((cause: unknown) => requestFailed(ctx, cause))
+    .catch((cause: unknown) => requestFailed(ctx, Schema.is(Schema.instanceOf(Error))(cause) ? cause : undefined))
 
   if (!state || ctx.signal.aborted) return
 
@@ -55,12 +59,12 @@ export async function check(ctx: Context, client: Client) {
   }
 }
 
-function requestFailed(ctx: Context, cause: unknown) {
+function requestFailed(ctx: Context, cause: Error | undefined) {
   if (ctx.signal.aborted) return
 
   showToast({
     title: ctx.t("common.requestFailed"),
-    description: cause instanceof Error && cause.message ? cause.message : undefined,
+    description: cause?.message || undefined,
   })
 }
 
@@ -81,8 +85,8 @@ function DialogStableDownload(props: {
     <Dialog fit>
       <DialogHeader>
         <DialogTitleGroup
-          title={ctx.t("migration.title")}
-          description={ctx.t("migration.description", { version: props.version })}
+          title={ctx.t("installer.title")}
+          description={ctx.t("installer.description", { version: props.version })}
         />
       </DialogHeader>
       <DialogFooter>

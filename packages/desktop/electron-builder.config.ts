@@ -29,6 +29,7 @@ async function signWindows(configuration: { path: string }) {
   if (process.platform !== "win32") return
 
   if (process.env.GITHUB_ACTIONS !== "true") return
+
   if (process.env.KTAI_UNSIGNED_BUILD === "1") return
 
   await execFileAsync(
@@ -63,11 +64,14 @@ const channel = (() => {
 })()
 
 const unsigned = process.env.KTAI_UNSIGNED_BUILD === "1"
+
 // GlobalSign EV signing is driven by electron-builder's own signtool integration
 // through CSC_LINK/WIN_CSC_LINK. The Azure Trusted Signing hook below is only a
 // fallback for builds that do not carry a PFX payload.
 const cscLink = process.env.WIN_CSC_LINK ?? process.env.CSC_LINK
+
 const pfxSigning = !unsigned && Boolean(cscLink)
+
 const requireSigning = process.env.KTAI_REQUIRE_SIGNING === "1"
 
 const APP_IDS = {
@@ -155,9 +159,9 @@ const getBase = (appId: string): Configuration => ({
   },
   win: {
     icon: `resources/icons/icon.ico`,
-    ...(pfxSigning ? {} : { signtoolOptions: { sign: signWindows } }),
+    signtoolOptions: pfxSigning ? undefined : { sign: signWindows },
     target: ["nsis"],
-    verifyUpdateCodeSignature: false,
+    verifyUpdateCodeSignature: pfxSigning || requireSigning,
   },
   nsis: {
     include: path.join(packageDir, "resources", "windows", "installer.nsh"),
@@ -203,8 +207,9 @@ function getConfig() {
         productName: "Kito Beta",
         protocols: { name: "Kito Beta", schemes: ["ktai", "opencode"] },
         publish: {
-          provider: "generic",
-          url: "https://opencode.ai/update/api/beta/desktop/opencode/",
+          provider: "github",
+          owner: "KTAIorg",
+          repo: "kt-opencode",
           channel: "latest",
         },
         deb: { fpm: [metainfoFpm(appId)] },
@@ -216,11 +221,12 @@ function getConfig() {
       return {
         ...base,
         appId,
-        productName: "OpenCode",
-        protocols: { name: "OpenCode", schemes: ["opencode"] },
+        productName: "Kito",
+        protocols: { name: "Kito", schemes: ["ktai", "opencode"] },
         publish: {
-          provider: "generic",
-          url: "https://opencode.ai/update/api/latest/desktop/opencode/",
+          provider: "github",
+          owner: "KTAIorg",
+          repo: "kt-opencode",
           channel: "latest",
         },
         deb: { fpm: [metainfoFpm(appId), legacyDesktopEntryFpm] },

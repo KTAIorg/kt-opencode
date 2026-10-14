@@ -1,0 +1,4 @@
+# Main-process HTTP contracts use native fetch, without the renderer's DOM preload.
+[test]
+root = "./test/node"
+preload = []

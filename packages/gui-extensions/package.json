@@ -11,11 +11,12 @@
     "./sdk": "./src/sdk/index.ts",
     "./sdk/main": "./src/sdk/main.ts",
     "./sdk/bridge": "./src/sdk/bridge.ts",
-    "./updater": "./src/updater/contract.ts"
+    "./updater": "./src/updater/contract.ts",
+    "./updater/kito-source": "./src/updater/kito-source.ts"
   },
   "scripts": {
     "typecheck": "tsgo -b",
-    "test": "bun test"
+    "test": "bun test && bun --config=./bunfig.node.toml test"
   },
   "dependencies": {
     "@betteroffice/docx": "0.4.3",
