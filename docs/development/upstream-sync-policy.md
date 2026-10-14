@@ -65,6 +65,9 @@ kito-v<产品版本>
 - Kito 账户按钮通过 `TitlebarRight` 注册；默认项目调用使用上游 typed Electron IPC。
 - `docs/api/openapi.yaml` 是 Kito HTTP+JSON 接口契约。修改 Protocol 后依次执行 `packages/protocol` 的 `generate`、`packages/client` 的 `generate` 和根目录 `sync:kito-contract`。
 - 数据、配置、缓存、服务注册继续位于 Kito 自己的 XDG 目录；托管 NewAPI 密钥与 KT Identity OAuth 分离。
+- 桌面更新器由 `packages/gui-extensions/src/updater` 拥有。必须先请求 Kito Release Service 的版本分配，再读取 `kito-v<targetVersion>` 的不可变 GitHub 清单；不得使用 OpenCode 官方源、KT Desktop 的 legacy feed 或绕过灰度的 Latest。安装设备 ID 存于 updater 的 main store，更新器禁止降级。
+- `kito-v2.1.18` 打包了错误的官方更新源，已经安装该版本的设备需要一次手动安装修复版；服务端无法修改已安装包的 `app-update.yml`。macOS 原生自动安装还需要 Apple Developer ID 签名，目前未签名的构建不能当作已通过自动安装验收。
+- 新版本先以 rollout 0 登记，给验证设备配置白名单，用 `Verify Kito Updater` workflow 运行实际 Electron 检查和下载，通过后再放量。该验证使用隔离 profile，不改用户正在运行的客户端。
 - 合入 `main` 会自动发布安装包，合入前需完成质量门禁并取得发布授权。
 
 ## 已退役的旧 Patch

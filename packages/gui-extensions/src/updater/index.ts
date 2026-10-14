@@ -11,6 +11,8 @@ export default Extension.define({
   id: "updater",
   provides: { updater: Updater },
   stores: {
+    // Stable per-installation identity for Release Service rollout buckets.
+    deviceId: Store.main(Schema.NullOr(Schema.String), null),
     // Whether What's New shows after an update; stored before in the app settings.
     releaseNotes: Store.global(
       ReleaseNotes,
