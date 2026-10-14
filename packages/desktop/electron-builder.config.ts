@@ -161,7 +161,7 @@ const getBase = (appId: string): Configuration => ({
     icon: `resources/icons/icon.ico`,
     signtoolOptions: pfxSigning ? undefined : { sign: signWindows },
     target: ["nsis"],
-    verifyUpdateCodeSignature: false,
+    verifyUpdateCodeSignature: pfxSigning || requireSigning,
   },
   nsis: {
     include: path.join(packageDir, "resources", "windows", "installer.nsh"),

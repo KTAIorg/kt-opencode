@@ -108,8 +108,8 @@ const setup: MainSetup<typeof definition> = async (ctx) => {
       after: "about",
       enabled: () => enabled,
       run(window) {
-        // Beta builds check in the focused window, which can offer the stable installer.
-        if (build.channel !== "beta") return void runFork(show)
+        // macOS can offer a manual installer until signed builds are available.
+        if (build.channel !== "beta" && process.platform !== "darwin") return void runFork(show)
 
         if (window) provider.emit("check", null, window.id)
       },

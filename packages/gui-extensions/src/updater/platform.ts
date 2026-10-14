@@ -1,4 +1,4 @@
-import { app, autoUpdater } from "electron"
+import { app, autoUpdater, shell } from "electron"
 import pkg from "electron-updater"
 import { Effect } from "effect"
 import type { Platform } from "./machine"
@@ -22,7 +22,8 @@ export const make = Effect.fn("Updater.platform")(function* (channel: string, de
   updateClient.allowPrerelease = false
   updateClient.allowDowngrade = false
   updateClient.autoDownload = false
-  updateClient.autoInstallOnAppQuit = process.platform === "darwin"
+  // Installation must pass a fresh Release Service assignment, even on quit.
+  updateClient.autoInstallOnAppQuit = false
   yield* Effect.logInfo("auto updater configured", {
     channel: updateClient.channel,
     allowPrerelease: updateClient.allowPrerelease,
@@ -41,7 +42,9 @@ export const make = Effect.fn("Updater.platform")(function* (channel: string, de
           deviceId,
         })
 
-        if (source.kind === "hold") return
+        if (source.kind === "hold") return { mode: "hold" } as const
+
+        if (source.kind === "external") return { mode: "external", version: source.version, url: source.url } as const
         updateClient.setFeedURL({ provider: "generic", url: source.baseUrl })
         const result = await updateClient.checkForUpdates()
 
@@ -56,12 +59,12 @@ export const make = Effect.fn("Updater.platform")(function* (channel: string, de
     }),
     stageUpdate,
     installAndRestart,
+    externalInstall: (url) => Effect.tryPromise(() => shell.openExternal(url)),
   } satisfies Platform
 })
 
 function stageUpdate(options: { readonly differential: boolean }) {
-  if (process.platform !== "darwin")
-    return Effect.tryPromise({
+  return Effect.tryPromise({
       try: () => {
         // Only the NSIS cache goes stale: macOS refreshes its cached zip with every download and AppImage reads the
         // blockmap embedded in the running file.
@@ -72,28 +75,6 @@ function stageUpdate(options: { readonly differential: boolean }) {
       catch: (error) => error,
     }).pipe(Effect.asVoid)
 
-  return Effect.callback<void, Error>((resume) => {
-    const cleanup = () => {
-      autoUpdater.removeListener("update-downloaded", complete)
-      updateClient.removeListener("error", fail)
-    }
-
-    const complete = () => {
-      cleanup()
-      resume(Effect.void)
-    }
-
-    const fail = (error: Error) => {
-      cleanup()
-      resume(Effect.fail(error))
-    }
-
-    autoUpdater.once("update-downloaded", complete)
-    updateClient.once("error", fail)
-    void updateClient.downloadUpdate().catch(fail)
-
-    return Effect.sync(cleanup)
-  })
 }
 
 const installAndRestart = Effect.callback<void, Error>((resume) => {

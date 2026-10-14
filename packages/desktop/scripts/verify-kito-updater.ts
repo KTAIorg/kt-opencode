@@ -19,17 +19,31 @@ void Effect.runPromiseExit(
     yield* Effect.promise(() => app.whenReady())
     const platform = yield* make("prod", process.env.KITO_UPDATE_VERIFY_DEVICE_ID ?? "kito-updater-verifier")
     pkg.autoUpdater.forceDevUpdateConfig = true
-    pkg.autoUpdater.autoInstallOnAppQuit = false
     const update = yield* platform.checkForUpdate
 
-    if (update?.version !== process.env.KITO_UPDATE_VERIFY_VERSION)
-      throw new Error(`Expected ${process.env.KITO_UPDATE_VERIFY_VERSION}, received ${update?.version ?? "no update"}`)
+    if (!update || update.mode === "hold" || update.version !== process.env.KITO_UPDATE_VERIFY_VERSION)
+      throw new Error(`Expected an assignment for ${process.env.KITO_UPDATE_VERIFY_VERSION}`)
 
     console.log(JSON.stringify({ phase: "check", currentVersion: app.getVersion(), update }))
+
+    if (update.mode === "external") {
+      console.log(JSON.stringify({ phase: "manual-install-required", version: update.version, url: update.url }))
+
+      return
+    }
 
     if (process.env.KITO_UPDATE_VERIFY_DOWNLOAD === "1") {
       yield* platform.stageUpdate({ differential: false })
       console.log(JSON.stringify({ phase: "download", version: update.version, verifiedByElectronUpdater: true }))
+    }
+
+    if (process.env.KITO_UPDATE_VERIFY_INSTALL === "1") {
+      const assigned = yield* platform.checkForUpdate
+
+      if (!assigned || assigned.mode !== "restart" || assigned.version !== update.version)
+        throw new Error("Kito update assignment changed before installation")
+      console.log(JSON.stringify({ phase: "install-request", version: assigned.version }))
+      yield* platform.installAndRestart
     }
   }),
 ).then((result) => {

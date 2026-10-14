@@ -38,6 +38,8 @@ async function setup(input?: {
 
           if (version === "offline") throw new Error("offline")
 
+          if (version === "hold") return { mode: "hold" as const }
+
           return input?.external
             ? { mode: "external" as const, version, url: `https://files.test/${version}.dmg` }
             : { mode: "restart" as const, version }
@@ -206,13 +208,6 @@ describe("updater", () => {
       calls: ["check", "download", "check", "download:full", "prepare", "install:3.0.0"],
       state: { status: "installing", version: "3.0.0" },
     },
-    {
-      name: "clicking install uses the staged release when the final check fails",
-      checks: ["2.0.0", "offline"],
-      then: undefined,
-      calls: ["check", "download", "check", "prepare", "install:2.0.0"],
-      state: { status: "installing", version: "2.0.0" },
-    },
   ])("$name", async (row) => {
     const app = await setup({ checks: row.checks })
     await app.start()
@@ -228,6 +223,28 @@ describe("updater", () => {
     expect(app.calls).toEqual([...row.calls])
     expect(app.state()).toEqual(row.state)
   })
+
+  test.each(["hold", "offline"])("does not install a staged release after %s", async (decision) => {
+    const app = await setup({ checks: ["2.0.0", decision] })
+    await app.start()
+
+    await expect(app.install()).rejects.toThrow(decision === "hold" ? "withdrawn" : "offline")
+    expect(app.calls).toEqual(["check", "download", "check"])
+    expect(app.state()).toEqual(decision === "hold" ? { status: "up-to-date" } : { status: "ready", version: "2.0.0" })
+
+    if (decision === "hold") expect(app.getReady()).toBeUndefined()
+  })
+
+  test.each(["hold", "offline"])(
+    "does not open a withdrawn or unvalidated external installer after %s",
+    async (decision) => {
+      const app = await setup({ external: true, checks: ["2.0.0", decision] })
+      await app.start()
+
+      await expect(app.install()).rejects.toThrow(decision === "hold" ? "unavailable" : "offline")
+      expect(app.calls).toEqual(["check", "check"])
+    },
+  )
 
   test("offers an external installer without staging or preparing to restart", async () => {
     const app = await setup({ external: true })
@@ -284,7 +301,7 @@ describe("updater", () => {
     await refresh
     expect(app.state()).toEqual({ status: "installing", version: "3.0.0" })
     await tick()
-    expect(app.calls).toEqual(["check", "download", "check", "download:full", "prepare", "install:3.0.0"])
+    expect(app.calls).toEqual(["check", "download", "check", "download:full", "check", "prepare", "install:3.0.0"])
   })
 
   test("returns to ready after a failed installation and allows a retry", async () => {

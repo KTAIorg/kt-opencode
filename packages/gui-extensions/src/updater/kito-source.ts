@@ -1,6 +1,9 @@
 import { Schema } from "effect"
 
-export type KitoUpdaterSource = { kind: "hold" } | { kind: "generic"; baseUrl: string; version: string }
+export type KitoUpdaterSource =
+  | { kind: "hold" }
+  | { kind: "generic"; baseUrl: string; version: string }
+  | { kind: "external"; url: string; version: string }
 
 export type SelectKitoUpdaterSourceInput = {
   currentVersion: string
@@ -14,6 +17,9 @@ export type SelectKitoUpdaterSourceInput = {
 const Assignment = Schema.Struct({
   decision: Schema.String,
   targetVersion: Schema.optional(Schema.String),
+  artifact: Schema.optional(
+    Schema.Struct({ downloadUrl: Schema.String, signatureStatus: Schema.optional(Schema.String) }),
+  ),
 })
 
 const decodeAssignment = Schema.decodeUnknownSync(Schema.Struct({ data: Assignment }))
@@ -46,11 +52,24 @@ export async function selectKitoUpdaterSource(input: SelectKitoUpdaterSourceInpu
   if (!version || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version))
     throw new Error("Kito update assignment has an invalid target version")
 
+  const base = `https://github.com/KTAIorg/kt-opencode/releases/download/kito-v${version}/`
+
+  // Unsigned macOS builds cannot use Squirrel.Mac. Offer the verified Kito
+  // installer instead; signed releases can use the native update path later.
+  if (input.platform === "darwin" && assignment.artifact?.signatureStatus !== "signed") {
+    const url = new URL(assignment.artifact?.downloadUrl ?? "")
+
+    if (url.username || url.password || !url.href.startsWith(base) || !/\.(dmg|pkg)$/.test(url.pathname))
+      throw new Error("Kito macOS installer is outside the assigned release")
+
+    return { kind: "external", url: url.href, version }
+  }
+
   // Pin the manifest to the assigned immutable Kito tag. The legacy service
   // feed points at KT Desktop; GitHub's latest feed can skip rollout gates.
   return {
     kind: "generic",
-    baseUrl: `https://github.com/KTAIorg/kt-opencode/releases/download/kito-v${version}/`,
+    baseUrl: base,
     version,
   }
 }

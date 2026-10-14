@@ -106,3 +106,73 @@ test("assignment failure cannot fall back to an ungated latest release", async (
     await server.stop(true)
   }
 })
+
+test.each(["unknown", "signed"])(
+  "macOS uses the assigned install capability for %s artifacts",
+  async (signatureStatus) => {
+    const url =
+      "https://github.com/KTAIorg/kt-opencode/releases/download/kito-v2.1.19/kito-desktop-2.1.19-mac-arm64.dmg"
+
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () =>
+        Response.json({
+          data: {
+            decision: "update_available",
+            targetVersion: "2.1.19",
+            artifact: { downloadUrl: url, signatureStatus },
+          },
+        }),
+    })
+
+    try {
+      const source = await selectKitoUpdaterSource({
+        currentVersion: "2.1.16",
+        platform: "darwin",
+        arch: "arm64",
+        publicBaseUrl: server.url.href,
+      })
+
+      expect(source).toEqual(
+        signatureStatus === "signed"
+          ? {
+              kind: "generic",
+              version: "2.1.19",
+              baseUrl: "https://github.com/KTAIorg/kt-opencode/releases/download/kito-v2.1.19/",
+            }
+          : { kind: "external", version: "2.1.19", url },
+      )
+    } finally {
+      await server.stop(true)
+    }
+  },
+)
+
+test("macOS never opens an installer from another product or release", async () => {
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () =>
+      Response.json({
+        data: {
+          decision: "update_available",
+          targetVersion: "2.1.19",
+          artifact: { downloadUrl: "https://opencode.ai/desktop.dmg", signatureStatus: "unknown" },
+        },
+      }),
+  })
+
+  try {
+    await expect(
+      selectKitoUpdaterSource({
+        currentVersion: "2.1.16",
+        platform: "darwin",
+        arch: "arm64",
+        publicBaseUrl: server.url.href,
+      }),
+    ).rejects.toThrow("outside the assigned release")
+  } finally {
+    await server.stop(true)
+  }
+})

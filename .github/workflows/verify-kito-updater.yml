@@ -24,6 +24,10 @@ on:
         type: boolean
         description: Download through the real Electron updater and verify checksums
         default: true
+      install:
+        type: boolean
+        description: Install and verify startup in the disposable Windows runner
+        default: false
 
 permissions:
   contents: read
@@ -36,6 +40,7 @@ jobs:
       KITO_UPDATE_VERIFY_VERSION: ${{ inputs.version }}
       KITO_UPDATE_VERIFY_DEVICE_ID: ${{ inputs.device_id }}
       KITO_UPDATE_VERIFY_DOWNLOAD: ${{ inputs.download && '1' || '0' }}
+      KITO_UPDATE_VERIFY_INSTALL: ${{ inputs.install && '1' || '0' }}
       KITO_UPDATE_VERIFY_PUBLISHER: ${{ vars.WINDOWS_CSC_EXPECTED_PUBLISHER }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,6 +64,39 @@ jobs:
           set -euo pipefail
           export KITO_UPDATE_VERIFY_PROFILE="$RUNNER_TEMP/kito-updater-verification"
           bunx electron .updater-verifier 2>&1 | tee "$RUNNER_TEMP/kito-updater-verification.log"
+      - name: Verify installed Windows app and its next update check
+        if: inputs.platform == 'windows-2025' && inputs.install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs/Kito/Kito.exe'
+          $logs = Join-Path $env:APPDATA 'cc.ktapi.desktop/logs'
+          $deadline = (Get-Date).AddMinutes(3)
+          $verified = $false
+          while ((Get-Date) -lt $deadline) {
+            if (Test-Path $exe) {
+              $version = (Get-Item $exe).VersionInfo.ProductVersion
+              $signature = Get-AuthenticodeSignature $exe
+              $feed = Join-Path (Split-Path $exe) 'resources/app-update.yml'
+              if ($version -eq $env:KITO_UPDATE_VERIFY_VERSION -and $signature.Status -eq 'Valid' -and (Test-Path $feed)) {
+                $config = Get-Content $feed -Raw
+                if ($config -notmatch 'publisherName:' -or $config -match 'opencode\.ai') { throw 'Packaged updater configuration is unsafe' }
+                $text = if (Test-Path $logs) { (Get-ChildItem $logs -Recurse -File | ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n" } else { '' }
+                if ($text -match 'auto updater configured' -and $text -match 'up-to-date') {
+                  $verified = $true
+                  $evidence = @{phase='installed-startup'; version=$version; signature=$signature.Status.ToString(); publishedUpdateSource='Kito'; nextCheck='up-to-date'} | ConvertTo-Json -Compress
+                  $evidence | Tee-Object -FilePath "$env:RUNNER_TEMP/kito-updater-verification.log" -Append
+                  break
+                }
+              }
+            }
+            Start-Sleep -Seconds 3
+          }
+          if (-not $verified) {
+            if (Test-Path $logs) { Get-ChildItem $logs -Recurse -File | ForEach-Object { Get-Content $_.FullName -Tail 70 } }
+            throw 'Installed Kito did not confirm a healthy next update check'
+          }
+          Get-Process | Where-Object { $_.Path -eq $exe } | Stop-Process
       - name: Save verification evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
