@@ -14,53 +14,27 @@ const RELEASE_NOTES = "opencode.global.dat:extension.updater.releaseNotes"
 
 const cors = { "access-control-allow-origin": "*" }
 
-const splitPanes = {
-  title: "Split panes",
-  description: "Work side by side.",
-  media: { type: "image", src: "/split.png" },
+// Published Kito history includes records outside the installed-version range. Six unseen releases cap at five.
+const history = {
+  data: {
+    appId: "kito",
+    channel: "stable",
+    items: [
+      { version: "99.0.0", notes: ["Not installed yet."] },
+      { version: current, notes: ["Work side by side."] },
+      { version: "1.9.6", notes: ["Talk to the agent."] },
+      { version: "1.9.5", notes: ["Opens in half the time."] },
+      { version: "1.9.4", notes: ["Pick a theme."] },
+      { version: "1.9.3", notes: ["Keep sessions open."] },
+      { version: "1.9.2", notes: ["Past the limit."] },
+      { version: "1.9.1", notes: ["Shown at 1.9.1."] },
+    ],
+  },
 }
 
-// Newest first. Since 1.9.1 the app shows five desktop highlights: the CLI group, the repeat and the sixth stay out.
-const changelog = {
-  releases: [
-    {
-      tag: `v${current}`,
-      highlights: [
-        {
-          source: "Desktop",
-          items: [
-            splitPanes,
-            {
-              title: "Voice input",
-              shortDescription: "Talk to the agent.",
-              media: { type: "VIDEO", url: "/voice.mp4" },
-            },
-          ],
-        },
-        { source: "cli", items: [{ title: "Terminal only", description: "Not in the desktop app." }] },
-      ],
-    },
-    {
-      tag: "1.9.2",
-      highlights: [
-        { source: "desktop", title: "Faster startup", description: "Opens in half the time." },
-        {
-          source: "desktop",
-          items: [
-            splitPanes,
-            { title: "Themes", description: "Pick a theme." },
-            { title: "Session tabs", description: "Keep sessions open." },
-            { title: "Sixth", description: "Past the limit." },
-          ],
-        },
-      ],
-    },
-    { tag: "1.9.1", highlights: [{ source: "desktop", title: "Seen before", description: "Shown at 1.9.1." }] },
-  ],
-}
+const emptyNotes = { ...history, data: { ...history.data, items: [{ version: current, notes: [] }] } }
 
-// The list form, whose one release in range has no desktop highlights.
-const cliOnly = [{ tag: current, highlights: [{ source: "cli", title: "Terminal only", description: "Not here." }] }]
+const historyURL = "https://updates.ktyun.cc/api/v1/apps/kito/releases/history?*"
 
 // A user who last saw 1.9.1, stored where the app kept it before the updater extension owned What's New.
 const upgraded = { storage: { "highlights.v1": { version: "1.9.1" } } }
@@ -68,44 +42,44 @@ const upgraded = { storage: { "highlights.v1": { version: "1.9.1" } } }
 test("What's New shows the highlights since the version seen, pages to Get started, and is seen once shown", async ({
   page,
 }) => {
-  const requests = await serveChangelog(page)
+  const requests = await serveHistory(page)
   await start(page, upgraded)
   const dialog = page.getByRole("dialog")
   const title = dialog.getByRole("heading", { level: 1 })
   const next = dialog.getByRole("button", { name: "Next", exact: true })
-  await expect(title).toHaveText("Split panes")
+  await expect(title).toHaveText(`Kito ${current}`)
   await expect(dialog.getByText("Work side by side.", { exact: true })).toBeVisible()
-  await expect(dialog.getByRole("img", { name: "Split panes", exact: true })).toHaveAttribute("src", "/split.png")
   // Seen as soon as it shows, so however it closes, the next start shows nothing.
   await expect.poll(() => stored(page, SEEN)).toEqual({ version: current })
 
   await next.click()
-  await expect(title).toHaveText("Voice input")
+  await expect(title).toHaveText("Kito 1.9.6")
   await expect(dialog.getByText("Talk to the agent.", { exact: true })).toBeVisible()
-  await expect(dialog.locator("video")).toHaveAttribute("src", "/voice.mp4")
   await page.keyboard.press("ArrowLeft")
-  await expect(title).toHaveText("Split panes")
+  await expect(title).toHaveText(`Kito ${current}`)
   await page.keyboard.press("ArrowRight")
-  await expect(title).toHaveText("Voice input")
+  await expect(title).toHaveText("Kito 1.9.6")
 
   await next.click()
-  await expect(title).toHaveText("Faster startup")
-  await expect(dialog.locator("img, video")).toHaveCount(0)
+  await expect(title).toHaveText("Kito 1.9.5")
   await next.click()
-  await expect(title).toHaveText("Themes")
+  await expect(title).toHaveText("Kito 1.9.4")
   await next.click()
-  await expect(title).toHaveText("Session tabs")
+  await expect(title).toHaveText("Kito 1.9.3")
   await expect(next).toHaveCount(0)
   await dialog.getByRole("button", { name: "Get started", exact: true }).click()
   await expect(dialog).toBeHidden()
   expect(requests).toHaveLength(1)
+  const url = new URL(requests[0]!)
+  expect(url.searchParams.get("channel")).toBe("stable")
+  expect(url.searchParams.get("locale")).toMatch(/^en(?:-|$)/)
 })
 
 test("Don't show these in the future turns release notes off and closes What's New", async ({ page }) => {
-  await serveChangelog(page)
+  await serveHistory(page)
   await start(page, upgraded)
   const dialog = page.getByRole("dialog")
-  await expect(dialog.getByRole("heading", { level: 1 })).toHaveText("Split panes")
+  await expect(dialog.getByRole("heading", { level: 1 })).toHaveText(`Kito ${current}`)
   await dialog.getByRole("button", { name: "Don't show these in the future", exact: true }).click()
   await expect(dialog).toBeHidden()
   await expect.poll(() => stored(page, RELEASE_NOTES)).toEqual({ enabled: false })
@@ -129,13 +103,13 @@ test("What's New opened after the attachment mounts waits for the routes, then k
   page,
 }) => {
   const held = Promise.withResolvers<void>()
-  await serveChangelog(page, changelog, held.promise)
+  await serveHistory(page, history, held.promise)
   await mockWorkspace(page, { name: "Whats New", sessions: [], seed: upgraded })
   const app = await openHeldStart(page, "/settings")
   await app.start()
   held.resolve()
   // What's New marks the release seen as it opens: after attachment, while an extension still holds the routes.
-  await expect.poll(() => stored(page, SEEN)).toEqual({ version: "test" })
+  await expect.poll(() => stored(page, SEEN)).toEqual({ version: current })
 
   const dialog = page.getByRole("dialog")
   const focused = () => dialog.evaluate((element) => element.contains(document.activeElement))
@@ -143,7 +117,7 @@ test("What's New opened after the attachment mounts waits for the routes, then k
   await expect(page.getByTestId("settings-screen")).toHaveCount(0)
   await app.finish()
   await expect(page.getByTestId("settings-screen")).toBeAttached()
-  await expect(dialog.getByRole("heading", { level: 1 })).toHaveText("Split panes")
+  await expect(dialog.getByRole("heading", { level: 1 })).toHaveText(`Kito ${current}`)
   await expect.poll(focused).toBe(true)
 
   for (const key of ["Tab", "Tab", "Tab", "Tab", "Shift+Tab"]) {
@@ -152,14 +126,14 @@ test("What's New opened after the attachment mounts waits for the routes, then k
   }
 })
 
-test("a failed changelog request leaves What's New for the next start", async ({ page }) => {
+test("a failed history request leaves What's New for the next start", async ({ page }) => {
   const failed = Promise.withResolvers<void>()
   const requests: string[] = []
 
-  await page.route("https://opencode.ai/changelog.json", async (route) => {
+  await page.route(historyURL, async (route) => {
     requests.push(route.request().url())
 
-    if (requests.length > 1) return route.fulfill({ headers: cors, json: changelog })
+    if (requests.length > 1) return route.fulfill({ headers: cors, json: history })
 
     await route.fulfill({ status: 503, headers: cors })
     failed.resolve()
@@ -169,10 +143,10 @@ test("a failed changelog request leaves What's New for the next start", async ({
   await failed.promise
   expect(await stored(page, SEEN)).toEqual({ version: "1.9.1" })
   await page.reload()
-  await expect(page.getByRole("dialog").getByRole("heading", { level: 1 })).toHaveText("Split panes")
+  await expect(page.getByRole("dialog").getByRole("heading", { level: 1 })).toHaveText(`Kito ${current}`)
 })
 
-// Each start ends with the current version seen and no dialog; only a release in range is worth a changelog request.
+// Each start ends with the current version seen and no dialog; only a release in range is worth a history request.
 for (const row of [
   { name: "the first run only remembers the version", seed: {}, requests: 0 },
   {
@@ -186,14 +160,14 @@ for (const row of [
     requests: 0,
   },
   {
-    name: "a changelog without desktop highlights since the version seen only remembers the version",
+    name: "Kito history without notes since the version seen only remembers the version",
     seed: upgraded,
-    changelog: cliOnly,
+    history: emptyNotes,
     requests: 1,
   },
 ]) {
   test(`What's New: ${row.name}`, async ({ page }) => {
-    const requests = await serveChangelog(page, row.changelog)
+    const requests = await serveHistory(page, row.history)
     await start(page, row.seed)
     await expect.poll(() => stored(page, SEEN)).toEqual({ version: current })
     expect(requests).toHaveLength(row.requests)
@@ -201,11 +175,11 @@ for (const row of [
   })
 }
 
-/** Serves this changelog and records each request for it. */
-async function serveChangelog(page: Page, body: typeof changelog | typeof cliOnly = changelog, held?: Promise<void>) {
+/** Serves this history and records each request for it. */
+async function serveHistory(page: Page, body: typeof history | typeof emptyNotes = history, held?: Promise<void>) {
   const requests: string[] = []
 
-  await page.route("https://opencode.ai/changelog.json", async (route) => {
+  await page.route(historyURL, async (route) => {
     requests.push(route.request().url())
     await held
 

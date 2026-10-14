@@ -1,3 +1,4 @@
+import pkg from "../../package.json" with { type: "json" }
 import { MemoryRouter, createMemoryHistory } from "@solidjs/router"
 import { createSignal, Show } from "solid-js"
 import { render } from "solid-js/web"
@@ -85,7 +86,9 @@ export function mount(input: { server: string; route: string; direction: Directi
     return (
       <Show
         when={started()}
-        fallback={<button onClick={() => void preloadRoute(input.route).then(() => setStarted(true))}>Start app</button>}
+        fallback={
+          <button onClick={() => void preloadRoute(input.route).then(() => setStarted(true))}>Start app</button>
+        }
       >
         <DirectedApp />
       </Show>
@@ -94,7 +97,7 @@ export function mount(input: { server: string; route: string; direction: Directi
 
   render(
     () => (
-      <PlatformProvider value={createWebPlatform("test").platform}>
+      <PlatformProvider value={createWebPlatform(pkg.version).platform}>
         <AppBaseProviders locale="en">
           <Startup />
         </AppBaseProviders>
