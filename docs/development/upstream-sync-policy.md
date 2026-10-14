@@ -68,6 +68,7 @@ kito-v<产品版本>
 - 桌面更新器由 `packages/gui-extensions/src/updater` 拥有。必须先请求 Kito Release Service 的版本分配，再读取 `kito-v<targetVersion>` 的不可变 GitHub 清单；不得使用 OpenCode 官方源、KT Desktop 的 legacy feed 或绕过灰度的 Latest。安装设备 ID 存于 updater 的 main store，更新器禁止降级。
 - `kito-v2.1.18` 打包了错误的官方更新源，已经安装该版本的设备需要一次手动安装修复版；服务端无法修改已安装包的 `app-update.yml`。macOS 原生自动安装还需要 Apple Developer ID 签名：未签名产物显示 Kito 安装包下载提示，签名状态经独立验证为 `signed` 后才使用原生路径。Windows 签名构建会将 publisherName 写入 app-update.yml 并验证更新签名。
 - 已缓存更新也必须在安装时重新取得分配；hold/暂停清除 ready，网络失败中止安装。关闭退出时自动安装，避免绕过最后的分配检查。
+- 升级后的“新功能／发行说明”从 Kito Release Service 的 `/api/v1/apps/kito/releases/history` 读取，按界面语言和发布通道取数，只展示上次已见版本之后、当前已安装版本以内的 Kito 记录；禁止读取 OpenCode 官方 changelog。
 - 新版本先以 rollout 0 登记，给验证设备配置白名单，用 `Verify Kito Updater` workflow 运行实际 Electron 检查和下载，通过后再放量。该验证使用隔离 profile，不改用户正在运行的客户端。
 - 合入 `main` 会自动发布安装包，合入前需完成质量门禁并取得发布授权。
 

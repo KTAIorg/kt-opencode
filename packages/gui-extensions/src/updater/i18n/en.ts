@@ -14,6 +14,7 @@ export default {
   "installer.title": "Install Kito update",
   "installer.description": "Download version {{version}}, then install Kito from the disk image.",
   "section.title": "Updates",
+  "releaseNotes.version": "Kito {{version}}",
   "releaseNotes.title": "Release notes",
   "releaseNotes.description": "Show What's New popups after updates",
   "check.title": "Check for updates",
