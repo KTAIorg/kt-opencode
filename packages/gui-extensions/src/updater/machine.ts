@@ -148,7 +148,13 @@ export const make = Effect.fn("Updater.make")(function* (dependencies: Dependenc
       if (next.mode === "restart") {
         yield* dependencies.persistence.clear
         transition({ status: "downloading", version: next.version })
-        yield* stage(platform, next.version)
+        yield* stage(platform, next.version).pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() =>
+              transition({ status: "error", message: error instanceof Error ? error.message : String(error) }),
+            ),
+          ),
+        )
 
         return transition({ status: "ready", version: next.version })
       }

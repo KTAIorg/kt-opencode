@@ -53,9 +53,12 @@ async function setup(input?: {
         catch: (error) => error,
       }),
       stageUpdate: (options) =>
-        Effect.tryPromise(async () => {
-          calls.push(options.differential ? "download" : "download:full")
-          await input?.stage?.()
+        Effect.tryPromise({
+          try: async () => {
+            calls.push(options.differential ? "download" : "download:full")
+            await input?.stage?.()
+          },
+          catch: (error) => error,
         }),
       installAndRestart: Effect.suspend(() => {
         calls.push(`install:${store.ready?.version}`)
@@ -262,6 +265,26 @@ describe("updater", () => {
     expect(app.state()).toEqual({ status: "ready", version: "3.0.0" })
     expect(app.getReady()).toEqual({ version: "3.0.0" })
   })
+
+  test.each(["check", "install"])(
+    "native download failure after a manual target leaves a retryable state for %s",
+    async (action) => {
+      const app = await setup({
+        external: true,
+        checks: ["2.0.0", "restart:3.0.0"],
+        stage: () => Promise.reject(new Error("download failed")),
+      })
+
+      await app.start()
+
+      if (action === "install") await expect(app.install()).rejects.toThrow("download failed")
+
+      if (action === "check") await app.check()
+      expect(app.state()).toEqual({ status: "error", message: "download failed" })
+      expect(app.getReady()).toBeUndefined()
+      expect(app.calls).toEqual(["check", "check", "download"])
+    },
+  )
 
   test("serializes a manual install check with background checks", async () => {
     const response = Promise.withResolvers<void>()
