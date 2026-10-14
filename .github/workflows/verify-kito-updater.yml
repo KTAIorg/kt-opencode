@@ -69,11 +69,12 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = Join-Path $env:LOCALAPPDATA 'Programs/Kito/Kito.exe'
           $logs = Join-Path $env:APPDATA 'cc.ktapi.desktop/logs'
           $deadline = (Get-Date).AddMinutes(3)
           $verified = $false
           while ((Get-Date) -lt $deadline) {
+            $exe = Get-Process -Name Kito -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$env:LOCALAPPDATA\Programs\*\Kito.exe" } | Select-Object -ExpandProperty Path -First 1
+            if (-not $exe) { Start-Sleep -Seconds 3; continue }
             if (Test-Path $exe) {
               $version = (Get-Item $exe).VersionInfo.ProductVersion
               $signature = Get-AuthenticodeSignature $exe
@@ -84,7 +85,7 @@ jobs:
                 $text = if (Test-Path $logs) { (Get-ChildItem $logs -Recurse -File | ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n" } else { '' }
                 if ($text -match 'auto updater configured' -and $text -match 'up-to-date') {
                   $verified = $true
-                  $evidence = @{phase='installed-startup'; version=$version; signature=$signature.Status.ToString(); publishedUpdateSource='Kito'; nextCheck='up-to-date'} | ConvertTo-Json -Compress
+                  $evidence = @{phase='installed-startup'; executable=$exe; version=$version; signature=$signature.Status.ToString(); publishedUpdateSource='Kito'; nextCheck='up-to-date'} | ConvertTo-Json -Compress
                   $evidence | Tee-Object -FilePath "$env:RUNNER_TEMP/kito-updater-verification.log" -Append
                   break
                 }

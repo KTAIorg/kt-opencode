@@ -227,7 +227,7 @@ async function smoke(output: string) {
   if (process.platform !== "win32") await chmod(executable, 0o755)
   run(executable, ["--version"], root)
   run(executable, ["--help"], root)
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 }
 
 function targetName(target: NodeTarget) {
