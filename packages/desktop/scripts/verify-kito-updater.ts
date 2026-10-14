@@ -13,16 +13,13 @@ mkdirSync(profile, { recursive: true })
 
 app.setPath("userData", profile)
 
-await app.whenReady()
-
-const platform = await Effect.runPromise(make("prod", process.env.KITO_UPDATE_VERIFY_DEVICE_ID ?? "kito-updater-verifier"))
-
-pkg.autoUpdater.forceDevUpdateConfig = true
-
-pkg.autoUpdater.autoInstallOnAppQuit = false
-
-const result = await Effect.runPromiseExit(
+// Awaiting readiness at ESM module scope blocks Electron's ready event.
+void Effect.runPromiseExit(
   Effect.gen(function* () {
+    yield* Effect.promise(() => app.whenReady())
+    const platform = yield* make("prod", process.env.KITO_UPDATE_VERIFY_DEVICE_ID ?? "kito-updater-verifier")
+    pkg.autoUpdater.forceDevUpdateConfig = true
+    pkg.autoUpdater.autoInstallOnAppQuit = false
     const update = yield* platform.checkForUpdate
 
     if (update?.version !== process.env.KITO_UPDATE_VERIFY_VERSION)
@@ -35,8 +32,7 @@ const result = await Effect.runPromiseExit(
       console.log(JSON.stringify({ phase: "download", version: update.version, verifiedByElectronUpdater: true }))
     }
   }),
-)
-
-if (Exit.isFailure(result)) console.error(JSON.stringify(result))
-
-app.exit(Exit.isSuccess(result) ? 0 : 1)
+).then((result) => {
+  if (Exit.isFailure(result)) console.error(JSON.stringify(result))
+  app.exit(Exit.isSuccess(result) ? 0 : 1)
+})
