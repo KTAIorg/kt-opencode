@@ -43,6 +43,16 @@ import type { Vcs } from "@opencode/schema/vcs"
 import type { WebSearch } from "@opencode/schema/websearch"
 import type { Config } from "@opencode/schema/config"
 
+export type ServerKtaiDesktopLoginInput = { readonly port: number; readonly request: string }
+export type ServerKtaiDesktopLoginOutput = {
+  readonly status: "signed_in" | "reused" | "account_conflict"
+  readonly accountId: string
+  readonly accountName?: string | undefined
+}
+export type ServerKtaiDesktopLoginOperation<E = never> = (
+  input: ServerKtaiDesktopLoginInput,
+) => Effect.Effect<ServerKtaiDesktopLoginOutput, E>
+
 export type ServerKtaiAccountGetOutput = {
   readonly account: { readonly id: string; readonly accountNo: string; readonly displayName?: string | undefined }
   readonly balance?: number | undefined
@@ -134,6 +144,7 @@ export type ServerKtaiModelsProbeOperation<E = never> = (
 ) => Effect.Effect<ServerKtaiModelsProbeOutput, E>
 
 export interface ServerKtaiApi<E = never> {
+  readonly desktop: { readonly login: ServerKtaiDesktopLoginOperation<E> }
   readonly account: { readonly get: ServerKtaiAccountGetOperation<E> }
   readonly ensure: ServerKtaiEnsureOperation<E>
   readonly credential: { readonly get: ServerKtaiCredentialGetOperation<E> }

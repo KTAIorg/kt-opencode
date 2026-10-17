@@ -13,6 +13,7 @@ import { marks } from "./marks"
 import { initializeFirstLaunchOnboarding } from "./onboarding"
 import { Shutdown } from "./shutdown"
 import { consoleReturnWindow } from "./deep-link"
+import { receiveDesktopLogin } from "./desktop-login"
 
 export interface Interface {
   readonly relaunch: () => void
@@ -45,6 +46,7 @@ const runtime = Layer.effect(
     }
 
     const emitDeepLinks = (urls: string[]) => {
+      urls = urls.filter((url) => !receiveDesktopLogin(url))
       if (!urls.length) return
       pendingDeepLinks.push(...urls)
 
@@ -80,7 +82,7 @@ const runtime = Layer.effect(
       const urls = argv.filter((arg) => arg.startsWith("opencode://") || arg.startsWith("ktai://"))
 
       if (urls.length) {
-        runFork(Effect.logInfo("deep link received via second-instance", { urls }))
+        runFork(Effect.logInfo("deep links received via second-instance", { count: urls.length }))
         focusWindow(emitDeepLinks(urls) ?? null)
       }
 
@@ -89,7 +91,7 @@ const runtime = Layer.effect(
 
     const openUrl = (event: Event, url: string) => {
       event.preventDefault()
-      runFork(Effect.logInfo("deep link received via open-url", { url }))
+      runFork(Effect.logInfo("deep link received via open-url"))
       focusWindow(emitDeepLinks([url]) ?? null)
     }
 
