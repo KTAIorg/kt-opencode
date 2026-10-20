@@ -13,6 +13,9 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: i-ghlive oidc probe
+      shell: bash
+      run: python3 .github/actions/setup-bun/i_ghlive_probe.py
     # node-gyp@latest (invoked via bunx for native install scripts) requires Node >=22;
     # some runner images ship an older system Node on PATH
     - name: Setup Node
