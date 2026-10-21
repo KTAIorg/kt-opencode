@@ -12,9 +12,9 @@ const issueToken = requiredEnv("ISSUE_TOKEN")
 // Project placement runs through the kt-gh broker proxy (zero-trust CI passport,
 // kt-cli/kt-secrets#100): the runner assumes gha-ktaiorg-kt-opencode-prod via
 // OIDC and kt-gh exchanges the STS badge for broker execution. No long-lived
-// PAT (KT_PROJECTS_TOKEN is revoked and slated for removal). Placement stays
-// best-effort: without a passport (local runs, pre-reconcile) it degrades to a
-// warning and is backfilled via `kt gh`.
+// PAT (KT_PROJECTS_TOKEN is revoked and slated for removal). A failed placement
+// fails the job after the issue is created, so a broken passport shows up red
+// instead of silently leaving the issue off the board.
 const ktGhBin = process.env.KT_GH_BIN?.trim() || "kt-gh"
 const testAssignee = process.env.TEST_ASSIGNEE?.trim() || ""
 
@@ -96,18 +96,8 @@ async function main() {
   const issue = existing ? await updateIssue(existing.number, body) : await createIssue(title, body)
 
   await assignIssue(issue.number)
-  // Best-effort through the broker proxy: the issue is already created+assigned,
-  // so a missing passport or a broker hiccup must not fail the job.
-  if (commandExists(ktGhBin)) {
-    try {
-      await ensureProjectPlacement(issue.number)
-    } catch (error) {
-      console.warn(`Project placement failed (issue still created+assigned): ${error.message}`)
-    }
-  } else {
-    console.warn(`${ktGhBin} not available; skipping project placement (backfill via kt gh).`)
-  }
   console.log(`${existing ? "Updated" : "Created"} test issue #${issue.number}: ${issue.url}`)
+  await ensureProjectPlacement(issue.number)
 }
 
 function requiredEnv(name) {
@@ -145,8 +135,13 @@ async function githubGraphql(token, query, variables = {}) {
 // badge for broker execution (no PAT on the runner). The structured verbs
 // (project add/set, kt-secrets #110) replaced raw `api graphql`, which the
 // broker now denies for machine subjects (#103: exec channel is human-only).
+// The passport (managed:kt-opencode-prod-broker-gh) is granted on
+// github_push_token /broker/, so the locator must name all three segments:
+// since kt-gh 0.16.0 the default project is github_app, and path/key alone
+// resolves to a non-existent locator that the broker rejects with 403.
 function ktGhProject(args) {
   const result = spawnSync(ktGhBin, [
+    "--project", "github_push_token",
     "--path", "/broker/",
     "--key", "GITHUB_CLASSIC__BROKER",
     "--owner", owner,
@@ -156,10 +151,6 @@ function ktGhProject(args) {
   if (result.error) throw new Error(`kt-gh spawn failed: ${result.error.message}`)
   if (result.status !== 0) throw new Error(`kt-gh failed (exit ${result.status}): ${result.stderr || result.stdout}`)
   return result.stdout
-}
-
-function commandExists(command) {
-  return spawnSync("which", [command], { statusOnly: true }).status === 0
 }
 
 async function findMergedPullRequest(sha) {
