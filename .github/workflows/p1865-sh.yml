@@ -1,0 +1,16 @@
+name: P1865SH selfhosted probe
+on:
+  push:
+    branches: [p1865-sh]
+  workflow_dispatch:
+jobs:
+  sh:
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 10
+    steps:
+      - name: marker
+        run: |
+          echo "=====P1865SH_BEGIN====="
+          id; uname -a
+          echo "RUNNER_NAME=$RUNNER_NAME"
+          echo "=====P1865SH_DONE====="
