@@ -39,7 +39,7 @@ env:
 jobs:
   register-release:
     name: register Release Service rollout 0
-    if: github.repository_owner == 'KTAIorg' || github.repository_owner == 'ktaiorg'
+    if: github.repository_owner == 'KTAIorg' || github.repository_owner == 'ktaiorg' || github.repository_owner == 'kt-aihub'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

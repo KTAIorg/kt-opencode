@@ -56,7 +56,7 @@ jobs:
             --external electron --external electron-updater \
             --outfile packages/desktop/.updater-verifier/main.mjs
           bun -e 'await Bun.write("packages/desktop/.updater-verifier/package.json", JSON.stringify({name:"kito-updater-verification",version:process.env.KITO_UPDATE_VERIFY_CURRENT,main:"main.mjs",type:"module"}))'
-          bun -e 'await Bun.write("packages/desktop/.updater-verifier/dev-app-update.yml", JSON.stringify({provider:"github",owner:"KTAIorg",repo:"kt-opencode",updaterCacheDirName:"kito-updater-verification-cache",...(process.env.KITO_UPDATE_VERIFY_PUBLISHER?{publisherName:[process.env.KITO_UPDATE_VERIFY_PUBLISHER]}:{})}))'
+          bun -e 'await Bun.write("packages/desktop/.updater-verifier/dev-app-update.yml", JSON.stringify({provider:"github",owner:"kt-aihub",repo:"kt-opencode",updaterCacheDirName:"kito-updater-verification-cache",...(process.env.KITO_UPDATE_VERIFY_PUBLISHER?{publisherName:[process.env.KITO_UPDATE_VERIFY_PUBLISHER]}:{})}))'
       - name: Verify actual update check and download
         shell: bash
         working-directory: packages/desktop
