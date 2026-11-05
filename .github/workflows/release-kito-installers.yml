@@ -58,7 +58,7 @@ jobs:
     needs:
       - resolve-version
       - build-cli
-    if: github.repository_owner == 'KTAIorg' || github.repository_owner == 'ktaiorg'
+    if: github.repository_owner == 'KTAIorg' || github.repository_owner == 'ktaiorg' || github.repository_owner == 'kt-aihub'
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
@@ -151,7 +151,7 @@ jobs:
     needs:
       - resolve-version
       - build-cli
-    if: github.repository_owner == 'KTAIorg' || github.repository_owner == 'ktaiorg'
+    if: github.repository_owner == 'KTAIorg' || github.repository_owner == 'ktaiorg' || github.repository_owner == 'kt-aihub'
     strategy:
       fail-fast: false
       matrix:
@@ -227,7 +227,7 @@ jobs:
       - resolve-version
       - build-windows
       - build-macos
-    if: github.repository_owner == 'KTAIorg' || github.repository_owner == 'ktaiorg'
+    if: github.repository_owner == 'KTAIorg' || github.repository_owner == 'ktaiorg' || github.repository_owner == 'kt-aihub'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
