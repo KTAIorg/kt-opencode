@@ -5,6 +5,13 @@ import {
   signOutIdentity,
 } from "@opencode/core/ktai/identity"
 import { probeKtaiModels } from "@opencode/core/ktai/model-probe"
+import { desktopLogin } from "@opencode/core/ktai/desktop-login"
+import { Bus } from "@opencode/core/bus"
+import { Plugin } from "@opencode/core/plugin"
+import { Location } from "@opencode/core/location"
+import { LocationServiceMap } from "@opencode/core/location-services"
+import { AbsolutePath } from "@opencode/core/schema"
+import { Global } from "@opencode/util/global"
 import {
   allowNewapiSpendableRefresh,
   clearManagedApiKey,
@@ -63,169 +70,191 @@ function isKtpaySettled(status: KtpayStatus) {
 }
 
 export const KtaiHandler = HttpApiBuilder.group(Api, "server.ktai", (handlers) =>
-  handlers
-    .handle("ktai.account.get", () =>
-      Effect.gen(function* () {
-        const token = yield* identityToken()
-        const summary = yield* Effect.tryPromise({
-          try: async () => {
-            const current = await fetchAccountSummary(token)
-            if (!(await readManagedApiKey())) await syncManagedToken(token).catch(() => undefined)
-            // 顶栏只认 NewAPI 可花额度（USD）。读不到（Ensure 429/超时且无缓存）就不带 balance，
-            // 客户端只显示名字，绝不降级显示 Identity ledger，也不写假 0。
-            const spendable =
-              (await fetchNewapiSpendable(token).catch(() => undefined)) ?? (await readCachedSpendable())
-            return {
-              account: current.account,
-              ...(spendable === undefined ? {} : { balance: spendable }),
-              ...(current.memberSince === undefined ? {} : { memberSince: current.memberSince }),
-              ...(current.joinedDays === undefined ? {} : { joinedDays: current.joinedDays }),
-            }
-          },
-          catch: (error) =>
-            new ServiceUnavailableError({
-              message: error instanceof Error && error.message ? error.message : "KT Identity is unavailable",
-              service: "ktai",
-            }),
-        })
-        return summary
-      }),
-    )
-    .handle("ktai.ensure", () =>
-      Effect.gen(function* () {
-        const token = yield* identityToken()
-        const result = yield* Effect.tryPromise({
-          try: () => syncManagedToken(token),
-          catch: (error) => upstream(error, "NewAPI ensure failed"),
-        })
-        return {
-          ok: true as const,
-          updated: result.updated,
-          created: result.created,
-          keyPresent: true as const,
-        }
-      }),
-    )
-    .handle("ktai.credential.get", () =>
-      Effect.gen(function* () {
-        // identity 走 ensureFresh：access 过期但 refresh 面仍有效时，用户
-        // 实际仍处于登录态（这正是 181 的分裂根源），不应报成未登录。
-        const token = yield* Effect.promise(() => ensureFreshIdentityToken())
-        const key = yield* Effect.promise(() => readManagedApiKey())
-        return {
-          identity: Boolean(token),
-          keyPresent: Boolean(key),
-        }
-      }),
-    )
-    .handle("ktai.logout", () =>
-      Effect.gen(function* () {
-        yield* Effect.promise(() => signOutIdentity())
-        yield* Effect.promise(() => clearManagedApiKey())
-        return { ok: true as const }
-      }),
-    )
-    .handle("ktai.wallet.depositAddress", (ctx) =>
-      Effect.gen(function* () {
-        const token = yield* identityToken()
-        return yield* Effect.tryPromise({
-          try: () => fetchDepositAddress(token, { chain: ctx.query.chain, asset: ctx.query.asset }),
-          catch: (error) => upstream(error, "Deposit address is unavailable"),
-        })
-      }),
-    )
-    .handle("ktai.wallet.cryptoStatus", () =>
-      Effect.gen(function* () {
-        const token = yield* identityToken()
-        return yield* Effect.tryPromise({
-          // 只查 Identity ledger（500k=$1），不打 NewAPI，避免烧 Ensure 限流桶。
-          try: async () => ({ ledgerBalance: await fetchLedgerBalance(token) }),
-          catch: (error) => upstream(error, "Crypto status is unavailable"),
-        })
-      }),
-    )
-    .handle("ktai.wallet.ktpay.info", () =>
-      Effect.gen(function* () {
-        const token = yield* identityToken()
-        return yield* Effect.tryPromise({
-          try: () => fetchKtpayInfo(token),
-          catch: (error) => upstream(error, "KTPay is unavailable"),
-        })
-      }),
-    )
-    .handle("ktai.wallet.ktpay.pay", (ctx) =>
-      Effect.gen(function* () {
-        const token = yield* identityToken()
-        if (!Number.isFinite(ctx.payload.amount) || ctx.payload.amount <= 0 || !ctx.payload.method.trim()) {
-          return yield* new InvalidRequestError({
-            message: "amount and method are required",
-            kind: "ktai_ktpay_pay",
+  Effect.gen(function* () {
+    // Desktop account handoffs target the shared user configuration graph,
+    // independent of the currently selected project or the process cwd.
+    const bus = yield* Bus.Service
+    const global = yield* Global.Service
+    const locations = yield* LocationServiceMap.Service
+    const services = locations.get(Location.Ref.make({ directory: AbsolutePath.make(global.config) }))
+    return handlers
+      .handle("ktai.desktop.login", (ctx) =>
+        Effect.gen(function* () {
+          yield* Plugin.awaitActivation
+          return yield* desktopLogin(ctx.payload)
+        }).pipe(
+          Effect.provide(services),
+          Effect.provideService(Bus.Service, bus),
+          Effect.catchCause(() =>
+            Effect.fail(
+              new ServiceUnavailableError({ message: "Desktop sign-in could not complete", service: "ktai" }),
+            ),
+          ),
+        ),
+      )
+      .handle("ktai.account.get", () =>
+        Effect.gen(function* () {
+          const token = yield* identityToken()
+          const summary = yield* Effect.tryPromise({
+            try: async () => {
+              const current = await fetchAccountSummary(token)
+              if (!(await readManagedApiKey())) await syncManagedToken(token).catch(() => undefined)
+              // 顶栏只认 NewAPI 可花额度（USD）。读不到（Ensure 429/超时且无缓存）就不带 balance，
+              // 客户端只显示名字，绝不降级显示 Identity ledger，也不写假 0。
+              const spendable =
+                (await fetchNewapiSpendable(token).catch(() => undefined)) ?? (await readCachedSpendable())
+              return {
+                account: current.account,
+                ...(spendable === undefined ? {} : { balance: spendable }),
+                ...(current.memberSince === undefined ? {} : { memberSince: current.memberSince }),
+                ...(current.joinedDays === undefined ? {} : { joinedDays: current.joinedDays }),
+              }
+            },
+            catch: (error) =>
+              new ServiceUnavailableError({
+                message: error instanceof Error && error.message ? error.message : "KT Identity is unavailable",
+                service: "ktai",
+              }),
           })
-        }
-        return yield* Effect.tryPromise({
-          try: () => createKtpayOrder(token, { amount: ctx.payload.amount, method: ctx.payload.method.trim() }),
-          catch: (error) => upstream(error, "KTPay order failed"),
-        })
-      }),
-    )
-    .handle("ktai.wallet.ktpay.status", (ctx) =>
-      Effect.gen(function* () {
-        const token = yield* identityToken()
-        if (!ctx.params.order_id) {
-          return yield* new InvalidRequestError({
-            message: "order_id is required",
-            kind: "ktai_ktpay_status",
-          })
-        }
-        const status = yield* Effect.tryPromise({
-          try: () => fetchKtpayStatus(token, ctx.params.order_id),
-          catch: (error) => upstream(error, "KTPay status failed"),
-        })
-        // 到账是一次明确事件：放开自动路径的 Ensure 冷却，让下一次账号读取拿到新余额。
-        if (isKtpaySettled(status)) allowNewapiSpendableRefresh()
-        return status
-      }),
-    )
-    .handle("ktai.models.probe", (ctx) =>
-      Effect.gen(function* () {
-        const token = yield* identityToken()
-        const ids = [...new Set(ctx.payload.modelIDs.map((id) => id.trim()).filter(Boolean))]
-        if (ids.length === 0) {
-          return yield* new InvalidRequestError({
-            message: "modelIDs must not be empty",
-            kind: "ktai_models_probe",
-          })
-        }
-        if (ids.length > 100) {
-          return yield* new InvalidRequestError({
-            message: "modelIDs is limited to 100 per probe",
-            kind: "ktai_models_probe",
-          })
-        }
-        // 探测前先确保 managed key 存在（登出会清掉）；401 由 identityToken 抛出。
-        if (!(yield* Effect.promise(() => readManagedApiKey()))) {
-          yield* Effect.tryPromise({
+          return summary
+        }),
+      )
+      .handle("ktai.ensure", () =>
+        Effect.gen(function* () {
+          const token = yield* identityToken()
+          const result = yield* Effect.tryPromise({
             try: () => syncManagedToken(token),
             catch: (error) => upstream(error, "NewAPI ensure failed"),
           })
-        }
-        // tryPromise 的 signal 在 fiber 中断（客户端断开、下方 timeoutOrElse 兜底）时中止探测。
-        const probed = yield* Effect.tryPromise({
-          try: async (signal) => probeKtaiModels(ids, (await readManagedApiKey()) ?? "", { signal }),
-          catch: (error) => upstream(error, "model probe failed"),
-        }).pipe(
-          Effect.timeoutOrElse({
-            duration: "15 seconds",
-            orElse: () => Effect.fail(new BadGatewayError({ message: "Model probe timed out", service: "ktai" })),
-          }),
-        )
-        if (!probed.ok) {
-          return yield* new BadGatewayError({
-            message: probed.reason,
-            service: "ktai",
+          return {
+            ok: true as const,
+            updated: result.updated,
+            created: result.created,
+            keyPresent: true as const,
+          }
+        }),
+      )
+      .handle("ktai.credential.get", () =>
+        Effect.gen(function* () {
+          // identity 走 ensureFresh：access 过期但 refresh 面仍有效时，用户
+          // 实际仍处于登录态（这正是 181 的分裂根源），不应报成未登录。
+          const token = yield* Effect.promise(() => ensureFreshIdentityToken())
+          const key = yield* Effect.promise(() => readManagedApiKey())
+          return {
+            identity: Boolean(token),
+            keyPresent: Boolean(key),
+          }
+        }),
+      )
+      .handle("ktai.logout", () =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() => signOutIdentity())
+          yield* Effect.promise(() => clearManagedApiKey())
+          return { ok: true as const }
+        }),
+      )
+      .handle("ktai.wallet.depositAddress", (ctx) =>
+        Effect.gen(function* () {
+          const token = yield* identityToken()
+          return yield* Effect.tryPromise({
+            try: () => fetchDepositAddress(token, { chain: ctx.query.chain, asset: ctx.query.asset }),
+            catch: (error) => upstream(error, "Deposit address is unavailable"),
           })
-        }
-        return { results: probed.results, probedAt: Date.now() }
-      }),
-    ),
+        }),
+      )
+      .handle("ktai.wallet.cryptoStatus", () =>
+        Effect.gen(function* () {
+          const token = yield* identityToken()
+          return yield* Effect.tryPromise({
+            // 只查 Identity ledger（500k=$1），不打 NewAPI，避免烧 Ensure 限流桶。
+            try: async () => ({ ledgerBalance: await fetchLedgerBalance(token) }),
+            catch: (error) => upstream(error, "Crypto status is unavailable"),
+          })
+        }),
+      )
+      .handle("ktai.wallet.ktpay.info", () =>
+        Effect.gen(function* () {
+          const token = yield* identityToken()
+          return yield* Effect.tryPromise({
+            try: () => fetchKtpayInfo(token),
+            catch: (error) => upstream(error, "KTPay is unavailable"),
+          })
+        }),
+      )
+      .handle("ktai.wallet.ktpay.pay", (ctx) =>
+        Effect.gen(function* () {
+          const token = yield* identityToken()
+          if (!Number.isFinite(ctx.payload.amount) || ctx.payload.amount <= 0 || !ctx.payload.method.trim()) {
+            return yield* new InvalidRequestError({
+              message: "amount and method are required",
+              kind: "ktai_ktpay_pay",
+            })
+          }
+          return yield* Effect.tryPromise({
+            try: () => createKtpayOrder(token, { amount: ctx.payload.amount, method: ctx.payload.method.trim() }),
+            catch: (error) => upstream(error, "KTPay order failed"),
+          })
+        }),
+      )
+      .handle("ktai.wallet.ktpay.status", (ctx) =>
+        Effect.gen(function* () {
+          const token = yield* identityToken()
+          if (!ctx.params.order_id) {
+            return yield* new InvalidRequestError({
+              message: "order_id is required",
+              kind: "ktai_ktpay_status",
+            })
+          }
+          const status = yield* Effect.tryPromise({
+            try: () => fetchKtpayStatus(token, ctx.params.order_id),
+            catch: (error) => upstream(error, "KTPay status failed"),
+          })
+          // 到账是一次明确事件：放开自动路径的 Ensure 冷却，让下一次账号读取拿到新余额。
+          if (isKtpaySettled(status)) allowNewapiSpendableRefresh()
+          return status
+        }),
+      )
+      .handle("ktai.models.probe", (ctx) =>
+        Effect.gen(function* () {
+          const token = yield* identityToken()
+          const ids = [...new Set(ctx.payload.modelIDs.map((id) => id.trim()).filter(Boolean))]
+          if (ids.length === 0) {
+            return yield* new InvalidRequestError({
+              message: "modelIDs must not be empty",
+              kind: "ktai_models_probe",
+            })
+          }
+          if (ids.length > 100) {
+            return yield* new InvalidRequestError({
+              message: "modelIDs is limited to 100 per probe",
+              kind: "ktai_models_probe",
+            })
+          }
+          // 探测前先确保 managed key 存在（登出会清掉）；401 由 identityToken 抛出。
+          if (!(yield* Effect.promise(() => readManagedApiKey()))) {
+            yield* Effect.tryPromise({
+              try: () => syncManagedToken(token),
+              catch: (error) => upstream(error, "NewAPI ensure failed"),
+            })
+          }
+          // tryPromise 的 signal 在 fiber 中断（客户端断开、下方 timeoutOrElse 兜底）时中止探测。
+          const probed = yield* Effect.tryPromise({
+            try: async (signal) => probeKtaiModels(ids, (await readManagedApiKey()) ?? "", { signal }),
+            catch: (error) => upstream(error, "model probe failed"),
+          }).pipe(
+            Effect.timeoutOrElse({
+              duration: "15 seconds",
+              orElse: () => Effect.fail(new BadGatewayError({ message: "Model probe timed out", service: "ktai" })),
+            }),
+          )
+          if (!probed.ok) {
+            return yield* new BadGatewayError({
+              message: probed.reason,
+              service: "ktai",
+            })
+          }
+          return { results: probed.results, probedAt: Date.now() }
+        }),
+      )
+  }),
 )

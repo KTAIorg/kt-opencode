@@ -29,6 +29,12 @@ export const KtaiLogout = Schema.Struct({
   ok: Schema.Literal(true),
 }).annotate({ identifier: "KtaiLogout" })
 
+export const KtaiDesktopLogin = Schema.Struct({
+  status: Schema.Literals(["signed_in", "reused", "account_conflict"]),
+  accountId: Schema.String,
+  accountName: Schema.optional(Schema.String),
+}).annotate({ identifier: "KtaiDesktopLogin" })
+
 export const KtaiDepositAddress = Schema.Struct({
   chain: Schema.String,
   asset: Schema.String,
@@ -86,6 +92,19 @@ const identityErrors = [UnauthorizedError, ServiceUnavailableError] as const
 const walletErrors = [UnauthorizedError, ServiceUnavailableError, BadGatewayError] as const
 
 export const KtaiGroup = HttpApiGroup.make("server.ktai")
+  .add(
+    HttpApiEndpoint.post("ktai.desktop.login", "/ktai/desktop-login", {
+      payload: Schema.Struct({ port: Schema.Number, request: Schema.String }),
+      success: KtaiDesktopLogin,
+      error: [InvalidRequestError, ServiceUnavailableError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.ktai.desktop.login",
+        summary: "Sign in from KT Desktop over a one-time local rendezvous",
+        description: "Authenticated local sidecar only. No source or target token crosses the loopback callback.",
+      }),
+    ),
+  )
   .add(
     HttpApiEndpoint.get("ktai.account.get", "/ktai/account", {
       success: KtaiAccount,

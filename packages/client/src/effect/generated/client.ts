@@ -5,6 +5,8 @@ import { HttpClientError } from "effect/http"
 import { HttpApiClient } from "effect/http-api"
 import { ClientApi } from "../../contract"
 import type {
+  ServerKtaiDesktopLoginInput,
+  ServerKtaiDesktopLoginOutput,
   ServerKtaiAccountGetOutput,
   ServerKtaiEnsureOutput,
   ServerKtaiCredentialGetOutput,
@@ -315,6 +317,13 @@ const preserveStream =
   ): Stream.Stream<A, E, R> =>
     stream
 
+const EndpointServerKtaiDesktopLogin = (raw: RawClient["server.ktai"]) => (input: ServerKtaiDesktopLoginInput) =>
+  preserveEffect<ServerKtaiDesktopLoginOutput>()(
+    raw["ktai.desktop.login"]({ payload: { port: input["port"], request: input["request"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
 const EndpointServerKtaiAccountGet = (raw: RawClient["server.ktai"]) => () =>
   preserveEffect<ServerKtaiAccountGetOutput>()(raw["ktai.account.get"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -366,6 +375,7 @@ const EndpointServerKtaiModelsProbe = (raw: RawClient["server.ktai"]) => (input:
   )
 
 const adaptGroupServerKtai = (raw: RawClient["server.ktai"]) => ({
+  desktop: { login: EndpointServerKtaiDesktopLogin(raw) },
   account: { get: EndpointServerKtaiAccountGet(raw) },
   ensure: EndpointServerKtaiEnsure(raw),
   credential: { get: EndpointServerKtaiCredentialGet(raw) },

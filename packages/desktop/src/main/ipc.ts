@@ -19,6 +19,8 @@ import { ApplicationLifecycle } from "./lifecycle"
 import { showCliInstaller } from "./native/install-cli"
 import { createMenu, sendMenuCommand } from "./native/menu"
 import { DesktopCli } from "./service/desktop-cli"
+import { BackgroundService } from "./service/background-service"
+import { registerDesktopLoginHandler } from "./lifecycle/desktop-login"
 import { getLastFocusedWindow } from "./windows"
 
 const services = Layer.mergeAll(DesktopFiles.layer, Extensions.layer)
@@ -43,6 +45,36 @@ export const registerIpcHandlers = Effect.gen(function* () {
   const handoff = yield* IpcPortHandoff
   const lifecycle = yield* ApplicationLifecycle.Service
   const desktopCli = yield* DesktopCli.Service
+  const background = yield* BackgroundService.Service
+  const runPromise = Effect.runPromiseWith(yield* Effect.context())
+  yield* Effect.sync(() =>
+    registerDesktopLoginHandler(async (request) => {
+      try {
+        const sidecar = await runPromise(background.connection)
+        const response = await fetch(`${sidecar.url}/ktai/desktop-login`, {
+          method: "POST",
+          signal: AbortSignal.timeout(120_000),
+          headers: {
+            "content-type": "application/json",
+            ...(sidecar.password
+              ? { authorization: `Basic ${Buffer.from(`opencode:${sidecar.password}`).toString("base64")}` }
+              : {}),
+          },
+          body: JSON.stringify(request),
+        })
+        if (!response.ok) throw new Error("Desktop sign-in failed")
+      } catch {
+        // Report a fixed code; neither local endpoint nor nonce belongs in logs.
+        await fetch(`http://127.0.0.1:${request.port}/kito/${request.request}/complete`, {
+          method: "POST",
+          signal: AbortSignal.timeout(3000),
+          redirect: "error",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status: "failed", code: "kito_login_failed" }),
+        }).catch(() => undefined)
+      }
+    }),
+  )
   const runFork = Effect.runForkWith(yield* Effect.context())
 
   const menu = {

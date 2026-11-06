@@ -1,5 +1,11 @@
 export type JsonValue = null | boolean | number | string | Array<JsonValue> | { [key: string]: JsonValue }
 
+export type KtaiDesktopLogin = {
+  status: "signed_in" | "reused" | "account_conflict"
+  accountId: string
+  accountName?: string | undefined
+}
+
 export type KtaiAccount = {
   account: { id: string; accountNo: string; displayName?: string | undefined }
   balance?: number | undefined
@@ -2918,6 +2924,13 @@ export type VcsInitNotSupportedError = {
 }
 export const isVcsInitNotSupportedError = (value: unknown): value is VcsInitNotSupportedError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "VcsInitNotSupportedError"
+
+export type ServerKtaiDesktopLoginInput = {
+  readonly port: { readonly port: number; readonly request: string }["port"]
+  readonly request: { readonly port: number; readonly request: string }["request"]
+}
+
+export type ServerKtaiDesktopLoginOutput = KtaiDesktopLogin
 
 export type ServerKtaiAccountGetOutput = KtaiAccount
 
